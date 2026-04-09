@@ -14,6 +14,11 @@ struct GreetArgs<'a> {
     name: &'a str,
 }
 
+#[derive(Serialize, Deserialize)]
+struct LogArgs {
+    message: String,
+}
+
 #[component]
 pub fn App() -> impl IntoView {
     let (name, set_name) = signal(String::new());
@@ -31,6 +36,8 @@ pub fn App() -> impl IntoView {
             if name.is_empty() {
                 return;
             }
+
+            console_log(name.clone()).await;
 
             let args = serde_wasm_bindgen::to_value(&GreetArgs { name: &name }).unwrap();
             // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
@@ -64,4 +71,12 @@ pub fn App() -> impl IntoView {
             <p>{ move || greet_msg.get() }</p>
         </main>
     }
+}
+
+async fn console_log(string: String) {
+    let _ = invoke(
+        "console_log",
+        serde_wasm_bindgen::to_value(&LogArgs { message: string }).unwrap(),
+    )
+    .await;
 }
