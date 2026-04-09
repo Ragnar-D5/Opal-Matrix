@@ -21,6 +21,10 @@ struct LogArgs {
 
 #[component]
 pub fn App() -> impl IntoView {
+    spawn_local(async {
+        let _ = invoke("start_function", JsValue::default()).await;
+    });
+
     let (name, set_name) = signal(String::new());
     let (greet_msg, set_greet_msg) = signal(String::new());
 
