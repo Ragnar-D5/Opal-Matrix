@@ -29,6 +29,7 @@ struct MatrixLoginResponse {
 struct AppState {
     access_token: Mutex<Option<String>>,
     matrix_url: Mutex<Option<String>>,
+    user_id: Mutex<Option<String>>,
 }
 
 #[derive(serde::Serialize)]
@@ -47,7 +48,7 @@ fn console_log(message: String) {
     println!("{message}")
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 async fn matrix_login(
     matrix_url: String,
     username: String,
@@ -88,6 +89,9 @@ async fn matrix_login(
 
         let mut guard = state.access_token.lock().await;
         *guard = Some(json_res.access_token.clone());
+
+        guard = state.user_id.lock().await;
+        *guard = Some(json_res.user_id.clone());
 
         return Ok(json_res);
     } else {
