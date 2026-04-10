@@ -1,8 +1,8 @@
-use std::sync::Mutex;
-
+use log::{error, info, trace};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use tauri::State;
+use tauri::async_runtime::Mutex;
+use tauri::{Manager, State};
 
 #[derive(Serialize)]
 struct MatrixLoginIdentifier {
@@ -19,12 +19,13 @@ struct MatrixLoginRequest {
     password: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct MatrixLoginResponse {
-    access_token: Option<String>,
-    user_id: Option<String>,
+    user_id: String,
+    access_token: String,
 }
 
+#[derive(Default)]
 struct AppState {
     access_token: Mutex<Option<String>>,
     matrix_url: Mutex<Option<String>>,
@@ -42,18 +43,26 @@ fn console_log(message: String) {
 }
 
 #[tauri::command]
-async fn start_function() -> Result<(), String> {
+async fn matrix_login(
+    matrix_url: String,
+    username: String,
+    password: String,
+    state: State<'_, AppState>,
+) -> Result<MatrixLoginResponse, String> {
     let client = Client::new();
 
-    let matrix_url = "https://matrix.erik-is.gay".to_string();
+    trace!("Getting login");
+
+    let mut guard = state.matrix_url.lock().await;
+    *guard = Some(matrix_url.clone());
 
     let payload = MatrixLoginRequest {
         login_type: "m.login.password".to_string(),
         identifier: MatrixLoginIdentifier {
             id_type: "m.id.user".to_string(),
-            user: "username".to_string(),
+            user: username,
         },
-        password: "password".to_string(),
+        password: password,
     };
 
     let res = client
@@ -70,18 +79,31 @@ async fn start_function() -> Result<(), String> {
             .map_err(|e| format!("Parse error: {}", e))
             .unwrap();
 
-        println!("{:?}", json_res.user_id);
-        println!("{:?}", json_res.access_token);
-    }
+        info!("Successfully logged in as {}", json_res.user_id);
 
-    Ok(())
+        let mut guard = state.access_token.lock().await;
+        *guard = Some(json_res.access_token.clone());
+
+        return Ok(json_res);
+    } else {
+        error!("Failed to log in: {}", res.status());
+
+        return Err("Failed to log in".to_string());
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let state = AppState::default();
+
     tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet, console_log, start_function])
+        .setup(|app| {
+            app.manage(Mutex::new(AppState::default()));
+            Ok(())
+        })
+        .manage(state)
+        .plugin(tauri_plugin_log::Builder::new().build())
+        .invoke_handler(tauri::generate_handler![greet, console_log, matrix_login])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

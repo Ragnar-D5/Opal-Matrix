@@ -6,47 +6,62 @@ use wasm_bindgen::prelude::*;
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(js_namespace = ["window", "__TAURI__", "core"])]
-    async fn invoke(cmd: &str, args: JsValue) -> JsValue;
+    fn invoke(cmd: &str, args: JsValue) -> js_sys::Promise;
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct MatrixLoginResponse {
+    pub user_id: String,
 }
 
 #[derive(Serialize, Deserialize)]
-struct GreetArgs<'a> {
-    name: &'a str,
+struct LoginArgs {
+    username: String,
+    password: String,
 }
 
-#[derive(Serialize, Deserialize)]
-struct LogArgs {
-    message: String,
+async fn call_tauri(cmd: &str, args: JsValue) -> Result<JsValue, JsValue> {
+    wasm_bindgen_futures::JsFuture::from(invoke(cmd, args)).await
 }
 
 #[component]
 pub fn App() -> impl IntoView {
-    spawn_local(async {
-        let _ = invoke("start_function", JsValue::default()).await;
-    });
+    let (username, set_username) = signal(String::new());
+    let (password, set_password) = signal(String::new());
 
-    let (name, set_name) = signal(String::new());
-    let (greet_msg, set_greet_msg) = signal(String::new());
+    let (login_name, set_login_name) = signal(String::new());
 
-    let update_name = move |ev| {
-        let v = event_target_value(&ev);
-        set_name.set(v);
-    };
-
-    let greet = move |ev: SubmitEvent| {
+    let login = move |ev: SubmitEvent| {
         ev.prevent_default();
         spawn_local(async move {
-            let name = name.get_untracked();
-            if name.is_empty() {
+            let username = username.get_untracked();
+            let password = password.get_untracked();
+
+            if username.is_empty() || password.is_empty() {
                 return;
             }
 
-            console_log(name.clone()).await;
+            let args = serde_wasm_bindgen::to_value(&LoginArgs {
+                username: username,
+                password: password,
+            })
+            .unwrap();
 
-            let args = serde_wasm_bindgen::to_value(&GreetArgs { name: &name }).unwrap();
-            // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-            let new_msg = invoke("greet", args).await.as_string().unwrap();
-            set_greet_msg.set(new_msg);
+            match call_tauri("matrix_login", args).await {
+                Ok(js_val) => {
+                    let response: MatrixLoginResponse =
+                        serde_wasm_bindgen::from_value(js_val).unwrap();
+
+                    set_login_name.set(response.user_id)
+                }
+                Err(err) => {
+                    let err_str = err
+                        .as_string()
+                        .unwrap_or_else(|| "Unknown error".to_string());
+
+                    set_login_name.set(err_str)
+                }
+            };
         });
     };
 
@@ -64,23 +79,21 @@ pub fn App() -> impl IntoView {
             </div>
             <p>"Click on the Tauri and Leptos logos to learn more."</p>
 
-            <form class="row" on:submit=greet>
+            <form style="display: flex; flex-direction: column;" on:submit=login>
                 <input
-                    id="greet-input"
-                    placeholder="Enter a name..."
-                    on:input=update_name
+                    id="username-input"
+                    placeholder="Username"
+                    on:input=move |ev| set_username.set(event_target_value(&ev))
                 />
-                <button type="submit">"Greet"</button>
+                <input
+                    id="password-input"
+                    placeholder="Password"
+                    on:input=move |ev| set_password.set(event_target_value(&ev))
+                    type="password"
+                />
+                <button type="submit">"Login"</button>
             </form>
-            <p>{ move || greet_msg.get() }</p>
+            <p>{ move || login_name.get() }</p>
         </main>
     }
-}
-
-async fn console_log(string: String) {
-    let _ = invoke(
-        "console_log",
-        serde_wasm_bindgen::to_value(&LogArgs { message: string }).unwrap(),
-    )
-    .await;
 }
