@@ -155,58 +155,27 @@ async fn matrix_login(
     username: String,
     password: String,
     state: State<'_, AppState>,
-) -> Result<MatrixLoginResponse, TauriError> {
-    let client = Client::new();
-
+) -> Result<(), TauriError> {
     trace!("Getting login");
 
-    let payload = MatrixLoginRequest {
-        login_type: "m.login.password".to_string(),
-        identifier: MatrixLoginIdentifier {
-            id_type: "m.id.user".to_string(),
-            user: username,
-        },
-        password: password,
-        refresh_token: true,
-    };
+    let res = login::matrix_login(username, password, matrix_url.clone()).await?;
 
-    let res = client
-        .post(format!("{matrix_url}/_matrix/client/v3/login"))
-        .json(&payload)
-        .send()
-        .await
-        .map_err(|e| format!("Network error: {}", e))?;
+    let mut client_guard = state.client.write().await;
+    let mut token_guard = state.token.write().await;
+    let mut url_guard = state.matrix_url.write().await;
 
-    if res.status().is_success() {
-        let json_res: MatrixLoginResponse = res
-            .json()
-            .await
-            .map_err(|e| format!("Parse error: {}", e))?;
+    *token_guard = Some(TokenInfo {
+        access_token: res.access_token.clone(),
+        refresh_token: res.refresh_token.clone(),
+        expires_in_ms: res.expires_in_ms,
+    });
+    *client_guard = Some(ClientInfo {
+        user_id: res.user_id.clone(),
+        device_id: res.device_id.clone(),
+    });
+    *url_guard = Some(matrix_url);
 
-        info!("Successfully logged in as {}", json_res.user_id);
-
-        let mut client_guard = state.client.write().await;
-        let mut token_guard = state.token.write().await;
-        let mut url_guard = state.matrix_url.write().await;
-
-        *token_guard = Some(TokenInfo {
-            access_token: json_res.access_token.clone(),
-            refresh_token: json_res.refresh_token.clone(),
-            expires_in_ms: json_res.expires_in_ms,
-        });
-        *client_guard = Some(ClientInfo {
-            user_id: json_res.user_id.clone(),
-            device_id: json_res.device_id.clone(),
-        });
-        *url_guard = Some(matrix_url);
-
-        let _ = refresh_token(&state);
-        return Ok(json_res);
-    } else {
-        error!("Failed to log in: {}", res.status());
-
-        return Err("Failed to log in".into());
-    }
+    Ok(())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
