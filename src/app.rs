@@ -25,12 +25,48 @@ async fn call_tauri(cmd: &str, args: JsValue) -> Result<JsValue, JsValue> {
     wasm_bindgen_futures::JsFuture::from(invoke(cmd, args)).await
 }
 
+#[derive(Clone)]
+enum CurrentWindow {
+    LoginPage,
+    HomePage,
+}
+
 #[component]
 pub fn App() -> impl IntoView {
+    // Global state that both overlays might need to interact with
+    let (app_state, set_app_state) = signal(CurrentWindow::LoginPage);
+    let (login_name, set_login_name) = signal(String::new());
+
+    view! {
+        <main class="container">
+            {move || match app_state.get() {
+                CurrentWindow::LoginPage => view! {
+                    <LoginOverlay
+                        // Pass the setters down so the child can change the parent's state
+                        set_app_state=set_app_state
+                        set_login_name=set_login_name
+                    />
+                }.into_any(),
+
+                CurrentWindow::HomePage => view! {
+                    <HomePage user_id=login_name.get() />
+                }.into_any(),
+            }}
+        </main>
+    }
+}
+
+#[component]
+fn LoginOverlay(
+    set_app_state: WriteSignal<CurrentWindow>,
+    set_login_name: WriteSignal<String>,
+) -> impl IntoView {
+    // Local state: Only this component needs to know about what's typed in the boxes
     let (username, set_username) = signal(String::new());
     let (password, set_password) = signal(String::new());
 
-    let (login_name, set_login_name) = signal(String::new());
+    // We can also make a local error signal instead of reusing login_name for errors
+    let (error_msg, set_error_msg) = signal(String::new());
 
     let login = move |ev: SubmitEvent| {
         ev.prevent_default();
@@ -54,21 +90,23 @@ pub fn App() -> impl IntoView {
                     let response: MatrixLoginResponse =
                         serde_wasm_bindgen::from_value(js_val).unwrap();
 
-                    set_login_name.set(response.user_id)
+                    set_login_name.set(response.user_id);
+                    set_app_state.set(CurrentWindow::HomePage);
                 }
                 Err(err) => {
                     let err_str = err
                         .as_string()
                         .unwrap_or_else(|| "Unknown error".to_string());
 
-                    set_login_name.set(err_str)
+                    // Display the error locally
+                    set_error_msg.set(err_str);
                 }
             };
         });
     };
 
     view! {
-        <main class="container">
+        <div class="login-wrapper">
             <h1>"Welcome to Tauri + Leptos"</h1>
 
             <div class="row">
@@ -95,7 +133,20 @@ pub fn App() -> impl IntoView {
                 />
                 <button type="submit">"Login"</button>
             </form>
-            <p>{ move || login_name.get() }</p>
-        </main>
+
+            // Show errors if there are any
+            <p style="color: red;">{ move || error_msg.get() }</p>
+        </div>
+    }
+}
+
+#[component]
+fn HomePage(user_id: String) -> impl IntoView {
+    view! {
+        <div class="dashboard">
+            <h2>"Login Successful!"</h2>
+            <p>"Welcome, " <strong>{user_id}</strong></p>
+            // Add chat UI, settings, or logout buttons here
+        </div>
     }
 }

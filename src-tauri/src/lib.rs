@@ -2,6 +2,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use colored::Colorize;
 use log::{error, info, trace};
+use serde::Serialize;
 use tauri::async_runtime::{Mutex, RwLock};
 use tauri::{Manager, State};
 
@@ -121,13 +122,18 @@ impl<T> From<Result<T, String>> for TauriError {
     }
 }
 
+#[derive(Serialize)]
+struct LoginResponse {
+    user_id: String,
+}
+
 #[tauri::command(rename_all = "snake_case")]
 async fn matrix_login(
     matrix_url: String,
     username: String,
     password: String,
     state: State<'_, AppState>,
-) -> Result<String, TauriError> {
+) -> Result<LoginResponse, TauriError> {
     trace!("Getting login");
 
     let res = authentication::matrix_login(username, password, matrix_url.clone()).await?;
@@ -156,7 +162,9 @@ async fn matrix_login(
         rooms::get_rooms(res.access_token, matrix_url).await?
     );
 
-    Ok(res.user_id)
+    Ok(LoginResponse {
+        user_id: res.user_id,
+    })
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
