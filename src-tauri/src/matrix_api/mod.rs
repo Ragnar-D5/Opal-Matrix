@@ -1,2 +1,3 @@
 pub(crate) mod authentication;
 pub(crate) mod rooms;
+pub(crate) mod well_known;
