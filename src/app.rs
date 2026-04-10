@@ -16,6 +16,7 @@ pub struct MatrixLoginResponse {
 
 #[derive(Serialize, Deserialize)]
 struct LoginArgs {
+    matrixUrl: String,
     username: String,
     password: String,
 }
@@ -44,6 +45,7 @@ pub fn App() -> impl IntoView {
             let args = serde_wasm_bindgen::to_value(&LoginArgs {
                 username: username,
                 password: password,
+                matrixUrl: "https://matrix.erik-is.gay".to_string(),
             })
             .unwrap();
 
