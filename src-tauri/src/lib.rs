@@ -1,64 +1,34 @@
-use std::ops::Deref;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use colored::Colorize;
 use log::{error, info, trace};
-use reqwest::Client;
-use serde::{Deserialize, Serialize};
 use tauri::async_runtime::{Mutex, RwLock};
 use tauri::{Manager, State};
 
-mod authentication;
-use authentication::login;
-
-#[derive(Serialize)]
-struct MatrixLoginIdentifier {
-    #[serde(rename = "type")]
-    id_type: String,
-    user: String,
-}
-
-#[derive(Serialize)]
-struct MatrixLoginRequest {
-    #[serde(rename = "type")]
-    login_type: String,
-    identifier: MatrixLoginIdentifier,
-    password: String,
-    refresh_token: bool,
-}
-
-#[derive(Serialize, Deserialize)]
-struct MatrixLoginResponse {
-    user_id: String,
-    device_id: String,
-
-    access_token: String,
-    refresh_token: String,
-    expires_in_ms: u64,
-}
-
-#[derive(Serialize)]
-struct MatrixRefreshRequest {
-    refresh_token: String,
-}
-
-#[derive(Deserialize)]
-struct MatrixRefreshResponse {
-    access_token: String,
-    refresh_token: String,
-
-    expires_in_ms: u64,
-}
+mod matrix_api;
+use matrix_api::authentication;
+use matrix_api::rooms;
 
 #[derive(Default, Clone)]
 struct TokenInfo {
     access_token: String,
     refresh_token: String,
-    expires_in_ms: u64,
+    expires_at: u64,
 }
 
 impl TokenInfo {
-    fn access_header(self: &TokenInfo) -> String {
+    fn access_header(&self) -> String {
         format!("Bearer {}", self.access_token)
+    }
+
+    fn is_stale(&self) -> bool {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Failed to get time")
+            .as_secs();
+
+        // Check if it expires within the next 10 seconds
+        self.expires_at > now + 30
     }
 }
 
@@ -74,6 +44,52 @@ struct AppState {
     client: RwLock<Option<ClientInfo>>,
 
     matrix_url: RwLock<Option<String>>,
+
+    refresh_lock: Mutex<()>,
+}
+
+impl AppState {
+    async fn refresh_token(&self) -> Result<(), TauriError> {
+        let token = {
+            let token_guard = self.token.read().await;
+            token_guard.as_ref().ok_or("Not logged in")?.clone()
+        };
+
+        let matrix_url = {
+            let url_guard = self.matrix_url.read().await;
+            url_guard.as_ref().ok_or("Not logged in")?.clone()
+        };
+
+        let res = authentication::refresh_token(token.refresh_token, matrix_url).await?;
+
+        let mut write_guard = self.token.write().await;
+        *write_guard = Some(res);
+
+        return Ok(());
+    }
+    async fn check_token(&self) -> Result<(), TauriError> {
+        let needs_refresh = {
+            let token_guard = self.token.read().await;
+            let t = token_guard.as_ref().ok_or("Not logged in")?;
+            t.is_stale()
+        };
+
+        if needs_refresh {
+            let _lock = self.refresh_lock.lock().await;
+
+            // Check if another thread already refreshed it
+            let still_needs_refresh = {
+                let token_guard = self.token.read().await;
+                token_guard.as_ref().map(|t| t.is_stale()).unwrap_or(false)
+            };
+
+            if still_needs_refresh {
+                self.refresh_token().await?;
+            }
+        }
+
+        Ok(())
+    }
 }
 
 #[derive(serde::Serialize)]
@@ -105,60 +121,16 @@ impl<T> From<Result<T, String>> for TauriError {
     }
 }
 
-async fn refresh_token(state: &AppState) -> Result<(), TauriError> {
-    let client = Client::new();
-
-    let (url, token) = {
-        let url_guard = state.matrix_url.read().await;
-
-        let token_guard = state.token.read().await;
-
-        let url = url_guard.clone().ok_or("No matrix url saved")?;
-        let token = token_guard.clone().ok_or("No token saved")?;
-
-        (url, token)
-    };
-
-    let payload = MatrixRefreshRequest {
-        refresh_token: token.refresh_token,
-    };
-
-    let res = client
-        .post(format!("{url}/_matrix/client/v3/refresh"))
-        .json(&payload)
-        .send()
-        .await
-        .map_err(|e| format!("Network error: {}", e))?;
-
-    if res.status().is_success() {
-        let json_res: MatrixRefreshResponse = res
-            .json()
-            .await
-            .map_err(|e| format!("Parse error: {}", e))?;
-
-        let mut write_guard = state.token.write().await;
-        *write_guard = Some(TokenInfo {
-            access_token: json_res.access_token,
-            refresh_token: json_res.refresh_token,
-            expires_in_ms: json_res.expires_in_ms,
-        });
-    } else {
-        return Err(format!("Failed to refresh: {}", res.status()).into());
-    }
-
-    Ok(())
-}
-
 #[tauri::command(rename_all = "snake_case")]
 async fn matrix_login(
     matrix_url: String,
     username: String,
     password: String,
     state: State<'_, AppState>,
-) -> Result<(), TauriError> {
+) -> Result<String, TauriError> {
     trace!("Getting login");
 
-    let res = login::matrix_login(username, password, matrix_url.clone()).await?;
+    let res = authentication::matrix_login(username, password, matrix_url.clone()).await?;
 
     let mut client_guard = state.client.write().await;
     let mut token_guard = state.token.write().await;
@@ -167,15 +139,24 @@ async fn matrix_login(
     *token_guard = Some(TokenInfo {
         access_token: res.access_token.clone(),
         refresh_token: res.refresh_token.clone(),
-        expires_in_ms: res.expires_in_ms,
+        expires_at: SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Failed to get time")
+            .as_secs()
+            + res.expires_in_ms,
     });
     *client_guard = Some(ClientInfo {
         user_id: res.user_id.clone(),
         device_id: res.device_id.clone(),
     });
-    *url_guard = Some(matrix_url);
+    *url_guard = Some(matrix_url.clone());
 
-    Ok(())
+    println!(
+        "{:?}",
+        rooms::get_rooms(res.access_token, matrix_url).await?
+    );
+
+    Ok(res.user_id)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
