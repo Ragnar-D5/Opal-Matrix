@@ -30,10 +30,15 @@ struct AppState {
     matrix_url: Mutex<Option<String>>,
 }
 
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-#[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
+#[derive(serde::Serialize)]
+enum TauriError {
+    Wrap(String),
+}
+
+impl From<anyhow::Error> for TauriError {
+    fn from(value: anyhow::Error) -> Self {
+        Self::Wrap(value.to_string())
+    }
 }
 
 #[tauri::command]
