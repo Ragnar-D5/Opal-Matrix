@@ -7,6 +7,9 @@ use serde::{Deserialize, Serialize};
 use tauri::async_runtime::{Mutex, RwLock};
 use tauri::{Manager, State};
 
+mod authentication;
+use authentication::login;
+
 #[derive(Serialize)]
 struct MatrixLoginIdentifier {
     #[serde(rename = "type")]
