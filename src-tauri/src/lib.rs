@@ -1,7 +1,10 @@
+use std::ops::Deref;
+
+use colored::Colorize;
 use log::{error, info, trace};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use tauri::async_runtime::Mutex;
+use tauri::async_runtime::{Mutex, RwLock};
 use tauri::{Manager, State};
 
 #[derive(Serialize)]
@@ -30,11 +33,30 @@ struct MatrixLoginResponse {
     expires_in_ms: u64,
 }
 
-#[derive(Default)]
+#[derive(Serialize)]
+struct MatrixRefreshRequest {
+    refresh_token: String,
+}
+
+#[derive(Deserialize)]
+struct MatrixRefreshResponse {
+    access_token: String,
+    refresh_token: String,
+
+    expires_in_ms: u64,
+}
+
+#[derive(Default, Clone)]
 struct TokenInfo {
     access_token: String,
     refresh_token: String,
     expires_in_ms: u64,
+}
+
+impl TokenInfo {
+    fn access_header(self: &TokenInfo) -> String {
+        format!("Bearer {}", self.access_token)
+    }
 }
 
 #[derive(Default)]
@@ -45,10 +67,10 @@ struct ClientInfo {
 
 #[derive(Default)]
 struct AppState {
-    token: Mutex<Option<TokenInfo>>,
-    client: Mutex<Option<ClientInfo>>,
+    token: RwLock<Option<TokenInfo>>,
+    client: RwLock<Option<ClientInfo>>,
 
-    matrix_url: Mutex<Option<String>>,
+    matrix_url: RwLock<Option<String>>,
 }
 
 #[derive(serde::Serialize)]
@@ -68,10 +90,60 @@ impl From<String> for TauriError {
     }
 }
 
+impl From<&str> for TauriError {
+    fn from(value: &str) -> Self {
+        Self::Wrap(value.to_string())
+    }
+}
+
 impl<T> From<Result<T, String>> for TauriError {
     fn from(value: Result<T, String>) -> Self {
         Self::Wrap(value.err().unwrap_or("Unknown error".to_string()))
     }
+}
+
+async fn refresh_token(state: &AppState) -> Result<(), TauriError> {
+    let client = Client::new();
+
+    let (url, token) = {
+        let url_guard = state.matrix_url.read().await;
+
+        let token_guard = state.token.read().await;
+
+        let url = url_guard.clone().ok_or("No matrix url saved")?;
+        let token = token_guard.clone().ok_or("No token saved")?;
+
+        (url, token)
+    };
+
+    let payload = MatrixRefreshRequest {
+        refresh_token: token.refresh_token,
+    };
+
+    let res = client
+        .post(format!("{url}/_matrix/client/v3/refresh"))
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| format!("Network error: {}", e))?;
+
+    if res.status().is_success() {
+        let json_res: MatrixRefreshResponse = res
+            .json()
+            .await
+            .map_err(|e| format!("Parse error: {}", e))?;
+
+        let mut write_guard = state.token.write().await;
+        *write_guard = Some(TokenInfo {
+            access_token: json_res.access_token,
+            refresh_token: json_res.refresh_token,
+            expires_in_ms: json_res.expires_in_ms,
+        });
+    } else {
+        return Err(format!("Failed to refresh: {}", res.status()).into());
+    }
+
+    Ok(())
 }
 
 #[tauri::command(rename_all = "snake_case")]
@@ -84,9 +156,6 @@ async fn matrix_login(
     let client = Client::new();
 
     trace!("Getting login");
-
-    let mut guard = state.matrix_url.lock().await;
-    *guard = Some(matrix_url.clone());
 
     let payload = MatrixLoginRequest {
         login_type: "m.login.password".to_string(),
@@ -109,29 +178,31 @@ async fn matrix_login(
         let json_res: MatrixLoginResponse = res
             .json()
             .await
-            .map_err(|e| format!("Parse error: {}", e))
-            .unwrap();
+            .map_err(|e| format!("Parse error: {}", e))?;
 
         info!("Successfully logged in as {}", json_res.user_id);
 
-        let mut guard = state.token.lock().await;
-        *guard = Some(TokenInfo {
+        let mut client_guard = state.client.write().await;
+        let mut token_guard = state.token.write().await;
+        let mut url_guard = state.matrix_url.write().await;
+
+        *token_guard = Some(TokenInfo {
             access_token: json_res.access_token.clone(),
             refresh_token: json_res.refresh_token.clone(),
             expires_in_ms: json_res.expires_in_ms,
         });
-
-        let mut guard = state.client.lock().await;
-        *guard = Some(ClientInfo {
+        *client_guard = Some(ClientInfo {
             user_id: json_res.user_id.clone(),
             device_id: json_res.device_id.clone(),
         });
+        *url_guard = Some(matrix_url);
 
+        let _ = refresh_token(&state);
         return Ok(json_res);
     } else {
         error!("Failed to log in: {}", res.status());
 
-        return Err("Failed to log in".to_string().into());
+        return Err("Failed to log in".into());
     }
 }
 
@@ -139,13 +210,35 @@ async fn matrix_login(
 pub fn run() {
     let state = AppState::default();
 
+    info!("Initialized");
+
     tauri::Builder::default()
         .setup(|app| {
             app.manage(Mutex::new(AppState::default()));
             Ok(())
         })
         .manage(state)
-        .plugin(tauri_plugin_log::Builder::new().build())
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .format(|out, message, record| {
+                    let level = match record.level() {
+                        log::Level::Error => "ERROR".red().bold(),
+                        log::Level::Warn => "WARN".yellow().bold(),
+                        log::Level::Info => "INFO".green().bold(),
+                        log::Level::Debug => "DEBUG".blue().bold(),
+                        log::Level::Trace => "TRACE".magenta().bold(),
+                    };
+
+                    let time = chrono::offset::Local::now()
+                        .format("%d.%m.%Y %H:%M.%3f")
+                        .to_string()
+                        .bright_black()
+                        .italic();
+
+                    out.finish(format_args!("{}|{}|{}", level, time, message));
+                })
+                .build(),
+        )
         .invoke_handler(tauri::generate_handler![matrix_login])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
