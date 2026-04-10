@@ -17,19 +17,38 @@ struct MatrixLoginRequest {
     login_type: String,
     identifier: MatrixLoginIdentifier,
     password: String,
+    refresh_token: bool,
 }
 
 #[derive(Serialize, Deserialize)]
 struct MatrixLoginResponse {
     user_id: String,
+    device_id: String,
+
     access_token: String,
+    refresh_token: String,
+    expires_in_ms: u64,
+}
+
+#[derive(Default)]
+struct TokenInfo {
+    access_token: String,
+    refresh_token: String,
+    expires_in_ms: u64,
+}
+
+#[derive(Default)]
+struct ClientInfo {
+    user_id: String,
+    device_id: String,
 }
 
 #[derive(Default)]
 struct AppState {
-    access_token: Mutex<Option<String>>,
+    token: Mutex<Option<TokenInfo>>,
+    client: Mutex<Option<ClientInfo>>,
+
     matrix_url: Mutex<Option<String>>,
-    user_id: Mutex<Option<String>>,
 }
 
 #[derive(serde::Serialize)]
@@ -43,9 +62,16 @@ impl From<anyhow::Error> for TauriError {
     }
 }
 
-#[tauri::command]
-fn console_log(message: String) {
-    println!("{message}")
+impl From<String> for TauriError {
+    fn from(value: String) -> Self {
+        Self::Wrap(value)
+    }
+}
+
+impl<T> From<Result<T, String>> for TauriError {
+    fn from(value: Result<T, String>) -> Self {
+        Self::Wrap(value.err().unwrap_or("Unknown error".to_string()))
+    }
 }
 
 #[tauri::command(rename_all = "snake_case")]
@@ -54,7 +80,7 @@ async fn matrix_login(
     username: String,
     password: String,
     state: State<'_, AppState>,
-) -> Result<MatrixLoginResponse, String> {
+) -> Result<MatrixLoginResponse, TauriError> {
     let client = Client::new();
 
     trace!("Getting login");
@@ -69,6 +95,7 @@ async fn matrix_login(
             user: username,
         },
         password: password,
+        refresh_token: true,
     };
 
     let res = client
@@ -87,17 +114,24 @@ async fn matrix_login(
 
         info!("Successfully logged in as {}", json_res.user_id);
 
-        let mut guard = state.access_token.lock().await;
-        *guard = Some(json_res.access_token.clone());
+        let mut guard = state.token.lock().await;
+        *guard = Some(TokenInfo {
+            access_token: json_res.access_token.clone(),
+            refresh_token: json_res.refresh_token.clone(),
+            expires_in_ms: json_res.expires_in_ms,
+        });
 
-        guard = state.user_id.lock().await;
-        *guard = Some(json_res.user_id.clone());
+        let mut guard = state.client.lock().await;
+        *guard = Some(ClientInfo {
+            user_id: json_res.user_id.clone(),
+            device_id: json_res.device_id.clone(),
+        });
 
         return Ok(json_res);
     } else {
         error!("Failed to log in: {}", res.status());
 
-        return Err("Failed to log in".to_string());
+        return Err("Failed to log in".to_string().into());
     }
 }
 
@@ -112,7 +146,7 @@ pub fn run() {
         })
         .manage(state)
         .plugin(tauri_plugin_log::Builder::new().build())
-        .invoke_handler(tauri::generate_handler![greet, console_log, matrix_login])
+        .invoke_handler(tauri::generate_handler![matrix_login])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
