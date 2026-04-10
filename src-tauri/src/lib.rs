@@ -158,6 +158,8 @@ async fn matrix_login(
 ) -> Result<MatrixLoginResponse, TauriError> {
     let client = Client::new();
 
+    let _ = login::get_well_known(&state, "erik-is.gay".into()).await;
+
     trace!("Getting login");
 
     let payload = MatrixLoginRequest {
