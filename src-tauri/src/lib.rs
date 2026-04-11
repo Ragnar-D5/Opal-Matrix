@@ -4,11 +4,36 @@ use colored::Colorize;
 use log::{error, info, trace};
 use serde::Serialize;
 use tauri::async_runtime::{Mutex, RwLock};
+use tauri::Url;
 use tauri::{Manager, State};
 
 mod matrix_api;
 use matrix_api::authentication;
 use matrix_api::rooms;
+use matrix_api::sync;
+
+use percent_encoding::{utf8_percent_encode, AsciiSet, CONTROLS};
+
+const MATRIX_ID_SET: &AsciiSet = &CONTROLS.add(b'!').add(b':');
+
+fn construct_url<S>(parts: Vec<S>) -> Result<Url, TauriError>
+where
+    S: AsRef<str>,
+{
+    let mut iter = parts.into_iter();
+
+    let first = iter.next().ok_or_else(|| "Empty path".to_string())?;
+    let mut url_str = first.as_ref().trim_end_matches('/').to_string();
+
+    for part in iter {
+        let encoded = utf8_percent_encode(part.as_ref(), MATRIX_ID_SET).to_string();
+
+        url_str.push('/');
+        url_str.push_str(&encoded);
+    }
+
+    return Url::parse(&url_str).map_err(|e| format!("Invalid URL: {}", e).into());
+}
 
 #[derive(Default, Clone)]
 struct TokenInfo {
@@ -98,6 +123,14 @@ enum TauriError {
     Wrap(String),
 }
 
+impl std::fmt::Debug for TauriError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self {
+            TauriError::Wrap(val) => write!(f, "Err({})", val),
+        }
+    }
+}
+
 impl From<anyhow::Error> for TauriError {
     fn from(value: anyhow::Error) -> Self {
         Self::Wrap(value.to_string())
@@ -116,9 +149,15 @@ impl From<&str> for TauriError {
     }
 }
 
-impl<T> From<Result<T, String>> for TauriError {
-    fn from(value: Result<T, String>) -> Self {
-        Self::Wrap(value.err().unwrap_or("Unknown error".to_string()))
+impl From<url::ParseError> for TauriError {
+    fn from(value: url::ParseError) -> Self {
+        Self::Wrap(value.to_string())
+    }
+}
+
+impl From<()> for TauriError {
+    fn from(_value: ()) -> Self {
+        Self::Wrap("Unknown error".to_string())
     }
 }
 
@@ -151,16 +190,25 @@ async fn matrix_login(
             .as_secs()
             + res.expires_in_ms,
     });
+
     *client_guard = Some(ClientInfo {
         user_id: res.user_id.clone(),
         device_id: res.device_id.clone(),
     });
     *url_guard = Some(matrix_url.clone());
 
-    println!(
-        "{:?}",
-        rooms::get_rooms(res.access_token, matrix_url).await?
-    );
+    let rooms = rooms::get_rooms(res.access_token.clone(), matrix_url.clone()).await?;
+
+    println!("{:?}", rooms);
+
+    let sync_res = sync::matrix_sync(res.access_token, matrix_url).await;
+
+    if let Err(e) = sync_res {
+        error!("{:?}", e);
+        return Err(e);
+    } else {
+        println!("{:?}", sync_res.unwrap().rooms.join);
+    }
 
     Ok(LoginResponse {
         user_id: res.user_id,

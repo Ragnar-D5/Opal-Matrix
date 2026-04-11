@@ -1,4 +1,4 @@
-use crate::TauriError;
+use crate::{construct_url, TauriError};
 use reqwest::Client;
 use serde::Deserialize;
 
