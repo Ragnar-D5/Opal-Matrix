@@ -1,3 +1,6 @@
+// TODO: remove when stable
+#![allow(dead_code, unused_imports)]
+
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use colored::Colorize;
