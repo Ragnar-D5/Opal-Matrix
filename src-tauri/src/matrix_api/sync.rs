@@ -115,17 +115,17 @@ pub struct MatrixSyncResponse {
 }
 
 pub async fn matrix_sync(
-    access_token: String,
-    matrix_url: String,
+    access_token: &String,
+    matrix_url: &String,
 ) -> Result<SyncResponse, TauriError> {
     let client = Client::new();
 
     let url = construct_url(vec![
         matrix_url,
-        "_matrix".to_string(),
-        "client".to_string(),
-        "v3".to_string(),
-        "sync".to_string(),
+        &"_matrix".to_string(),
+        &"client".to_string(),
+        &"v3".to_string(),
+        &"sync".to_string(),
     ])?;
 
     let res = client

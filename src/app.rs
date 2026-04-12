@@ -52,6 +52,8 @@ pub fn App() -> impl IntoView {
                 if let Some(response) = response_option {
                     set_login_name.set(response.user_id);
                     set_app_state.set(CurrentWindow::HomePage);
+
+                    call_tauri_no_args("first_sync").await.unwrap();
                 } else {
                     set_app_state.set(CurrentWindow::LoginPage);
                 }

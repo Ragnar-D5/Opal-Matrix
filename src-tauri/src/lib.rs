@@ -5,6 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use colored::Colorize;
 use log::{debug, error, info, trace};
+use ruma::api::client::state;
 use serde::Serialize;
 use tauri::async_runtime::{Mutex, RwLock};
 use tauri::Url;
@@ -213,6 +214,27 @@ impl AppState {
 
         Ok(())
     }
+
+    async fn init_stuff(&self) -> Result<(), TauriError> {
+        let client_info = {
+            let client_guard = self.client.read().await;
+            client_guard.as_ref().ok_or("Not logged in")?.clone()
+        };
+
+        let db_passphrase = crypto::get_or_create_passphrase(client_info.user_id.clone()).await?;
+
+        let machine = crypto::init_crypto_machine(
+            client_info.user_id.clone(),
+            client_info.device_id,
+            db_passphrase,
+        )
+        .await?;
+
+        let mut machine_guard = self.crypto_machine.lock().await;
+        *machine_guard = Some(machine);
+
+        Ok(())
+    }
 }
 
 #[derive(serde::Serialize)]
@@ -265,6 +287,8 @@ async fn try_restore(state: State<'_, AppState>) -> Result<Option<LoginResponse>
 
         let client_info = client_guard.as_ref().ok_or("Not logged in")?.clone();
 
+        state.init_stuff().await?;
+
         Ok(Some(LoginResponse {
             user_id: client_info.user_id,
         }))
@@ -280,44 +304,22 @@ async fn login(
     password: String,
     state: State<'_, AppState>,
 ) -> Result<LoginResponse, TauriError> {
-    let success = state.login_or_restore_session().await?;
+    info!("Logging in new");
+    let (client_info, token) =
+        authentication::matrix_login(username, password, matrix_url.clone()).await?;
+    {
+        let mut client_guard = state.client.write().await;
+        let mut token_guard = state.token.write().await;
+        let mut url_guard = state.matrix_url.write().await;
 
-    let client_info = if success {
-        info!("Restored session");
+        *token_guard = Some(token.clone());
+        *client_guard = Some(client_info.clone());
+        *url_guard = Some(matrix_url.clone());
+    }
 
-        let client_guard = state.client.read().await;
+    state.save_session().await?;
 
-        client_guard.as_ref().ok_or("Not logged in")?.clone()
-    } else {
-        info!("Logging in new");
-        let (client_info, token) =
-            authentication::matrix_login(username, password, matrix_url.clone()).await?;
-        {
-            let mut client_guard = state.client.write().await;
-            let mut token_guard = state.token.write().await;
-            let mut url_guard = state.matrix_url.write().await;
-
-            *token_guard = Some(token.clone());
-            *client_guard = Some(client_info.clone());
-            *url_guard = Some(matrix_url.clone());
-        }
-
-        state.save_session().await?;
-
-        client_info
-    };
-
-    let db_passphrase = crypto::get_or_create_passphrase(client_info.user_id.clone()).await?;
-
-    let machine = crypto::init_crypto_machine(
-        client_info.user_id.clone(),
-        client_info.device_id,
-        db_passphrase,
-    )
-    .await?;
-
-    let mut machine_guard = state.crypto_machine.lock().await;
-    *machine_guard = Some(machine);
+    state.init_stuff().await?;
 
     Ok(LoginResponse {
         user_id: client_info.user_id,
@@ -343,9 +345,9 @@ async fn first_sync(state: State<'_, AppState>) -> Result<(), TauriError> {
         url_guard.as_ref().ok_or("Not logged in")?.clone()
     };
 
-    let sync_res = sync::matrix_sync(token.access_token, matrix_url).await?;
+    let sync_res = sync::matrix_sync(&token.access_token, &matrix_url).await?;
 
-    crypto::process_sync_response(olm_machine, sync_res).await?;
+    crypto::process_sync_response(olm_machine, sync_res, &token.access_token, &matrix_url).await?;
 
     Ok(())
 }

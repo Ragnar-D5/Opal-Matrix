@@ -31,10 +31,11 @@ chrono = "0.4.44"
 url = "2.5.8"
 percent-encoding = "2.3.2"
 version-compare = "0.2.1"
-matrix-sdk-crypto = "0.16.0"
+matrix-sdk-crypto =  "0.16.0"
 matrix-sdk-sqlite = { version = "0.16.0", features = ["crypto-store", "bundled"] }
 keyring = { version = "3.6.3", default-features = false, features = ["async-secret-service", "async-io", "crypto-rust"] }
 ruma = "0.14.1"
 hex = "0.4.3"
 getrandom = "0.4.2"
 http = "1.4.0"
+bytes = "1.11.1"
