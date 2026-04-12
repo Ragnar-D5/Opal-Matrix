@@ -4,7 +4,7 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use colored::Colorize;
-use log::{error, info, trace};
+use log::{debug, error, info, trace};
 use serde::Serialize;
 use tauri::async_runtime::{Mutex, RwLock};
 use tauri::Url;
@@ -76,7 +76,7 @@ impl Token {
             .expect("Failed to get time")
             .as_secs();
 
-        expires_at > now + 30
+        now + 30 >= expires_at
     }
 }
 
@@ -99,6 +99,35 @@ struct AppState {
 }
 
 impl AppState {
+    async fn save_session(&self) -> Result<(), TauriError> {
+        let token = {
+            let token_guard = self.token.read().await;
+            token_guard.as_ref().ok_or("Not logged in")?.clone()
+        };
+
+        let client_info = {
+            let client_guard = self.client.read().await;
+            client_guard.as_ref().ok_or("Not logged in")?.clone()
+        };
+
+        let matrix_url = {
+            let url_guard = self.matrix_url.read().await;
+            url_guard.as_ref().ok_or("Not logged in")?.clone()
+        };
+
+        let session = crypto::StoredSession {
+            user_id: client_info.user_id.clone(),
+            device_id: client_info.device_id.clone(),
+            access_token: token.access_token.clone(),
+            refresh_token: token.refresh_token.clone().map(|r| r.token),
+            homeserver_url: matrix_url.clone(),
+        };
+
+        crypto::save_session(&session).await?;
+
+        Ok(())
+    }
+
     async fn refresh_token(&self) -> Result<(), TauriError> {
         let refresh_token = {
             let token_guard = self.token.read().await;
@@ -118,11 +147,49 @@ impl AppState {
 
         let res = authentication::refresh_token(refresh_token.token, matrix_url).await?;
 
-        let mut write_guard = self.token.write().await;
-        *write_guard = Some(res);
+        {
+            let mut write_guard = self.token.write().await;
+            *write_guard = Some(res);
+        }
+
+        self.save_session().await?;
 
         return Ok(());
     }
+
+    async fn login_or_restore_session(&self) -> Result<bool, TauriError> {
+        let session = crypto::get_last_active_session().await?;
+
+        if let Some(session) = session {
+            let token = Token {
+                access_token: session.access_token,
+                refresh_token: session.refresh_token.map(|r| RefreshToken {
+                    token: r,
+                    expires_at: 0,
+                }),
+            };
+
+            let client_info = ClientInfo {
+                user_id: session.user_id.clone(),
+                device_id: session.device_id.clone(),
+            };
+
+            {
+                let mut token_guard = self.token.write().await;
+                *token_guard = Some(token);
+
+                let mut client_guard = self.client.write().await;
+                *client_guard = Some(client_info);
+
+                let mut url_guard = self.matrix_url.write().await;
+                *url_guard = Some(session.homeserver_url);
+            }
+
+            return Ok(self.refresh_token().await.is_ok());
+        }
+        Ok(false)
+    }
+
     async fn check_token(&self) -> Result<(), TauriError> {
         let needs_refresh = {
             let token_guard = self.token.read().await;
@@ -165,8 +232,22 @@ impl<T> From<T> for TauriError
 where
     T: ToString,
 {
+    #[track_caller]
     fn from(value: T) -> Self {
-        Self::Wrap(value.to_string())
+        let val = value.to_string();
+        let location = std::panic::Location::caller();
+
+        log::logger().log(
+            &log::Record::builder()
+                .args(format_args!("{}", val))
+                .level(log::Level::Error)
+                .target(module_path!())
+                .file(Some(location.file()))
+                .line(Some(location.line()))
+                .build(),
+        );
+
+        Self::Wrap(val)
     }
 }
 
@@ -175,48 +256,98 @@ struct LoginResponse {
     user_id: String,
 }
 
+#[tauri::command]
+async fn try_restore(state: State<'_, AppState>) -> Result<Option<LoginResponse>, TauriError> {
+    let success = state.login_or_restore_session().await?;
+
+    if success {
+        let client_guard = state.client.read().await;
+
+        let client_info = client_guard.as_ref().ok_or("Not logged in")?.clone();
+
+        Ok(Some(LoginResponse {
+            user_id: client_info.user_id,
+        }))
+    } else {
+        Ok(None)
+    }
+}
+
 #[tauri::command(rename_all = "snake_case")]
-async fn matrix_login(
+async fn login(
     matrix_url: String,
     username: String,
     password: String,
     state: State<'_, AppState>,
 ) -> Result<LoginResponse, TauriError> {
-    trace!("Getting login");
+    let success = state.login_or_restore_session().await?;
 
-    let (client_info, token) =
-        authentication::matrix_login(username, password, matrix_url.clone()).await?;
+    let client_info = if success {
+        info!("Restored session");
 
-    let mut client_guard = state.client.write().await;
-    let mut token_guard = state.token.write().await;
-    let mut url_guard = state.matrix_url.write().await;
+        let client_guard = state.client.read().await;
 
-    *token_guard = Some(token.clone());
+        client_guard.as_ref().ok_or("Not logged in")?.clone()
+    } else {
+        info!("Logging in new");
+        let (client_info, token) =
+            authentication::matrix_login(username, password, matrix_url.clone()).await?;
+        {
+            let mut client_guard = state.client.write().await;
+            let mut token_guard = state.token.write().await;
+            let mut url_guard = state.matrix_url.write().await;
 
-    *client_guard = Some(client_info.clone());
-    *url_guard = Some(matrix_url.clone());
+            *token_guard = Some(token.clone());
+            *client_guard = Some(client_info.clone());
+            *url_guard = Some(matrix_url.clone());
+        }
+
+        state.save_session().await?;
+
+        client_info
+    };
 
     let db_passphrase = crypto::get_or_create_passphrase(client_info.user_id.clone()).await?;
 
-    crypto::init_crypto_machine(
+    let machine = crypto::init_crypto_machine(
         client_info.user_id.clone(),
         client_info.device_id,
         db_passphrase,
     )
     .await?;
 
-    let sync_res = sync::matrix_sync(token.access_token, matrix_url).await;
-
-    if let Err(e) = sync_res {
-        error!("{:?}", e);
-        return Err(e);
-    } else {
-        println!("{:?}", sync_res.unwrap().rooms.join);
-    }
+    let mut machine_guard = state.crypto_machine.lock().await;
+    *machine_guard = Some(machine);
 
     Ok(LoginResponse {
         user_id: client_info.user_id,
     })
+}
+
+#[tauri::command]
+async fn first_sync(state: State<'_, AppState>) -> Result<(), TauriError> {
+    info!("Starting first sync");
+
+    let lock_guard = state.crypto_machine.lock().await;
+    let olm_machine = lock_guard
+        .as_ref()
+        .ok_or("Crypto machine not initialized")?;
+
+    let token = {
+        let token_guard = state.token.read().await;
+        token_guard.as_ref().ok_or("Not logged in")?.clone()
+    };
+
+    let matrix_url = {
+        let url_guard = state.matrix_url.read().await;
+        url_guard.as_ref().ok_or("Not logged in")?.clone()
+    };
+
+    let sync_res = sync::matrix_sync(token.access_token, matrix_url).await?;
+
+    crypto::process_sync_response(olm_machine, sync_res).await?;
+
+    Ok(())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -226,10 +357,6 @@ pub fn run() {
     info!("Initialized");
 
     tauri::Builder::default()
-        .setup(|app| {
-            app.manage(Mutex::new(AppState::default()));
-            Ok(())
-        })
         .manage(state)
         .plugin(
             tauri_plugin_log::Builder::new()
@@ -248,11 +375,18 @@ pub fn run() {
                         .bright_black()
                         .italic();
 
-                    out.finish(format_args!("{}|{}|{}", level, time, message));
+                    out.finish(format_args!(
+                        "{}|{}|{}|{}|{}",
+                        level,
+                        time,
+                        record.file().unwrap_or("Unknown").cyan(),
+                        record.line().unwrap_or(0).to_string().black(),
+                        message
+                    ));
                 })
                 .build(),
         )
-        .invoke_handler(tauri::generate_handler![matrix_login])
+        .invoke_handler(tauri::generate_handler![login, first_sync, try_restore])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

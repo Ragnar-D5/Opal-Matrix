@@ -1,6 +1,7 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::{AppState, ClientInfo};
+use crate::{construct_url, AppState, ClientInfo};
+use log::{debug, info};
 use ruma::api::auth_scheme::AccessToken;
 use tauri::State;
 
@@ -20,6 +21,7 @@ struct MatrixLoginIdentifier {
 struct MatrixLoginRequest {
     #[serde(rename = "type")]
     login_type: String,
+
     identifier: MatrixLoginIdentifier,
     password: String,
     refresh_token: bool,
@@ -74,6 +76,7 @@ pub async fn matrix_login(
 
     let payload = MatrixLoginRequest {
         login_type: "m.login.password".to_string(),
+
         identifier: MatrixLoginIdentifier {
             id_type: "m.id.user".to_string(),
             user: username,
@@ -143,8 +146,16 @@ pub async fn refresh_token(refresh_token: String, matrix_url: String) -> Result<
         refresh_token: refresh_token,
     };
 
+    let url = construct_url(vec![
+        matrix_url,
+        "_matrix".to_string(),
+        "client".to_string(),
+        "v3".to_string(),
+        "refresh".to_string(),
+    ])?;
+
     let res = client
-        .post(format!("{matrix_url}/_matrix/client/v3/refresh"))
+        .post(url)
         .json(&payload)
         .send()
         .await

@@ -5,6 +5,9 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use matrix_sdk_crypto::EncryptionSyncChanges;
+use ruma::api::{client::sync::sync_events::v3::Response as SyncResponse, IncomingResponse};
+
 #[derive(Deserialize, Debug)]
 pub struct MatrixEvent {
     pub content: Value,
@@ -114,7 +117,7 @@ pub struct MatrixSyncResponse {
 pub async fn matrix_sync(
     access_token: String,
     matrix_url: String,
-) -> Result<MatrixSyncResponse, TauriError> {
+) -> Result<SyncResponse, TauriError> {
     let client = Client::new();
 
     let url = construct_url(vec![
@@ -132,12 +135,25 @@ pub async fn matrix_sync(
         .await
         .map_err(|e| format!("Network error: {e}"))?;
 
-    if res.status().is_success() {
-        let json_res: MatrixSyncResponse =
-            res.json().await.map_err(|e| format!("Parse error: {e}"))?;
+    let status = res.status();
+    let headers = res.headers().clone();
+    let body_bytes = res
+        .bytes()
+        .await
+        .map_err(|e| format!("Failed to read response body: {e}"))?;
 
-        Ok(json_res)
-    } else {
-        Err(format!("Failed to get room summary: {}", res.status()).into())
+    let mut builder = http::Response::builder().status(status);
+
+    for (key, value) in headers.iter() {
+        builder = builder.header(key, value);
+    }
+
+    let http_response = builder
+        .body(body_bytes.to_vec())
+        .map_err(|e| format!("Failed to build HTTP response: {e}"))?;
+
+    match SyncResponse::try_from_http_response(http_response) {
+        Ok(sync_response) => Ok(sync_response),
+        Err(e) => Err(format!("Failed to parse sync response: {e}").into()),
     }
 }

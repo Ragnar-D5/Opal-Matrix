@@ -25,24 +25,46 @@ async fn call_tauri(cmd: &str, args: JsValue) -> Result<JsValue, JsValue> {
     wasm_bindgen_futures::JsFuture::from(invoke(cmd, args)).await
 }
 
+async fn call_tauri_no_args(cmd: &str) -> Result<JsValue, JsValue> {
+    wasm_bindgen_futures::JsFuture::from(invoke(cmd, JsValue::NULL)).await
+}
+
 #[derive(Clone)]
 enum CurrentWindow {
     LoginPage,
     HomePage,
+    LoadingPage,
 }
 
 #[component]
 pub fn App() -> impl IntoView {
     // Global state that both overlays might need to interact with
-    let (app_state, set_app_state) = signal(CurrentWindow::LoginPage);
+    let (app_state, set_app_state) = signal(CurrentWindow::LoadingPage);
     let (login_name, set_login_name) = signal(String::new());
+
+    // Invoke try_restore
+    spawn_local(async move {
+        match call_tauri_no_args("try_restore").await {
+            Ok(js_val) => {
+                let response_option: Option<MatrixLoginResponse> =
+                    serde_wasm_bindgen::from_value(js_val).unwrap();
+
+                if let Some(response) = response_option {
+                    set_login_name.set(response.user_id);
+                    set_app_state.set(CurrentWindow::HomePage);
+                } else {
+                    set_app_state.set(CurrentWindow::LoginPage);
+                }
+            }
+            Err(_) => {}
+        }
+    });
 
     view! {
         <main class="container">
             {move || match app_state.get() {
                 CurrentWindow::LoginPage => view! {
-                    <LoginOverlay
-                        // Pass the setters down so the child can change the parent's state
+                    <LoginPage
                         set_app_state=set_app_state
                         set_login_name=set_login_name
                     />
@@ -51,13 +73,19 @@ pub fn App() -> impl IntoView {
                 CurrentWindow::HomePage => view! {
                     <HomePage user_id=login_name.get() />
                 }.into_any(),
+
+                CurrentWindow::LoadingPage => view! {
+                    <div class="loading">
+                        <p>"Loading..."</p>
+                    </div>
+                }.into_any(),
             }}
         </main>
     }
 }
 
 #[component]
-fn LoginOverlay(
+fn LoginPage(
     set_app_state: WriteSignal<CurrentWindow>,
     set_login_name: WriteSignal<String>,
 ) -> impl IntoView {
@@ -85,13 +113,15 @@ fn LoginOverlay(
             })
             .unwrap();
 
-            match call_tauri("matrix_login", args).await {
+            match call_tauri("login", args).await {
                 Ok(js_val) => {
                     let response: MatrixLoginResponse =
                         serde_wasm_bindgen::from_value(js_val).unwrap();
 
                     set_login_name.set(response.user_id);
                     set_app_state.set(CurrentWindow::HomePage);
+
+                    call_tauri_no_args("first_sync").await.unwrap();
                 }
                 Err(err) => {
                     let err_str = err
@@ -102,6 +132,8 @@ fn LoginOverlay(
                     set_error_msg.set(err_str);
                 }
             };
+
+            // Do some loading animation
         });
     };
 
