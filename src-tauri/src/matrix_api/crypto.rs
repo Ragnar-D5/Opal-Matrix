@@ -8,7 +8,7 @@ use matrix_sdk_crypto::types::requests::OutgoingRequest;
 use matrix_sdk_crypto::{DecryptionSettings, EncryptionSyncChanges, OlmMachine};
 use matrix_sdk_sqlite::SqliteCryptoStore;
 
-use log::info;
+use log::{error, info};
 
 use reqwest::Response;
 use ruma::api::client::sync::sync_events::v3::Response as SyncResponse;
@@ -132,12 +132,34 @@ pub async fn get_or_create_passphrase(user_id: String) -> Result<String, TauriEr
     }
 }
 
+#[derive(Serialize, Debug)]
+pub struct RoomData {
+    pub room_id: String,
+    pub name: Option<String>,
+    pub timeline: Vec<EventData>,
+}
+
+use matrix_sdk_crypto::types::events::room::encrypted::EncryptedEvent;
+use ruma::api::client::sync::sync_events::v3::State;
+use ruma::serde::Raw;
+
+#[derive(Serialize, Debug)]
+pub struct EventData {
+    pub event_id: String,
+    pub sender: String,
+    pub origin_server_ts: u64,
+    pub content: serde_json::Value, // The decrypted or cleartext content
+    pub event_type: String,
+}
+
 pub async fn process_sync_response(
     olm_machine: &OlmMachine,
     sync_res: SyncResponse,
     token: &String,
     matrix_url: &String,
-) -> Result<(), TauriError> {
+) -> Result<Vec<RoomData>, TauriError> {
+    handle_outgoing_requests(olm_machine, token, matrix_url).await?;
+
     let decryption_settings = DecryptionSettings {
         sender_device_trust_requirement: matrix_sdk_crypto::TrustRequirement::CrossSigned,
     };
@@ -156,7 +178,92 @@ pub async fn process_sync_response(
 
     handle_outgoing_requests(olm_machine, token, matrix_url).await?;
 
-    return Ok(());
+    let mut processed_rooms = Vec::new();
+
+    for (room_id, joined_room) in sync_res.rooms.join {
+        let mut room_name = room_id.to_string();
+
+        let state_events = match joined_room.state {
+            State::Before(s) => s.events,
+            State::After(s) => s.events,
+            _ => Vec::new(),
+        };
+
+        // Parse state for Room Name
+        for raw_event in state_events {
+            // raw_event is already a Raw<AnyStateEvent>, call deserialize_as directly
+            if let Ok(val) = raw_event.deserialize_as::<serde_json::Value>() {
+                if val["type"] == "m.room.name" {
+                    if let Some(name) = val["content"]["name"].as_str() {
+                        room_name = name.to_string();
+                    }
+                }
+            }
+        }
+
+        let mut messages = Vec::new();
+
+        for timeline_event in joined_room.timeline.events {
+            if let Ok(event_json) = timeline_event.deserialize_as::<Value>() {
+                let event_id = event_json["event_id"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string();
+                let sender = event_json["sender"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string();
+                let ts = event_json["origin_server_ts"].as_u64().unwrap_or_default();
+
+                let mut content = event_json["content"].clone();
+                let mut is_encrypted = false;
+
+                if event_json["type"] == "m.room.encrypted" {
+                    is_encrypted = true;
+
+                    let raw_json_value = timeline_event.json().to_owned();
+                    let encrypted_raw: Raw<EncryptedEvent> = Raw::from_json(raw_json_value);
+
+                    match olm_machine
+                        .decrypt_room_event(&encrypted_raw, &room_id, &decryption_settings)
+                        .await
+                    {
+                        Ok(decrypted_result) => {
+                            // decrypted_result.event is Raw<AnySyncTimelineEvent>
+                            if let Ok(dec_json) =
+                                decrypted_result.event.deserialize_as::<serde_json::Value>()
+                            {
+                                content = dec_json["content"].clone();
+                            }
+                        }
+                        Err(e) => {
+                            content = serde_json::json!({ "body": format!("** Decryption Error: {} **", e) });
+                        }
+                    }
+                }
+
+                if event_json["type"] == "m.room.message" || is_encrypted {
+                    messages.push(EventData {
+                        event_id,
+                        sender,
+                        origin_server_ts: ts,
+                        content,
+                        event_type: event_json["type"].as_str().unwrap_or_default().to_string(),
+                    });
+                }
+            }
+        }
+
+        processed_rooms.push(RoomData {
+            room_id: room_id.to_string(),
+            name: Some(room_name),
+            timeline: messages,
+        });
+    }
+
+    handle_outgoing_requests(olm_machine, token, matrix_url).await?;
+
+    return Ok(processed_rooms);
 }
 
 async fn handle_outgoing_requests(

@@ -347,7 +347,11 @@ async fn first_sync(state: State<'_, AppState>) -> Result<(), TauriError> {
 
     let sync_res = sync::matrix_sync(&token.access_token, &matrix_url).await?;
 
-    crypto::process_sync_response(olm_machine, sync_res, &token.access_token, &matrix_url).await?;
+    let res =
+        crypto::process_sync_response(olm_machine, sync_res, &token.access_token, &matrix_url)
+            .await?;
+
+    println!("Processed sync response: {:#?}", res);
 
     Ok(())
 }
