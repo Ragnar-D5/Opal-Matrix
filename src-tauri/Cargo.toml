@@ -35,3 +35,5 @@ matrix-sdk-crypto = "0.16.0"
 matrix-sdk-sqlite = { version = "0.16.0", features = ["crypto-store"] }
 keyring = "3.6.3"
 ruma = "0.14.1"
+hex = "0.4.3"
+getrandom = "0.4.2"

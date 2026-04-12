@@ -15,8 +15,11 @@ use matrix_sdk_sqlite::SqliteCryptoStore;
 
 mod matrix_api;
 use matrix_api::authentication;
+use matrix_api::crypto;
 use matrix_api::rooms;
 use matrix_api::sync;
+
+pub const APP_NAME: &str = "Maru";
 
 use percent_encoding::{utf8_percent_encode, AsciiSet, CONTROLS};
 
@@ -192,6 +195,15 @@ async fn matrix_login(
 
     *client_guard = Some(client_info.clone());
     *url_guard = Some(matrix_url.clone());
+
+    let db_passphrase = crypto::get_or_create_passphrase(client_info.user_id.clone()).await?;
+
+    crypto::init_crypto_machine(
+        client_info.user_id.clone(),
+        client_info.device_id,
+        db_passphrase,
+    )
+    .await?;
 
     let sync_res = sync::matrix_sync(token.access_token, matrix_url).await;
 
