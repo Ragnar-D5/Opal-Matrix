@@ -20,6 +20,8 @@ use matrix_api::sync;
 
 use percent_encoding::{utf8_percent_encode, AsciiSet, CONTROLS};
 
+use crate::matrix_api::authentication::refresh_token;
+
 const MATRIX_ID_SET: &AsciiSet = &CONTROLS.add(b'!').add(b':');
 
 fn construct_url<S>(parts: Vec<S>) -> Result<Url, TauriError>
@@ -42,29 +44,40 @@ where
 }
 
 #[derive(Default, Clone)]
-struct TokenInfo {
-    access_token: String,
-    refresh_token: String,
+struct RefreshToken {
+    token: String,
     expires_at: u64,
 }
 
-impl TokenInfo {
+#[derive(Default, Clone)]
+struct Token {
+    access_token: String,
+
+    refresh_token: Option<RefreshToken>,
+}
+
+impl Token {
     fn access_header(&self) -> String {
         format!("Bearer {}", self.access_token)
     }
 
     fn is_stale(&self) -> bool {
+        let expires_at = if let Some(refresh) = &self.refresh_token {
+            refresh.expires_at
+        } else {
+            return false;
+        };
+
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("Failed to get time")
             .as_secs();
 
-        // Check if it expires within the next 10 seconds
-        self.expires_at > now + 30
+        expires_at > now + 30
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct ClientInfo {
     user_id: String,
     device_id: String,
@@ -72,7 +85,7 @@ struct ClientInfo {
 
 #[derive(Default)]
 struct AppState {
-    token: RwLock<Option<TokenInfo>>,
+    token: RwLock<Option<Token>>,
     client: RwLock<Option<ClientInfo>>,
 
     matrix_url: RwLock<Option<String>>,
@@ -84,9 +97,15 @@ struct AppState {
 
 impl AppState {
     async fn refresh_token(&self) -> Result<(), TauriError> {
-        let token = {
+        let refresh_token = {
             let token_guard = self.token.read().await;
-            token_guard.as_ref().ok_or("Not logged in")?.clone()
+            let token = token_guard.as_ref().ok_or("Not logged in")?.clone();
+
+            if let Some(refresh) = token.refresh_token {
+                refresh
+            } else {
+                return Err("No refresh token available".into());
+            }
         };
 
         let matrix_url = {
@@ -94,7 +113,7 @@ impl AppState {
             url_guard.as_ref().ok_or("Not logged in")?.clone()
         };
 
-        let res = authentication::refresh_token(token.refresh_token, matrix_url).await?;
+        let res = authentication::refresh_token(refresh_token.token, matrix_url).await?;
 
         let mut write_guard = self.token.write().await;
         *write_guard = Some(res);
@@ -162,33 +181,19 @@ async fn matrix_login(
 ) -> Result<LoginResponse, TauriError> {
     trace!("Getting login");
 
-    let res = authentication::matrix_login(username, password, matrix_url.clone()).await?;
+    let (client_info, token) =
+        authentication::matrix_login(username, password, matrix_url.clone()).await?;
 
     let mut client_guard = state.client.write().await;
     let mut token_guard = state.token.write().await;
     let mut url_guard = state.matrix_url.write().await;
 
-    *token_guard = Some(TokenInfo {
-        access_token: res.access_token.clone(),
-        refresh_token: res.refresh_token.clone(),
-        expires_at: SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("Failed to get time")
-            .as_secs()
-            + res.expires_in_ms,
-    });
+    *token_guard = Some(token.clone());
 
-    *client_guard = Some(ClientInfo {
-        user_id: res.user_id.clone(),
-        device_id: res.device_id.clone(),
-    });
+    *client_guard = Some(client_info.clone());
     *url_guard = Some(matrix_url.clone());
 
-    let rooms = rooms::get_rooms(res.access_token.clone(), matrix_url.clone()).await?;
-
-    println!("{:?}", rooms);
-
-    let sync_res = sync::matrix_sync(res.access_token, matrix_url).await;
+    let sync_res = sync::matrix_sync(token.access_token, matrix_url).await;
 
     if let Err(e) = sync_res {
         error!("{:?}", e);
@@ -198,7 +203,7 @@ async fn matrix_login(
     }
 
     Ok(LoginResponse {
-        user_id: res.user_id,
+        user_id: client_info.user_id,
     })
 }
 

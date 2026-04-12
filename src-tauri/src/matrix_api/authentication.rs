@@ -1,9 +1,10 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::AppState;
+use crate::{AppState, ClientInfo};
+use ruma::api::auth_scheme::AccessToken;
 use tauri::State;
 
-use crate::{TauriError, TokenInfo};
+use crate::{RefreshToken, TauriError, Token};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use tauri::utils::platform::Target;
@@ -27,25 +28,40 @@ struct MatrixLoginRequest {
 #[derive(Deserialize)]
 pub struct MatrixLoginResponse {
     pub access_token: String,
-    pub refresh_token: String,
+    pub refresh_token: Option<String>,
 
     pub device_id: String,
     pub user_id: String,
 
-    pub expires_in_ms: u64,
+    pub expires_in_ms: Option<u64>,
 }
 
-impl Into<TokenInfo> for MatrixRefreshResponse {
-    fn into(self) -> TokenInfo {
-        TokenInfo {
-            access_token: self.access_token,
-            refresh_token: self.refresh_token,
-            expires_at: SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .expect("Failed to get time")
-                .as_secs()
-                + self.expires_in_ms,
-        }
+impl Into<(ClientInfo, Token)> for MatrixLoginResponse {
+    fn into(self) -> (ClientInfo, Token) {
+        let refresh_token =
+            if let (Some(token), Some(ms)) = (self.refresh_token, self.expires_in_ms) {
+                Some(RefreshToken {
+                    token: token,
+                    expires_at: SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .expect("Failed to get time")
+                        .as_secs()
+                        + ms / 1000,
+                })
+            } else {
+                None
+            };
+
+        return (
+            ClientInfo {
+                user_id: self.user_id,
+                device_id: self.device_id,
+            },
+            Token {
+                access_token: self.access_token,
+                refresh_token: refresh_token,
+            },
+        );
     }
 }
 
@@ -53,7 +69,7 @@ pub async fn matrix_login(
     username: String,
     password: String,
     matrix_url: String,
-) -> Result<MatrixLoginResponse, TauriError> {
+) -> Result<(ClientInfo, Token), TauriError> {
     let client = Client::new();
 
     let payload = MatrixLoginRequest {
@@ -80,7 +96,7 @@ pub async fn matrix_login(
             .await
             .map_err(|e| format!("Parse error: {}", e))?;
 
-        return Ok(json_res);
+        return Ok(json_res.into());
     } else {
         return Err(format!("Web request failed: {}", res.status()).into());
     }
@@ -94,15 +110,34 @@ struct MatrixRefreshRequest {
 #[derive(Serialize, Deserialize)]
 struct MatrixRefreshResponse {
     access_token: String,
-    refresh_token: String,
+    refresh_token: Option<String>,
 
-    expires_in_ms: u64,
+    expires_in_ms: Option<u64>,
 }
 
-pub async fn refresh_token(
-    refresh_token: String,
-    matrix_url: String,
-) -> Result<TokenInfo, TauriError> {
+impl Into<Token> for MatrixRefreshResponse {
+    fn into(self) -> Token {
+        let refresh_token =
+            if let (Some(token), Some(ms)) = (self.refresh_token, self.expires_in_ms) {
+                Some(RefreshToken {
+                    token: token,
+                    expires_at: SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .expect("Failed to get time")
+                        .as_secs()
+                        + ms / 1000,
+                })
+            } else {
+                None
+            };
+        return Token {
+            access_token: self.access_token,
+            refresh_token: refresh_token,
+        };
+    }
+}
+
+pub async fn refresh_token(refresh_token: String, matrix_url: String) -> Result<Token, TauriError> {
     let client = Client::new();
     let payload = MatrixRefreshRequest {
         refresh_token: refresh_token,
