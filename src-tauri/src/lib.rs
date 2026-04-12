@@ -10,6 +10,9 @@ use tauri::async_runtime::{Mutex, RwLock};
 use tauri::Url;
 use tauri::{Manager, State};
 
+use matrix_sdk_crypto::OlmMachine;
+use matrix_sdk_sqlite::SqliteCryptoStore;
+
 mod matrix_api;
 use matrix_api::authentication;
 use matrix_api::rooms;
@@ -75,6 +78,8 @@ struct AppState {
     matrix_url: RwLock<Option<String>>,
 
     refresh_lock: Mutex<()>,
+
+    crypto_machine: Mutex<Option<OlmMachine>>,
 }
 
 impl AppState {
@@ -134,33 +139,12 @@ impl std::fmt::Debug for TauriError {
     }
 }
 
-impl From<anyhow::Error> for TauriError {
-    fn from(value: anyhow::Error) -> Self {
+impl<T> From<T> for TauriError
+where
+    T: ToString,
+{
+    fn from(value: T) -> Self {
         Self::Wrap(value.to_string())
-    }
-}
-
-impl From<String> for TauriError {
-    fn from(value: String) -> Self {
-        Self::Wrap(value)
-    }
-}
-
-impl From<&str> for TauriError {
-    fn from(value: &str) -> Self {
-        Self::Wrap(value.to_string())
-    }
-}
-
-impl From<url::ParseError> for TauriError {
-    fn from(value: url::ParseError) -> Self {
-        Self::Wrap(value.to_string())
-    }
-}
-
-impl From<()> for TauriError {
-    fn from(_value: ()) -> Self {
-        Self::Wrap("Unknown error".to_string())
     }
 }
 
