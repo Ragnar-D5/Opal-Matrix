@@ -352,7 +352,7 @@ async fn first_sync(state: State<'_, AppState>) -> Result<(), TauriError> {
         olm_machine,
         &matrix_url,
         &token.access_token,
-        &"EsT4 PEi4 n2LZ NXzS Qah4 EgJm vH9U prM7 HCfn tymV x8yk ekhV".to_string(),
+        &"".to_string(),
     )
     .await?;
 
