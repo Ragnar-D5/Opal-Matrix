@@ -5,6 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use colored::Colorize;
 use log::{debug, error, info, trace};
+use reqwest::Client;
 use ruma::api::client::state;
 use serde::Serialize;
 use tauri::async_runtime::{Mutex, RwLock};
@@ -97,6 +98,7 @@ struct AppState {
     refresh_lock: Mutex<()>,
 
     crypto_machine: Mutex<Option<OlmMachine>>,
+    recovery_key: RwLock<Option<String>>,
 }
 
 impl AppState {
@@ -121,6 +123,7 @@ impl AppState {
             device_id: client_info.device_id.clone(),
             access_token: token.access_token.clone(),
             refresh_token: token.refresh_token.clone().map(|r| r.token),
+            recovery_key: self.recovery_key.read().await.clone(),
             homeserver_url: matrix_url.clone(),
         };
 
@@ -344,6 +347,14 @@ async fn first_sync(state: State<'_, AppState>) -> Result<(), TauriError> {
         let url_guard = state.matrix_url.read().await;
         url_guard.as_ref().ok_or("Not logged in")?.clone()
     };
+
+    crypto::set_room_keys(
+        olm_machine,
+        &matrix_url,
+        &token.access_token,
+        &"EsT4 PEi4 n2LZ NXzS Qah4 EgJm vH9U prM7 HCfn tymV x8yk ekhV".to_string(),
+    )
+    .await?;
 
     let sync_res = sync::matrix_sync(&token.access_token, &matrix_url).await?;
 

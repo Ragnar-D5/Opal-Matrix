@@ -1,22 +1,33 @@
+use matrix_sdk_crypto::vodozemac::olm;
+use ruma::api::client::backup::EncryptedSessionData;
+use ruma::serde::Base64;
+use std::collections::BTreeMap;
+use std::str::FromStr;
+
+use crate::authentication::get_account_data;
 use bytes::Bytes;
 
+use crate::construct_url;
 use crate::TauriError;
 use crate::APP_NAME;
 use http::Response as HttpResponse;
-use matrix_sdk_crypto::types::requests::AnyOutgoingRequest;
-use matrix_sdk_crypto::types::requests::OutgoingRequest;
-use matrix_sdk_crypto::{DecryptionSettings, EncryptionSyncChanges, OlmMachine};
+use matrix_sdk_crypto::olm::ExportedRoomKey;
+use matrix_sdk_crypto::store::types::BackupDecryptionKey;
+use matrix_sdk_crypto::{
+    types::requests::{AnyOutgoingRequest, OutgoingRequest},
+    DecryptionSettings, EncryptionSyncChanges, OlmMachine,
+};
 use matrix_sdk_sqlite::SqliteCryptoStore;
+use reqwest::Client;
 
 use log::{error, info};
 
 use reqwest::Response;
 use ruma::api::client::sync::sync_events::v3::Response as SyncResponse;
-use ruma::api::OutgoingRequestAppserviceExt;
-use ruma::TransactionId;
+use ruma::OwnedRoomId;
+use ruma::{api::OutgoingRequestAppserviceExt, OwnedDeviceId, TransactionId, UserId};
 
 use keyring::Entry;
-use ruma::{OwnedDeviceId, UserId};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -31,6 +42,9 @@ pub struct StoredSession {
 
     pub access_token: String,
     pub refresh_token: Option<String>,
+
+    pub recovery_key: Option<String>,
+
     pub homeserver_url: String,
 }
 
@@ -161,7 +175,7 @@ pub async fn process_sync_response(
     handle_outgoing_requests(olm_machine, token, matrix_url).await?;
 
     let decryption_settings = DecryptionSettings {
-        sender_device_trust_requirement: matrix_sdk_crypto::TrustRequirement::CrossSigned,
+        sender_device_trust_requirement: matrix_sdk_crypto::TrustRequirement::Untrusted,
     };
 
     let sync_changes = EncryptionSyncChanges {
@@ -438,4 +452,287 @@ async fn send_put(
     }
 
     builder.body(bytes).map_err(|e| e.to_string().into())
+}
+
+#[derive(Deserialize, Debug)]
+enum Algorithm {
+    #[serde(rename = "m.megolm_backup.v1.curve25519-aes-sha2")]
+    MegolmV1AesSha2,
+}
+
+#[derive(Deserialize, Debug)]
+struct AuthData {
+    public_key: String,
+    signatures: BTreeMap<String, BTreeMap<String, String>>,
+
+    // To be sure
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, Value>,
+}
+
+#[derive(Deserialize, Debug)]
+struct BackupInfoResponse {
+    algorithm: Algorithm,
+    auth_data: AuthData,
+    count: u64,
+    etag: String,
+    version: String,
+}
+
+#[derive(Deserialize, Debug)]
+struct BackupKeysRequest {
+    version: String,
+}
+
+#[derive(Deserialize, Debug)]
+struct SessionData {
+    ciphertext: String,
+    mac: String,
+    ephemeral: String,
+}
+
+#[derive(Deserialize, Debug)]
+struct KeyBackupData {
+    first_message_index: u64,
+    forwarded_count: u64,
+    is_verified: bool,
+    session_data: EncryptedSessionData,
+}
+
+#[derive(Deserialize, Debug)]
+struct RoomKeyBackup {
+    sessions: BTreeMap<String, KeyBackupData>,
+}
+
+#[derive(Deserialize, Debug)]
+struct BackupKeysResponse {
+    rooms: BTreeMap<String, RoomKeyBackup>,
+}
+
+pub async fn set_room_keys(
+    olm_machine: &OlmMachine,
+    matrix_url: &String,
+    token: &String,
+    recovery_key: &String,
+) -> Result<(), TauriError> {
+    // Get the key version
+    let version;
+
+    let client = Client::new();
+
+    let url = construct_url(vec![
+        matrix_url,
+        "_matrix",
+        "client",
+        "v3",
+        "room_keys",
+        "version",
+    ])?;
+
+    let res = client
+        .get(url)
+        .bearer_auth(token)
+        .send()
+        .await
+        .map_err(|e| format!("Network error: {}", e))?;
+
+    if res.status().is_success() {
+        let json_res: BackupInfoResponse = res
+            .json()
+            .await
+            .map_err(|e| format!("Parse error: {}", e))?;
+
+        println!("Available backup versions: {:?}", json_res);
+
+        version = json_res.version;
+
+        // return Ok(json_res.available_key_versions);
+    } else {
+        return Err(format!("Web request failed: {}", res.status()).into());
+    }
+
+    // Get the key from account data
+    let res = get_account_data(
+        token,
+        matrix_url,
+        &olm_machine.user_id().to_string(),
+        &"m.secret_storage.default_key".to_string(),
+    )
+    .await?;
+
+    println!("Account data for default key: {:?}", res);
+
+    let default_key_id = res["key"]
+        .as_str()
+        .ok_or("Missing default_key in account data")?;
+
+    // let res = get_account_data(
+    //     token,
+    //     matrix_url,
+    //     &olm_machine.user_id().to_string(),
+    //     &format!("m.secret_storage.key.{}", default_key_id),
+    // )
+    // .await?;
+
+    // println!("Account data for default key details: {:?}", res);
+
+    let res = get_account_data(
+        token,
+        matrix_url,
+        &olm_machine.user_id().to_string(),
+        &"m.megolm_backup.v1".to_string(),
+    )
+    .await?;
+
+    let enc = &res["encrypted"][default_key_id];
+
+    let ciphertext = enc["ciphertext"]
+        .as_str()
+        .ok_or("Missing ciphertext in encrypted key data")?;
+    let mac = enc["mac"]
+        .as_str()
+        .ok_or("Missing mac in encrypted key data")?;
+    let iv = enc["iv"]
+        .as_str()
+        .ok_or("Missing ephemeral in encrypted key data")?;
+
+    println!("Account data for megolm backup: {:?}", res);
+    let backup_private_key_b64 =
+        decrypt_ssss_aes_hmac_sha2(recovery_key, "m.megolm_backup.v1", ciphertext, iv, mac)?;
+
+    // Get the encrypted keys
+    let url = construct_url(vec![
+        matrix_url,
+        "_matrix",
+        "client",
+        "v3",
+        "room_keys",
+        &format!("keys?version={}", version),
+    ])?;
+
+    let res = client
+        .get(url)
+        .bearer_auth(token)
+        .send()
+        .await
+        .map_err(|e| format!("Network error: {}", e))?;
+
+    if res.status().is_success() {
+        let json_res: BackupKeysResponse = res
+            .json()
+            .await
+            .map_err(|e| format!("Parse error: {}", e))?;
+
+        let decryption_key = BackupDecryptionKey::from_base64(&backup_private_key_b64)?;
+
+        let backup_machine = olm_machine.backup_machine();
+
+        backup_machine
+            .save_decryption_key(Some(decryption_key.clone()), Some(version.clone()))
+            .await?;
+
+        let mut exported_keys = Vec::new();
+        for (room_id, room_backup) in json_res.rooms {
+            for (session_id, backup_data) in room_backup.sessions {
+                match decryption_key.decrypt_session_data(backup_data.session_data) {
+                    Ok(decrypted) => {
+                        let exported_key = ExportedRoomKey {
+                            algorithm: decrypted.algorithm,
+                            sender_claimed_keys: decrypted.sender_claimed_keys,
+                            forwarding_curve25519_key_chain: decrypted
+                                .forwarding_curve25519_key_chain,
+                            shared_history: decrypted.shared_history,
+
+                            room_id: OwnedRoomId::from_str(&room_id)?,
+                            session_id: session_id,
+                            session_key: decrypted.session_key,
+                            sender_key: decrypted.sender_key,
+                        };
+
+                        exported_keys.push(exported_key);
+                    }
+                    Err(e) => error!(
+                        "Failed to decrypt backup key for room {}, session {}: {}",
+                        room_id, session_id, e
+                    ),
+                }
+            }
+        }
+
+        if !exported_keys.is_empty() {
+            olm_machine
+                .store()
+                .import_room_keys(exported_keys, Some(version.as_str()), |_, _| {})
+                .await?;
+        } else {
+            error!("No keys were decrypted successfully, nothing to import");
+        }
+    } else {
+        return Err(format!("Web request failed: {}", res.status()).into());
+    }
+
+    handle_outgoing_requests(olm_machine, token, matrix_url).await?;
+
+    Ok(())
+}
+
+use {
+    aes::cipher::{KeyInit, KeyIvInit, StreamCipher}, // KeyInit/KeyIvInit give us new_from_slice(s)
+    aes::Aes256,
+    base64::{engine::general_purpose::STANDARD as b64, Engine},
+    ctr::Ctr64BE,
+    hkdf::Hkdf,
+    hmac::{Hmac, Mac},
+    sha2::Sha256,
+};
+
+pub fn decrypt_ssss_aes_hmac_sha2(
+    recovery_key_base58: &str,
+    event_type: &str, // e.g. "m.megolm_backup.v1"
+    ciphertext_b64: &str,
+    iv_b64: &str,
+    mac_b64: &str,
+) -> Result<String, TauriError> {
+    let clean_key = recovery_key_base58.replace(" ", "");
+
+    // 1) Decode Base58 Recovery Key
+    let decoded_base58 = bs58::decode(clean_key).into_vec()?;
+    let ssss_key = match decoded_base58.len() {
+        35 => &decoded_base58[2..34], // Matrix keys have a 2-byte prefix and 1-byte suffix
+        32 => &decoded_base58[..],
+        _ => return Err("Invalid Matrix recovery key length".into()),
+    };
+
+    // Decode Base64 inputs
+    let ciphertext = b64.decode(ciphertext_b64)?;
+    let iv = b64.decode(iv_b64)?;
+    let expected_mac = b64.decode(mac_b64)?;
+
+    if iv.len() != 16 {
+        return Err("IV must be exactly 16 bytes".into());
+    }
+
+    // 2) HKDF-SHA256 derivation
+    let mut okm = [0u8; 64];
+    Hkdf::<Sha256>::new(None, ssss_key)
+        .expand(event_type.as_bytes(), &mut okm)
+        .map_err(|_| "HKDF expansion failed")?;
+
+    let (aes_key, hmac_key) = okm.split_at(32);
+
+    // 3) Verify MAC
+    let mut mac_verifier = Hmac::<Sha256>::new_from_slice(hmac_key)?;
+    mac_verifier.update(&ciphertext);
+    mac_verifier
+        .verify_slice(&expected_mac)
+        .map_err(|_| "MAC verification failed (Integrity check error)")?;
+
+    let mut cipher = Ctr64BE::<Aes256>::new_from_slices(aes_key, &iv)
+        .map_err(|_| "Invalid AES key or IV length")?;
+    // 4) AES-CTR Decrypt
+    let mut plaintext = ciphertext.clone();
+    cipher.apply_keystream(&mut plaintext);
+
+    // 5) Return UTF-8
+    Ok(String::from_utf8(plaintext)?)
 }

@@ -3,6 +3,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::{construct_url, AppState, ClientInfo};
 use log::{debug, info};
 use ruma::api::auth_scheme::AccessToken;
+use serde_json::Value;
 use tauri::State;
 
 use crate::{RefreshToken, TauriError, Token};
@@ -90,8 +91,7 @@ pub async fn matrix_login(
         .json(&payload)
         .send()
         .await
-        .map_err(|e| format!("Network error: {}", e))
-        .unwrap();
+        .map_err(|e| format!("Network error: {}", e))?;
 
     if res.status().is_success() {
         let json_res: MatrixLoginResponse = res
@@ -166,6 +166,41 @@ pub async fn refresh_token(refresh_token: String, matrix_url: String) -> Result<
             res.json().await.map_err(|e| format!("Parse error: {e}"))?;
 
         return Ok(json_res.into());
+    } else {
+        return Err(format!("Web request failed: {}", res.status()).into());
+    }
+}
+
+pub async fn get_account_data(
+    token: &String,
+    matrix_url: &String,
+    user_id: &String,
+    data_type: &String,
+) -> Result<Value, TauriError> {
+    let client = Client::new();
+
+    let url = construct_url(vec![
+        matrix_url,
+        "_matrix",
+        "client",
+        "v3",
+        "user",
+        user_id,
+        "account_data",
+        data_type,
+    ])?;
+
+    let res = client
+        .get(url)
+        .bearer_auth(token)
+        .send()
+        .await
+        .map_err(|e| format!("Network error: {e}"))?;
+
+    if res.status().is_success() {
+        let json_res: Value = res.json().await.map_err(|e| format!("Parse error: {e}"))?;
+
+        return Ok(json_res);
     } else {
         return Err(format!("Web request failed: {}", res.status()).into());
     }
