@@ -58,10 +58,6 @@ struct Token {
 }
 
 impl Token {
-    fn access_header(&self) -> String {
-        format!("Bearer {}", self.access_token)
-    }
-
     fn is_stale(&self) -> bool {
         let expires_at = if let Some(refresh) = &self.refresh_token {
             refresh.expires_at
@@ -102,6 +98,8 @@ struct AppState {
 
     sync_task: Mutex<Option<JoinHandle<()>>>,
     sync_cancel_token: Mutex<Option<CancellationToken>>,
+
+    connection: Mutex<Option<rusqlite::Connection>>,
 }
 
 impl AppState {
@@ -242,15 +240,27 @@ impl AppState {
         let machine = crypto::init_crypto_machine(
             self.app_data_dir.clone(),
             client_info.user_id.clone(),
-            client_info.device_id,
-            db_passphrase,
+            client_info.device_id.clone(),
+            db_passphrase.clone(),
         )
         .await?;
 
         let mut machine_guard = self.crypto_machine.lock().await;
         *machine_guard = Some(machine);
 
-        self.start_sync().await?;
+        let (already_loaded, conn) = storage::init_storage(
+            self.app_data_dir.clone(),
+            &client_info.device_id.clone(),
+            &db_passphrase,
+        )
+        .await?;
+
+        {
+            let mut conn_guard = self.connection.lock().await;
+            *conn_guard = Some(conn);
+        }
+
+        self.start_sync(!already_loaded).await?;
 
         Ok(())
     }
@@ -433,7 +443,7 @@ pub fn run() {
                         level,
                         time,
                         record.file().unwrap_or("Unknown").cyan(),
-                        record.line().unwrap_or(0).to_string().black(),
+                        record.line().unwrap_or(0).to_string().bright_black(),
                         message
                     ));
                 })

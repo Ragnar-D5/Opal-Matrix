@@ -1,5 +1,7 @@
 use log::debug;
+use log::warn;
 use ruma::api::client::backup::EncryptedSessionData;
+use ruma::events::AnySyncTimelineEvent;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -110,15 +112,12 @@ pub async fn init_crypto_machine(
     let ruma_user = UserId::parse(user_id)?;
     let ruma_device: OwnedDeviceId = device_id.clone().into();
 
-    let db_path = path.join(format!("crypto_store_{}.db", device_id));
+    let path = path.join(format!("crypto_store_{}", device_id));
 
-    let store = SqliteCryptoStore::open(db_path.clone(), Some(&db_passphrase)).await?;
+    let store = SqliteCryptoStore::open(path.clone(), Some(&db_passphrase)).await?;
 
     let machine = OlmMachine::with_store(&ruma_user, &ruma_device, store, None).await?;
-    info!(
-        "Initialized OlmMachine at path {}",
-        db_path.to_string_lossy()
-    );
+    info!("Initialized OlmMachine at path {}", path.to_string_lossy());
 
     return Ok(machine);
 }
@@ -172,10 +171,10 @@ pub struct EventData {
 
 pub async fn process_sync_response(
     olm_machine: &OlmMachine,
-    sync_res: SyncResponse,
+    mut sync_res: SyncResponse,
     token: &String,
     matrix_url: &String,
-) -> Result<Vec<RoomData>, TauriError> {
+) -> Result<SyncResponse, TauriError> {
     handle_outgoing_requests(olm_machine, token, matrix_url).await?;
 
     let decryption_settings = DecryptionSettings {
@@ -183,11 +182,11 @@ pub async fn process_sync_response(
     };
 
     let sync_changes = EncryptionSyncChanges {
-        to_device_events: sync_res.to_device.events,
+        to_device_events: sync_res.clone().to_device.events,
         changed_devices: &sync_res.device_lists,
         one_time_keys_counts: &sync_res.device_one_time_keys_count,
         unused_fallback_keys: sync_res.device_unused_fallback_key_types.as_deref(),
-        next_batch_token: Some(sync_res.next_batch),
+        next_batch_token: Some(sync_res.next_batch.clone()),
     };
 
     olm_machine
@@ -196,50 +195,23 @@ pub async fn process_sync_response(
 
     handle_outgoing_requests(olm_machine, token, matrix_url).await?;
 
-    let mut processed_rooms = Vec::new();
+    for (room_id, joined_room) in sync_res.rooms.join.iter_mut() {
+        let mut new_timeline = Vec::with_capacity(joined_room.timeline.events.len());
 
-    for (room_id, joined_room) in sync_res.rooms.join {
-        let mut room_name = room_id.to_string();
-
-        let state_events = match joined_room.state {
-            State::Before(s) => s.events,
-            State::After(s) => s.events,
-            _ => Vec::new(),
-        };
+        // let state_events = match joined_room.state {
+        //     State::Before(s) => s.events,
+        //     State::After(s) => s.events,
+        //     _ => Vec::new(),
+        // };
 
         // Parse state for Room Name
-        for raw_event in state_events {
+        for raw_event in joined_room.timeline.events.drain(..) {
+            let mut replaced = false;
+
             // raw_event is already a Raw<AnyStateEvent>, call deserialize_as directly
             if let Ok(val) = raw_event.deserialize_as::<serde_json::Value>() {
-                if val["type"] == "m.room.name" {
-                    if let Some(name) = val["content"]["name"].as_str() {
-                        room_name = name.to_string();
-                    }
-                }
-            }
-        }
-
-        let mut messages = Vec::new();
-
-        for timeline_event in joined_room.timeline.events {
-            if let Ok(event_json) = timeline_event.deserialize_as::<Value>() {
-                let event_id = event_json["event_id"]
-                    .as_str()
-                    .unwrap_or_default()
-                    .to_string();
-                let sender = event_json["sender"]
-                    .as_str()
-                    .unwrap_or_default()
-                    .to_string();
-                let ts = event_json["origin_server_ts"].as_u64().unwrap_or_default();
-
-                let mut content = event_json["content"].clone();
-                let mut is_encrypted = false;
-
-                if event_json["type"] == "m.room.encrypted" {
-                    is_encrypted = true;
-
-                    let raw_json_value = timeline_event.json().to_owned();
+                if val.get("type").and_then(|t| t.as_str()) == Some("m.room.encrypted") {
+                    let raw_json_value = raw_event.json().to_owned();
                     let encrypted_raw: Raw<EncryptedEvent> = Raw::from_json(raw_json_value);
 
                     match olm_machine
@@ -247,41 +219,40 @@ pub async fn process_sync_response(
                         .await
                     {
                         Ok(decrypted_result) => {
-                            // decrypted_result.event is Raw<AnySyncTimelineEvent>
-                            if let Ok(dec_json) =
-                                decrypted_result.event.deserialize_as::<serde_json::Value>()
-                            {
-                                content = dec_json["content"].clone();
-                            }
+                            new_timeline.push(decrypted_result.event.cast());
+                            replaced = true;
                         }
                         Err(e) => {
-                            content = serde_json::json!({ "body": format!("** Decryption Error: {} **", e) });
+                            warn!("Failed to decrypt event in state: {}", e);
+
+                            // Push error message
+                            let mut fallback_json = val.clone();
+                            fallback_json["type"] = json!("m.room.message");
+                            fallback_json["content"] = json!({
+                                "msgtype": "m.text.failed",
+                                "body": format!("**Failed to decrypt message**: {}", e)
+                            });
+
+                            if let Ok(raw_fallback) = serde_json::from_value(fallback_json) {
+                                new_timeline.push(raw_fallback);
+                                replaced = true;
+                            }
                         }
                     }
                 }
 
-                if event_json["type"] == "m.room.message" || is_encrypted {
-                    messages.push(EventData {
-                        event_id,
-                        sender,
-                        origin_server_ts: ts,
-                        content,
-                        event_type: event_json["type"].as_str().unwrap_or_default().to_string(),
-                    });
+                if !replaced {
+                    new_timeline.push(raw_event);
                 }
             }
         }
 
-        processed_rooms.push(RoomData {
-            room_id: room_id.to_string(),
-            name: Some(room_name),
-            timeline: messages,
-        });
+        joined_room.timeline.events = new_timeline;
     }
 
     handle_outgoing_requests(olm_machine, token, matrix_url).await?;
 
-    return Ok(processed_rooms);
+    return Ok(sync_res);
 }
 
 async fn handle_outgoing_requests(

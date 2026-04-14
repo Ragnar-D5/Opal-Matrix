@@ -125,8 +125,6 @@ fn LoginPage(
 
                     set_login_name.set(response.user_id);
                     set_app_state.set(CurrentWindow::HomePage);
-
-                    call_tauri_no_args("first_sync").await.unwrap();
                 }
                 Err(err) => {
                     let err_str = err
