@@ -21,6 +21,11 @@ struct LoginArgs {
     password: String,
 }
 
+#[derive(Serialize, Deserialize)]
+struct RecoveryKeyArgs {
+    recovery_key: String,
+}
+
 async fn call_tauri(cmd: &str, args: JsValue) -> Result<JsValue, JsValue> {
     wasm_bindgen_futures::JsFuture::from(invoke(cmd, args)).await
 }
@@ -176,11 +181,34 @@ fn LoginPage(
 
 #[component]
 fn HomePage(user_id: String) -> impl IntoView {
+    let (recovery_key, set_recovery_key) = signal(String::new());
+
+    let send_recovery_key = move |ev: SubmitEvent| {
+        ev.prevent_default();
+
+        spawn_local(async move {
+            let key = recovery_key.get_untracked();
+
+            let args =
+                serde_wasm_bindgen::to_value(&RecoveryKeyArgs { recovery_key: key }).unwrap();
+            match call_tauri("set_recovery_key", args).await {
+                Ok(_) => {}
+                Err(err) => {
+                    // Handle error, maybe show an error message
+                }
+            }
+        });
+    };
+
     view! {
         <div class="dashboard">
             <h2>"Login Successful!"</h2>
             <p>"Welcome, " <strong>{user_id}</strong></p>
-            // Add chat UI, settings, or logout buttons here
+
+            <form on:submit=send_recovery_key>
+                <input placeholder="Recovery Key" on:input=move |ev| set_recovery_key.set(event_target_value(&ev)) />
+                <button type="submit">"Set Recovery Key"</button>
+            </form>
         </div>
     }
 }

@@ -2,4 +2,5 @@ pub(crate) mod authentication;
 pub(crate) mod crypto;
 pub(crate) mod login_flow;
 pub(crate) mod rooms;
+pub(crate) mod storage;
 pub(crate) mod sync;

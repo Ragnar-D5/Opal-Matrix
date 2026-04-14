@@ -238,6 +238,43 @@ impl AppState {
 
         Ok(())
     }
+
+    async fn set_recovery_key(&self, recovery_key: String) -> Result<(), TauriError> {
+        {
+            let mut key_guard = self.recovery_key.write().await;
+            *key_guard = Some(recovery_key.clone());
+        }
+
+        let matrix_url = {
+            let url_guard = self.matrix_url.read().await;
+            url_guard.as_ref().ok_or("Not logged in")?.clone()
+        };
+
+        let token = {
+            let token_guard = self.token.read().await;
+            token_guard.as_ref().ok_or("Not logged in")?.clone()
+        };
+
+        let olm_machine = {
+            let lock_guard = self.crypto_machine.lock().await;
+            lock_guard
+                .as_ref()
+                .ok_or("Crypto machine not initialized")?
+                .clone()
+        };
+
+        self.check_token().await?;
+
+        crypto::set_room_keys(
+            &olm_machine,
+            &matrix_url,
+            &token.access_token,
+            &recovery_key,
+        )
+        .await?;
+
+        Ok(())
+    }
 }
 
 #[derive(serde::Serialize)]
@@ -310,6 +347,7 @@ async fn login(
     info!("Logging in new");
     let (client_info, token) =
         authentication::matrix_login(username, password, matrix_url.clone()).await?;
+
     {
         let mut client_guard = state.client.write().await;
         let mut token_guard = state.token.write().await;
@@ -327,6 +365,18 @@ async fn login(
     Ok(LoginResponse {
         user_id: client_info.user_id,
     })
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn set_recovery_key(
+    state: State<'_, AppState>,
+    recovery_key: String,
+) -> Result<(), TauriError> {
+    info!("Setting recovery key");
+
+    state.set_recovery_key(recovery_key).await?;
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -348,15 +398,9 @@ async fn first_sync(state: State<'_, AppState>) -> Result<(), TauriError> {
         url_guard.as_ref().ok_or("Not logged in")?.clone()
     };
 
-    crypto::set_room_keys(
-        olm_machine,
-        &matrix_url,
-        &token.access_token,
-        &"".to_string(),
-    )
-    .await?;
+    let sync_res = sync::matrix_sync(&token.access_token, &matrix_url, None).await?;
 
-    let sync_res = sync::matrix_sync(&token.access_token, &matrix_url).await?;
+    println!("{:?}", sync_res);
 
     let res =
         crypto::process_sync_response(olm_machine, sync_res, &token.access_token, &matrix_url)
@@ -407,7 +451,12 @@ pub fn run() {
                 })
                 .build(),
         )
-        .invoke_handler(tauri::generate_handler![login, first_sync, try_restore])
+        .invoke_handler(tauri::generate_handler![
+            login,
+            first_sync,
+            try_restore,
+            set_recovery_key
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

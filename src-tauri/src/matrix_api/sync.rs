@@ -114,19 +114,32 @@ pub struct MatrixSyncResponse {
     pub rooms: MatrixRooms,
 }
 
+#[derive(Serialize, Debug)]
+struct MatrixSyncRequest {
+    pub since: Option<String>,
+    pub timeout: Option<u64>,
+}
+
 pub async fn matrix_sync(
     access_token: &String,
     matrix_url: &String,
+    since: Option<String>,
 ) -> Result<SyncResponse, TauriError> {
     let client = Client::new();
 
-    let url = construct_url(vec![
+    let mut url = construct_url(vec![
         matrix_url,
         &"_matrix".to_string(),
         &"client".to_string(),
         &"v3".to_string(),
         &"sync".to_string(),
     ])?;
+
+    if let Some(since_token) = since {
+        let params = [("since", since_token), ("timeout", 30000.to_string())];
+
+        url = reqwest::Url::parse_with_params(url.as_str(), params)?;
+    }
 
     let res = client
         .get(url)

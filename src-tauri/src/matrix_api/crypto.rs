@@ -545,8 +545,6 @@ pub async fn set_room_keys(
         println!("Available backup versions: {:?}", json_res);
 
         version = json_res.version;
-
-        // return Ok(json_res.available_key_versions);
     } else {
         return Err(format!("Web request failed: {}", res.status()).into());
     }
@@ -560,21 +558,9 @@ pub async fn set_room_keys(
     )
     .await?;
 
-    println!("Account data for default key: {:?}", res);
-
     let default_key_id = res["key"]
         .as_str()
         .ok_or("Missing default_key in account data")?;
-
-    // let res = get_account_data(
-    //     token,
-    //     matrix_url,
-    //     &olm_machine.user_id().to_string(),
-    //     &format!("m.secret_storage.key.{}", default_key_id),
-    // )
-    // .await?;
-
-    // println!("Account data for default key details: {:?}", res);
 
     let res = get_account_data(
         token,
@@ -596,7 +582,6 @@ pub async fn set_room_keys(
         .as_str()
         .ok_or("Missing ephemeral in encrypted key data")?;
 
-    println!("Account data for megolm backup: {:?}", res);
     let backup_private_key_b64 =
         decrypt_ssss_aes_hmac_sha2(recovery_key, "m.megolm_backup.v1", ciphertext, iv, mac)?;
 
