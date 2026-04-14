@@ -1,31 +1,24 @@
-// TODO: remove when stable
-#![allow(dead_code, unused_imports)]
-
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use colored::Colorize;
-use log::{debug, error, info, trace};
-use reqwest::Client;
-use ruma::api::client::state;
+use log::info;
 use serde::Serialize;
-use tauri::async_runtime::{Mutex, RwLock};
+use tauri::async_runtime::{JoinHandle, Mutex, RwLock};
+use tauri::State;
 use tauri::Url;
-use tauri::{Manager, State};
+use tokio_util::sync::CancellationToken;
 
 use matrix_sdk_crypto::OlmMachine;
-use matrix_sdk_sqlite::SqliteCryptoStore;
 
 mod matrix_api;
 use matrix_api::authentication;
 use matrix_api::crypto;
-use matrix_api::rooms;
 use matrix_api::sync;
 
 pub const APP_NAME: &str = "Maru";
 
 use percent_encoding::{utf8_percent_encode, AsciiSet, CONTROLS};
-
-use crate::matrix_api::authentication::refresh_token;
 
 const MATRIX_ID_SET: &AsciiSet = &CONTROLS.add(b'!').add(b':');
 
@@ -93,12 +86,17 @@ struct AppState {
     token: RwLock<Option<Token>>,
     client: RwLock<Option<ClientInfo>>,
 
+    next_batch: RwLock<Option<String>>,
+
     matrix_url: RwLock<Option<String>>,
 
     refresh_lock: Mutex<()>,
 
     crypto_machine: Mutex<Option<OlmMachine>>,
     recovery_key: RwLock<Option<String>>,
+
+    sync_task: Mutex<Option<JoinHandle<()>>>,
+    sync_cancel_token: Mutex<Option<CancellationToken>>,
 }
 
 impl AppState {
@@ -123,6 +121,7 @@ impl AppState {
             device_id: client_info.device_id.clone(),
             access_token: token.access_token.clone(),
             refresh_token: token.refresh_token.clone().map(|r| r.token),
+            next_batch: self.next_batch.read().await.clone(),
             recovery_key: self.recovery_key.read().await.clone(),
             homeserver_url: matrix_url.clone(),
         };
@@ -187,6 +186,12 @@ impl AppState {
 
                 let mut url_guard = self.matrix_url.write().await;
                 *url_guard = Some(session.homeserver_url);
+
+                let mut recovery_guard = self.recovery_key.write().await;
+                *recovery_guard = session.recovery_key;
+
+                let mut next_batch_guard = self.next_batch.write().await;
+                *next_batch_guard = session.next_batch;
             }
 
             return Ok(self.refresh_token().await.is_ok());
@@ -194,7 +199,7 @@ impl AppState {
         Ok(false)
     }
 
-    async fn check_token(&self) -> Result<(), TauriError> {
+    async fn check_token(&self) -> Result<String, TauriError> {
         let needs_refresh = {
             let token_guard = self.token.read().await;
             let t = token_guard.as_ref().ok_or("Not logged in")?;
@@ -215,10 +220,13 @@ impl AppState {
             }
         }
 
-        Ok(())
+        let token_guard = self.token.read().await;
+        let token = token_guard.as_ref().ok_or("Not logged in")?;
+
+        Ok(token.access_token.clone())
     }
 
-    async fn init_stuff(&self) -> Result<(), TauriError> {
+    async fn init_stuff(self: &Arc<Self>) -> Result<(), TauriError> {
         let client_info = {
             let client_guard = self.client.read().await;
             client_guard.as_ref().ok_or("Not logged in")?.clone()
@@ -236,6 +244,8 @@ impl AppState {
         let mut machine_guard = self.crypto_machine.lock().await;
         *machine_guard = Some(machine);
 
+        self.start_sync().await?;
+
         Ok(())
     }
 
@@ -250,11 +260,6 @@ impl AppState {
             url_guard.as_ref().ok_or("Not logged in")?.clone()
         };
 
-        let token = {
-            let token_guard = self.token.read().await;
-            token_guard.as_ref().ok_or("Not logged in")?.clone()
-        };
-
         let olm_machine = {
             let lock_guard = self.crypto_machine.lock().await;
             lock_guard
@@ -263,15 +268,9 @@ impl AppState {
                 .clone()
         };
 
-        self.check_token().await?;
+        let token = self.check_token().await?;
 
-        crypto::set_room_keys(
-            &olm_machine,
-            &matrix_url,
-            &token.access_token,
-            &recovery_key,
-        )
-        .await?;
+        crypto::set_room_keys(&olm_machine, &matrix_url, &token, &recovery_key).await?;
 
         Ok(())
     }
@@ -319,7 +318,7 @@ struct LoginResponse {
 }
 
 #[tauri::command]
-async fn try_restore(state: State<'_, AppState>) -> Result<Option<LoginResponse>, TauriError> {
+async fn try_restore(state: State<'_, Arc<AppState>>) -> Result<Option<LoginResponse>, TauriError> {
     let success = state.login_or_restore_session().await?;
 
     if success {
@@ -342,7 +341,7 @@ async fn login(
     matrix_url: String,
     username: String,
     password: String,
-    state: State<'_, AppState>,
+    state: State<'_, Arc<AppState>>,
 ) -> Result<LoginResponse, TauriError> {
     info!("Logging in new");
     let (client_info, token) =
@@ -369,51 +368,21 @@ async fn login(
 
 #[tauri::command(rename_all = "snake_case")]
 async fn set_recovery_key(
-    state: State<'_, AppState>,
+    state: State<'_, Arc<AppState>>,
     recovery_key: String,
 ) -> Result<(), TauriError> {
     info!("Setting recovery key");
 
     state.set_recovery_key(recovery_key).await?;
 
-    Ok(())
-}
-
-#[tauri::command]
-async fn first_sync(state: State<'_, AppState>) -> Result<(), TauriError> {
-    info!("Starting first sync");
-
-    let lock_guard = state.crypto_machine.lock().await;
-    let olm_machine = lock_guard
-        .as_ref()
-        .ok_or("Crypto machine not initialized")?;
-
-    let token = {
-        let token_guard = state.token.read().await;
-        token_guard.as_ref().ok_or("Not logged in")?.clone()
-    };
-
-    let matrix_url = {
-        let url_guard = state.matrix_url.read().await;
-        url_guard.as_ref().ok_or("Not logged in")?.clone()
-    };
-
-    let sync_res = sync::matrix_sync(&token.access_token, &matrix_url, None).await?;
-
-    println!("{:?}", sync_res);
-
-    let res =
-        crypto::process_sync_response(olm_machine, sync_res, &token.access_token, &matrix_url)
-            .await?;
-
-    println!("Processed sync response: {:#?}", res);
+    state.restart_sync().await?;
 
     Ok(())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let state = AppState::default();
+    let state = Arc::new(AppState::default());
 
     info!("Initialized");
 
@@ -453,7 +422,6 @@ pub fn run() {
         )
         .invoke_handler(tauri::generate_handler![
             login,
-            first_sync,
             try_restore,
             set_recovery_key
         ])

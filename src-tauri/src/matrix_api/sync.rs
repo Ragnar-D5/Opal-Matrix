@@ -1,126 +1,11 @@
-use std::collections::HashMap;
-
-use crate::{construct_url, TauriError};
+use crate::{construct_url, matrix_api::crypto, AppState, TauriError};
+use log::info;
 use reqwest::Client;
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
-use matrix_sdk_crypto::EncryptionSyncChanges;
 use ruma::api::{client::sync::sync_events::v3::Response as SyncResponse, IncomingResponse};
+use tokio_util::sync::CancellationToken;
 
-#[derive(Deserialize, Debug)]
-pub struct MatrixEvent {
-    pub content: Value,
-    #[serde(rename = "type")]
-    pub event_type: String,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct MatrixAccountData {
-    pub events: Vec<MatrixEvent>,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct MatrixEphemeral {
-    pub events: Vec<MatrixEvent>,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct UnsignedData {
-    pub age: Option<i64>,
-    pub membership: Option<String>,
-    pub prev_content: Option<Value>,
-    // pub redacted_because: Option<MatrixClientEventWithoutRoomID>,
-    pub transaction_id: Option<String>,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct MatrixClientEventWithoutRoomID {
-    pub content: Value,
-    #[serde(rename = "type")]
-    pub event_type: String,
-    pub event_id: String,
-    pub origin_server_ts: i64,
-    pub sender: String,
-    pub state_key: Option<String>,
-    pub unsigned: Option<UnsignedData>,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct MatrixState {
-    events: Vec<MatrixClientEventWithoutRoomID>,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct MatrixRoomSummary {
-    #[serde(rename = "m.heroes")]
-    pub heroes: Option<Vec<String>>,
-    #[serde(rename = "m.invited_member_count")]
-    pub invited_member_count: Option<u64>,
-    #[serde(rename = "m.joined_member_count")]
-    pub joined_member_count: Option<u64>,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct MatrixTimeline {
-    pub events: Vec<MatrixClientEventWithoutRoomID>,
-    pub limited: Option<bool>,
-    pub prev_batch: Option<String>,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct MatrixUnreadNotificationCounts {
-    pub highlight_count: Option<u64>,
-    pub notification_count: Option<u64>,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct MatrixThreadNotificationCounts {
-    pub highlight_count: Option<u64>,
-    pub notification_count: Option<u64>,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct MatrixJoinedRoom {
-    pub account_data: Option<MatrixAccountData>,
-    pub ephemeral: Option<MatrixEphemeral>,
-    pub state: Option<MatrixState>,
-    pub state_after: Option<MatrixState>,
-    pub summary: Option<MatrixRoomSummary>,
-    pub timeline: Option<MatrixTimeline>,
-
-    pub unread_notifications: Option<MatrixUnreadNotificationCounts>,
-
-    pub unread_thread_notifications: Option<HashMap<String, MatrixThreadNotificationCounts>>,
-
-    pub to_device: Option<Value>,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct MatrixRooms {
-    pub join: HashMap<String, MatrixJoinedRoom>,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct MatrixPresence {
-    pub events: Vec<MatrixEvent>,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct MatrixSyncResponse {
-    // pub account_data: MatrixAccountData,
-    next_batch: String,
-    presence: MatrixPresence,
-    pub rooms: MatrixRooms,
-}
-
-#[derive(Serialize, Debug)]
-struct MatrixSyncRequest {
-    pub since: Option<String>,
-    pub timeout: Option<u64>,
-}
-
-pub async fn matrix_sync(
+async fn matrix_sync(
     access_token: &String,
     matrix_url: &String,
     since: Option<String>,
@@ -143,6 +28,7 @@ pub async fn matrix_sync(
 
     let res = client
         .get(url)
+        .timeout(std::time::Duration::from_secs(35))
         .bearer_auth(access_token)
         .send()
         .await
@@ -169,4 +55,95 @@ pub async fn matrix_sync(
         Ok(sync_response) => Ok(sync_response),
         Err(e) => Err(format!("Failed to parse sync response: {e}").into()),
     }
+}
+
+impl AppState {
+    pub(crate) async fn start_sync(self: &std::sync::Arc<Self>) -> Result<(), TauriError> {
+        let mut task_guard = self.sync_task.lock().await;
+        if task_guard.is_some() {
+            return Ok(());
+        }
+
+        let cancel = CancellationToken::new();
+        {
+            let mut cancel_guard = self.sync_cancel_token.lock().await;
+            *cancel_guard = Some(cancel.clone());
+        }
+
+        let state = self.clone();
+        let handle = tauri::async_runtime::spawn(async move {
+            if let Err(e) = run_sync_loop(state).await {
+                log::error!("Sync loop error: {:?}", e);
+            }
+        });
+
+        *task_guard = Some(handle);
+        Ok(())
+    }
+
+    pub(crate) async fn stop_sync(&self) -> Result<(), TauriError> {
+        if let Some(cancel) = self.sync_cancel_token.lock().await.take() {
+            cancel.cancel();
+        }
+
+        if let Some(handle) = self.sync_task.lock().await.take() {
+            let _ = handle.await;
+        }
+
+        Ok(())
+    }
+
+    pub(crate) async fn restart_sync(self: &std::sync::Arc<Self>) -> Result<(), TauriError> {
+        self.stop_sync().await?;
+        self.start_sync().await
+    }
+}
+
+async fn run_sync_loop(state: std::sync::Arc<AppState>) -> Result<(), TauriError> {
+    let mut since = {
+        let guard = state.next_batch.read().await;
+        guard.clone()
+    };
+
+    let cancel = {
+        let cancel_guard = state.sync_cancel_token.lock().await;
+        if let Some(cancel) = cancel_guard.as_ref() {
+            cancel.clone()
+        } else {
+            return Err("Sync cancellation token not found".into());
+        }
+    };
+
+    while !cancel.is_cancelled() {
+        let access_token = state.check_token().await?;
+        let matrix_url = {
+            let guard = state.matrix_url.read().await;
+            guard.as_ref().cloned().ok_or("Matrix URL not set")?
+        };
+
+        let sync_res = matrix_sync(&access_token, &matrix_url, since.clone()).await?;
+        since = Some(sync_res.next_batch.clone());
+
+        {
+            let mut since_guard = state.next_batch.write().await;
+            *since_guard = since.clone();
+        }
+
+        let olm_machine = {
+            let guard = state.crypto_machine.lock().await;
+            guard
+                .as_ref()
+                .cloned()
+                .ok_or("Crypto machine not initialized")?
+        };
+
+        let res = crypto::process_sync_response(&olm_machine, sync_res, &access_token, &matrix_url)
+            .await?;
+
+        println!("Processed sync response: {:?}", res);
+
+        state.save_session().await?;
+    }
+
+    Ok(())
 }

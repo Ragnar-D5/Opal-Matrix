@@ -1,6 +1,5 @@
-use matrix_sdk_crypto::vodozemac::olm;
+use log::debug;
 use ruma::api::client::backup::EncryptedSessionData;
-use ruma::serde::Base64;
 use std::collections::BTreeMap;
 use std::str::FromStr;
 
@@ -14,21 +13,18 @@ use http::Response as HttpResponse;
 use matrix_sdk_crypto::olm::ExportedRoomKey;
 use matrix_sdk_crypto::store::types::BackupDecryptionKey;
 use matrix_sdk_crypto::{
-    types::requests::{AnyOutgoingRequest, OutgoingRequest},
-    DecryptionSettings, EncryptionSyncChanges, OlmMachine,
+    types::requests::AnyOutgoingRequest, DecryptionSettings, EncryptionSyncChanges, OlmMachine,
 };
 use matrix_sdk_sqlite::SqliteCryptoStore;
 use reqwest::Client;
 
 use log::{error, info};
 
-use reqwest::Response;
 use ruma::api::client::sync::sync_events::v3::Response as SyncResponse;
 use ruma::OwnedRoomId;
-use ruma::{api::OutgoingRequestAppserviceExt, OwnedDeviceId, TransactionId, UserId};
+use ruma::{OwnedDeviceId, UserId};
 
 use keyring::Entry;
-use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use serde_json::Value;
@@ -42,6 +38,8 @@ pub struct StoredSession {
 
     pub access_token: String,
     pub refresh_token: Option<String>,
+
+    pub next_batch: Option<String>,
 
     pub recovery_key: Option<String>,
 
@@ -397,7 +395,7 @@ async fn handle_outgoing_requests(
         };
     }
 
-    info!("All outgoing requests processed");
+    debug!("All outgoing requests processed");
 
     Ok(())
 }
@@ -467,7 +465,7 @@ struct AuthData {
 
     // To be sure
     #[serde(flatten)]
-    pub extra: BTreeMap<String, Value>,
+    extra: BTreeMap<String, Value>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -478,19 +476,6 @@ struct BackupInfoResponse {
     etag: String,
     version: String,
 }
-
-#[derive(Deserialize, Debug)]
-struct BackupKeysRequest {
-    version: String,
-}
-
-#[derive(Deserialize, Debug)]
-struct SessionData {
-    ciphertext: String,
-    mac: String,
-    ephemeral: String,
-}
-
 #[derive(Deserialize, Debug)]
 struct KeyBackupData {
     first_message_index: u64,
@@ -541,8 +526,6 @@ pub async fn set_room_keys(
             .json()
             .await
             .map_err(|e| format!("Parse error: {}", e))?;
-
-        println!("Available backup versions: {:?}", json_res);
 
         version = json_res.version;
     } else {

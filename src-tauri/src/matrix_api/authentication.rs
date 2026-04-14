@@ -1,15 +1,11 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::{construct_url, AppState, ClientInfo};
-use log::{debug, info};
-use ruma::api::auth_scheme::AccessToken;
 use serde_json::Value;
-use tauri::State;
 
 use crate::{RefreshToken, TauriError, Token};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use tauri::utils::platform::Target;
 
 #[derive(Serialize)]
 struct MatrixLoginIdentifier {
