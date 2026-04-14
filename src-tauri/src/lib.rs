@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -5,13 +6,15 @@ use colored::Colorize;
 use log::info;
 use serde::Serialize;
 use tauri::async_runtime::{JoinHandle, Mutex, RwLock};
-use tauri::State;
 use tauri::Url;
+use tauri::{Manager, State};
 use tokio_util::sync::CancellationToken;
 
 use matrix_sdk_crypto::OlmMachine;
 
 mod matrix_api;
+mod storage;
+
 use matrix_api::authentication;
 use matrix_api::crypto;
 use matrix_api::sync;
@@ -83,6 +86,8 @@ struct ClientInfo {
 
 #[derive(Default)]
 struct AppState {
+    app_data_dir: PathBuf,
+
     token: RwLock<Option<Token>>,
     client: RwLock<Option<ClientInfo>>,
 
@@ -235,6 +240,7 @@ impl AppState {
         let db_passphrase = crypto::get_or_create_passphrase(client_info.user_id.clone()).await?;
 
         let machine = crypto::init_crypto_machine(
+            self.app_data_dir.clone(),
             client_info.user_id.clone(),
             client_info.device_id,
             db_passphrase,
@@ -382,12 +388,25 @@ async fn set_recovery_key(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let state = Arc::new(AppState::default());
-
-    info!("Initialized");
-
     tauri::Builder::default()
-        .manage(state)
+        .setup(|app| {
+            let data_dir = app
+                .path()
+                .data_dir()
+                .expect("Failed to get app data dir")
+                .join(APP_NAME);
+
+            std::fs::create_dir_all(&data_dir).ok();
+
+            let state = Arc::new(AppState {
+                app_data_dir: data_dir,
+                ..Default::default()
+            });
+
+            app.manage(state);
+
+            Ok(())
+        })
         .plugin(
             tauri_plugin_log::Builder::new()
                 .level_for("reqwest", log::LevelFilter::Off)
@@ -427,4 +446,6 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+
+    info!("Initialized");
 }

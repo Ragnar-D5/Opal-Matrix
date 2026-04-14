@@ -1,6 +1,7 @@
 use log::debug;
 use ruma::api::client::backup::EncryptedSessionData;
 use std::collections::BTreeMap;
+use std::path::PathBuf;
 use std::str::FromStr;
 
 use crate::authentication::get_account_data;
@@ -101,6 +102,7 @@ pub async fn get_device_id(user_id: String) -> Result<String, TauriError> {
 }
 
 pub async fn init_crypto_machine(
+    path: PathBuf,
     user_id: String,
     device_id: String,
     db_passphrase: String,
@@ -108,11 +110,15 @@ pub async fn init_crypto_machine(
     let ruma_user = UserId::parse(user_id)?;
     let ruma_device: OwnedDeviceId = device_id.clone().into();
 
-    let db_path = format!("./app_data/crypto_{}.db", device_id);
+    let db_path = path.join(format!("crypto_store_{}.db", device_id));
 
-    let store = SqliteCryptoStore::open(db_path, Some(&db_passphrase)).await?;
+    let store = SqliteCryptoStore::open(db_path.clone(), Some(&db_passphrase)).await?;
 
     let machine = OlmMachine::with_store(&ruma_user, &ruma_device, store, None).await?;
+    info!(
+        "Initialized OlmMachine at path {}",
+        db_path.to_string_lossy()
+    );
 
     return Ok(machine);
 }
