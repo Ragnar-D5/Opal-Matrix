@@ -1,6 +1,6 @@
 use std::collections::HashMap;
+use std::collections::HashSet;
 
-use crate::storage::rooms::RoomUpdate;
 use crate::TauriError;
 use ruma::OwnedRoomId;
 use rusqlite::params;
@@ -12,7 +12,7 @@ pub(crate) mod rooms;
 
 use members::MemberRow;
 use messages::MessageRow;
-use rooms::RoomRow;
+use rooms::{RoomRow, RoomUpdate, SpaceChildRow, SpaceParentRow};
 
 pub async fn init_storage(
     path: std::path::PathBuf,
@@ -33,6 +33,8 @@ pub async fn init_storage(
     RoomRow::create_table(&conn)?;
     MessageRow::create_table(&conn)?;
     MemberRow::create_table(&conn)?;
+    SpaceChildRow::create_table(&conn)?;
+    SpaceParentRow::create_table(&conn)?;
 
     Ok((db_exists, conn))
 }
@@ -47,7 +49,13 @@ pub struct SyncChanges {
     pub new_messages: Vec<MessageRow>,
     pub member_updates: Vec<MemberRow>,
 
+    pub direct_rooms: Option<HashSet<OwnedRoomId>>,
+
     pub room_updates: HashMap<OwnedRoomId, RoomUpdate>,
+
+    pub space_children: Vec<SpaceChildRow>,
+
+    pub space_parents: Vec<SpaceParentRow>,
 }
 
 pub async fn apply_sync_changes(
@@ -62,6 +70,70 @@ pub async fn apply_sync_changes(
         stmt_ensure_rooms.execute(params![room_id.to_string()])?;
     }
     drop(stmt_ensure_rooms);
+
+    let mut stmt_space_children = tx.prepare(
+        "INSERT INTO space_children (parent_room_id, child_room_id, order_str)
+        VALUES (?, ?, ?)
+        ON CONFLICT(parent_room_id, child_room_id) DO UPDATE SET
+            order_str = excluded.order_str",
+    )?;
+    let mut stmt_delete_space_child =
+        tx.prepare("DELETE FROM space_children WHERE parent_room_id = ? AND child_room_id = ?")?;
+
+    let mut stmt_space_parents = tx.prepare(
+        "INSERT INTO space_parents (child_room_id, parent_room_id, is_canonical)
+        VALUES (?, ?, ?)
+        ON CONFLICT(child_room_id, parent_room_id) DO UPDATE SET
+            is_canonical = excluded.is_canonical",
+    )?;
+    let mut stmt_delete_space_parent =
+        tx.prepare("DELETE FROM space_parents WHERE child_room_id = ? AND parent_room_id = ?")?;
+
+    for child_update in changes.space_children {
+        if child_update.is_deleted {
+            stmt_delete_space_child.execute(params![
+                child_update.parent_room_id,
+                child_update.child_room_id
+            ])?;
+        } else {
+            stmt_space_children.execute(params![
+                child_update.parent_room_id,
+                child_update.child_room_id,
+                child_update.order_str
+            ])?;
+        }
+    }
+
+    for parent_update in changes.space_parents {
+        if parent_update.is_deleted {
+            stmt_delete_space_parent.execute(params![
+                parent_update.child_room_id,
+                parent_update.parent_room_id
+            ])?;
+        } else {
+            stmt_space_parents.execute(params![
+                parent_update.child_room_id,
+                parent_update.parent_room_id,
+                parent_update.is_canonical
+            ])?;
+        }
+    }
+
+    drop(stmt_space_children);
+    drop(stmt_delete_space_child);
+    drop(stmt_space_parents);
+    drop(stmt_delete_space_parent);
+
+    if let Some(rooms) = changes.direct_rooms {
+        tx.execute("UPDATE rooms SET is_direct = 0", [])?;
+
+        let mut stmt_update_direct =
+            tx.prepare("UPDATE rooms SET is_direct = 1 WHERE room_id = ?")?;
+        for room_id in rooms {
+            stmt_update_direct.execute(params![room_id.to_string()])?;
+        }
+        drop(stmt_update_direct);
+    }
 
     let mut stmt_messages = tx.prepare(
         "INSERT INTO messages (event_id, room_id, sender, msg_type, body, raw_json, timestamp)
@@ -112,7 +184,8 @@ pub async fn apply_sync_changes(
         guest_access = COALESCE(?, guest_access),
         history_visibility = COALESCE(?, history_visibility),
         join_rule = COALESCE(?, join_rule),
-        algorithm = COALESCE(?, algorithm)
+        algorithm = COALESCE(?, algorithm),
+        room_type = COALESCE(?, room_type)
     WHERE room_id = ?",
     )?;
     for (room_id, update) in changes.room_updates {
@@ -125,6 +198,7 @@ pub async fn apply_sync_changes(
             update.history_visibility,
             update.join_rule,
             update.algorithm,
+            update.room_type,
             room_id.to_string()
         ])?;
     }

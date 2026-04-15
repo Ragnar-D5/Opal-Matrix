@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::fmt::format;
 
 use log::{trace, warn};
@@ -6,6 +7,7 @@ use serde_json::value::RawValue;
 
 use crate::storage::members::MemberRow;
 use crate::storage::messages::MessageRow;
+use crate::storage::rooms::{SpaceChildRow, SpaceParentRow};
 use crate::{construct_url, matrix_api::crypto, AppState, TauriError};
 use reqwest::Client;
 
@@ -154,7 +156,7 @@ async fn run_sync_loop(state: std::sync::Arc<AppState>, resync: bool) -> Result<
             .await?;
 
         // println!("Processed sync response: {:?}", res.account_data);
-        handle_sync_response(&state, res).await?;
+        handle_sync_response(&state, res.clone()).await?;
 
         state.save_session().await?;
     }
@@ -166,13 +168,18 @@ use crate::storage::{self, SyncChanges};
 
 use ruma::api::client::sync::sync_events::v3::State as SyncState;
 use ruma::events::{
-    AnyStateEventContent, AnySyncMessageLikeEvent, AnySyncStateEvent, AnySyncTimelineEvent,
+    AnyGlobalAccountDataEvent, AnyStateEventContent, AnySyncMessageLikeEvent, AnySyncStateEvent,
+    AnySyncTimelineEvent,
 };
 async fn handle_sync_response(
     state: &std::sync::Arc<AppState>,
     response: SyncResponse,
 ) -> Result<(), TauriError> {
     let mut changes = SyncChanges::default();
+
+    for raw_event in response.account_data.events {
+        extract_account_data(&mut changes, raw_event)?;
+    }
 
     for (room_id, room) in response.rooms.join {
         changes.joined_rooms.push(room_id.clone());
@@ -209,11 +216,37 @@ async fn handle_sync_response(
     Ok(())
 }
 
+fn extract_account_data(
+    changes: &mut SyncChanges,
+    raw_event: Raw<AnyGlobalAccountDataEvent>,
+) -> Result<(), TauriError> {
+    let ev = raw_event.deserialize()?;
+
+    match ev {
+        AnyGlobalAccountDataEvent::Direct(ev) => {
+            let mut dms = HashSet::new();
+
+            for (_, rooms) in ev.content.iter() {
+                for room_id in rooms {
+                    dms.insert(room_id.clone());
+                }
+            }
+
+            changes.direct_rooms = Some(dms);
+        }
+        _ => {
+            trace!("Unhandled global account data event: {:?}", ev);
+        }
+    }
+
+    Ok(())
+}
+
 fn extract_state(
     changes: &mut SyncChanges,
     room_id: &OwnedRoomId,
     ev: AnySyncStateEvent,
-    state_event: Raw<AnySyncStateEvent>,
+    _state_event: Raw<AnySyncStateEvent>,
 ) -> Result<(), TauriError> {
     let Some(or) = ev.original_content() else {
         return Ok(());
@@ -240,8 +273,10 @@ fn extract_state(
         AnyStateEventContent::RoomEncryption(ev) => {
             update.algorithm = Some(ev.algorithm.as_str().to_string());
         }
-        AnyStateEventContent::RoomCreate(_ev) => {
-            // changes.
+        AnyStateEventContent::RoomCreate(ev) => {
+            if let Some(room_type) = ev.room_type {
+                update.room_type = Some(room_type.as_str().to_string());
+            }
         }
         AnyStateEventContent::RoomMember(ev) => {
             changes.member_updates.push(MemberRow {
@@ -263,6 +298,26 @@ fn extract_state(
         }
         AnyStateEventContent::RoomJoinRules(ev) => {
             update.join_rule = Some(ev.join_rule.as_str().to_string());
+        }
+        AnyStateEventContent::SpaceChild(ev) => {
+            let is_deleted = ev.via.is_empty();
+
+            changes.space_children.push(SpaceChildRow {
+                parent_room_id: room_id.to_string(),
+                child_room_id: state_key,
+                order_str: ev.order.map(|v| v.to_string()),
+                is_deleted: is_deleted,
+            });
+        }
+        AnyStateEventContent::SpaceParent(ev) => {
+            let is_deleted = ev.via.is_empty();
+
+            changes.space_parents.push(SpaceParentRow {
+                child_room_id: room_id.to_string(),
+                parent_room_id: state_key,
+                is_canonical: ev.canonical,
+                is_deleted: is_deleted,
+            });
         }
         _ => {
             trace!("Unhandled state event in room {}: {:?}", room_id, ev);

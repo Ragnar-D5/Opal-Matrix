@@ -59,6 +59,8 @@ pub struct RoomRow {
     pub guest_access: GuestAccess,
 
     pub power_levels: Option<String>,
+
+    pub room_type: Option<String>,
 }
 
 impl DataBaseModel for RoomRow {
@@ -77,7 +79,9 @@ impl DataBaseModel for RoomRow {
                 history_visibility TEXT NOT NULL CHECK(history_visibility IN ('world_readable', 'shared', 'invited', 'joined')) DEFAULT 'shared',
                 guest_access TEXT NOT NULL CHECK(guest_access IN ('can_join', 'forbidden')) DEFAULT 'forbidden',
 
-                power_levels TEXT
+                power_levels TEXT,
+
+                room_type TEXT
             )",
         )?;
         Ok(())
@@ -94,4 +98,51 @@ pub struct RoomUpdate {
     pub history_visibility: Option<String>,
     pub join_rule: Option<String>,
     pub algorithm: Option<String>,
+    pub room_type: Option<String>,
+}
+
+#[derive(Debug)]
+pub struct SpaceChildRow {
+    pub parent_room_id: String,
+    pub child_room_id: String,
+    pub order_str: Option<String>,
+    pub is_deleted: bool,
+}
+
+impl DataBaseModel for SpaceChildRow {
+    fn create_table(conn: &rusqlite::Connection) -> Result<(), crate::TauriError> {
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS space_children (
+                parent_room_id TEXT NOT NULL,
+                child_room_id TEXT NOT NULL,
+                order_str TEXT,
+                PRIMARY KEY (parent_room_id, child_room_id),
+                FOREIGN KEY (parent_room_id) REFERENCES rooms(room_id)
+            )",
+        )?;
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub struct SpaceParentRow {
+    pub child_room_id: String,
+    pub parent_room_id: String,
+    pub is_canonical: bool,
+    pub is_deleted: bool,
+}
+
+impl DataBaseModel for SpaceParentRow {
+    fn create_table(conn: &rusqlite::Connection) -> Result<(), crate::TauriError> {
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS space_parents (
+                child_room_id TEXT NOT NULL,
+                parent_room_id TEXT NOT NULL,
+                is_canonical BOOLEAN NOT NULL DEFAULT 0,
+                PRIMARY KEY (child_room_id, parent_room_id),
+                FOREIGN KEY (child_room_id) REFERENCES rooms(room_id) ON DELETE CASCADE
+            )",
+        )?;
+        Ok(())
+    }
 }
