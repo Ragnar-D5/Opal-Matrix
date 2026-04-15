@@ -5,6 +5,7 @@ use log::{trace, warn};
 use ruma::serde::Raw;
 use serde_json::value::RawValue;
 
+use crate::frontend::build_tree;
 use crate::storage::members::MemberRow;
 use crate::storage::messages::MessageRow;
 use crate::storage::rooms::{SpaceChildRow, SpaceParentRow};
@@ -155,7 +156,6 @@ async fn run_sync_loop(state: std::sync::Arc<AppState>, resync: bool) -> Result<
         let res = crypto::process_sync_response(&olm_machine, sync_res, &access_token, &matrix_url)
             .await?;
 
-        // println!("Processed sync response: {:?}", res.account_data);
         handle_sync_response(&state, res.clone()).await?;
 
         state.save_session().await?;
@@ -204,13 +204,31 @@ async fn handle_sync_response(
         }
     }
 
+    let sidebar_needs_update = !changes.joined_rooms.is_empty()
+        || changes.direct_rooms.is_some()
+        || !changes.space_children.is_empty()
+        || !changes.space_parents.is_empty()
+        || changes.room_updates.values().any(|update| {
+            update.name.is_some()
+                || update.avatar_url.is_some()
+                || update.room_type.is_some()
+                || update.topic.is_some()
+        });
+
     {
         let mut conn_guard = state.connection.lock().await;
         let conn = conn_guard
             .as_mut()
             .ok_or("Database connection not initialized")?;
 
-        storage::apply_sync_changes(conn, changes).await?;
+        storage::apply_sync_changes(conn, changes.clone()).await?;
+
+        if sidebar_needs_update {
+            let (all_rooms, parent_to_children, all_children) = storage::fetch_sidebar(&conn)?;
+            let tree = build_tree(all_rooms, parent_to_children, all_children);
+
+            println!("Emitting sidebar update with tree: {:?}", tree);
+        }
     }
 
     Ok(())

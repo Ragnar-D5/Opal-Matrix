@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 
+use crate::frontend::rooms::FlatRoom;
+use crate::frontend::rooms::SidebarState;
 use crate::TauriError;
 use ruma::OwnedRoomId;
 use rusqlite::params;
@@ -43,7 +45,7 @@ pub trait DataBaseModel {
     fn create_table(conn: &Connection) -> Result<(), TauriError>;
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct SyncChanges {
     pub joined_rooms: Vec<OwnedRoomId>,
     pub new_messages: Vec<MessageRow>,
@@ -207,4 +209,58 @@ pub async fn apply_sync_changes(
     tx.commit()?;
 
     Ok(())
+}
+
+pub fn fetch_sidebar(
+    conn: &Connection,
+) -> Result<
+    (
+        HashMap<String, FlatRoom>,
+        HashMap<String, Vec<String>>,
+        HashSet<String>,
+    ),
+    TauriError,
+> {
+    let mut stmt =
+        conn.prepare("SELECT room_id, name, topic, avatar_url, room_type, is_direct FROM rooms")?;
+
+    let mut all_rooms: HashMap<String, FlatRoom> = HashMap::new();
+
+    let room_iter = stmt.query_map([], |row| {
+        Ok(FlatRoom {
+            room_id: row.get(0)?,
+            name: row.get(1)?,
+            topic: row.get(2)?,
+            avatar_url: row.get(3)?,
+            room_type: row.get(4)?,
+            is_direct: row.get(5)?,
+        })
+    })?;
+
+    for room in room_iter {
+        let room = room?;
+        all_rooms.insert(room.room_id.clone(), room);
+    }
+
+    let mut stmt_links = conn
+        .prepare("SELECT parent_room_id, child_room_id FROM space_children ORDER BY order_str")?;
+
+    let mut parent_to_children: HashMap<String, Vec<String>> = HashMap::new();
+    let mut all_children: HashSet<String> = HashSet::new();
+
+    let link_iter = stmt_links.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+
+    for link in link_iter {
+        if let Ok((parent_id, child_id)) = link {
+            parent_to_children
+                .entry(parent_id)
+                .or_default()
+                .push(child_id.clone());
+            all_children.insert(child_id);
+        }
+    }
+
+    Ok((all_rooms, parent_to_children, all_children))
 }

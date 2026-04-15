@@ -4,7 +4,7 @@ use super::DataBaseModel;
 use ruma::events::room::member::MembershipState as RumaMembershipState;
 use rusqlite::ToSql;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum MembershipState {
     Join,
     Invite,
@@ -13,7 +13,7 @@ pub enum MembershipState {
     Unknown,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MemberRow {
     pub room_id: String,
     pub user_id: String,

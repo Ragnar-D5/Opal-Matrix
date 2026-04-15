@@ -1,7 +1,6 @@
 use super::DataBaseModel;
-use rusqlite::ToSql;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MessageRow {
     pub event_id: String,
     pub room_id: String,

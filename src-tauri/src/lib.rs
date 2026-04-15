@@ -12,6 +12,7 @@ use tokio_util::sync::CancellationToken;
 
 use matrix_sdk_crypto::OlmMachine;
 
+mod frontend;
 mod matrix_api;
 mod storage;
 

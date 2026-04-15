@@ -4,7 +4,7 @@ use super::DataBaseModel;
 pub use ruma::events::room::guest_access::GuestAccess;
 pub use ruma::events::room::history_visibility::HistoryVisibility;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum JoinRule {
     Public,
     Invite,
@@ -44,7 +44,7 @@ impl Display for JoinRule {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RoomRow {
     pub room_id: String,
     pub name: Option<String>,
@@ -88,7 +88,7 @@ impl DataBaseModel for RoomRow {
     }
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct RoomUpdate {
     pub name: Option<String>,
     pub topic: Option<String>,
@@ -101,7 +101,7 @@ pub struct RoomUpdate {
     pub room_type: Option<String>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SpaceChildRow {
     pub parent_room_id: String,
     pub child_room_id: String,
@@ -124,7 +124,7 @@ impl DataBaseModel for SpaceChildRow {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SpaceParentRow {
     pub child_room_id: String,
     pub parent_room_id: String,
