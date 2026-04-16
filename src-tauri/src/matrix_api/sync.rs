@@ -1,7 +1,8 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fmt::format;
 
 use log::{debug, trace, warn};
+use ruma::events::call::member::{CallMemberEventContent, MembershipData};
 use ruma::serde::Raw;
 use serde_json::value::RawValue;
 use tauri::{AppHandle, Emitter};
@@ -188,6 +189,11 @@ async fn handle_sync_response(
 ) -> Result<(), TauriError> {
     let mut changes = SyncChanges::default();
 
+    let mut call_members_by_room = {
+        let guard = state.call_members_by_room.lock().await;
+        guard.clone()
+    };
+
     for raw_event in response.account_data.events {
         extract_account_data(&mut changes, raw_event)?;
     }
@@ -200,6 +206,8 @@ async fn handle_sync_response(
             SyncState::Before(v) => v.events,
             _ => vec![],
         };
+
+        let call_members = call_members_by_room.entry(room_id.to_string()).or_default();
 
         for state_event in room_state_events {
             let data = match state_event.deserialize() {
@@ -214,7 +222,8 @@ async fn handle_sync_response(
                     continue;
                 }
             };
-            extract_state(&mut changes, &room_id, data, state_event.clone())?;
+            extract_state(&mut changes, &room_id, data.clone(), state_event.clone())?;
+            extract_special_state(&mut changes, &room_id, data, call_members)?;
         }
 
         for raw_event in room.timeline.events {
@@ -356,9 +365,53 @@ fn extract_state(
                 is_deleted: is_deleted,
             });
         }
+        // Handled in special state
+        AnyStateEventContent::CallMember(ev) => (),
         _ => {
             trace!("Unhandled state event in room {}: {:?}", room_id, ev);
         }
+    }
+
+    Ok(())
+}
+
+fn extract_special_state(
+    changes: &mut SyncChanges,
+    room_id: &OwnedRoomId,
+    ev: AnySyncStateEvent,
+    call_members: &mut HashSet<String>,
+) -> Result<(), TauriError> {
+    let Some(or) = ev.original_content() else {
+        return Ok(());
+    };
+
+    let before = call_members.len();
+    let state_key = ev.state_key().to_string();
+
+    if state_key.is_empty() {
+        return Ok(());
+    }
+
+    match or {
+        AnyStateEventContent::CallMember(ev) => {
+            match ev {
+                CallMemberEventContent::Empty(_) => call_members.remove(&state_key),
+                CallMemberEventContent::LegacyContent(_) => call_members.insert(state_key),
+                CallMemberEventContent::SessionContent(_) => call_members.insert(state_key),
+                _ => false,
+            };
+
+            let after = call_members.len();
+
+            if before == 0 && after > 0 {
+                debug!("Call started in room {}", room_id);
+            } else if before > 0 && after == 0 {
+                debug!("Call ended in room {}", room_id);
+            };
+
+            trace!("Call member event in room {}: {:?}", room_id, ev);
+        }
+        _ => (),
     }
 
     Ok(())

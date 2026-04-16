@@ -1,4 +1,5 @@
 use log::debug;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -103,6 +104,8 @@ struct AppState {
     sync_cancel_token: Mutex<Option<CancellationToken>>,
 
     connection: Mutex<Option<rusqlite::Connection>>,
+
+    call_members_by_room: Mutex<HashMap<String, HashSet<String>>>,
 }
 
 impl AppState {
