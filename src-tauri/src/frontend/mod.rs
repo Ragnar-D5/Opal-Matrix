@@ -1,6 +1,13 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::frontend::rooms::{FlatRoom, RoomNode, SidebarState};
+use log::debug;
+use rusqlite::Connection;
+use tauri::{AppHandle, Emitter};
+
+use crate::{
+    frontend::rooms::{FlatRoom, RoomNode, SidebarState},
+    storage, TauriError,
+};
 
 pub(crate) mod rooms;
 
@@ -89,4 +96,13 @@ fn build_node(
             avatar_url: room.avatar_url.clone(),
         })
     }
+}
+
+pub fn send_sidebar_update(conn: &Connection, handle: &AppHandle) -> Result<(), TauriError> {
+    let (all_rooms, parent_to_children, all_children) = storage::fetch_sidebar(conn)?;
+    let tree = build_tree(all_rooms, parent_to_children, all_children);
+
+    handle.emit("sidebar_update", tree)?;
+
+    Ok(())
 }

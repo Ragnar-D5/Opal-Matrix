@@ -1,7 +1,10 @@
+use leptos::leptos_dom::logging::console_error;
 use leptos::task::spawn_local;
 use leptos::{ev::SubmitEvent, prelude::*};
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
+
+use crate::tauri::sidebar::Sidebar;
 
 #[wasm_bindgen]
 extern "C" {
@@ -30,7 +33,7 @@ async fn call_tauri(cmd: &str, args: JsValue) -> Result<JsValue, JsValue> {
     wasm_bindgen_futures::JsFuture::from(invoke(cmd, args)).await
 }
 
-async fn call_tauri_no_args(cmd: &str) -> Result<JsValue, JsValue> {
+pub async fn call_tauri_no_args(cmd: &str) -> Result<JsValue, JsValue> {
     wasm_bindgen_futures::JsFuture::from(invoke(cmd, JsValue::NULL)).await
 }
 
@@ -179,6 +182,8 @@ fn LoginPage(
 fn HomePage(user_id: String) -> impl IntoView {
     let (recovery_key, set_recovery_key) = signal(String::new());
 
+    let (active_room_id, set_active_room_id) = signal(None::<String>);
+
     let send_recovery_key = move |ev: SubmitEvent| {
         ev.prevent_default();
 
@@ -205,6 +210,8 @@ fn HomePage(user_id: String) -> impl IntoView {
                 <input placeholder="Recovery Key" on:input=move |ev| set_recovery_key.set(event_target_value(&ev)) />
                 <button type="submit">"Set Recovery Key"</button>
             </form>
+
+            <Sidebar set_active_room_id=set_active_room_id />
         </div>
     }
 }

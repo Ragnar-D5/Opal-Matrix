@@ -1,9 +1,6 @@
-use rusqlite::Connection;
 use serde::Serialize;
 
-use crate::TauriError;
-
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub enum RoomNode {
     Space {
         room_id: String,
@@ -21,7 +18,7 @@ pub enum RoomNode {
     },
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub struct SidebarState {
     pub dms: Vec<RoomNode>,
     pub servers: Vec<RoomNode>,

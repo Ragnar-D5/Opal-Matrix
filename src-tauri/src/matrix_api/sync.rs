@@ -1,11 +1,12 @@
 use std::collections::HashSet;
 use std::fmt::format;
 
-use log::{trace, warn};
+use log::{debug, trace, warn};
 use ruma::serde::Raw;
 use serde_json::value::RawValue;
+use tauri::{AppHandle, Emitter};
 
-use crate::frontend::build_tree;
+use crate::frontend::{build_tree, send_sidebar_update};
 use crate::storage::members::MemberRow;
 use crate::storage::messages::MessageRow;
 use crate::storage::rooms::{SpaceChildRow, SpaceParentRow};
@@ -71,6 +72,7 @@ async fn matrix_sync(
 impl AppState {
     pub(crate) async fn start_sync(
         self: &std::sync::Arc<Self>,
+        app_handle: &AppHandle,
         resync: bool,
     ) -> Result<(), TauriError> {
         let mut task_guard = self.sync_task.lock().await;
@@ -85,8 +87,9 @@ impl AppState {
         }
 
         let state = self.clone();
+        let app_handle = app_handle.clone();
         let handle = tauri::async_runtime::spawn(async move {
-            if let Err(e) = run_sync_loop(state, resync).await {
+            if let Err(e) = run_sync_loop(state, app_handle, resync).await {
                 log::error!("Sync loop error: {:?}", e);
             }
         });
@@ -107,13 +110,20 @@ impl AppState {
         Ok(())
     }
 
-    pub(crate) async fn restart_sync(self: &std::sync::Arc<Self>) -> Result<(), TauriError> {
+    pub(crate) async fn restart_sync(
+        self: &std::sync::Arc<Self>,
+        handle: &AppHandle,
+    ) -> Result<(), TauriError> {
         self.stop_sync().await?;
-        self.start_sync(true).await
+        self.start_sync(handle, true).await
     }
 }
 
-async fn run_sync_loop(state: std::sync::Arc<AppState>, resync: bool) -> Result<(), TauriError> {
+async fn run_sync_loop(
+    state: std::sync::Arc<AppState>,
+    handle: AppHandle,
+    resync: bool,
+) -> Result<(), TauriError> {
     let mut since = if resync {
         None
     } else {
@@ -156,7 +166,7 @@ async fn run_sync_loop(state: std::sync::Arc<AppState>, resync: bool) -> Result<
         let res = crypto::process_sync_response(&olm_machine, sync_res, &access_token, &matrix_url)
             .await?;
 
-        handle_sync_response(&state, res.clone()).await?;
+        handle_sync_response(&state, &handle, res.clone()).await?;
 
         state.save_session().await?;
     }
@@ -173,6 +183,7 @@ use ruma::events::{
 };
 async fn handle_sync_response(
     state: &std::sync::Arc<AppState>,
+    handle: &AppHandle,
     response: SyncResponse,
 ) -> Result<(), TauriError> {
     let mut changes = SyncChanges::default();
@@ -224,10 +235,7 @@ async fn handle_sync_response(
         storage::apply_sync_changes(conn, changes.clone()).await?;
 
         if sidebar_needs_update {
-            let (all_rooms, parent_to_children, all_children) = storage::fetch_sidebar(&conn)?;
-            let tree = build_tree(all_rooms, parent_to_children, all_children);
-
-            println!("Emitting sidebar update with tree: {:?}", tree);
+            send_sidebar_update(conn, handle)?;
         }
     }
 

@@ -1,3 +1,4 @@
+use log::debug;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -6,7 +7,7 @@ use colored::Colorize;
 use log::info;
 use serde::Serialize;
 use tauri::async_runtime::{JoinHandle, Mutex, RwLock};
-use tauri::Url;
+use tauri::{AppHandle, Url};
 use tauri::{Manager, State};
 use tokio_util::sync::CancellationToken;
 
@@ -18,11 +19,12 @@ mod storage;
 
 use matrix_api::authentication;
 use matrix_api::crypto;
-use matrix_api::sync;
 
 pub const APP_NAME: &str = "Maru";
 
 use percent_encoding::{utf8_percent_encode, AsciiSet, CONTROLS};
+
+use crate::frontend::send_sidebar_update;
 
 const MATRIX_ID_SET: &AsciiSet = &CONTROLS.add(b'!').add(b':');
 
@@ -230,7 +232,7 @@ impl AppState {
         Ok(token.access_token.clone())
     }
 
-    async fn init_stuff(self: &Arc<Self>) -> Result<(), TauriError> {
+    async fn init_stuff(self: &Arc<Self>, handle: &AppHandle) -> Result<(), TauriError> {
         let client_info = {
             let client_guard = self.client.read().await;
             client_guard.as_ref().ok_or("Not logged in")?.clone()
@@ -261,7 +263,7 @@ impl AppState {
             *conn_guard = Some(conn);
         }
 
-        self.start_sync(!already_loaded).await?;
+        self.start_sync(handle, !already_loaded).await?;
 
         Ok(())
     }
@@ -335,7 +337,10 @@ struct LoginResponse {
 }
 
 #[tauri::command]
-async fn try_restore(state: State<'_, Arc<AppState>>) -> Result<Option<LoginResponse>, TauriError> {
+async fn try_restore(
+    state: State<'_, Arc<AppState>>,
+    handle: AppHandle,
+) -> Result<Option<LoginResponse>, TauriError> {
     let success = state.login_or_restore_session().await?;
 
     if success {
@@ -343,7 +348,7 @@ async fn try_restore(state: State<'_, Arc<AppState>>) -> Result<Option<LoginResp
 
         let client_info = client_guard.as_ref().ok_or("Not logged in")?.clone();
 
-        state.init_stuff().await?;
+        state.init_stuff(&handle).await?;
 
         Ok(Some(LoginResponse {
             user_id: client_info.user_id,
@@ -359,6 +364,7 @@ async fn login(
     username: String,
     password: String,
     state: State<'_, Arc<AppState>>,
+    handle: AppHandle,
 ) -> Result<LoginResponse, TauriError> {
     info!("Logging in new");
     let (client_info, token) =
@@ -376,7 +382,7 @@ async fn login(
 
     state.save_session().await?;
 
-    state.init_stuff().await?;
+    state.init_stuff(&handle).await?;
 
     Ok(LoginResponse {
         user_id: client_info.user_id,
@@ -386,13 +392,29 @@ async fn login(
 #[tauri::command(rename_all = "snake_case")]
 async fn set_recovery_key(
     state: State<'_, Arc<AppState>>,
+    handle: AppHandle,
     recovery_key: String,
 ) -> Result<(), TauriError> {
     info!("Setting recovery key");
 
     state.set_recovery_key(recovery_key).await?;
 
-    state.restart_sync().await?;
+    state.restart_sync(&handle).await?;
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn send_frontend(
+    state: State<'_, Arc<AppState>>,
+    handle: AppHandle,
+) -> Result<(), TauriError> {
+    let conn_guard = state.connection.lock().await;
+    let conn = conn_guard.as_ref().ok_or("Database not initialized")?;
+
+    debug!("Sending frontend update");
+
+    send_sidebar_update(conn, &handle)?;
 
     Ok(())
 }
@@ -453,7 +475,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             login,
             try_restore,
-            set_recovery_key
+            set_recovery_key,
+            send_frontend,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
