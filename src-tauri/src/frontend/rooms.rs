@@ -15,6 +15,8 @@ pub enum RoomNode {
         name: Option<String>,
         topic: Option<String>,
         avatar_url: Option<String>,
+
+        last_ts: Option<i64>,
     },
 }
 
@@ -32,4 +34,5 @@ pub struct FlatRoom {
     pub avatar_url: Option<String>,
     pub room_type: Option<String>,
     pub is_direct: bool,
+    pub last_ts: Option<i64>,
 }

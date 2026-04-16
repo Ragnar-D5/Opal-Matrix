@@ -255,8 +255,11 @@ async fn handle_sync_response(
 
         storage::apply_sync_changes(conn, changes.clone()).await?;
 
+        let client_guard = state.client.read().await;
+        let client = client_guard.as_ref().ok_or("Client info not initialized")?;
+
         if sidebar_needs_update {
-            send_sidebar_update(conn, handle)?;
+            send_sidebar_update(conn, handle, &client.user_id)?;
         }
     }
 

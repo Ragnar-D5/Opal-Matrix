@@ -412,12 +412,13 @@ async fn send_frontend(
     state: State<'_, Arc<AppState>>,
     handle: AppHandle,
 ) -> Result<(), TauriError> {
+    let client_guard = state.client.read().await;
+    let client_info = client_guard.as_ref().ok_or("Not logged in")?;
+
     let conn_guard = state.connection.lock().await;
     let conn = conn_guard.as_ref().ok_or("Database not initialized")?;
 
-    debug!("Sending frontend update");
-
-    send_sidebar_update(conn, &handle)?;
+    send_sidebar_update(conn, &handle, &client_info.user_id.clone())?;
 
     Ok(())
 }

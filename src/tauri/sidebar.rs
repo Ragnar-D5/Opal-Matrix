@@ -22,6 +22,8 @@ pub enum RoomNode {
         name: Option<String>,
         topic: Option<String>,
         avatar_url: Option<String>,
+
+        last_ts: Option<i64>,
     },
 }
 
@@ -38,6 +40,13 @@ impl RoomNode {
             RoomNode::Space { name, .. } | RoomNode::Channel { name, .. } => {
                 name.clone().unwrap_or_else(|| "Unnamed".to_string())
             }
+        }
+    }
+
+    pub fn last_ts(&self) -> Option<i64> {
+        match self {
+            RoomNode::Space { .. } => None,
+            RoomNode::Channel { last_ts, .. } => *last_ts,
         }
     }
 }
@@ -63,8 +72,13 @@ pub fn Sidebar(
     let live_update_event: ReadSignal<Option<SidebarState>> = use_tauri_event("sidebar_update");
 
     Effect::new(move |_| {
-        if let Some(new_state) = live_update_event.get() {
+        if let Some(mut new_state) = live_update_event.get() {
             console_log(&format!("{:?}", new_state));
+
+            new_state
+                .dms
+                .sort_by(|a, b| b.last_ts().unwrap_or(0).cmp(&a.last_ts().unwrap_or(0)));
+
             set_sidebar_state.set(new_state);
         }
     });

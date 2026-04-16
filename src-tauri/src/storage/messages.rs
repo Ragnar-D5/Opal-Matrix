@@ -27,6 +27,7 @@ impl DataBaseModel for MessageRow {
 
                 CREATE INDEX IF NOT EXISTS idx_messages_room_id ON messages(room_id);
                 CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp);
+                CREATE INDEX IF NOT EXISTS idx_messages_room_timestamp ON messages(room_id, timestamp);
             ",
         )?;
         Ok(())

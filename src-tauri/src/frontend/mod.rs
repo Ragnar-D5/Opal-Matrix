@@ -27,6 +27,8 @@ pub fn build_tree(
                 name: room.name.clone(),
                 topic: room.topic.clone(),
                 avatar_url: room.avatar_url.clone(),
+
+                last_ts: room.last_ts,
             });
             false
         } else {
@@ -52,6 +54,8 @@ pub fn build_tree(
                 name: room.name.clone(),
                 topic: room.topic.clone(),
                 avatar_url: room.avatar_url.clone(),
+
+                last_ts: room.last_ts,
             });
         }
     }
@@ -94,12 +98,18 @@ fn build_node(
             name: room.name.clone(),
             topic: room.topic.clone(),
             avatar_url: room.avatar_url.clone(),
+
+            last_ts: room.last_ts,
         })
     }
 }
 
-pub fn send_sidebar_update(conn: &Connection, handle: &AppHandle) -> Result<(), TauriError> {
-    let (all_rooms, parent_to_children, all_children) = storage::fetch_sidebar(conn)?;
+pub fn send_sidebar_update(
+    conn: &Connection,
+    handle: &AppHandle,
+    own_user_id: &String,
+) -> Result<(), TauriError> {
+    let (all_rooms, parent_to_children, all_children) = storage::fetch_sidebar(conn, own_user_id)?;
     let tree = build_tree(all_rooms, parent_to_children, all_children);
 
     handle.emit("sidebar_update", tree)?;

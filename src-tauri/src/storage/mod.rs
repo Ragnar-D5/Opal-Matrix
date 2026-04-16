@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 
 use crate::frontend::rooms::FlatRoom;
-use crate::frontend::rooms::SidebarState;
 use crate::TauriError;
 use ruma::OwnedRoomId;
 use rusqlite::params;
@@ -213,6 +212,7 @@ pub async fn apply_sync_changes(
 
 pub fn fetch_sidebar(
     conn: &Connection,
+    own_user_id: &String,
 ) -> Result<
     (
         HashMap<String, FlatRoom>,
@@ -221,12 +221,44 @@ pub fn fetch_sidebar(
     ),
     TauriError,
 > {
-    let mut stmt =
-        conn.prepare("SELECT room_id, name, topic, avatar_url, room_type, is_direct FROM rooms")?;
+    let mut stmt = conn.prepare(
+        "SELECT
+            r.room_id,
+            COALESCE(
+                r.name,
+                CASE
+                    WHEN r.is_direct = 1 THEN (
+                        SELECT COALESCE(m.display_name, m.user_id)
+                        FROM members m
+                        WHERE m.room_id = r.room_id
+                          AND m.user_id != ?
+                          AND m.membership IN ('join', 'invite')
+                        ORDER BY
+                            CASE WHEN m.membership = 'join' THEN 0 ELSE 1 END,
+                            m.display_name IS NULL,
+                            m.user_id
+                        LIMIT 1
+                    )
+                    ELSE NULL
+                END
+            ) AS name,
+            r.topic,
+            r.avatar_url,
+            r.room_type,
+            r.is_direct,
+            (
+                SELECT msg.timestamp
+                FROM messages msg
+                WHERE msg.room_id = r.room_id
+                ORDER BY msg.timestamp DESC
+                LIMIT 1
+            ) AS last_ts
+        FROM rooms r",
+    )?;
 
     let mut all_rooms: HashMap<String, FlatRoom> = HashMap::new();
 
-    let room_iter = stmt.query_map([], |row| {
+    let room_iter = stmt.query_map([own_user_id], |row| {
         Ok(FlatRoom {
             room_id: row.get(0)?,
             name: row.get(1)?,
@@ -234,6 +266,7 @@ pub fn fetch_sidebar(
             avatar_url: row.get(3)?,
             room_type: row.get(4)?,
             is_direct: row.get(5)?,
+            last_ts: row.get(6)?,
         })
     })?;
 
