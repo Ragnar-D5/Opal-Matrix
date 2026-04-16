@@ -202,7 +202,18 @@ async fn handle_sync_response(
         };
 
         for state_event in room_state_events {
-            let data = state_event.deserialize()?;
+            let data = match state_event.deserialize() {
+                Ok(data) => data,
+                Err(e) => {
+                    warn!(
+                        "Skipping malformed state event in room {}: {} | raw={}",
+                        room_id,
+                        e,
+                        state_event.json().get()
+                    );
+                    continue;
+                }
+            };
             extract_state(&mut changes, &room_id, data, state_event.clone())?;
         }
 
