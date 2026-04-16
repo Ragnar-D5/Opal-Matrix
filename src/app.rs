@@ -183,6 +183,7 @@ fn HomePage(user_id: String) -> impl IntoView {
     let (recovery_key, set_recovery_key) = signal(String::new());
 
     let (active_room_id, set_active_room_id) = signal(None::<String>);
+    let (active_server_id, set_active_server_id) = signal(None::<String>);
 
     let send_recovery_key = move |ev: SubmitEvent| {
         ev.prevent_default();
@@ -202,16 +203,19 @@ fn HomePage(user_id: String) -> impl IntoView {
     };
 
     view! {
-        <div class="dashboard">
-            <h2>"Login Successful!"</h2>
-            <p>"Welcome, " <strong>{user_id}</strong></p>
+        <div class="dashboard" style="background-color: #1e1e2e">
+            // <h2>"Login Successful!"</h2>
+            // <p>"Welcome, " <strong>{user_id}</strong></p>
 
-            <form on:submit=send_recovery_key>
-                <input placeholder="Recovery Key" on:input=move |ev| set_recovery_key.set(event_target_value(&ev)) />
-                <button type="submit">"Set Recovery Key"</button>
-            </form>
+            // <form on:submit=send_recovery_key>
+            //     <input placeholder="Recovery Key" on:input=move |ev| set_recovery_key.set(event_target_value(&ev)) />
+            //     <button type="submit">"Set Recovery Key"</button>
+            // </form>
 
-            <Sidebar set_active_room_id=set_active_room_id />
+            <Sidebar active_room_id=active_room_id
+                     set_active_room_id=set_active_room_id
+                     active_server_id=active_server_id
+                     set_active_server_id=set_active_server_id />
         </div>
     }
 }
