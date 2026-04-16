@@ -4,6 +4,7 @@ use std::fmt::format;
 use log::{debug, trace, warn};
 use ruma::events::call::member::{CallMemberEventContent, MembershipData};
 use ruma::serde::Raw;
+use serde_json::json;
 use serde_json::value::RawValue;
 use tauri::{AppHandle, Emitter};
 
@@ -388,28 +389,80 @@ fn extract_special_state(
     let before = call_members.len();
     let state_key = ev.state_key().to_string();
 
-    if state_key.is_empty() {
+    let sender = ev.sender().to_string();
+
+    if state_key.is_empty() || sender.is_empty() {
         return Ok(());
     }
 
+    let event_id = ev.event_id().to_string();
+
+    let origin_server_ts = ev.origin_server_ts().as_secs();
+
     match or {
         AnyStateEventContent::CallMember(ev) => {
-            match ev {
-                CallMemberEventContent::Empty(_) => call_members.remove(&state_key),
-                CallMemberEventContent::LegacyContent(_) => call_members.insert(state_key),
-                CallMemberEventContent::SessionContent(_) => call_members.insert(state_key),
-                _ => false,
+            let action = match ev {
+                CallMemberEventContent::Empty(_) => {
+                    let removed = call_members.remove(&sender);
+                    if removed {
+                        "remove"
+                    } else {
+                        "remove(noop)"
+                    }
+                }
+                CallMemberEventContent::LegacyContent(_) => {
+                    let inserted = call_members.insert(sender.clone());
+                    if inserted {
+                        "insert(legacy)"
+                    } else {
+                        "insert(legacy,no-op)"
+                    }
+                }
+                CallMemberEventContent::SessionContent(_) => {
+                    let inserted = call_members.insert(sender.clone());
+                    if inserted {
+                        "insert(session)"
+                    } else {
+                        "insert(session,no-op)"
+                    }
+                }
+                _ => "ignored",
             };
 
             let after = call_members.len();
 
-            if before == 0 && after > 0 {
-                debug!("Call started in room {}", room_id);
-            } else if before > 0 && after == 0 {
-                debug!("Call ended in room {}", room_id);
-            };
+            debug!(
+                "Call member event room={} sender={} action={} before={} after={}",
+                room_id, sender, action, before, after
+            );
 
-            trace!("Call member event in room {}: {:?}", room_id, ev);
+            if before == 0 && after > 0 {
+                changes.new_messages.push(MessageRow {
+                    event_id: event_id,
+                    room_id: room_id.to_string(),
+                    sender: sender.clone(),
+                    body: Some(format!("{} started a call", sender)),
+                    raw_json: json!({
+                       "body": format!("{} started a call", sender),
+                    })
+                    .to_string(),
+                    msg_type: "m.call.member".to_string(),
+                    timestamp: origin_server_ts.into(),
+                });
+            } else if before > 0 && after == 0 {
+                changes.new_messages.push(MessageRow {
+                    event_id: event_id,
+                    room_id: room_id.to_string(),
+                    sender: sender.clone(),
+                    body: Some(format!("{} ended the call", sender)),
+                    raw_json: json!({
+                       "body": format!("{} ended the call", sender),
+                    })
+                    .to_string(),
+                    msg_type: "m.call.member".to_string(),
+                    timestamp: origin_server_ts.into(),
+                });
+            }
         }
         _ => (),
     }
