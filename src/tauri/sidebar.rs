@@ -49,6 +49,14 @@ impl RoomNode {
             RoomNode::Channel { last_ts, .. } => *last_ts,
         }
     }
+
+    pub fn avatar_url(&self) -> Option<String> {
+        match self {
+            RoomNode::Space { avatar_url, .. } | RoomNode::Channel { avatar_url, .. } => {
+                avatar_url.clone()
+            }
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Clone, Default)]
@@ -56,6 +64,27 @@ pub struct SidebarState {
     pub dms: Vec<RoomNode>,
     pub servers: Vec<RoomNode>,
     pub orphaned_rooms: Vec<RoomNode>,
+}
+
+#[component]
+fn DmDiv(avatar_url: Option<String>, name: String) -> impl IntoView {
+    let initial = name.chars().next().unwrap_or('?').to_string();
+
+    view! {
+        <div class="flex flex-row items-center">
+            <div class="avatar-circle">
+                {match avatar_url {
+                    Some(url) => view! {
+                        <img class="avatar-img" src=url alt=name.clone() />
+                    }.into_any(),
+                    None => view! {
+                        <span>{initial}</span>
+                    }.into_any(),
+                }}
+            </div>
+            <span class="inline-block align-center">{name}</span>
+        </div>
+    }
 }
 
 #[component]
@@ -93,13 +122,11 @@ pub fn Sidebar(
     let style = style! {
         display: flex;
         height: 100vh;
-        font-family: sans-serif;
-        font-color: #000;
 
         /* Far-left Server Column */
         .servers {
-            width: 60px;
-            border-right: 1px solid #ccc;
+            width: 90px;
+            border-right: 1px solid var(--border-color);
             padding-top: 10px;
         }
 
@@ -121,7 +148,7 @@ pub fn Sidebar(
         /* Inner Channel Column */
         .channels {
             width: 200px;
-            border-right: 1px solid #ccc;
+            border-right: 1px solid var(--border-color);
             display: flex;
             flex-direction: column;
         }
@@ -129,7 +156,7 @@ pub fn Sidebar(
         .header {
             padding: 15px 10px;
             font-weight: bold;
-            border-bottom: 1px solid #ddd;
+            border-bottom: 1px solid var(--border-color);
         }
 
         .list {
@@ -196,10 +223,9 @@ pub fn Sidebar(
                                     key=|dm| dm.id().to_string()
                                     children=move |dm| {
                                         let click_id = dm.id().to_string();
+
                                         view! {
-                                            <div class="item" on:click=move |_| set_active_room_id.set(Some(click_id.clone()))>
-                                                {dm.display_name()}
-                                            </div>
+                                            <DmDiv avatar_url=dm.avatar_url() name=dm.display_name() on:click=move |_| set_active_room_id.set(Some(click_id.clone())) />
                                         }
                                     }
                                 />

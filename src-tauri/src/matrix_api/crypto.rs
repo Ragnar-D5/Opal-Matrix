@@ -1,7 +1,6 @@
 use log::debug;
 use log::warn;
 use ruma::api::client::backup::EncryptedSessionData;
-use ruma::events::AnySyncTimelineEvent;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -41,6 +40,7 @@ pub struct StoredSession {
 
     pub access_token: String,
     pub refresh_token: Option<String>,
+    pub expires_at: Option<u64>,
 
     pub next_batch: Option<String>,
 
@@ -117,7 +117,6 @@ pub async fn init_crypto_machine(
     let store = SqliteCryptoStore::open(path.clone(), Some(&db_passphrase)).await?;
 
     let machine = OlmMachine::with_store(&ruma_user, &ruma_device, store, None).await?;
-    info!("Initialized OlmMachine at path {}", path.to_string_lossy());
 
     return Ok(machine);
 }
@@ -157,7 +156,6 @@ pub struct RoomData {
 }
 
 use matrix_sdk_crypto::types::events::room::encrypted::EncryptedEvent;
-use ruma::api::client::sync::sync_events::v3::State;
 use ruma::serde::Raw;
 
 #[derive(Serialize, Debug)]
@@ -371,8 +369,6 @@ async fn handle_outgoing_requests(
             }
         };
     }
-
-    debug!("All outgoing requests processed");
 
     Ok(())
 }

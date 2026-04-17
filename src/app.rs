@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
 use crate::tauri::sidebar::Sidebar;
+use crate::theming::ThemeProvider;
 
 #[wasm_bindgen]
 extern "C" {
@@ -69,26 +70,24 @@ pub fn App() -> impl IntoView {
     });
 
     view! {
-        <main class="container">
-            {move || match app_state.get() {
-                CurrentWindow::LoginPage => view! {
-                    <LoginPage
-                        set_app_state=set_app_state
-                        set_login_name=set_login_name
-                    />
-                }.into_any(),
+        {move || match app_state.get() {
+            CurrentWindow::LoginPage => view! {
+                <LoginPage
+                    set_app_state=set_app_state
+                    set_login_name=set_login_name
+                />
+            }.into_any(),
 
-                CurrentWindow::HomePage => view! {
-                    <HomePage user_id=login_name.get() />
-                }.into_any(),
+            CurrentWindow::HomePage => view! {
+                <HomePage user_id=login_name.get() />
+            }.into_any(),
 
-                CurrentWindow::LoadingPage => view! {
-                    <div class="loading">
-                        <p>"Loading..."</p>
-                    </div>
-                }.into_any(),
-            }}
-        </main>
+            CurrentWindow::LoadingPage => view! {
+                <div class="loading">
+                    <p>"Loading..."</p>
+                </div>
+            }.into_any(),
+        }}
     }
 }
 
@@ -203,19 +202,19 @@ fn HomePage(user_id: String) -> impl IntoView {
     };
 
     view! {
-        <div class="dashboard" style="background-color: #1e1e2e">
-            // <h2>"Login Successful!"</h2>
-            // <p>"Welcome, " <strong>{user_id}</strong></p>
+        <div class="bg flex h-screen">
+        // <h2>"Login Successful!"</h2>
+        // <p>"Welcome, " <strong>{user_id}</strong></p>
 
-            // <form on:submit=send_recovery_key>
-            //     <input placeholder="Recovery Key" on:input=move |ev| set_recovery_key.set(event_target_value(&ev)) />
-            //     <button type="submit">"Set Recovery Key"</button>
-            // </form>
+        // <form on:submit=send_recovery_key>
+        //     <input placeholder="Recovery Key" on:input=move |ev| set_recovery_key.set(event_target_value(&ev)) />
+        //     <button type="submit">"Set Recovery Key"</button>
+        // </form>
 
             <Sidebar active_room_id=active_room_id
-                     set_active_room_id=set_active_room_id
-                     active_server_id=active_server_id
-                     set_active_server_id=set_active_server_id />
+                        set_active_room_id=set_active_room_id
+                        active_server_id=active_server_id
+                        set_active_server_id=set_active_server_id />
         </div>
     }
 }

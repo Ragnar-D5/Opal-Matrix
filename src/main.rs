@@ -1,6 +1,7 @@
 mod app;
 mod hooks;
 mod tauri;
+mod theming;
 
 use app::*;
 use leptos::prelude::*;

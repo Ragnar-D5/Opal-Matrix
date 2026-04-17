@@ -4,6 +4,16 @@ target = "./index.html"
 [watch]
 ignore = ["./src-tauri"]
 
+[[hooks]]
+stage = "pre_build"
+command = "tailwindcss"
+
+command_arguments = ["-i", "style/input.css", "-o", "style/output.css"]
+
+[[assets]]
+source = "./style/output.css"
+css = true
+
 [serve]
 port = 1420
 open = false

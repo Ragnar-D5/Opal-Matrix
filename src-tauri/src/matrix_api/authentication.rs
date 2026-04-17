@@ -1,6 +1,7 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::{construct_url, AppState, ClientInfo};
+use log::debug;
 use serde_json::Value;
 
 use crate::{RefreshToken, TauriError, Token};
@@ -163,7 +164,12 @@ pub async fn refresh_token(refresh_token: String, matrix_url: String) -> Result<
 
         return Ok(json_res.into());
     } else {
-        return Err(format!("Web request failed: {}", res.status()).into());
+        return Err(format!(
+            "Web request failed: {}, {}",
+            res.status(),
+            res.text().await.unwrap_or_else(|_| "Unknown error".into())
+        )
+        .into());
     }
 }
 

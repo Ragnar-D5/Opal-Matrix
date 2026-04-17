@@ -434,11 +434,6 @@ fn extract_special_state(
 
             let after = call_members.len();
 
-            debug!(
-                "Call member event room={} sender={} action={} before={} after={}",
-                room_id, sender, action, before, after
-            );
-
             if before == 0 && after > 0 {
                 changes.new_messages.push(MessageRow {
                     event_id: event_id,

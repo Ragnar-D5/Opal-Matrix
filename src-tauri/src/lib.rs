@@ -130,6 +130,7 @@ impl AppState {
             device_id: client_info.device_id.clone(),
             access_token: token.access_token.clone(),
             refresh_token: token.refresh_token.clone().map(|r| r.token),
+            expires_at: token.refresh_token.clone().map(|r| r.expires_at),
             next_batch: self.next_batch.read().await.clone(),
             recovery_key: self.recovery_key.read().await.clone(),
             homeserver_url: matrix_url.clone(),
@@ -177,7 +178,7 @@ impl AppState {
                 access_token: session.access_token,
                 refresh_token: session.refresh_token.map(|r| RefreshToken {
                     token: r,
-                    expires_at: 0,
+                    expires_at: session.expires_at.unwrap_or(0),
                 }),
             };
 
@@ -203,7 +204,7 @@ impl AppState {
                 *next_batch_guard = session.next_batch;
             }
 
-            return Ok(self.refresh_token().await.is_ok());
+            return Ok(self.check_token().await.is_ok());
         }
         Ok(false)
     }
@@ -482,6 +483,95 @@ pub fn run() {
             set_recovery_key,
             send_frontend,
         ])
+        .register_asynchronous_uri_scheme_protocol(
+            "mxc",
+            move |ctx, request: tauri::http::Request<Vec<u8>>, responder| {
+                let app_handle = ctx.app_handle().clone();
+                let uri = request.uri().to_string();
+
+                tauri::async_runtime::spawn(async move {
+                    let state = app_handle.state::<Arc<AppState>>().clone();
+
+                    match state.check_token().await {
+                        Ok(token) => {
+                            let media_path = uri.strip_prefix("mxc://").unwrap_or(&uri);
+
+                            let matrix_url = {
+                                let url_guard = state.matrix_url.read().await;
+                                url_guard
+                                    .as_ref()
+                                    .ok_or("Not logged in")
+                                    .unwrap_or(&"https://matrix-client.matrix.org".to_string())
+                                    .clone()
+                            };
+
+                            let url = match construct_url(vec![
+                                matrix_url.as_str(),
+                                "_matrix",
+                                "client",
+                                "v1",
+                                "media",
+                                "thumbnail",
+                                format!("{}?width=50&height=50&method=crop", media_path).as_str(),
+                            ]) {
+                                Ok(u) => u,
+                                Err(_) => {
+                                    tauri::http::Response::builder()
+                                        .status(400)
+                                        .body(Vec::<u8>::new())
+                                        .expect("Failed to send response");
+                                    return;
+                                }
+                            };
+
+                            let response = match reqwest::Client::new()
+                                .get(url)
+                                .bearer_auth(token)
+                                .send()
+                                .await
+                            {
+                                Ok(res) if res.status().is_success() => {
+                                    let bytes = res.bytes().await.unwrap_or_default().to_vec();
+                                    tauri::http::Response::builder()
+                                        .header("Access-Control-Allow-Origin", "*")
+                                        .body(bytes)
+                                        .unwrap()
+                                }
+                                Ok(res) => {
+                                    // PRINT THE REAL MATRIX ERROR CODE
+                                    log::error!(
+                                        "Matrix Server rejected media request: HTTP {}",
+                                        res.status()
+                                    );
+                                    tauri::http::Response::builder()
+                                        .status(res.status().as_u16()) // Pass the real status to the frontend
+                                        .body(Vec::<u8>::new())
+                                        .unwrap()
+                                }
+                                Err(e) => {
+                                    // PRINT THE RUST NETWORK ERROR
+                                    log::error!("Reqwest failed to connect: {}", e);
+                                    tauri::http::Response::builder()
+                                        .status(500)
+                                        .body(Vec::<u8>::new())
+                                        .unwrap()
+                                }
+                            };
+
+                            responder.respond(response);
+                        }
+                        Err(_) => {
+                            responder.respond(
+                                tauri::http::Response::builder()
+                                    .status(401)
+                                    .body(Vec::new())
+                                    .expect("Failed to create fail"),
+                            );
+                        }
+                    }
+                });
+            },
+        )
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 

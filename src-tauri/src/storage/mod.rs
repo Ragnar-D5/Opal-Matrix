@@ -243,7 +243,24 @@ pub fn fetch_sidebar(
                 END
             ) AS name,
             r.topic,
-            r.avatar_url,
+            COALESCE(
+                r.avatar_url,
+                CASE
+                    WHEN r.is_direct = 1 THEN (
+                        SELECT m.avatar_url
+                        FROM members m
+                        WHERE m.room_id = r.room_id
+                            AND m.user_id != ?
+                            AND m.membership IN ('join', 'invite')
+                        ORDER BY
+                            CASE WHEN m.membership = 'join' THEN 0 ELSE 1 END,
+                            m.avatar_url IS NULL,
+                            m.user_id
+                        LIMIT 1
+                    )
+                    ELSE NULL
+                END
+            ) AS avatar_url,
             r.room_type,
             r.is_direct,
             (
@@ -258,7 +275,7 @@ pub fn fetch_sidebar(
 
     let mut all_rooms: HashMap<String, FlatRoom> = HashMap::new();
 
-    let room_iter = stmt.query_map([own_user_id], |row| {
+    let room_iter = stmt.query_map([own_user_id, own_user_id], |row| {
         Ok(FlatRoom {
             room_id: row.get(0)?,
             name: row.get(1)?,
