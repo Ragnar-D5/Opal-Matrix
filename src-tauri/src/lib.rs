@@ -20,6 +20,7 @@ mod storage;
 
 use matrix_api::authentication;
 use matrix_api::crypto;
+use matrix_api::discovery::choose_home_server;
 
 pub const APP_NAME: &str = "Maru";
 
@@ -482,6 +483,7 @@ pub fn run() {
             try_restore,
             set_recovery_key,
             send_frontend,
+            choose_home_server,
         ])
         .register_asynchronous_uri_scheme_protocol(
             "mxc",
