@@ -71,18 +71,18 @@ pub fn App() -> impl IntoView {
     });
 
     view! {
-            {move || match app_state.get() {
-                CurrentWindow::HomeserverDiscoveryPage => view! {
-                    <HomeserverDiscoveryPage
-                        set_app_state=set_app_state
-                    />
-                CurrentWindow::LoginPage => view! {
-                }.into_any(),
-                    <LoginPage
-                        set_app_state=set_app_state
-                        set_login_name=set_login_name
-                    />
-                }.into_any(),
+        {move || match app_state.get() {
+            CurrentWindow::HomeserverDiscoveryPage => view! {
+                <HomeserverDiscoveryPage
+                    set_app_state=set_app_state
+                />
+            }.into_any(),
+            CurrentWindow::LoginPage => view! {
+                <LoginPage
+                    set_app_state=set_app_state
+                    set_login_name=set_login_name
+                />
+            }.into_any(),
 
             CurrentWindow::HomePage => view! {
                 <HomePage user_id=login_name.get() />
