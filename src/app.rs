@@ -39,6 +39,7 @@ pub async fn call_tauri_no_args(cmd: &str) -> Result<JsValue, JsValue> {
 
 #[derive(Clone)]
 enum CurrentWindow {
+    HomeserverDiscoveryPage,
     LoginPage,
     HomePage,
     LoadingPage,
@@ -61,7 +62,7 @@ pub fn App() -> impl IntoView {
                     set_login_name.set(response.user_id);
                     set_app_state.set(CurrentWindow::HomePage);
                 } else {
-                    set_app_state.set(CurrentWindow::LoginPage);
+                    set_app_state.set(CurrentWindow::HomeserverDiscoveryPage);
                 }
             }
             Err(_) => {}
@@ -71,6 +72,11 @@ pub fn App() -> impl IntoView {
     view! {
         <main class="container">
             {move || match app_state.get() {
+                CurrentWindow::HomeserverDiscoveryPage => view! {
+                    <HomeserverDiscoveryPage
+                        set_app_state=set_app_state
+                    />
+                }.into_any(),
                 CurrentWindow::LoginPage => view! {
                     <LoginPage
                         set_app_state=set_app_state
@@ -216,6 +222,73 @@ fn HomePage(user_id: String) -> impl IntoView {
                      set_active_room_id=set_active_room_id
                      active_server_id=active_server_id
                      set_active_server_id=set_active_server_id />
+        </div>
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+struct HomeServerArgs {
+    url: String,
+}
+
+#[component]
+pub fn HomeserverDiscoveryPage(set_app_state: WriteSignal<CurrentWindow>) -> impl IntoView {
+    let (text, set_text) = signal(String::new());
+    let (is_valid, set_is_valid) = signal(false);
+
+    let send_home_server = move || {
+        let current_value = text.get();
+
+        spawn_local(async move {
+            let args =
+                serde_wasm_bindgen::to_value(&HomeServerArgs { url: current_value }).unwrap();
+
+            match call_tauri("choose_home_server", args).await {
+                Ok(url) => {
+                    if url == *text.read() {
+                        set_is_valid.set(true);
+                    } else {
+                        set_is_valid.set(false);
+                    }
+                    //if a server can be found here
+                }
+                Err(e) => {
+                    let arr: js_sys::Array = e.into();
+                    if arr.get(0) == *text.read() {
+                        set_is_valid.set(false)
+                    }
+                    // if no server can be found here
+                }
+            }
+        });
+    };
+    view! {
+        <div style="display: flex; flex-direction: column; align-items: center; padding-top: 50px;">
+            <input
+                type="text"
+                placeholder="example.org"
+                on:input=move |ev| {
+                    set_text.set(event_target_value(&ev));
+                    send_home_server();
+                }
+                prop:value=text
+                style="padding: 10px; font-size: 1.2rem; border-radius: 8px;"
+            />
+
+            // The button only renders when is_valid is true
+            <Show
+                when=move || is_valid.get()
+                fallback=|| view! { <p style="color: gray;">"Checking server..."</p> }
+            >
+                <button
+                    on:click=move |_| {
+                        set_app_state.set(CurrentWindow::LoginPage);
+                    }
+                    style="margin-top: 20px; padding: 10px 20px; background-color: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer;"
+                >
+                    "Login Page"
+                </button>
+            </Show>
         </div>
     }
 }
