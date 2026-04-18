@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use leptos::leptos_dom::logging::console_error;
 use leptos::task::spawn_local;
@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 use web_sys::HtmlImageElement;
 
+use crate::hooks::use_tauri_event;
 use crate::tauri::chat::ChatMessage;
 use crate::tauri::{chat::Chat, sidebar::Sidebar};
 
@@ -49,6 +50,100 @@ pub enum CurrentWindow {
     LoadingPage,
 }
 
+#[derive(Deserialize, Clone, Debug)]
+pub struct UserProfile {
+    pub user_id: String,
+    pub display_name: Option<String>,
+    pub avatar_url: Option<String>,
+}
+
+#[derive(Default, Clone)]
+pub struct MemberStore {
+    pub rooms: RwSignal<HashMap<String, HashMap<String, ArcRwSignal<UserProfile>>>>,
+    pub fetching: RwSignal<HashSet<String>>,
+}
+
+#[derive(Serialize, Debug)]
+struct GetMembersArgs {
+    room_id: String,
+}
+
+impl MemberStore {
+    pub fn get_profile(&self, room_id: &String, user_id: &String) -> ArcRwSignal<UserProfile> {
+        let existing_signal = self.rooms.with_untracked(|rooms| {
+            rooms
+                .get(room_id)
+                .and_then(|users| users.get(user_id))
+                .cloned()
+        });
+
+        if let Some(sig) = existing_signal {
+            return sig;
+        }
+
+        let new_signal = ArcRwSignal::new(UserProfile {
+            user_id: user_id.clone(),
+            display_name: None,
+            avatar_url: None,
+        });
+
+        self.rooms.update(|rooms| {
+            rooms
+                .entry(room_id.clone())
+                .or_default()
+                .insert(user_id.clone(), new_signal.clone());
+        });
+
+        let is_fetching = self
+            .fetching
+            .with_untracked(|fetching| fetching.contains(room_id));
+
+        if !is_fetching {
+            self.fetching.update(|f| {
+                f.insert(room_id.clone());
+            });
+
+            let store = self.clone();
+            let rid = room_id.clone();
+
+            spawn_local(async move {
+                let args = serde_wasm_bindgen::to_value(&GetMembersArgs {
+                    room_id: rid.clone(),
+                })
+                .unwrap();
+
+                if let Ok(js_val) = call_tauri("get_members", args).await {
+                    let updates: HashMap<String, UserProfile> =
+                        serde_wasm_bindgen::from_value(js_val).unwrap();
+
+                    batch(move || {
+                        store.rooms.update(|rooms| {
+                            let room_entry = rooms.entry(rid.clone()).or_default();
+
+                            for (user_id, profile) in updates.into_iter() {
+                                let profile_signal = room_entry
+                                    .entry(user_id.clone())
+                                    .or_insert_with(|| ArcRwSignal::new(profile.clone()));
+
+                                profile_signal.set(profile);
+                            }
+                        });
+                        store.fetching.update(|f| {
+                            f.remove(&rid);
+                        });
+                    });
+                } else {
+                    store.fetching.update(|f| {
+                        f.remove(&rid);
+                    });
+                }
+            });
+        }
+
+        new_signal
+    }
+}
+
 #[derive(Clone, Debug, Copy)]
 pub struct AppState {
     pub current_window: RwSignal<CurrentWindow>,
@@ -73,6 +168,18 @@ impl AppState {
 pub fn App() -> impl IntoView {
     let state = AppState::new();
     provide_context(state);
+
+    let store = MemberStore::default();
+    provide_context(store);
+
+    let profile_update =
+        use_tauri_event::<HashMap<String, HashMap<String, UserProfile>>>("member_update");
+    Effect::new(move |_| {
+        if let Some(update) = profile_update.get() {
+            console_error(&format!("Profile update received: {:?}", update));
+            // Here you would update the MemberStore based on the received update
+        }
+    });
 
     // Invoke try_restore
     Effect::new(move |_| {
@@ -244,7 +351,6 @@ fn HomePage() -> impl IntoView {
     // Get messages on room_id change
     Effect::new(move |_| {
         if let Some(room_id) = state.active_room_id.get() {
-            console_error(&format!("Active room changed: {}", room_id));
             spawn_local(async move {
                 let args = serde_wasm_bindgen::to_value(&GetMessagesArgs {
                     room_id: room_id.clone(),
@@ -308,6 +414,7 @@ fn HomePage() -> impl IntoView {
     let text_color = "hsl(220, 25%, 60%)";
     let bright_text_color = "hsl(220, 25%, 70%)";
     let tile_border_color = "rgba(30, 30, 30, 1)";
+    let muted_text_color = "hsl(220, 15%, 25%)";
 
     let root_css_vars = move || {
         let base = format!(
@@ -320,6 +427,7 @@ fn HomePage() -> impl IntoView {
             --text-color: {text_color};
             --bright-text-color: {bright_text_color};
             --tile-border-color: {tile_border_color};
+            --muted-text-color: {muted_text_color};
             background-color: {bg_color};",
         );
 

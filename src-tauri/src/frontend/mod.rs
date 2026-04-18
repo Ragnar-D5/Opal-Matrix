@@ -1,14 +1,19 @@
 use std::collections::{HashMap, HashSet};
 
+use log::debug;
 use rusqlite::Connection;
-use tauri::{AppHandle, Emitter};
+use tauri::{command, AppHandle, Emitter};
 
 use crate::{
-    frontend::rooms::{FlatRoom, RoomNode, SidebarState},
-    storage::{fetch_sidebar, messages::MessageRow},
+    frontend::{
+        members::UserProfile,
+        rooms::{FlatRoom, RoomNode, SidebarState},
+    },
+    storage::{fetch_sidebar, members::MemberRow, messages::MessageRow},
     TauriError,
 };
 
+pub(crate) mod members;
 pub(crate) mod messages;
 pub(crate) mod rooms;
 
@@ -114,6 +119,31 @@ pub fn send_sidebar_update(
     let tree = build_tree(all_rooms, parent_to_children, all_children);
 
     handle.emit("sidebar_update", tree)?;
+
+    Ok(())
+}
+
+pub fn send_member_update(handle: &AppHandle, updates: Vec<MemberRow>) -> Result<(), TauriError> {
+    if updates.is_empty() {
+        return Ok(());
+    }
+
+    let payload: HashMap<String, HashMap<String, UserProfile>> =
+        updates.into_iter().fold(HashMap::new(), |mut acc, row| {
+            let user_profile = UserProfile {
+                user_id: row.user_id.clone(),
+                display_name: row.display_name,
+                avatar_url: row.avatar_url,
+            };
+
+            acc.entry(row.room_id)
+                .or_insert_with(HashMap::new)
+                .insert(row.user_id, user_profile);
+
+            acc
+        });
+
+    handle.emit("member_update", payload)?;
 
     Ok(())
 }

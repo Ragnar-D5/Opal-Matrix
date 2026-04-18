@@ -4,6 +4,7 @@ use crate::storage::messages::MessageRow;
 
 #[derive(Debug, Serialize, Clone)]
 pub struct Message {
+    pub room_id: String,
     pub msg_type: String,
     pub id: String,
     pub content: Option<String>,
@@ -15,6 +16,7 @@ pub struct Message {
 impl From<MessageRow> for Message {
     fn from(row: MessageRow) -> Self {
         Self {
+            room_id: row.room_id,
             id: row.event_id,
             content: row.body,
             ts: row.timestamp,

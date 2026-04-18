@@ -7,7 +7,7 @@ use serde_json::json;
 use serde_json::value::RawValue;
 use tauri::AppHandle;
 
-use crate::frontend::send_sidebar_update;
+use crate::frontend::{send_member_update, send_sidebar_update};
 use crate::storage::members::MemberRow;
 use crate::storage::messages::MessageRow;
 use crate::storage::rooms::{SpaceChildRow, SpaceParentRow};
@@ -261,6 +261,8 @@ async fn handle_sync_response(
             send_sidebar_update(conn, handle, &client.user_id)?;
         }
     }
+
+    send_member_update(handle, changes.member_updates.into())?;
 
     Ok(())
 }

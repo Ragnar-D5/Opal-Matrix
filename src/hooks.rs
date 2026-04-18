@@ -38,10 +38,13 @@ where
                     }
                 };
 
-                match serde_wasm_bindgen::from_value::<T>(payload_js) {
+                match serde_wasm_bindgen::from_value::<T>(payload_js.clone()) {
                     Ok(payload) => set_payload_signal.set(Some(payload)),
                     Err(e) => {
-                        console_error(&format!("Failed to deserialize Tauri event payload: {}", e));
+                        console_error(&format!(
+                            "Failed to deserialize Tauri event payload: {}; {:?}",
+                            e, payload_js
+                        ));
                     }
                 }
             }) as Box<dyn FnMut(JsValue)>);

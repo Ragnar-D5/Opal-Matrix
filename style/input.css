@@ -40,3 +40,7 @@
 @utility text-bright {
     color: var(--bright-text-color, #ffffff);
 }
+
+@utility text-muted {
+    color: var(--muted-text-color, #5865f2);
+}

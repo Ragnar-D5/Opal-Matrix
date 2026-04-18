@@ -484,6 +484,7 @@ pub fn run() {
             send_frontend,
             choose_home_server,
             storage::get_messages,
+            storage::get_members,
         ])
         .register_asynchronous_uri_scheme_protocol(
             "mxc",

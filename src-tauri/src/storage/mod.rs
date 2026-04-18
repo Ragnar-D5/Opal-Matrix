@@ -1,8 +1,10 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
+use tauri::AppHandle;
 use tauri::{command, State};
 
+use crate::frontend::members::UserProfile;
 use crate::frontend::messages::Message;
 use crate::frontend::rooms::FlatRoom;
 use crate::AppState;
@@ -355,4 +357,46 @@ pub async fn get_messages(
     }
 
     Ok(messages)
+}
+
+#[command(rename_all = "snake_case")]
+pub async fn get_members(
+    state: State<'_, Arc<AppState>>,
+    room_id: String,
+) -> Result<HashMap<String, UserProfile>, TauriError> {
+    let conn_guard = state.connection.lock().await;
+    let conn = conn_guard
+        .as_ref()
+        .ok_or("Database connection not initialized")?;
+
+    let mut stmt = conn.prepare(
+        "SELECT room_id, user_id, display_name, avatar_url, membership
+        FROM members
+        WHERE room_id = ?",
+    )?;
+
+    let member_iter = stmt.query_map(params![room_id], |row| {
+        Ok(MemberRow {
+            room_id: row.get(0)?,
+            user_id: row.get(1)?,
+            display_name: row.get(2)?,
+            avatar_url: row.get(3)?,
+            membership: row.get(4)?,
+        })
+    })?;
+
+    let mut members = HashMap::new();
+    for member in member_iter {
+        let member = member?;
+        members.insert(
+            member.user_id.clone(),
+            UserProfile {
+                user_id: member.user_id,
+                display_name: member.display_name,
+                avatar_url: member.avatar_url,
+            },
+        );
+    }
+
+    Ok(members)
 }

@@ -2,7 +2,7 @@ use std::fmt::Debug;
 
 use super::DataBaseModel;
 use ruma::events::room::member::MembershipState as RumaMembershipState;
-use rusqlite::ToSql;
+use rusqlite::{types::FromSql, ToSql};
 
 #[derive(Debug, Clone)]
 pub enum MembershipState {
@@ -11,6 +11,18 @@ pub enum MembershipState {
     Leave,
     Ban,
     Unknown,
+}
+
+impl FromSql for MembershipState {
+    fn column_result(value: rusqlite::types::ValueRef<'_>) -> rusqlite::types::FromSqlResult<Self> {
+        match value.as_str()? {
+            "join" => Ok(MembershipState::Join),
+            "invite" => Ok(MembershipState::Invite),
+            "leave" => Ok(MembershipState::Leave),
+            "ban" => Ok(MembershipState::Ban),
+            _ => Ok(MembershipState::Unknown), // Default to 'Unknown' for unrecognized states
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
