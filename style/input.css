@@ -11,9 +11,6 @@
 }
 
 @utility avatar-circle {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -30,4 +27,16 @@
     font-size: 16px;
     font-weight: 500;
     text-align: left;
+}
+
+@utility text-dim {
+    color: var(--dim-text-color, red);
+}
+
+@utility text-normal {
+    color: var(--text-color, #dbdee1);
+}
+
+@utility text-bright {
+    color: var(--bright-text-color, #ffffff);
 }

@@ -1,4 +1,3 @@
-use log::debug;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -484,6 +483,7 @@ pub fn run() {
             set_recovery_key,
             send_frontend,
             choose_home_server,
+            storage::get_messages,
         ])
         .register_asynchronous_uri_scheme_protocol(
             "mxc",

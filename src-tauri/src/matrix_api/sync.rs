@@ -1,14 +1,13 @@
-use std::collections::{HashMap, HashSet};
-use std::fmt::format;
+use std::collections::HashSet;
 
 use log::{debug, trace, warn};
-use ruma::events::call::member::{CallMemberEventContent, MembershipData};
+use ruma::events::call::member::CallMemberEventContent;
 use ruma::serde::Raw;
 use serde_json::json;
 use serde_json::value::RawValue;
-use tauri::{AppHandle, Emitter};
+use tauri::AppHandle;
 
-use crate::frontend::{build_tree, send_sidebar_update};
+use crate::frontend::send_sidebar_update;
 use crate::storage::members::MemberRow;
 use crate::storage::messages::MessageRow;
 use crate::storage::rooms::{SpaceChildRow, SpaceParentRow};
@@ -370,7 +369,7 @@ fn extract_state(
             });
         }
         // Handled in special state
-        AnyStateEventContent::CallMember(ev) => (),
+        AnyStateEventContent::CallMember(_) => (),
         _ => {
             trace!("Unhandled state event in room {}: {:?}", room_id, ev);
         }
@@ -404,32 +403,17 @@ fn extract_special_state(
 
     match or {
         AnyStateEventContent::CallMember(ev) => {
-            let action = match ev {
+            match ev {
                 CallMemberEventContent::Empty(_) => {
-                    let removed = call_members.remove(&sender);
-                    if removed {
-                        "remove"
-                    } else {
-                        "remove(noop)"
-                    }
+                    call_members.remove(&sender);
                 }
                 CallMemberEventContent::LegacyContent(_) => {
-                    let inserted = call_members.insert(sender.clone());
-                    if inserted {
-                        "insert(legacy)"
-                    } else {
-                        "insert(legacy,no-op)"
-                    }
+                    call_members.insert(sender.clone());
                 }
                 CallMemberEventContent::SessionContent(_) => {
-                    let inserted = call_members.insert(sender.clone());
-                    if inserted {
-                        "insert(session)"
-                    } else {
-                        "insert(session,no-op)"
-                    }
+                    call_members.insert(sender.clone());
                 }
-                _ => "ignored",
+                _ => (),
             };
 
             let after = call_members.len();

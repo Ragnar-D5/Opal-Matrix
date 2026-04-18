@@ -1,14 +1,15 @@
 use std::collections::{HashMap, HashSet};
 
-use log::debug;
 use rusqlite::Connection;
 use tauri::{AppHandle, Emitter};
 
 use crate::{
     frontend::rooms::{FlatRoom, RoomNode, SidebarState},
-    storage, TauriError,
+    storage::{fetch_sidebar, messages::MessageRow},
+    TauriError,
 };
 
+pub(crate) mod messages;
 pub(crate) mod rooms;
 
 pub fn build_tree(
@@ -109,7 +110,7 @@ pub fn send_sidebar_update(
     handle: &AppHandle,
     own_user_id: &String,
 ) -> Result<(), TauriError> {
-    let (all_rooms, parent_to_children, all_children) = storage::fetch_sidebar(conn, own_user_id)?;
+    let (all_rooms, parent_to_children, all_children) = fetch_sidebar(conn, own_user_id)?;
     let tree = build_tree(all_rooms, parent_to_children, all_children);
 
     handle.emit("sidebar_update", tree)?;

@@ -1,11 +1,14 @@
+use std::collections::HashMap;
+
 use leptos::leptos_dom::logging::console_error;
 use leptos::task::spawn_local;
 use leptos::{ev::SubmitEvent, prelude::*};
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
+use web_sys::HtmlImageElement;
 
-use crate::tauri::sidebar::Sidebar;
-use crate::theming::ThemeProvider;
+use crate::tauri::chat::ChatMessage;
+use crate::tauri::{chat::Chat, sidebar::Sidebar};
 
 #[wasm_bindgen]
 extern "C" {
@@ -38,54 +41,72 @@ pub async fn call_tauri_no_args(cmd: &str) -> Result<JsValue, JsValue> {
     wasm_bindgen_futures::JsFuture::from(invoke(cmd, JsValue::NULL)).await
 }
 
-#[derive(Clone)]
-enum CurrentWindow {
+#[derive(Clone, Debug, Copy)]
+pub enum CurrentWindow {
     HomeserverDiscoveryPage,
     LoginPage,
     HomePage,
     LoadingPage,
 }
 
+#[derive(Clone, Debug, Copy)]
+pub struct AppState {
+    pub current_window: RwSignal<CurrentWindow>,
+    pub login_name: RwSignal<String>,
+
+    pub active_room_id: RwSignal<Option<String>>,
+    pub active_server_id: RwSignal<Option<String>>,
+}
+
+impl AppState {
+    pub fn new() -> Self {
+        Self {
+            current_window: RwSignal::new(CurrentWindow::LoadingPage),
+            login_name: RwSignal::new(String::new()),
+            active_room_id: RwSignal::new(None),
+            active_server_id: RwSignal::new(None),
+        }
+    }
+}
+
 #[component]
 pub fn App() -> impl IntoView {
-    // Global state that both overlays might need to interact with
-    let (app_state, set_app_state) = signal(CurrentWindow::LoadingPage);
-    let (login_name, set_login_name) = signal(String::new());
+    let state = AppState::new();
+    provide_context(state);
 
     // Invoke try_restore
-    spawn_local(async move {
-        match call_tauri_no_args("try_restore").await {
-            Ok(js_val) => {
-                let response_option: Option<MatrixLoginResponse> =
-                    serde_wasm_bindgen::from_value(js_val).unwrap();
+    Effect::new(move |_| {
+        spawn_local(async move {
+            match call_tauri_no_args("try_restore").await {
+                Ok(js_val) => {
+                    let response_option: Option<MatrixLoginResponse> =
+                        serde_wasm_bindgen::from_value(js_val).unwrap();
 
-                if let Some(response) = response_option {
-                    set_login_name.set(response.user_id);
-                    set_app_state.set(CurrentWindow::HomePage);
-                } else {
-                    set_app_state.set(CurrentWindow::HomeserverDiscoveryPage);
+                    if let Some(response) = response_option {
+                        state.login_name.set(response.user_id);
+                        state.current_window.set(CurrentWindow::HomePage);
+                    } else {
+                        state
+                            .current_window
+                            .set(CurrentWindow::HomeserverDiscoveryPage);
+                    }
                 }
+                Err(_) => {}
             }
-            Err(_) => {}
-        }
+        });
     });
 
     view! {
-        {move || match app_state.get() {
+        {move || match state.current_window.get() {
             CurrentWindow::HomeserverDiscoveryPage => view! {
-                <HomeserverDiscoveryPage
-                    set_app_state=set_app_state
-                />
+                <HomeserverDiscoveryPage/>
             }.into_any(),
             CurrentWindow::LoginPage => view! {
-                <LoginPage
-                    set_app_state=set_app_state
-                    set_login_name=set_login_name
-                />
+                <LoginPage/>
             }.into_any(),
 
             CurrentWindow::HomePage => view! {
-                <HomePage user_id=login_name.get() />
+                <HomePage/>
             }.into_any(),
 
             CurrentWindow::LoadingPage => view! {
@@ -98,15 +119,11 @@ pub fn App() -> impl IntoView {
 }
 
 #[component]
-fn LoginPage(
-    set_app_state: WriteSignal<CurrentWindow>,
-    set_login_name: WriteSignal<String>,
-) -> impl IntoView {
-    // Local state: Only this component needs to know about what's typed in the boxes
+fn LoginPage() -> impl IntoView {
+    let state = expect_context::<AppState>();
+
     let (username, set_username) = signal(String::new());
     let (password, set_password) = signal(String::new());
-
-    // We can also make a local error signal instead of reusing login_name for errors
     let (error_msg, set_error_msg) = signal(String::new());
 
     let login = move |ev: SubmitEvent| {
@@ -131,8 +148,8 @@ fn LoginPage(
                     let response: MatrixLoginResponse =
                         serde_wasm_bindgen::from_value(js_val).unwrap();
 
-                    set_login_name.set(response.user_id);
-                    set_app_state.set(CurrentWindow::HomePage);
+                    state.login_name.set(response.user_id);
+                    state.current_window.set(CurrentWindow::HomePage);
                 }
                 Err(err) => {
                     let err_str = err
@@ -183,12 +200,29 @@ fn LoginPage(
     }
 }
 
-#[component]
-fn HomePage(user_id: String) -> impl IntoView {
-    let (recovery_key, set_recovery_key) = signal(String::new());
+#[derive(Serialize)]
+struct GetMessagesArgs {
+    room_id: String,
+    limit: usize,
+}
 
-    let (active_room_id, set_active_room_id) = signal(None::<String>);
-    let (active_server_id, set_active_server_id) = signal(None::<String>);
+#[component]
+fn HomePage() -> impl IntoView {
+    let state = expect_context::<AppState>();
+
+    let (recovery_key, set_recovery_key) = signal(String::new());
+    let (messages, set_messages) = signal(Vec::<ChatMessage>::new());
+    let (bg_loaded, set_bg_loaded) = signal(false);
+    let bg_url = "https://i.imgur.com/t9plvkd.png".to_string();
+
+    let bg_url_clone = bg_url.clone();
+    Effect::new(move |_| {
+        let img = HtmlImageElement::new().unwrap();
+        let onload = Closure::<dyn FnMut()>::new(move || set_bg_loaded.set(true));
+        img.set_onload(Some(onload.as_ref().unchecked_ref()));
+        onload.forget();
+        img.set_src(&bg_url_clone);
+    });
 
     let send_recovery_key = move |ev: SubmitEvent| {
         ev.prevent_default();
@@ -207,8 +241,104 @@ fn HomePage(user_id: String) -> impl IntoView {
         });
     };
 
+    // Get messages on room_id change
+    Effect::new(move |_| {
+        if let Some(room_id) = state.active_room_id.get() {
+            console_error(&format!("Active room changed: {}", room_id));
+            spawn_local(async move {
+                let args = serde_wasm_bindgen::to_value(&GetMessagesArgs {
+                    room_id: room_id.clone(),
+                    limit: 50,
+                })
+                .expect("Failed to create args");
+                match call_tauri("get_messages", args).await {
+                    Ok(js_val) => {
+                        let new_messages: Vec<ChatMessage> =
+                            serde_wasm_bindgen::from_value(js_val).unwrap();
+
+                        set_messages.set(new_messages);
+                    }
+                    Err(err) => {
+                        console_error(&format!(
+                            "Failed to get messages: {}",
+                            err.as_string().unwrap_or("Unknown error".to_string())
+                        ));
+                    }
+                }
+            });
+        } else {
+            set_messages.set(Vec::new());
+        }
+    });
+
+    // preload once
+    // {
+    //     let bg_url = bg_url.clone();
+    //     spawn_local(async move {
+    //         let img = HtmlImageElement::new().unwrap();
+
+    //         // onload -> mark loaded
+    //         let onload = Closure::<dyn FnMut()>::new({
+    //             let set_bg_loaded = set_bg_loaded;
+    //             move || set_bg_loaded.set(true)
+    //         });
+    //         img.set_onload(Some(onload.as_ref().unchecked_ref()));
+    //         onload.forget(); // keep callback alive
+
+    //         // optional: onerror handling
+    //         let onerror = Closure::<dyn FnMut()>::new(move || {
+    //             // keep false, or set another error signal
+    //         });
+    //         img.set_onerror(Some(onerror.as_ref().unchecked_ref()));
+    //         onerror.forget();
+
+    //         img.set_src(&bg_url);
+    //     });
+    // }
+
+    let gap_size = "2".to_string();
+    let padding = "2".to_string();
+
+    let color_item_hover = "rgba(200, 200, 255, 0.05)";
+    let color_item_selected = "rgba(255, 255, 255, 0.1)";
+    let bg_color = "#1e1e2e";
+    let floating_bg_color = "rgba(0, 0, 0, 0.4)";
+    let pill_border_color = "rgba(255, 255, 255, 0.8)";
+    let dim_text_color = "hsl(220, 15%, 40%)";
+    let text_color = "hsl(220, 25%, 60%)";
+    let bright_text_color = "hsl(220, 25%, 70%)";
+    let tile_border_color = "rgba(30, 30, 30, 1)";
+
+    let root_css_vars = move || {
+        let base = format!(
+            "--color-item-hover: {color_item_hover};
+            --color-item-selected: {color_item_selected};
+            --bg-color: {bg_color};
+            --floating-bg-color: {floating_bg_color};
+            --pill-border-color: {pill_border_color};
+            --dim-text-color: {dim_text_color};
+            --text-color: {text_color};
+            --bright-text-color: {bright_text_color};
+            --tile-border-color: {tile_border_color};
+            background-color: {bg_color};",
+        );
+
+        if bg_loaded.get() {
+            format!(
+                "{base}
+            background-image: url('{}');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat",
+                bg_url
+            )
+        } else {
+            base
+        }
+    };
+
     view! {
-        <div class="bg flex h-screen">
+        <div class="bg-[var(--bg-color)] flex h-screen overflow-hidden p-3 gap-3 relative" style=root_css_vars>
         // <h2>"Login Successful!"</h2>
         // <p>"Welcome, " <strong>{user_id}</strong></p>
 
@@ -217,10 +347,9 @@ fn HomePage(user_id: String) -> impl IntoView {
         //     <button type="submit">"Set Recovery Key"</button>
         // </form>
 
-            <Sidebar active_room_id=active_room_id
-                        set_active_room_id=set_active_room_id
-                        active_server_id=active_server_id
-                        set_active_server_id=set_active_server_id />
+            <div data-tauri-drag-region class="absolute top-0 left-0 right-0 h-3 z-50"></div>
+            <Sidebar />
+            <Chat messages=messages set_messages=set_messages />
         </div>
     }
 }
@@ -231,7 +360,8 @@ struct HomeServerArgs {
 }
 
 #[component]
-pub fn HomeserverDiscoveryPage(set_app_state: WriteSignal<CurrentWindow>) -> impl IntoView {
+pub fn HomeserverDiscoveryPage() -> impl IntoView {
+    let state = expect_context::<AppState>();
     let (text, set_text) = signal(String::new());
     let (is_valid, set_is_valid) = signal(false);
 
@@ -281,7 +411,7 @@ pub fn HomeserverDiscoveryPage(set_app_state: WriteSignal<CurrentWindow>) -> imp
             >
                 <button
                     on:click=move |_| {
-                        set_app_state.set(CurrentWindow::LoginPage);
+                        state.current_window.set(CurrentWindow::LoginPage);
                     }
                     style="margin-top: 20px; padding: 10px 20px; background-color: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer;"
                 >
