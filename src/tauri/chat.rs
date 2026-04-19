@@ -1,12 +1,7 @@
-use std::collections::HashMap;
-
-use crate::app::{AppState, MemberStore};
+use crate::app::MemberStore;
 use crate::components::FloatingTile;
-use crate::hooks::use_tauri_event;
 use chrono::{DateTime, Local, NaiveDate, TimeZone};
-use leptos::html::Div;
-use leptos::leptos_dom::logging::console_error;
-use leptos::prelude::*;
+use leptos::{leptos_dom::logging::console_error, prelude::*};
 use serde::Deserialize;
 
 #[derive(Clone, Deserialize)]
@@ -18,16 +13,6 @@ pub struct ChatMessage {
     content: Option<String>,
     raw_json: String,
     sender: String,
-}
-
-fn format_matrix_ts(ts: i64) -> String {
-    console_error(&format!("{}", ts));
-    let datetime = chrono::Local
-        .timestamp_opt(ts, 0)
-        .latest()
-        .unwrap_or_else(|| chrono::DateTime::UNIX_EPOCH.with_timezone(&chrono::Local));
-
-    datetime.format("%d/%m/%Y, %H:%M").to_string()
 }
 
 #[derive(PartialEq, Clone)]
@@ -56,15 +41,24 @@ enum TimelineItemKind {
 struct TimelineItem {
     date: DateTime<Local>,
     sender: String,
+    id: String,
 
     kind: TimelineItemKind,
+}
+
+fn format_date(date: DateTime<Local>) -> String {
+    match (date.date_naive() - Local::now().date_naive()).num_days() {
+        0 => date.format("Today, %H:%M").to_string(),
+        -1 => date.format("Yesterday, %H:%M").to_string(),
+        _ => date.format("%d/%m/%Y, %H:%M").to_string(),
+    }
 }
 
 impl TimelineItem {
     fn render(&self) -> impl IntoView {
         match &self.kind {
             TimelineItemKind::Message(msg) => view! {
-                <div class="flex gap-3 p-3 rounded-md transition-colors hover:bg-[rgba(255,255,255,0.02)]">
+                <div class="flex gap-3 p-3 rounded-md transition-colors">
                     <div class="shrink-0">
                     </div>
                     <div class="flex flex-col min-w-0">
@@ -73,7 +67,7 @@ impl TimelineItem {
                                 {self.sender.clone()}
                             </span>
                             <span class="text-muted text-xs">
-                                {self.date.format("%d/%m/%Y, %H:%M").to_string()}
+                                {format_date(self.date)}
                             </span>
                         </div>
                         <div class="text-normal leading-relaxed break-words">
@@ -81,7 +75,8 @@ impl TimelineItem {
                         </div>
                     </div>
                 </div>
-            }.into_any(),
+            }
+            .into_any(),
             TimelineItemKind::DateSeparator => view! {
                 <div class="flex items-center gap-2 my-4">
                     <div class="flex-1 border-t border-[var(--tile-border-color)]"></div>
@@ -90,7 +85,8 @@ impl TimelineItem {
                     </span>
                     <div class="flex-1 border-t border-[var(--tile-border-color)]"></div>
                 </div>
-            }.into_any(),
+            }
+            .into_any(),
             TimelineItemKind::SystemMessage(sys_msg) => {
                 let text = match sys_msg {
                     SystemMessage::EncryptionEnabled => "Encryption enabled",
@@ -107,7 +103,8 @@ impl TimelineItem {
                             {text}
                         </span>
                     </div>
-                }.into_any()
+                }
+                .into_any()
             }
         }
     }
@@ -150,7 +147,7 @@ fn MessageItem(message: ChatMessage) -> impl IntoView {
                     </span>
 
                     <span class="text-muted text-xs">
-                        {format_matrix_ts(message.ts)}
+                        // {format_matrix_ts(message.ts)}
                     </span>
                 </div>
 
@@ -186,6 +183,7 @@ fn TimeLine(messages: ReadSignal<Vec<ChatMessage>>) -> impl IntoView {
                 "m.text" => Some(TimelineItem {
                     date: current_date,
                     sender: msg.sender.clone(),
+                    id: msg.id.clone(),
                     kind: TimelineItemKind::Message(TimelineMessage {
                         content: msg.content.clone().unwrap_or_default(),
                     }),
@@ -193,6 +191,7 @@ fn TimeLine(messages: ReadSignal<Vec<ChatMessage>>) -> impl IntoView {
                 "m.image" => Some(TimelineItem {
                     date: current_date,
                     sender: msg.sender.clone(),
+                    id: msg.id.clone(),
                     kind: TimelineItemKind::Message(TimelineMessage {
                         content: format!("Image message with content: {:?}", msg.content),
                     }),
@@ -200,6 +199,7 @@ fn TimeLine(messages: ReadSignal<Vec<ChatMessage>>) -> impl IntoView {
                 "m.call.member" => Some(TimelineItem {
                     date: current_date,
                     sender: msg.sender.clone(),
+                    id: msg.id.clone(),
                     kind: TimelineItemKind::SystemMessage(SystemMessage::CallStarted),
                 }),
                 "m.room.encryption" => {
@@ -208,6 +208,7 @@ fn TimeLine(messages: ReadSignal<Vec<ChatMessage>>) -> impl IntoView {
                             Some(TimelineItem {
                                 date: current_date,
                                 sender: msg.sender.clone(),
+                                id: msg.id.clone(),
                                 kind: TimelineItemKind::SystemMessage(
                                     SystemMessage::EncryptionEnabled,
                                 ),
@@ -216,6 +217,7 @@ fn TimeLine(messages: ReadSignal<Vec<ChatMessage>>) -> impl IntoView {
                             Some(TimelineItem {
                                 date: current_date,
                                 sender: msg.sender.clone(),
+                                id: msg.id.clone(),
                                 kind: TimelineItemKind::SystemMessage(
                                     SystemMessage::EncryptionDisabled,
                                 ),
@@ -235,6 +237,7 @@ fn TimeLine(messages: ReadSignal<Vec<ChatMessage>>) -> impl IntoView {
                     items.push(TimelineItem {
                         date: current_date,
                         sender: String::new(),
+                        id: format!("date-sep-{}", current_day),
                         kind: TimelineItemKind::DateSeparator,
                     });
                     last_day = Some(current_date.date_naive());
@@ -248,10 +251,17 @@ fn TimeLine(messages: ReadSignal<Vec<ChatMessage>>) -> impl IntoView {
     });
 
     view! {
-        <div class="flex-1 w-full w-full overflow-y-auto flex flex-col-reverse p-4 gap-2">
+        <div class="flex-1 w-full w-full overflow-y-auto flex flex-col-reverse p-4 gap-2 overflow-anchor-auto"
+        style="
+                overscroll-behavior-y: none; /* Stops GTK rubber-banding */
+                scroll-behavior: auto;       /* Disables forced smooth-scrolling */
+                transform: translateZ(0);    /* Forces AMD GPU layer promotion */
+                will-change: scroll-position;
+            "
+        >
             <For
                 each=move || flattened_items.get()
-                key=|item| format!("{}-{}", item.date.timestamp(), item.sender)
+                key=|item| item.id.clone()
                 children=|item| item.render()
             />
         </div>
@@ -269,7 +279,7 @@ pub fn Chat(
                 "Chat name goes here"
             </FloatingTile>
             <div class="flex gap-3 flex-row h-full min-h-0">
-                <FloatingTile class="flex-1 h-full overflow-x">
+                <FloatingTile class="flex-1 min-h-0, overflow-hidden">
                     <TimeLine messages=messages></TimeLine>
                     <input
                         type="text"

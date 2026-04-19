@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::fmt::format;
 
 use leptos::leptos_dom::logging::console_error;
 use leptos::task::spawn_local;
@@ -76,6 +77,8 @@ impl MemberStore {
                 .and_then(|users| users.get(user_id))
                 .cloned()
         });
+
+        console_error("Getting profile");
 
         if let Some(sig) = existing_signal {
             return sig;

@@ -195,7 +195,9 @@ async fn handle_sync_response(
     };
 
     for raw_event in response.account_data.events {
-        extract_account_data(&mut changes, raw_event)?;
+        if let Err(e) = extract_account_data(&mut changes, raw_event) {
+            log::error!("Error extracting account data: {:?}", e);
+        }
     }
 
     for (room_id, room) in response.rooms.join {

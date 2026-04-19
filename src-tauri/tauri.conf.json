@@ -17,12 +17,13 @@
         "width": 1600,
         "height": 1000,
         "decorations": false,
-        "transparent": true,
-        "resizable": true
+        "transparent": false,
+        "resizable": true,
+        "devtools": true
       }
     ],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' https: data: asset:;"
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'; connect-src 'self' ipc: http://ipc.localhost; img-src 'self' https: data: asset: mxc:; style-src 'self' 'unsafe-inline';"
     }
   },
   "bundle": {
