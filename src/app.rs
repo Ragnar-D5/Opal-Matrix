@@ -35,7 +35,7 @@ struct RecoveryKeyArgs {
     recovery_key: String,
 }
 
-async fn call_tauri(cmd: &str, args: JsValue) -> Result<JsValue, JsValue> {
+pub async fn call_tauri(cmd: &str, args: JsValue) -> Result<JsValue, JsValue> {
     wasm_bindgen_futures::JsFuture::from(invoke(cmd, args)).await
 }
 
@@ -77,8 +77,6 @@ impl MemberStore {
                 .and_then(|users| users.get(user_id))
                 .cloned()
         });
-
-        console_error("Getting profile");
 
         if let Some(sig) = existing_signal {
             return sig;
@@ -350,60 +348,6 @@ fn HomePage() -> impl IntoView {
             }
         });
     };
-
-    // Get messages on room_id change
-    Effect::new(move |_| {
-        if let Some(room_id) = state.active_room_id.get() {
-            spawn_local(async move {
-                let args = serde_wasm_bindgen::to_value(&GetMessagesArgs {
-                    room_id: room_id.clone(),
-                    limit: 50,
-                })
-                .expect("Failed to create args");
-                match call_tauri("get_messages", args).await {
-                    Ok(js_val) => {
-                        let new_messages: Vec<ChatMessage> =
-                            serde_wasm_bindgen::from_value(js_val).unwrap();
-
-                        set_messages.set(new_messages);
-                    }
-                    Err(err) => {
-                        console_error(&format!(
-                            "Failed to get messages: {}",
-                            err.as_string().unwrap_or("Unknown error".to_string())
-                        ));
-                    }
-                }
-            });
-        } else {
-            set_messages.set(Vec::new());
-        }
-    });
-
-    // preload once
-    // {
-    //     let bg_url = bg_url.clone();
-    //     spawn_local(async move {
-    //         let img = HtmlImageElement::new().unwrap();
-
-    //         // onload -> mark loaded
-    //         let onload = Closure::<dyn FnMut()>::new({
-    //             let set_bg_loaded = set_bg_loaded;
-    //             move || set_bg_loaded.set(true)
-    //         });
-    //         img.set_onload(Some(onload.as_ref().unchecked_ref()));
-    //         onload.forget(); // keep callback alive
-
-    //         // optional: onerror handling
-    //         let onerror = Closure::<dyn FnMut()>::new(move || {
-    //             // keep false, or set another error signal
-    //         });
-    //         img.set_onerror(Some(onerror.as_ref().unchecked_ref()));
-    //         onerror.forget();
-
-    //         img.set_src(&bg_url);
-    //     });
-    // }
 
     let gap_size = "2".to_string();
     let padding = "2".to_string();

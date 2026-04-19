@@ -1,4 +1,5 @@
 use log::debug;
+use log::kv::Source;
 use log::warn;
 use ruma::api::client::backup::EncryptedSessionData;
 use std::collections::BTreeMap;
@@ -148,24 +149,8 @@ pub async fn get_or_create_passphrase(user_id: String) -> Result<String, TauriEr
     }
 }
 
-#[derive(Serialize, Debug)]
-pub struct RoomData {
-    pub room_id: String,
-    pub name: Option<String>,
-    pub timeline: Vec<EventData>,
-}
-
 use matrix_sdk_crypto::types::events::room::encrypted::EncryptedEvent;
 use ruma::serde::Raw;
-
-#[derive(Serialize, Debug)]
-pub struct EventData {
-    pub event_id: String,
-    pub sender: String,
-    pub origin_server_ts: u64,
-    pub content: serde_json::Value, // The decrypted or cleartext content
-    pub event_type: String,
-}
 
 pub async fn process_sync_response(
     olm_machine: &OlmMachine,
@@ -196,13 +181,6 @@ pub async fn process_sync_response(
     for (room_id, joined_room) in sync_res.rooms.join.iter_mut() {
         let mut new_timeline = Vec::with_capacity(joined_room.timeline.events.len());
 
-        // let state_events = match joined_room.state {
-        //     State::Before(s) => s.events,
-        //     State::After(s) => s.events,
-        //     _ => Vec::new(),
-        // };
-
-        // Parse state for Room Name
         for raw_event in joined_room.timeline.events.drain(..) {
             let mut replaced = false;
 
@@ -247,8 +225,6 @@ pub async fn process_sync_response(
 
         joined_room.timeline.events = new_timeline;
     }
-
-    handle_outgoing_requests(olm_machine, token, matrix_url).await?;
 
     return Ok(sync_res);
 }

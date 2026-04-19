@@ -7,7 +7,6 @@ pub struct Message {
     pub room_id: String,
     pub msg_type: String,
     pub id: String,
-    pub content: Option<String>,
     pub ts: i64,
     pub raw_json: String,
     pub sender: String,
@@ -18,7 +17,6 @@ impl From<MessageRow> for Message {
         Self {
             room_id: row.room_id,
             id: row.event_id,
-            content: row.body,
             ts: row.timestamp,
             raw_json: row.raw_json,
             msg_type: row.msg_type,

@@ -31,10 +31,10 @@ pub async fn init_storage(
 
     let conn = Connection::open(&db_path).map_err(|e| format!("Failed to open database: {e}"))?;
 
-    conn.pragma_update(None, "key", db_passphrase)?;
+    // conn.pragma_update(None, "key", db_passphrase)?;
 
-    conn.query_row("SELECT count(*) FROM sqlite_master", [], |_| Ok(()))
-        .map_err(|e| format!("Failed to access database: {e}"))?;
+    // conn.query_row("SELECT count(*) FROM sqlite_master", [], |_| Ok(()))
+    //     .map_err(|e| format!("Failed to access database: {e}"))?;
 
     RoomRow::create_table(&conn)?;
     MessageRow::create_table(&conn)?;
@@ -142,10 +142,9 @@ pub async fn apply_sync_changes(
     }
 
     let mut stmt_messages = tx.prepare(
-        "INSERT INTO messages (event_id, room_id, sender, msg_type, body, raw_json, timestamp)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        "INSERT INTO messages (event_id, room_id, sender, msg_type, raw_json, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?)
         ON CONFLICT(event_id) DO UPDATE SET
-            body = excluded.body,
             msg_type = excluded.msg_type,
             raw_json = excluded.raw_json",
     )?;
@@ -155,7 +154,6 @@ pub async fn apply_sync_changes(
             msg.room_id,
             msg.sender,
             msg.msg_type,
-            msg.body,
             msg.raw_json,
             msg.timestamp
         ])?;
@@ -191,7 +189,8 @@ pub async fn apply_sync_changes(
         history_visibility = COALESCE(?, history_visibility),
         join_rule = COALESCE(?, join_rule),
         algorithm = COALESCE(?, algorithm),
-        room_type = COALESCE(?, room_type)
+        room_type = COALESCE(?, room_type),
+        prev_batch = COALESCE(prev_batch, ?)
     WHERE room_id = ?",
     )?;
     for (room_id, update) in changes.room_updates {
@@ -205,6 +204,7 @@ pub async fn apply_sync_changes(
             update.join_rule,
             update.algorithm,
             update.room_type,
+            update.prev_batch,
             room_id.to_string()
         ])?;
     }
@@ -332,7 +332,7 @@ pub async fn get_messages(
         .ok_or("Database connection not initialized")?;
 
     let mut stmt = conn.prepare(
-        "SELECT event_id, room_id, sender, msg_type, body, raw_json, timestamp
+        "SELECT event_id, room_id, sender, msg_type, raw_json, timestamp
         FROM messages
         WHERE room_id = ?
         ORDER BY timestamp DESC
@@ -345,9 +345,8 @@ pub async fn get_messages(
             room_id: row.get(1)?,
             sender: row.get(2)?,
             msg_type: row.get(3)?,
-            body: row.get(4)?,
-            raw_json: row.get(5)?,
-            timestamp: row.get(6)?,
+            raw_json: row.get(4)?,
+            timestamp: row.get(5)?,
         })
     })?;
 

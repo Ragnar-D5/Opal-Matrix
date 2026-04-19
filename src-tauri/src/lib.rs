@@ -485,6 +485,7 @@ pub fn run() {
             choose_home_server,
             storage::get_messages,
             storage::get_members,
+            matrix_api::rooms::fetch_messages,
         ])
         .register_asynchronous_uri_scheme_protocol(
             "mxc",

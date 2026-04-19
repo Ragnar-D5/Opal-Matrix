@@ -203,6 +203,11 @@ async fn handle_sync_response(
     for (room_id, room) in response.rooms.join {
         changes.joined_rooms.push(room_id.clone());
 
+        if let Some(prev_batch) = room.timeline.prev_batch {
+            let update = changes.room_updates.entry(room_id.clone()).or_default();
+            update.prev_batch = Some(prev_batch);
+        }
+
         let room_state_events = match room.state {
             SyncState::After(v) => v.events,
             SyncState::Before(v) => v.events,
@@ -427,7 +432,6 @@ fn extract_special_state(
                     event_id: event_id,
                     room_id: room_id.to_string(),
                     sender: sender.clone(),
-                    body: Some(format!("{} started a call", sender)),
                     raw_json: json!({
                        "body": format!("{} started a call", sender),
                     })
@@ -440,7 +444,6 @@ fn extract_special_state(
                     event_id: event_id,
                     room_id: room_id.to_string(),
                     sender: sender.clone(),
-                    body: Some(format!("{} ended the call", sender)),
                     raw_json: json!({
                        "body": format!("{} ended the call", sender),
                     })
@@ -504,34 +507,15 @@ fn extract_message(
         }
         AnySyncMessageLikeEvent::RoomMessage(ev) => {
             if let Some(or) = ev.as_original() {
-                let (msg_type, body) = match or.content.msgtype.clone() {
-                    ruma::events::room::message::MessageType::Text(text_content) => {
-                        ("m.text", Some(text_content.body.clone()))
-                    }
-                    ruma::events::room::message::MessageType::Image(image_content) => {
-                        ("m.image", Some(image_content.body.clone()))
-                    }
-                    ruma::events::room::message::MessageType::Audio(audio_content) => {
-                        ("m.audio", Some(audio_content.body.clone()))
-                    }
-                    ruma::events::room::message::MessageType::Video(video_content) => {
-                        ("m.video", Some(video_content.body.clone()))
-                    }
-                    ruma::events::room::message::MessageType::File(file_content) => {
-                        ("m.file", Some(file_content.body.clone()))
-                    }
-                    _ => ("m.unknown", None),
-                };
-
                 changes.new_messages.push(MessageRow {
                     event_id: or.event_id.to_string(),
                     room_id: room_id.to_string(),
                     sender: or.sender.to_string(),
-                    body: body,
                     raw_json: raw_json.get().to_string(),
-                    msg_type: msg_type.to_string(),
+                    msg_type: "m.room.message".to_string(),
                     timestamp: or.origin_server_ts.as_secs().into(),
                 });
+                debug!("{:?}", changes.new_messages.last());
             }
         }
         _ => return Ok(()),
@@ -594,7 +578,6 @@ fn create_system_message(
         room_id: room_id.to_string(),
         sender,
         msg_type,
-        body: Some(body),
         raw_json: raw_json,
         timestamp,
     });

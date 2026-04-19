@@ -1,5 +1,7 @@
 use std::fmt::Display;
 
+use crate::TauriError;
+
 use super::DataBaseModel;
 pub use ruma::events::room::guest_access::GuestAccess;
 pub use ruma::events::room::history_visibility::HistoryVisibility;
@@ -61,6 +63,7 @@ pub struct RoomRow {
     pub power_levels: Option<String>,
 
     pub room_type: Option<String>,
+    pub prev_batch: Option<String>,
 }
 
 impl DataBaseModel for RoomRow {
@@ -81,7 +84,8 @@ impl DataBaseModel for RoomRow {
 
                 power_levels TEXT,
 
-                room_type TEXT
+                room_type TEXT,
+                prev_batch TEXT
             )",
         )?;
         Ok(())
@@ -99,6 +103,7 @@ pub struct RoomUpdate {
     pub join_rule: Option<String>,
     pub algorithm: Option<String>,
     pub room_type: Option<String>,
+    pub prev_batch: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -145,4 +150,16 @@ impl DataBaseModel for SpaceParentRow {
         )?;
         Ok(())
     }
+}
+
+pub fn save_prev_token(
+    conn: &rusqlite::Connection,
+    room_id: &String,
+    prev_batch: &String,
+) -> Result<(), TauriError> {
+    conn.execute(
+        "UPDATE rooms SET prev_batch = ? WHERE room_id = ?",
+        rusqlite::params![prev_batch, room_id],
+    )?;
+    Ok(())
 }

@@ -17,6 +17,7 @@ send_wrapper = { version = "0.6.0", features = ["futures"] }
 stylist = "0.15.1"
 web-sys = "0.3.95"
 chrono = "0.4.44"
+leptos-use = "0.18.3"
 
 [workspace]
 members = ["src-tauri"]
