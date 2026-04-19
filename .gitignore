@@ -2,9 +2,9 @@
 /target/
 /Cargo.lock
 .env
+/src-tauri/gen/
 
 *.db
 *.sqlite3
 *.sqlite3-shm
 *.sqlite3-wal
-/gen/
