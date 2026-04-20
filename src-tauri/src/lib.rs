@@ -206,6 +206,7 @@ impl AppState {
 
             return Ok(self.check_token().await.is_ok());
         }
+
         Ok(false)
     }
 

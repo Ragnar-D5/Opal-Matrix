@@ -1,12 +1,15 @@
-use log::debug;
-use log::kv::Source;
 use log::warn;
 use ruma::api::client::backup::EncryptedSessionData;
+use ruma::RoomId;
+use std::any;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::sync::Arc;
+use tauri::State;
 
 use crate::authentication::get_account_data;
+use crate::AppState;
 use bytes::Bytes;
 
 use crate::construct_url;
@@ -147,6 +150,41 @@ pub async fn get_or_create_passphrase(user_id: String) -> Result<String, TauriEr
         }
         Err(e) => Err(format!("Keyring error: {}", e).into()),
     }
+}
+
+pub async fn process_message(
+    state: &AppState,
+    room_id: &String,
+    raw_message: Value,
+) -> Result<Value, TauriError> {
+    let olm_machine = {
+        let guard = state.crypto_machine.lock().await;
+        guard.as_ref().ok_or("Olm machine not initialized")?.clone()
+    };
+    let access_token = state.check_token().await?;
+    let matrix_url = {
+        let guard = state.matrix_url.read().await;
+        guard.clone().ok_or("Matrix URL not set")?
+    };
+
+    let decryption_settings = DecryptionSettings {
+        sender_device_trust_requirement: matrix_sdk_crypto::TrustRequirement::Untrusted,
+    };
+
+    handle_outgoing_requests(&olm_machine, &access_token, &matrix_url).await?;
+
+    let event: Raw<EncryptedEvent> = Raw::from_json_string(raw_message.to_string())?;
+    match olm_machine
+        .decrypt_room_event(&event, &RoomId::parse(room_id)?, &decryption_settings)
+        .await
+    {
+        Ok(res) => return Ok(Value::from_str(res.event.into_json().get())?),
+        Err(e) => {
+            warn!("Failed to decrypt event: {}", e);
+
+            return Ok(Value::from_str(&raw_message.to_string())?);
+        }
+    };
 }
 
 use matrix_sdk_crypto::types::events::room::encrypted::EncryptedEvent;

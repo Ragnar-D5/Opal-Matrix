@@ -1,7 +1,10 @@
 use log::debug;
-use std::{collections::HashSet, sync::Arc};
+use ruma::serde::Raw;
+use serde_json::Value;
+use std::{collections::HashSet, str::FromStr, sync::Arc};
 
 use crate::{
+    matrix_api::crypto::process_message,
     storage::{
         messages::{get_messages, save_messages, MessageRow},
         rooms::save_prev_token,
@@ -21,7 +24,7 @@ async fn get_messages_api(
     matrix_url: &String,
     access_token: &String,
     limit: usize,
-) -> Result<(Vec<MessageRow>, Option<String>), TauriError> {
+) -> Result<(Vec<Value>, Option<String>), TauriError> {
     let client = Client::new();
 
     let url = construct_url(vec![
@@ -45,30 +48,7 @@ async fn get_messages_api(
             .map(|s| s.to_string());
 
         if let Some(chunk) = res_json.get("chunk").and_then(|c| c.as_array()) {
-            let messages = chunk
-                .iter()
-                .filter_map(|event| {
-                    if let (Some(event_id), Some(msg_type), Some(sender), Some(ts)) = (
-                        event.get("event_id").and_then(|e| e.as_str()),
-                        event.get("type").and_then(|t| t.as_str()),
-                        event.get("sender").and_then(|s| s.as_str()),
-                        event.get("origin_server_ts").and_then(|t| t.as_i64()),
-                    ) {
-                        Some(MessageRow {
-                            event_id: event_id.to_string(),
-                            room_id: room_id.clone(),
-                            sender: sender.to_string(),
-                            msg_type: msg_type.to_string(),
-                            raw_json: event.to_string(),
-                            timestamp: ts / 1000,
-                        })
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-
-            return Ok((messages, next_batch));
+            return Ok((chunk.clone(), next_batch));
         } else {
             return Err("Malformed response: missing 'chunk' array".into());
         }
@@ -139,19 +119,59 @@ pub async fn fetch_messages(
     let (api_messages, next_token) =
         get_messages_api(&room_id, &prev_token, &matrix_url, &access_token, limit).await?;
 
-    save_messages(conn, api_messages.clone())?;
-
     if let Some(next_token) = next_token {
         save_prev_token(conn, &room_id, &next_token)?;
     }
 
-    let mut seen_ids: HashSet<String> = local_messages.iter().map(|m| m.event_id.clone()).collect();
     for msg in api_messages {
-        if !seen_ids.contains(&msg.event_id) {
-            local_messages.push(msg.clone());
-            seen_ids.insert(msg.event_id.clone());
-        }
+        let Some(event_id) = msg
+            .get("event_id")
+            .and_then(|v| v.as_str())
+            .map(|v| v.to_string())
+        else {
+            continue;
+        };
+        let Some(msg_type) = msg
+            .get("type")
+            .and_then(|v| v.as_str())
+            .map(|v| v.to_string())
+        else {
+            continue;
+        };
+
+        let msg = if msg_type == "m.room.encrypted" {
+            match process_message(&state, &room_id, msg).await {
+                Ok(res) => res,
+                Err(_) => continue,
+            }
+        } else {
+            msg
+        };
+        let Some(msg_type) = msg
+            .get("type")
+            .and_then(|v| v.as_str())
+            .map(|v| v.to_string())
+        else {
+            continue;
+        };
+
+        let Some(timestamp) = msg.get("origin_server_ts").and_then(|v| v.as_i64()) else {
+            continue;
+        };
+        let Some(sender) = msg.get("sender").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        local_messages.push(MessageRow {
+            event_id: event_id.to_string(),
+            room_id: room_id.clone(),
+            sender: sender.to_string(),
+            msg_type: msg_type.to_string(),
+            raw_json: msg.to_string(),
+            timestamp: timestamp / 1000,
+        });
     }
+
+    save_messages(conn, local_messages.clone())?;
 
     let has_moe = local_messages.len() >= limit;
 

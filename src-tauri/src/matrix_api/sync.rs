@@ -515,7 +515,6 @@ fn extract_message(
                     msg_type: "m.room.message".to_string(),
                     timestamp: or.origin_server_ts.as_secs().into(),
                 });
-                debug!("{:?}", changes.new_messages.last());
             }
         }
         _ => return Ok(()),
