@@ -86,7 +86,12 @@ impl TimelineItem {
                         </div>
                         <div class="flex flex-col gap-1 mt-1">
                             {group.contents.iter().map(|msg| {
-                                match &msg.content {
+                                let mut reaction_counts: HashMap<String, usize> = HashMap::new();
+                                for r in &msg.reactions {
+                                    *reaction_counts.entry(r.reaction.clone()).or_insert(0) += 1;
+                                }
+
+                                let content = match &msg.content {
                                     MessageContent::Text { text, is_edited } => view! {
                                         <div class="text-normal leading-relaxed break-words">
                                             {text.clone()}
@@ -133,6 +138,31 @@ impl TimelineItem {
                                             "This message was deleted"
                                         </div>
                                     }.into_any(),
+                                };
+
+                                view! {
+                                    <div class="group/msg relative">
+                                        {content}
+
+                                        // 2. Render Reaction Pills
+                                        {if !reaction_counts.is_empty() {
+                                            console_error(&format!("Rendering reactions: {:?}", reaction_counts));
+                                            view! {
+                                                <div class="flex flex-wrap gap-1 mt-1 mb-2">
+                                                    {reaction_counts.into_iter().map(|(emoji, count)| {
+                                                        view! {
+                                                            <div class="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-white/10 border border-white/5 hover:bg-white/20 cursor-pointer transition-colors">
+                                                                <span class="text-sm leading-none">{emoji}</span>
+                                                                <span class="text-[10px] font-medium text-muted">{count}</span>
+                                                            </div>
+                                                        }
+                                                    }).collect_view()}
+                                                </div>
+                                            }.into_any()
+                                        } else {
+                                            view! {}.into_any()
+                                        }}
+                                    </div>
                                 }
                             }).collect_view()}
                         </div>
@@ -142,11 +172,11 @@ impl TimelineItem {
             .into_any(),
             TimelineItemKind::DateSeparator => view! {
                 <div class="flex items-center gap-2 my-4">
-                    <div class="flex-1 border-t-2 border-[var(--tile-border-color)]"></div>
+                    <div class="flex-1 border-t-1 border-[var(--muted-text-color)]"></div>
                     <span class="text-muted text-sm">
                         {self.date.format("%d %B %Y").to_string()}
                     </span>
-                    <div class="flex-1 border-t-2 border-[var(--tile-border-color)]"></div>
+                    <div class="flex-1 border-t-1 border-[var(--muted-text-color)]"></div>
                 </div>
             }
             .into_any(),
@@ -242,8 +272,6 @@ fn TimeLine() -> impl IntoView {
             }
         }
 
-        console_error(&format!("Redactions: {:?}", redactions));
-
         for msg in msgs.iter_mut().rev() {
             if let MessageKind::SystemMessage(
                 SystemMessage::MessageEdited { .. }
@@ -254,9 +282,6 @@ fn TimeLine() -> impl IntoView {
                 continue;
             }
 
-            if !redactions.is_empty() {
-                console_error(&format!("Checking if message {} is redacted", msg.event_id));
-            }
             if redactions.contains(&msg.event_id) {
                 msg.delete();
             }

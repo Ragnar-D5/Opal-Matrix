@@ -467,6 +467,16 @@ fn extract_message(
             msg_type: "m.room.encrypted".to_string(),
             timestamp: ev.origin_server_ts().as_secs().into(),
         }),
+        AnySyncMessageLikeEvent::Reaction(ev) => {
+            changes.new_messages.push(MessageRow {
+                event_id: ev.event_id().to_string(),
+                room_id: room_id.to_string(),
+                sender: ev.sender().to_string(),
+                raw_json: raw_json.get().to_string(),
+                msg_type: "m.reaction".to_string(),
+                timestamp: ev.origin_server_ts().as_secs().into(),
+            });
+        }
         _ => return Ok(()),
     }
 
