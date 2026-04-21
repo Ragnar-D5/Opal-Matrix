@@ -113,6 +113,11 @@ impl TimelineItem {
                                             </span>
                                         </div>
                                     }.into_any(),
+                                    MessageContent::Encrypted => view! {
+                                        <div class="text-red-300 bold leading-relaxed break-words text-muted">
+                                            "Encrypted message"
+                                        </div>
+                                    }.into_any(),
                                 }
                             }).collect_view()}
                         </div>
@@ -122,11 +127,11 @@ impl TimelineItem {
             .into_any(),
             TimelineItemKind::DateSeparator => view! {
                 <div class="flex items-center gap-2 my-4">
-                    <div class="flex-1 border-t border-[var(--tile-border-color)]"></div>
+                    <div class="flex-1 border-t-2 border-[var(--tile-border-color)]"></div>
                     <span class="text-muted text-sm">
                         {self.date.format("%d %B %Y").to_string()}
                     </span>
-                    <div class="flex-1 border-t border-[var(--tile-border-color)]"></div>
+                    <div class="flex-1 border-t-2 border-[var(--tile-border-color)]"></div>
                 </div>
             }
             .into_any(),
@@ -146,7 +151,15 @@ impl TimelineItem {
                         MembershipAction::Invited { .. } => format!("{} was invited to the room", display_name),
                         MembershipAction::Kicked { target_id, reason } => format!("{} kicked {}{}", display_name, target_id, if let Some(r) = reason { format!(": {}", r) } else { "".to_string() }),
                         MembershipAction::Banned { target_id, reason } => format!("{} banned {}{}", display_name, target_id, if let Some(r) = reason { format!(": {}", r) } else { "".to_string() }),
-                    }
+                    },
+                    // _ => "Test".to_string()
+                    SystemMessage::EncryptionEnabled { algorithm } => format!("{} enabled encryption ({})", display_name, algorithm),
+                    SystemMessage::PowerlevelChange => format!("{} changed the power levels", display_name),
+                    SystemMessage::JoinRuleChange { new_rule } => format!("{} changed the join rules to '{}'", display_name, new_rule),
+                    SystemMessage::HistoryVisibilityChange { new_visibility } => format!("{} changed the history visibility to '{}'", display_name, new_visibility),
+                    SystemMessage::GuestAccessChange { new_access } => format!("{} changed the guest access to '{}'", display_name, new_access),
+                    SystemMessage::CallJoined { intent } => format!("{} joined a call ({})", display_name, intent),
+                    SystemMessage::CallLeft => format!("{} left a call", display_name),
                 };
 
                 view! {

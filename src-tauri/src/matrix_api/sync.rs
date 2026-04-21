@@ -410,51 +410,51 @@ fn extract_special_state(
 
     let origin_server_ts = ev.origin_server_ts().as_secs();
 
-    match or {
-        AnyStateEventContent::CallMember(ev) => {
-            match ev {
-                CallMemberEventContent::Empty(_) => {
-                    call_members.remove(&sender);
-                }
-                CallMemberEventContent::LegacyContent(_) => {
-                    call_members.insert(sender.clone());
-                }
-                CallMemberEventContent::SessionContent(_) => {
-                    call_members.insert(sender.clone());
-                }
-                _ => (),
-            };
+    // match or {
+    //     AnyStateEventContent::CallMember(ev) => {
+    //         match ev {
+    //             CallMemberEventContent::Empty(_) => {
+    //                 call_members.remove(&sender);
+    //             }
+    //             CallMemberEventContent::LegacyContent(_) => {
+    //                 call_members.insert(sender.clone());
+    //             }
+    //             CallMemberEventContent::SessionContent(_) => {
+    //                 call_members.insert(sender.clone());
+    //             }
+    //             _ => (),
+    //         };
 
-            let after = call_members.len();
+    //         let after = call_members.len();
 
-            if before == 0 && after > 0 {
-                changes.new_messages.push(MessageRow {
-                    event_id: event_id,
-                    room_id: room_id.to_string(),
-                    sender: sender.clone(),
-                    raw_json: json!({
-                       "body": format!("{} started a call", sender),
-                    })
-                    .to_string(),
-                    msg_type: "m.call.member".to_string(),
-                    timestamp: origin_server_ts.into(),
-                });
-            } else if before > 0 && after == 0 {
-                changes.new_messages.push(MessageRow {
-                    event_id: event_id,
-                    room_id: room_id.to_string(),
-                    sender: sender.clone(),
-                    raw_json: json!({
-                       "body": format!("{} ended the call", sender),
-                    })
-                    .to_string(),
-                    msg_type: "m.call.member".to_string(),
-                    timestamp: origin_server_ts.into(),
-                });
-            }
-        }
-        _ => (),
-    }
+    //         if before == 0 && after > 0 {
+    //             changes.new_messages.push(MessageRow {
+    //                 event_id: event_id,
+    //                 room_id: room_id.to_string(),
+    //                 sender: sender.clone(),
+    //                 raw_json: json!({
+    //                    "body": format!("{} started a call", sender),
+    //                 })
+    //                 .to_string(),
+    //                 msg_type: "m.call.member".to_string(),
+    //                 timestamp: origin_server_ts.into(),
+    //             });
+    //         } else if before > 0 && after == 0 {
+    //             changes.new_messages.push(MessageRow {
+    //                 event_id: event_id,
+    //                 room_id: room_id.to_string(),
+    //                 sender: sender.clone(),
+    //                 raw_json: json!({
+    //                    "body": format!("{} ended the call", sender),
+    //                 })
+    //                 .to_string(),
+    //                 msg_type: "m.call.member".to_string(),
+    //                 timestamp: origin_server_ts.into(),
+    //             });
+    //         }
+    //     }
+    //     _ => (),
+    // }
 
     Ok(())
 }

@@ -21,6 +21,14 @@ pub enum SystemMessage {
     MembershipChange(MembershipAction),
     RoomNameChange { new_name: String },
     TopicChange { new_topic: String },
+    EncryptionEnabled { algorithm: String },
+    PowerlevelChange,
+    JoinRuleChange { new_rule: String },
+    HistoryVisibilityChange { new_visibility: String },
+    GuestAccessChange { new_access: String },
+
+    CallJoined { intent: String },
+    CallLeft,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -40,6 +48,7 @@ pub enum MessageContent {
         filename: String,
         size: u64,
     },
+    Encrypted,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]

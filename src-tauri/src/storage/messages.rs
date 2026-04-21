@@ -67,7 +67,7 @@ pub fn get_messages(
             })?;
 
             for msg_res in rows {
-                messages.push(msg_res?.into());
+                messages.push(msg_res?);
             }
         }
         None => {
@@ -129,14 +129,16 @@ impl TryInto<UiMessage> for MessageRow {
 
     fn try_into(self) -> Result<UiMessage, Self::Error> {
         let value: Value = serde_json::from_str(&self.raw_json)?;
-        let content = value.get("content").ok_or("Missing content")?;
+        let content = value
+            .get("content")
+            .ok_or(format!("Missing content: {:?}", value))?;
 
         let message_kind = match self.msg_type.as_str() {
             "m.room.message" => {
                 let msg_type = content
                     .get("msgtype")
                     .and_then(|v| v.as_str())
-                    .ok_or("Missing msgtype")?;
+                    .ok_or(format!("Missing msgtype: {:?}", value))?;
                 let mentions = content
                     .get("m.mentions")
                     .and_then(|v| serde_json::from_value(v.clone()).ok());
@@ -148,14 +150,25 @@ impl TryInto<UiMessage> for MessageRow {
                             text: content
                                 .get("body")
                                 .and_then(|v| v.as_str())
-                                .ok_or("Missing body")?
+                                .ok_or(format!("Missing body: {:?}", value))?
                                 .to_string(),
                             is_edited: false,
                         },
                     }),
                     "m.image" => {
-                        let file = content.get("file").ok_or("Missing file")?;
-                        let info = content.get("info").ok_or("Missing info")?;
+                        let info = content
+                            .get("info")
+                            .ok_or(format!("Missing info: {:?}", value))?;
+                        let url = content
+                            .get("url")
+                            .and_then(|v| v.as_str())
+                            .or_else(|| {
+                                content
+                                    .get("file")
+                                    .and_then(|f| f.get("url"))
+                                    .and_then(|v| v.as_str())
+                            })
+                            .ok_or_else(|| format!("Missing url in image: {:?}", content))?;
 
                         MessageKind::UserMessage(UserMessage {
                             mentions: mentions,
@@ -163,13 +176,9 @@ impl TryInto<UiMessage> for MessageRow {
                                 name: content
                                     .get("body")
                                     .and_then(|v| v.as_str())
-                                    .ok_or("Missing body")?
+                                    .unwrap_or("image")
                                     .to_string(),
-                                url: file
-                                    .get("url")
-                                    .and_then(|v| v.as_str())
-                                    .ok_or("Missing url")?
-                                    .to_string(),
+                                url: url.to_string(),
                                 width: info.get("w").and_then(|v| v.as_u64()).map(|n| n as u32),
                                 height: info.get("h").and_then(|v| v.as_u64()).map(|n| n as u32),
                             },
@@ -195,7 +204,7 @@ impl TryInto<UiMessage> for MessageRow {
                 let membership = content
                     .get("membership")
                     .and_then(|v| v.as_str())
-                    .ok_or("Missing membership")?;
+                    .ok_or(format!("Missing membership: {:?}", value))?;
                 let state_key = value
                     .get("state_key")
                     .and_then(|v| v.as_str())
@@ -227,7 +236,9 @@ impl TryInto<UiMessage> for MessageRow {
                                 .map(|s| s.to_string()),
                         },
                         _ => {
-                            return Err(format!("Unknown membership: {membership}").into());
+                            return Err(
+                                format!("Unknown membership: {membership}; {:?}", value).into()
+                            );
                         }
                     },
                 ))
@@ -237,17 +248,71 @@ impl TryInto<UiMessage> for MessageRow {
                 new_name: content
                     .get("name")
                     .and_then(|v| v.as_str())
-                    .ok_or("Missing name")?
+                    .ok_or(format!("Missing name: {:?}", value))?
                     .to_string(),
             }),
             "m.room.topic" => MessageKind::SystemMessage(SystemMessage::TopicChange {
                 new_topic: content
                     .get("topic")
                     .and_then(|v| v.as_str())
-                    .ok_or("Missing topic")?
+                    .ok_or(format!("Missing topic: {:?}", value))?
                     .to_string(),
             }),
-            _ => return Err(format!("Unsupported message type: {}", self.msg_type).into()),
+            "m.room.encryption" => MessageKind::SystemMessage(SystemMessage::EncryptionEnabled {
+                algorithm: content
+                    .get("algorithm")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown")
+                    .to_string(),
+            }),
+            "m.room.power_levels" => MessageKind::SystemMessage(SystemMessage::PowerlevelChange),
+            "m.room.join_rules" => MessageKind::SystemMessage(SystemMessage::JoinRuleChange {
+                new_rule: content
+                    .get("join_rule")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown")
+                    .to_string(),
+            }),
+            "m.room.history_visibility" => {
+                MessageKind::SystemMessage(SystemMessage::HistoryVisibilityChange {
+                    new_visibility: content
+                        .get("history_visibility")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown")
+                        .to_string(),
+                })
+            }
+            "m.room.guest_access" => MessageKind::SystemMessage(SystemMessage::GuestAccessChange {
+                new_access: content
+                    .get("guest_access")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown")
+                    .to_string(),
+            }),
+            "m.room.encrypted" => MessageKind::UserMessage(UserMessage {
+                mentions: None,
+                content: MessageContent::Encrypted,
+            }),
+            "org.matrix.msc3401.call.member" => {
+                // If the content object is empty, the user has left the call.
+                if content.as_object().map_or(true, |obj| obj.is_empty()) {
+                    MessageKind::SystemMessage(SystemMessage::CallLeft)
+                } else {
+                    // If it has data, they joined. We can grab the intent to see if it's voice or video.
+                    let intent = content
+                        .get("m.call.intent")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("audio")
+                        .to_string();
+
+                    MessageKind::SystemMessage(SystemMessage::CallJoined { intent })
+                }
+            }
+            _ => {
+                return Err(
+                    format!("Unsupported message type: {}; {:?}", self.msg_type, value).into(),
+                )
+            }
         };
 
         let msg = UiMessage {
@@ -256,8 +321,6 @@ impl TryInto<UiMessage> for MessageRow {
             sender_id: self.sender,
             kind: message_kind,
         };
-
-        debug!("{:?}", msg);
 
         return Ok(msg);
     }
