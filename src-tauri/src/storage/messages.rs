@@ -1,7 +1,9 @@
-use log::debug;
+use log::{debug, info};
 use rusqlite::Connection;
 use serde_json::Value;
-use shared::{MessageContent, MessageKind, SystemMessage, UiMessage, UserMessage};
+use shared::{
+    EncryptedFileInfo, MessageContent, MessageKind, SystemMessage, UiMessage, UserMessage,
+};
 
 use crate::TauriError;
 
@@ -135,6 +137,33 @@ impl TryInto<UiMessage> for MessageRow {
 
         let message_kind = match self.msg_type.as_str() {
             "m.room.message" => {
+                if let Some(relates_to) = content.get("m.relates_to") {
+                    if relates_to.get("rel_type").and_then(|v| v.as_str()) == Some("m.replace") {
+                        let event_id = relates_to
+                            .get("event_id")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+
+                        let new_text = content
+                            .get("m.new_content")
+                            .and_then(|nc| nc.get("body"))
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("[Empty Edit]")
+                            .to_string();
+
+                        return Ok(UiMessage {
+                            event_id: self.event_id,
+                            timestamp: self.timestamp,
+                            sender_id: self.sender,
+                            kind: MessageKind::SystemMessage(SystemMessage::MessageEdited {
+                                event_id,
+                                new_text,
+                            }),
+                        });
+                    }
+                }
+
                 let msg_type = content
                     .get("msgtype")
                     .and_then(|v| v.as_str())
@@ -146,6 +175,8 @@ impl TryInto<UiMessage> for MessageRow {
                 match msg_type {
                     "m.text" => MessageKind::UserMessage(UserMessage {
                         mentions: mentions,
+                        reactions: Vec::new(),
+
                         content: MessageContent::Text {
                             text: content
                                 .get("body")
@@ -170,8 +201,35 @@ impl TryInto<UiMessage> for MessageRow {
                             })
                             .ok_or_else(|| format!("Missing url in image: {:?}", content))?;
 
+                        let encryption_info = if let Some(file_obj) = content.get("file") {
+                            Some(EncryptedFileInfo {
+                                // The actual AES key is hidden inside the JWK 'key' object under 'k'
+                                key: file_obj
+                                    .get("key")
+                                    .and_then(|k| k.get("k"))
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("")
+                                    .to_string(),
+                                iv: file_obj
+                                    .get("iv")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("")
+                                    .to_string(),
+                                hash: file_obj
+                                    .get("hashes")
+                                    .and_then(|h| h.get("sha256"))
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("")
+                                    .to_string(),
+                            })
+                        } else {
+                            None
+                        };
+
                         MessageKind::UserMessage(UserMessage {
                             mentions: mentions,
+                            reactions: Vec::new(),
+
                             content: MessageContent::Image {
                                 name: content
                                     .get("body")
@@ -181,6 +239,8 @@ impl TryInto<UiMessage> for MessageRow {
                                 url: url.to_string(),
                                 width: info.get("w").and_then(|v| v.as_u64()).map(|n| n as u32),
                                 height: info.get("h").and_then(|v| v.as_u64()).map(|n| n as u32),
+
+                                encryption_info: encryption_info,
                             },
                         })
                     }
@@ -188,6 +248,8 @@ impl TryInto<UiMessage> for MessageRow {
                         debug!("Unsupported msgtype: {}", msg_type);
                         MessageKind::UserMessage(UserMessage {
                             mentions: mentions,
+                            reactions: Vec::new(),
+
                             content: MessageContent::Text {
                                 text: content
                                     .get("body")
@@ -291,6 +353,8 @@ impl TryInto<UiMessage> for MessageRow {
             }),
             "m.room.encrypted" => MessageKind::UserMessage(UserMessage {
                 mentions: None,
+                reactions: Vec::new(),
+
                 content: MessageContent::Encrypted,
             }),
             "org.matrix.msc3401.call.member" => {
@@ -307,6 +371,32 @@ impl TryInto<UiMessage> for MessageRow {
 
                     MessageKind::SystemMessage(SystemMessage::CallJoined { intent })
                 }
+            }
+            "m.reaction" => {
+                let event_id = content
+                    .get("m.relates_to")
+                    .and_then(|r| r.get("event_id"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+
+                let reaction = content
+                    .get("m.relates_to")
+                    .and_then(|r| r.get("key"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+
+                MessageKind::SystemMessage(SystemMessage::MessageReacted { event_id, reaction })
+            }
+            "m.room.redaction" => {
+                let event_id = value
+                    .get("redacts")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+
+                MessageKind::SystemMessage(SystemMessage::MessageRedacted { event_id })
             }
             _ => {
                 return Err(

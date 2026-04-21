@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use crate::app::{call_tauri, AppState, MemberStore};
 use crate::components::FloatingTile;
@@ -9,7 +9,7 @@ use leptos::{leptos_dom::logging::console_error, prelude::*};
 use leptos_use::{use_intersection_observer, UseIntersectionObserverReturn};
 use serde::Serialize;
 use shared::{
-    MembershipAction, MessageContent, MessageKind, SystemMessage, UiMessage, UserMessage,
+    MembershipAction, MessageContent, MessageKind, Reaction, SystemMessage, UiMessage, UserMessage,
 };
 
 #[derive(PartialEq, Clone)]
@@ -97,11 +97,21 @@ impl TimelineItem {
                                             }}
                                         </div>
                                     }.into_any(),
-                                    MessageContent::Image { url, name, .. } => view! {
-                                        <div class="mt-1">
-                                            <img src=url.clone() alt=name.clone() class="max-w-sm rounded-md border border-[var(--tile-border-color)]" />
-                                        </div>
-                                    }.into_any(),
+                                    MessageContent::Image { url, name, encryption_info, .. } => {
+                                        let final_url = if let Some(enc) = encryption_info {
+                                            let encoded_key = urlencoding::encode(&enc.key);
+                                            let encoded_iv = urlencoding::encode(&enc.iv);
+
+                                            format!("{}?key={}&iv={}", url, encoded_key, encoded_iv)
+                                        } else {
+                                            url.clone()
+                                        };
+                                        view! {
+                                            <div class="mt-1">
+                                                <img src=final_url alt=name.clone() class="max-w-sm rounded-md border border-[var(--tile-border-color)]" />
+                                            </div>
+                                        }.into_any()
+                                    },
                                     MessageContent::File { url, filename, size } => view! {
                                         <div class="flex items-center gap-2 mt-1 p-2 rounded-md bg-white/5 border border-[var(--tile-border-color)] inline-flex">
                                             <span class="text-xl">"📄"</span>
@@ -116,6 +126,11 @@ impl TimelineItem {
                                     MessageContent::Encrypted => view! {
                                         <div class="text-red-300 bold leading-relaxed break-words text-muted">
                                             "Encrypted message"
+                                        </div>
+                                    }.into_any(),
+                                    MessageContent::Deleted => view! {
+                                        <div class="text-muted italic leading-relaxed break-words">
+                                            "This message was deleted"
                                         </div>
                                     }.into_any(),
                                 }
@@ -160,6 +175,8 @@ impl TimelineItem {
                     SystemMessage::GuestAccessChange { new_access } => format!("{} changed the guest access to '{}'", display_name, new_access),
                     SystemMessage::CallJoined { intent } => format!("{} joined a call ({})", display_name, intent),
                     SystemMessage::CallLeft => format!("{} left a call", display_name),
+
+                    _ => format!("{} performed an action", display_name),
                 };
 
                 view! {
@@ -193,11 +210,63 @@ fn TimeLine() -> impl IntoView {
     let (messages, set_messages) = signal(Vec::<UiMessage>::new());
 
     let flattened_items = Memo::new(move |_| {
-        let msgs = messages.get();
+        let mut msgs = messages.get();
         let mut items: Vec<TimelineItem> = Vec::new();
         let mut last_day: Option<NaiveDate> = None;
 
-        for msg in msgs.iter().rev() {
+        let mut edits = HashMap::new();
+        let mut redactions = HashSet::new();
+        let mut reactions_map = HashMap::new();
+
+        for msg in msgs.iter() {
+            match &msg.kind {
+                MessageKind::SystemMessage(SystemMessage::MessageEdited { event_id, new_text }) => {
+                    edits.insert(event_id.clone(), new_text.clone());
+                }
+                MessageKind::SystemMessage(SystemMessage::MessageRedacted { event_id }) => {
+                    redactions.insert(event_id.clone());
+                }
+                MessageKind::SystemMessage(SystemMessage::MessageReacted {
+                    event_id,
+                    reaction,
+                }) => {
+                    reactions_map.insert(
+                        event_id.clone(),
+                        Reaction {
+                            sender_id: msg.sender_id.clone(),
+                            reaction: reaction.clone(),
+                        },
+                    );
+                }
+                _ => {}
+            }
+        }
+
+        console_error(&format!("Redactions: {:?}", redactions));
+
+        for msg in msgs.iter_mut().rev() {
+            if let MessageKind::SystemMessage(
+                SystemMessage::MessageEdited { .. }
+                | SystemMessage::MessageRedacted { .. }
+                | SystemMessage::MessageReacted { .. },
+            ) = &msg.kind
+            {
+                continue;
+            }
+
+            if !redactions.is_empty() {
+                console_error(&format!("Checking if message {} is redacted", msg.event_id));
+            }
+            if redactions.contains(&msg.event_id) {
+                msg.delete();
+            }
+            if let Some(new_text) = edits.get(&msg.event_id) {
+                msg.edit(new_text.clone());
+            }
+            if let Some(reaction) = reactions_map.get(&msg.event_id) {
+                msg.add_reaction(reaction.clone());
+            }
+
             let current_date = get_date_from_ts(msg.timestamp);
             let current_day = current_date.date_naive();
 

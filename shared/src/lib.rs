@@ -29,6 +29,17 @@ pub enum SystemMessage {
 
     CallJoined { intent: String },
     CallLeft,
+
+    MessageEdited { event_id: String, new_text: String },
+    MessageReacted { event_id: String, reaction: String },
+    MessageRedacted { event_id: String },
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct EncryptedFileInfo {
+    pub key: String,
+    pub iv: String,
+    pub hash: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -42,6 +53,8 @@ pub enum MessageContent {
         url: String,
         width: Option<u32>,
         height: Option<u32>,
+
+        encryption_info: Option<EncryptedFileInfo>,
     },
     File {
         url: String,
@@ -49,6 +62,7 @@ pub enum MessageContent {
         size: u64,
     },
     Encrypted,
+    Deleted,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -59,8 +73,15 @@ pub struct Mentions {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct Reaction {
+    pub sender_id: String,
+    pub reaction: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct UserMessage {
     pub mentions: Option<Mentions>,
+    pub reactions: Vec<Reaction>,
 
     pub content: MessageContent,
 }
@@ -78,4 +99,29 @@ pub struct UiMessage {
     pub sender_id: String,
 
     pub kind: MessageKind,
+}
+
+impl UiMessage {
+    pub fn delete(&mut self) {
+        if let MessageKind::UserMessage(user_message) = &mut self.kind {
+            user_message.content = MessageContent::Deleted;
+            user_message.mentions = None;
+            user_message.reactions.clear();
+        }
+    }
+
+    pub fn edit(&mut self, new_text: String) {
+        if let MessageKind::UserMessage(user_message) = &mut self.kind {
+            user_message.content = MessageContent::Text {
+                text: new_text,
+                is_edited: true,
+            };
+        }
+    }
+
+    pub fn add_reaction(&mut self, reaction: Reaction) {
+        if let MessageKind::UserMessage(user_message) = &mut self.kind {
+            user_message.reactions.push(reaction);
+        }
+    }
 }

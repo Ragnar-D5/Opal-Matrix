@@ -133,6 +133,13 @@ pub async fn fetch_messages(
     }
 
     for msg in api_messages {
+        if msg
+            .to_string()
+            .contains("$cse5M93hIaL9xnDvUJ93MNIIb6LRw6dluFAuowNWiGI")
+        {
+            debug!("Got message: {msg}");
+        }
+
         let Some(event_id) = msg
             .get("event_id")
             .and_then(|v| v.as_str())
@@ -181,10 +188,6 @@ pub async fn fetch_messages(
     }
 
     save_messages(conn, local_messages.clone())?;
-
-    for msg in local_messages.clone() {
-        let _: Result<UiMessage, _> = msg.try_into();
-    }
 
     let has_moe = local_messages.len() >= limit;
 

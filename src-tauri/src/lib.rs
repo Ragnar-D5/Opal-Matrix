@@ -1,8 +1,11 @@
-use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use aes::cipher::{KeyIvInit, StreamCipher};
+use aes::Aes256;
+use base64::engine::general_purpose;
+use base64::Engine;
 use colored::Colorize;
 use log::info;
 use serde::Serialize;
@@ -20,6 +23,8 @@ mod storage;
 use matrix_api::authentication;
 use matrix_api::crypto;
 use matrix_api::discovery::choose_home_server;
+
+type Aes256Ctr = ctr::Ctr64BE<Aes256>;
 
 pub const APP_NAME: &str = "Maru";
 
@@ -104,8 +109,7 @@ struct AppState {
     sync_cancel_token: Mutex<Option<CancellationToken>>,
 
     connection: Mutex<Option<rusqlite::Connection>>,
-
-    call_members_by_room: Mutex<HashMap<String, HashSet<String>>>,
+    // call_members_by_room: Mutex<HashMap<String, HashSet<String>>>,
 }
 
 impl AppState {
@@ -495,84 +499,125 @@ pub fn run() {
 
                 tauri::async_runtime::spawn(async move {
                     let state = app_handle.state::<Arc<AppState>>().clone();
+                    let Ok(token) = state.check_token().await else {
+                        responder.respond(
+                            tauri::http::Response::builder()
+                                .status(401)
+                                .body(Vec::<u8>::new())
+                                .unwrap(),
+                        );
+                        return;
+                    };
 
-                    match state.check_token().await {
-                        Ok(token) => {
-                            let media_path = uri.strip_prefix("mxc://").unwrap_or(&uri);
-
-                            let matrix_url = {
-                                let url_guard = state.matrix_url.read().await;
-                                url_guard
-                                    .as_ref()
-                                    .ok_or("Not logged in")
-                                    .unwrap_or(&"https://matrix-client.matrix.org".to_string())
-                                    .clone()
-                            };
-
-                            let url = match construct_url(vec![
-                                matrix_url.as_str(),
-                                "_matrix",
-                                "client",
-                                "v1",
-                                "media",
-                                "thumbnail",
-                                format!("{}?width=50&height=50&method=crop", media_path).as_str(),
-                            ]) {
-                                Ok(u) => u,
-                                Err(_) => {
-                                    tauri::http::Response::builder()
-                                        .status(400)
-                                        .body(Vec::<u8>::new())
-                                        .expect("Failed to send response");
-                                    return;
-                                }
-                            };
-
-                            let response = match reqwest::Client::new()
-                                .get(url)
-                                .bearer_auth(token)
-                                .send()
-                                .await
-                            {
-                                Ok(res) if res.status().is_success() => {
-                                    let bytes = res.bytes().await.unwrap_or_default().to_vec();
-                                    tauri::http::Response::builder()
-                                        .header("Access-Control-Allow-Origin", "*")
-                                        .body(bytes)
-                                        .unwrap()
-                                }
-                                Ok(res) => {
-                                    // PRINT THE REAL MATRIX ERROR CODE
-                                    log::error!(
-                                        "Matrix Server rejected media request: HTTP {}",
-                                        res.status()
-                                    );
-                                    tauri::http::Response::builder()
-                                        .status(res.status().as_u16()) // Pass the real status to the frontend
-                                        .body(Vec::<u8>::new())
-                                        .unwrap()
-                                }
-                                Err(e) => {
-                                    // PRINT THE RUST NETWORK ERROR
-                                    log::error!("Reqwest failed to connect: {}", e);
-                                    tauri::http::Response::builder()
-                                        .status(500)
-                                        .body(Vec::<u8>::new())
-                                        .unwrap()
-                                }
-                            };
-
-                            responder.respond(response);
-                        }
+                    let parsed_url = match Url::parse(&uri) {
+                        Ok(u) => u,
                         Err(_) => {
                             responder.respond(
                                 tauri::http::Response::builder()
-                                    .status(401)
+                                    .status(400)
                                     .body(Vec::new())
-                                    .expect("Failed to create fail"),
+                                    .unwrap(),
                             );
+                            return;
+                        }
+                    };
+
+                    let server_name = parsed_url.host_str().unwrap_or("");
+                    let media_id = parsed_url.path().trim_start_matches('/');
+
+                    let mut is_thumbnail = false;
+                    let mut width = "800";
+                    let mut height = "800";
+                    let mut enc_key = None;
+                    let mut enc_iv = None;
+
+                    for (k, v) in parsed_url.query_pairs() {
+                        match k.as_ref() {
+                            "thumbnail" => is_thumbnail = v == "true",
+                            "width" => width = v.into_owned().leak(),
+                            "height" => height = v.into_owned().leak(),
+                            "key" => enc_key = Some(v.into_owned()),
+                            "iv" => enc_iv = Some(v.into_owned()),
+                            _ => {}
                         }
                     }
+
+                    let matrix_url = {
+                        let url_guard = state.matrix_url.read().await;
+                        url_guard
+                            .as_ref()
+                            .ok_or("Not logged in")
+                            .unwrap_or(&"https://matrix-client.matrix.org".to_string())
+                            .clone()
+                    };
+
+                    let fetch_url = if enc_key.is_some() {
+                        format!("{}/_matrix/client/v1/media/download/{}/{}", matrix_url, server_name, media_id)
+                    } else if is_thumbnail {
+                        format!(
+                            "{}/_matrix/client/v1/media/thumbnail/{}/{}?width={}&height={}&method=scale",
+                            matrix_url, server_name, media_id, width, height
+                        )
+                    } else {
+                        format!("{}/_matrix/client/v1/media/download/{}/{}", matrix_url, server_name, media_id)
+                    };
+
+                    let response = match reqwest::Client::new()
+                        .get(&fetch_url)
+                        .bearer_auth(token)
+                        .send()
+                        .await
+                    {
+                        Ok(res) if res.status().is_success() => {
+                            let mut bytes = res.bytes().await.unwrap_or_default().to_vec();
+
+                            if let (Some(k), Some(iv)) = (enc_key, enc_iv) {
+                                // Key uses URL_SAFE_NO_PAD, IV uses STANDARD_NO_PAD
+                                if let (Ok(key_bytes), Ok(iv_bytes)) = (
+                                    general_purpose::URL_SAFE_NO_PAD.decode(&k),
+                                    general_purpose::STANDARD_NO_PAD.decode(&iv),
+                                ) {
+                                    if key_bytes.len() == 32 && iv_bytes.len() >= 8 {
+                                        // Pad IV to 16 bytes (Matrix uses 8 bytes of random data + 8 bytes of 0s for counter)
+                                        let mut padded_iv = [0u8; 16];
+                                        let copy_len = std::cmp::min(iv_bytes.len(), 16);
+                                        padded_iv[..copy_len].copy_from_slice(&iv_bytes[..copy_len]);
+
+                                        // Apply AES-256-CTR keystream
+                                        if let Ok(mut cipher) = Aes256Ctr::new_from_slices(&key_bytes, &padded_iv) {
+                                            cipher.apply_keystream(&mut bytes);
+                                        }
+                                    } else {
+                                        log::error!("Invalid key/iv length for decryption");
+                                    }
+                                }
+                            }
+
+                            tauri::http::Response::builder()
+                                .header("Access-Control-Allow-Origin", "*")
+                                .body(bytes)
+                                .unwrap()
+                        }
+                        Ok(res) => {
+                            log::error!(
+                                "Matrix Server rejected media request: HTTP {}",
+                                res.status()
+                            );
+                            tauri::http::Response::builder()
+                                .status(res.status().as_u16())
+                                .body(Vec::<u8>::new())
+                                .unwrap()
+                        }
+                        Err(e) => {
+                            log::error!("Reqwest failed to connect: {}", e);
+                            tauri::http::Response::builder()
+                                .status(500)
+                                .body(Vec::<u8>::new())
+                                .unwrap()
+                        }
+                    };
+
+                    responder.respond(response);
                 });
             },
         )

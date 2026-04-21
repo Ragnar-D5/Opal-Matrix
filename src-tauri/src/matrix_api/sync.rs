@@ -1,9 +1,7 @@
 use std::collections::HashSet;
 
-use log::{debug, trace, warn};
-use ruma::events::call::member::CallMemberEventContent;
+use log::{error, info, trace, warn};
 use ruma::serde::Raw;
-use serde_json::json;
 use serde_json::value::RawValue;
 use tauri::AppHandle;
 
@@ -189,10 +187,10 @@ async fn handle_sync_response(
 ) -> Result<(), TauriError> {
     let mut changes = SyncChanges::default();
 
-    let mut call_members_by_room = {
-        let guard = state.call_members_by_room.lock().await;
-        guard.clone()
-    };
+    // let mut call_members_by_room = {
+    // let guard = state.call_members_by_room.lock().await;
+    // guard.clone()
+    // };
 
     for raw_event in response.account_data.events {
         if let Err(e) = extract_account_data(&mut changes, raw_event) {
@@ -214,7 +212,7 @@ async fn handle_sync_response(
             _ => vec![],
         };
 
-        let call_members = call_members_by_room.entry(room_id.to_string()).or_default();
+        // let call_members = call_members_by_room.entry(room_id.to_string()).or_default();
 
         for state_event in room_state_events {
             let data = match state_event.deserialize() {
@@ -230,7 +228,7 @@ async fn handle_sync_response(
                 }
             };
             extract_state(&mut changes, &room_id, data.clone(), state_event.clone())?;
-            extract_special_state(&mut changes, &room_id, data, call_members)?;
+            // extract_special_state(&mut changes, &room_id, data, call_members)?;
         }
 
         for raw_event in room.timeline.events {
@@ -238,7 +236,7 @@ async fn handle_sync_response(
             let raw_json = clone.json();
 
             let data = raw_event.deserialize()?;
-            extract_timeline(&mut changes, &room_id, data, raw_json, raw_event)?;
+            extract_timeline(&mut changes, &room_id, data, raw_json, raw_event.clone())?;
         }
     }
 
@@ -387,78 +385,6 @@ fn extract_state(
     Ok(())
 }
 
-fn extract_special_state(
-    changes: &mut SyncChanges,
-    room_id: &OwnedRoomId,
-    ev: AnySyncStateEvent,
-    call_members: &mut HashSet<String>,
-) -> Result<(), TauriError> {
-    let Some(or) = ev.original_content() else {
-        return Ok(());
-    };
-
-    let before = call_members.len();
-    let state_key = ev.state_key().to_string();
-
-    let sender = ev.sender().to_string();
-
-    if state_key.is_empty() || sender.is_empty() {
-        return Ok(());
-    }
-
-    let event_id = ev.event_id().to_string();
-
-    let origin_server_ts = ev.origin_server_ts().as_secs();
-
-    // match or {
-    //     AnyStateEventContent::CallMember(ev) => {
-    //         match ev {
-    //             CallMemberEventContent::Empty(_) => {
-    //                 call_members.remove(&sender);
-    //             }
-    //             CallMemberEventContent::LegacyContent(_) => {
-    //                 call_members.insert(sender.clone());
-    //             }
-    //             CallMemberEventContent::SessionContent(_) => {
-    //                 call_members.insert(sender.clone());
-    //             }
-    //             _ => (),
-    //         };
-
-    //         let after = call_members.len();
-
-    //         if before == 0 && after > 0 {
-    //             changes.new_messages.push(MessageRow {
-    //                 event_id: event_id,
-    //                 room_id: room_id.to_string(),
-    //                 sender: sender.clone(),
-    //                 raw_json: json!({
-    //                    "body": format!("{} started a call", sender),
-    //                 })
-    //                 .to_string(),
-    //                 msg_type: "m.call.member".to_string(),
-    //                 timestamp: origin_server_ts.into(),
-    //             });
-    //         } else if before > 0 && after == 0 {
-    //             changes.new_messages.push(MessageRow {
-    //                 event_id: event_id,
-    //                 room_id: room_id.to_string(),
-    //                 sender: sender.clone(),
-    //                 raw_json: json!({
-    //                    "body": format!("{} ended the call", sender),
-    //                 })
-    //                 .to_string(),
-    //                 msg_type: "m.call.member".to_string(),
-    //                 timestamp: origin_server_ts.into(),
-    //             });
-    //         }
-    //     }
-    //     _ => (),
-    // }
-
-    Ok(())
-}
-
 fn extract_timeline(
     changes: &mut SyncChanges,
     room_id: &OwnedRoomId,
@@ -466,6 +392,14 @@ fn extract_timeline(
     raw_json: &RawValue,
     state_event: Raw<AnySyncTimelineEvent>,
 ) -> Result<(), TauriError> {
+    // if state_event
+    //     .clone()
+    //     .into_json()
+    //     .to_string()
+    //     .contains("$cse5M93hIaL9xnDvUJ93MNIIb6LRw6dluFAuowNWiGI")
+    // {
+    //     info!("Found event with specific ID in room {}: {:?}", room_id, ev);
+    // }
     match ev {
         AnySyncTimelineEvent::MessageLike(ev) => extract_message(changes, room_id, ev, raw_json)?,
         AnySyncTimelineEvent::State(ev) => {
@@ -506,71 +440,48 @@ fn extract_message(
             }
         }
         AnySyncMessageLikeEvent::RoomMessage(ev) => {
-            if let Some(or) = ev.as_original() {
-                changes.new_messages.push(MessageRow {
-                    event_id: or.event_id.to_string(),
-                    room_id: room_id.to_string(),
-                    sender: or.sender.to_string(),
-                    raw_json: raw_json.get().to_string(),
-                    msg_type: "m.room.message".to_string(),
-                    timestamp: or.origin_server_ts.as_secs().into(),
-                });
-            }
+            changes.new_messages.push(MessageRow {
+                event_id: ev.event_id().to_string(),
+                room_id: room_id.to_string(),
+                sender: ev.sender().to_string(),
+                raw_json: raw_json.get().to_string(),
+                msg_type: "m.room.message".to_string(),
+                timestamp: ev.origin_server_ts().as_secs().into(),
+            });
         }
+        AnySyncMessageLikeEvent::RoomRedaction(ev) => {
+            changes.new_messages.push(MessageRow {
+                event_id: ev.event_id().to_string(),
+                room_id: room_id.to_string(),
+                sender: ev.sender().to_string(),
+                raw_json: raw_json.get().to_string(),
+                msg_type: "m.room.redaction".to_string(),
+                timestamp: ev.origin_server_ts().as_secs().into(),
+            });
+        }
+        AnySyncMessageLikeEvent::RoomEncrypted(ev) => changes.new_messages.push(MessageRow {
+            event_id: ev.event_id().to_string(),
+            room_id: room_id.to_string(),
+            sender: ev.sender().to_string(),
+            raw_json: raw_json.get().to_string(),
+            msg_type: "m.room.encrypted".to_string(),
+            timestamp: ev.origin_server_ts().as_secs().into(),
+        }),
         _ => return Ok(()),
     }
 
     Ok(())
 }
 
-use ruma::events::room::member::MembershipState;
 fn create_system_message(
     state_ev: AnySyncStateEvent,
     room_id: &OwnedRoomId,
     raw_json: String,
 ) -> Option<MessageRow> {
-    let Some(or) = state_ev.original_content() else {
-        return None;
-    };
-
     let event_id = state_ev.event_id().to_string();
     let sender = state_ev.sender().to_string();
     let msg_type = state_ev.event_type().to_string();
     let timestamp = state_ev.origin_server_ts().as_secs().into();
-
-    let body = match or {
-        AnyStateEventContent::RoomCreate(_) => {
-            format!("{} created the room", sender)
-        }
-        AnyStateEventContent::RoomName(ev) => {
-            format!("{} changed the room name to {}", sender, ev.name)
-        }
-        AnyStateEventContent::RoomMember(ev) => {
-            let target = state_ev.state_key().to_string();
-
-            match ev.membership {
-                MembershipState::Join => {
-                    if sender == target {
-                        format!("{} joined the room", sender)
-                    } else {
-                        format!("{} joined", target)
-                    }
-                }
-                MembershipState::Invite => format!("{} invited {}", sender, target),
-                MembershipState::Leave => {
-                    if sender == target {
-                        format!("{} left the room", sender)
-                    } else {
-                        format!("{} kicked {}", sender, target)
-                    }
-                }
-                MembershipState::Ban => format!("{} banned {}", sender, target),
-                _ => return None,
-            }
-        }
-        AnyStateEventContent::RoomEncryption(_) => format!("{} enabled room encryption", sender),
-        _ => return None,
-    };
 
     return Some(MessageRow {
         event_id,

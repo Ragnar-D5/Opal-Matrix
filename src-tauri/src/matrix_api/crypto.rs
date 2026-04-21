@@ -92,18 +92,6 @@ pub async fn save_session(session: &StoredSession) -> Result<(), TauriError> {
     Ok(())
 }
 
-pub async fn get_device_id(user_id: String) -> Result<String, TauriError> {
-    let entry = Entry::new(APP_NAME, &user_id)?;
-
-    match entry.get_password() {
-        Ok(device_id) => Ok(device_id),
-        Err(keyring::Error::NoEntry) => {
-            Err(format!("No device ID found for user {}", user_id).into())
-        }
-        Err(e) => Err(format!("Keyring error: {}", e).into()),
-    }
-}
-
 pub async fn init_crypto_machine(
     path: PathBuf,
     user_id: String,
@@ -154,6 +142,19 @@ pub async fn process_message(
     room_id: &String,
     raw_message: Value,
 ) -> Result<Value, TauriError> {
+    let event_id = raw_message
+        .get("event_id")
+        .map(|v| v.to_string())
+        .ok_or("Missing event_id in message")?;
+    let sender = raw_message
+        .get("sender")
+        .map(|v| v.to_string())
+        .ok_or("Missing sender in message")?;
+    let timestamp = raw_message
+        .get("origin_server_ts")
+        .and_then(|v| v.as_i64())
+        .ok_or("Missing origin_server_ts in message")?;
+
     let olm_machine = {
         let guard = state.crypto_machine.lock().await;
         guard.as_ref().ok_or("Olm machine not initialized")?.clone()
@@ -172,10 +173,27 @@ pub async fn process_message(
 
     let event: Raw<EncryptedEvent> = Raw::from_json_string(raw_message.to_string())?;
     match olm_machine
-        .decrypt_room_event(&event, &RoomId::parse(room_id)?, &decryption_settings)
+        .decrypt_room_event(
+            &event,
+            &RoomId::parse(room_id.clone())?,
+            &decryption_settings,
+        )
         .await
     {
-        Ok(res) => return Ok(Value::from_str(res.event.into_json().get())?),
+        Ok(res) => {
+            let mut decrypted_val: Value = serde_json::from_str(res.event.into_json().get())?;
+
+            if let Some(obj) = decrypted_val.as_object_mut() {
+                obj.insert("event_id".to_string(), Value::String(event_id));
+                obj.insert("sender".to_string(), Value::String(sender));
+                obj.insert(
+                    "origin_server_ts".to_string(),
+                    Value::Number(timestamp.into()),
+                );
+            }
+
+            return Ok(decrypted_val);
+        }
         Err(e) => {
             warn!("Failed to decrypt event: {}", e);
 
@@ -219,7 +237,6 @@ pub async fn process_sync_response(
         for raw_event in joined_room.timeline.events.drain(..) {
             let mut replaced = false;
 
-            // raw_event is already a Raw<AnyStateEvent>, call deserialize_as directly
             if let Ok(val) = raw_event.deserialize_as::<serde_json::Value>() {
                 if val.get("type").and_then(|t| t.as_str()) == Some("m.room.encrypted") {
                     let raw_json_value = raw_event.json().to_owned();
@@ -236,15 +253,11 @@ pub async fn process_sync_response(
                         Err(e) => {
                             warn!("Failed to decrypt event in state: {}", e);
 
-                            // Push error message
-                            let mut fallback_json = val.clone();
-                            fallback_json["type"] = json!("m.room.decrypted");
-                            fallback_json["content"] = json!({
-                                "msgtype": "m.text.failed",
-                                "body": format!("**Failed to decrypt message**: {}", e)
-                            });
+                            // Push original message without any modification
+                            let owned = raw_event.json().to_owned();
+                            let fallback_json = owned.get();
 
-                            if let Ok(raw_fallback) = serde_json::from_value(fallback_json) {
+                            if let Ok(raw_fallback) = serde_json::from_str(fallback_json) {
                                 new_timeline.push(raw_fallback);
                                 replaced = true;
                             }
@@ -436,35 +449,35 @@ async fn send_put(
     builder.body(bytes).map_err(|e| e.to_string().into())
 }
 
-#[derive(Deserialize, Debug)]
-enum Algorithm {
-    #[serde(rename = "m.megolm_backup.v1.curve25519-aes-sha2")]
-    MegolmV1AesSha2,
-}
+// #[derive(Deserialize, Debug)]
+// enum Algorithm {
+//     #[serde(rename = "m.megolm_backup.v1.curve25519-aes-sha2")]
+//     MegolmV1AesSha2,
+// }
 
-#[derive(Deserialize, Debug)]
-struct AuthData {
-    public_key: String,
-    signatures: BTreeMap<String, BTreeMap<String, String>>,
+// #[derive(Deserialize, Debug)]
+// struct AuthData {
+//     public_key: String,
+//     signatures: BTreeMap<String, BTreeMap<String, String>>,
 
-    // To be sure
-    #[serde(flatten)]
-    extra: BTreeMap<String, Value>,
-}
+//     // To be sure
+//     #[serde(flatten)]
+//     extra: BTreeMap<String, Value>,
+// }
 
 #[derive(Deserialize, Debug)]
 struct BackupInfoResponse {
-    algorithm: Algorithm,
-    auth_data: AuthData,
-    count: u64,
-    etag: String,
+    // algorithm: Algorithm,
+    // auth_data: AuthData,
+    // count: u64,
+    // etag: String,
     version: String,
 }
 #[derive(Deserialize, Debug)]
 struct KeyBackupData {
-    first_message_index: u64,
-    forwarded_count: u64,
-    is_verified: bool,
+    // first_message_index: u64,
+    // forwarded_count: u64,
+    // is_verified: bool,
     session_data: EncryptedSessionData,
 }
 

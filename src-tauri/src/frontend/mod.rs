@@ -1,15 +1,14 @@
 use std::collections::{HashMap, HashSet};
 
-use log::debug;
 use rusqlite::Connection;
-use tauri::{command, AppHandle, Emitter};
+use tauri::{AppHandle, Emitter};
 
 use crate::{
     frontend::{
         members::UserProfile,
         rooms::{FlatRoom, RoomNode, SidebarState},
     },
-    storage::{fetch_sidebar, members::MemberRow, messages::MessageRow},
+    storage::{fetch_sidebar, members::MemberRow},
     TauriError,
 };
 

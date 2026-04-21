@@ -1,7 +1,6 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::{construct_url, AppState, ClientInfo};
-use log::debug;
+use crate::{construct_url, ClientInfo};
 use serde_json::Value;
 
 use crate::{RefreshToken, TauriError, Token};
