@@ -1,12 +1,9 @@
 use log::warn;
 use ruma::api::client::backup::EncryptedSessionData;
 use ruma::RoomId;
-use std::any;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::Arc;
-use tauri::State;
 
 use crate::authentication::get_account_data;
 use crate::AppState;
@@ -241,7 +238,7 @@ pub async fn process_sync_response(
 
                             // Push error message
                             let mut fallback_json = val.clone();
-                            fallback_json["type"] = json!("m.room.message");
+                            fallback_json["type"] = json!("m.room.decrypted");
                             fallback_json["content"] = json!({
                                 "msgtype": "m.text.failed",
                                 "body": format!("**Failed to decrypt message**: {}", e)

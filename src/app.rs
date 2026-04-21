@@ -5,11 +5,11 @@ use leptos::leptos_dom::logging::console_error;
 use leptos::task::spawn_local;
 use leptos::{ev::SubmitEvent, prelude::*};
 use serde::{Deserialize, Serialize};
+use shared::UiMessage;
 use wasm_bindgen::prelude::*;
 use web_sys::HtmlImageElement;
 
 use crate::hooks::use_tauri_event;
-use crate::tauri::chat::ChatMessage;
 use crate::tauri::{chat::Chat, sidebar::Sidebar};
 
 #[wasm_bindgen]
@@ -319,7 +319,7 @@ fn HomePage() -> impl IntoView {
     let state = expect_context::<AppState>();
 
     let (recovery_key, set_recovery_key) = signal(String::new());
-    let (messages, set_messages) = signal(Vec::<ChatMessage>::new());
+    let (messages, set_messages) = signal(Vec::<UiMessage>::new());
     let (bg_loaded, set_bg_loaded) = signal(false);
     let bg_url = "https://i.imgur.com/t9plvkd.png".to_string();
 

@@ -1,7 +1,7 @@
 use log::debug;
-use ruma::serde::Raw;
 use serde_json::Value;
-use std::{collections::HashSet, str::FromStr, sync::Arc};
+use shared::UiMessage;
+use std::sync::Arc;
 
 use crate::{
     matrix_api::crypto::process_message,
@@ -16,7 +16,7 @@ use reqwest::Client;
 use rusqlite::{params, OptionalExtension};
 use tauri::{command, State};
 
-use crate::{construct_url, frontend::messages::Message, TauriError};
+use crate::{construct_url, TauriError};
 
 async fn get_messages_api(
     room_id: &String,
@@ -69,7 +69,7 @@ pub async fn fetch_messages(
     state: State<'_, Arc<AppState>>,
     room_id: String,
     oldest_id: Option<String>,
-) -> Result<(Vec<Message>, bool), TauriError> {
+) -> Result<(Vec<UiMessage>, bool), TauriError> {
     debug!(
         "Fetching messages for room_id: {}, oldest_id: {:?}",
         room_id, oldest_id
@@ -84,7 +84,13 @@ pub async fn fetch_messages(
     let mut local_messages = get_messages(&conn, &room_id, oldest_id.clone(), limit)?;
 
     if local_messages.len() >= limit {
-        return Ok((local_messages.into_iter().map(|m| m.into()).collect(), true));
+        return Ok((
+            local_messages
+                .into_iter()
+                .filter_map(|m| m.try_into().ok())
+                .collect(),
+            true,
+        ));
     }
 
     let prev_batch: Option<String> = conn
@@ -99,7 +105,10 @@ pub async fn fetch_messages(
     let Some(prev_token) = prev_batch else {
         warn!("Room {room_id} has no prev_batch token, cannot fetch more messages from server");
         return Ok((
-            local_messages.into_iter().map(|m| m.into()).collect(),
+            local_messages
+                .into_iter()
+                .filter_map(|m| m.try_into().ok())
+                .collect(),
             false,
         ));
     };
@@ -173,10 +182,17 @@ pub async fn fetch_messages(
 
     save_messages(conn, local_messages.clone())?;
 
+    for msg in local_messages.clone() {
+        let _: Result<UiMessage, _> = msg.try_into();
+    }
+
     let has_moe = local_messages.len() >= limit;
 
     Ok((
-        local_messages.into_iter().map(|m| m.into()).collect(),
+        local_messages
+            .into_iter()
+            .filter_map(|m| m.try_into().ok())
+            .collect(),
         has_moe,
     ))
 }

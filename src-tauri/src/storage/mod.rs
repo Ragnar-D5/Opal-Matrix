@@ -1,11 +1,9 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
-use tauri::AppHandle;
 use tauri::{command, State};
 
 use crate::frontend::members::UserProfile;
-use crate::frontend::messages::Message;
 use crate::frontend::rooms::FlatRoom;
 use crate::AppState;
 use crate::TauriError;
@@ -318,44 +316,6 @@ pub fn fetch_sidebar(
     }
 
     Ok((all_rooms, parent_to_children, all_children))
-}
-
-#[command(rename_all = "snake_case")]
-pub async fn get_messages(
-    state: State<'_, Arc<AppState>>,
-    room_id: String,
-    limit: usize,
-) -> Result<Vec<Message>, TauriError> {
-    let conn_guard = state.connection.lock().await;
-    let conn = conn_guard
-        .as_ref()
-        .ok_or("Database connection not initialized")?;
-
-    let mut stmt = conn.prepare(
-        "SELECT event_id, room_id, sender, msg_type, raw_json, timestamp
-        FROM messages
-        WHERE room_id = ?
-        ORDER BY timestamp DESC
-        LIMIT ?",
-    )?;
-
-    let message_iter = stmt.query_map(params![room_id, limit as i64], |row| {
-        Ok(MessageRow {
-            event_id: row.get(0)?,
-            room_id: row.get(1)?,
-            sender: row.get(2)?,
-            msg_type: row.get(3)?,
-            raw_json: row.get(4)?,
-            timestamp: row.get(5)?,
-        })
-    })?;
-
-    let mut messages = Vec::new();
-    for message in message_iter {
-        messages.push(message?.into());
-    }
-
-    Ok(messages)
 }
 
 #[command(rename_all = "snake_case")]

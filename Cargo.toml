@@ -18,6 +18,7 @@ stylist = "0.15.1"
 web-sys = "0.3.95"
 chrono = "0.4.44"
 leptos-use = "0.18.3"
+shared = { path = "./shared" }
 
 [workspace]
-members = ["src-tauri"]
+members = ["shared","src-tauri"]

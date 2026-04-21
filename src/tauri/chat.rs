@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use crate::app::{call_tauri, AppState, MemberStore};
 use crate::components::FloatingTile;
 use chrono::{DateTime, Local, NaiveDate, TimeZone};
@@ -5,32 +7,14 @@ use leptos::html::Div;
 use leptos::task::spawn_local;
 use leptos::{leptos_dom::logging::console_error, prelude::*};
 use leptos_use::{use_intersection_observer, UseIntersectionObserverReturn};
-use serde::{Deserialize, Serialize};
-
-#[derive(Clone, Deserialize)]
-pub struct ChatMessage {
-    room_id: String,
-    msg_type: String,
-    id: String,
-    ts: i64,
-    raw_json: String,
-    sender: String,
-}
-
-#[derive(PartialEq, Clone)]
-enum SystemMessage {
-    EncryptionEnabled,
-    EncryptionDisabled,
-    UserJoined,
-    UserLeft,
-    CallStarted,
-    CallEnded,
-    Other(String),
-}
+use serde::Serialize;
+use shared::{
+    MembershipAction, MessageContent, MessageKind, SystemMessage, UiMessage, UserMessage,
+};
 
 #[derive(PartialEq, Clone)]
 struct TimelineMessageGroup {
-    contents: Vec<String>,
+    contents: Vec<UserMessage>,
 }
 
 #[derive(PartialEq, Clone)]
@@ -67,7 +51,9 @@ impl TimelineItem {
         } else {
             return view! {}.into_any();
         };
+
         let name_sig = profile_sig.clone();
+        let sender_id = self.sender.clone();
 
         match &self.kind {
             TimelineItemKind::MessageGroup(group) => view! {
@@ -98,13 +84,36 @@ impl TimelineItem {
                                 {format_date(self.date)}
                             </span>
                         </div>
-                        <div class="flex flex-col gap-1">
-                            {group.contents.iter().map(|content| {
-                                view! {
-                                    <div class="text-normal leading-relaxed break-words">
-                                        {content.clone()}
-                                    </div>
-                                }.into_any()
+                        <div class="flex flex-col gap-1 mt-1">
+                            {group.contents.iter().map(|msg| {
+                                match &msg.content {
+                                    MessageContent::Text { text, is_edited } => view! {
+                                        <div class="text-normal leading-relaxed break-words">
+                                            {text.clone()}
+                                            {if *is_edited {
+                                                view! { <span class="text-xs text-muted ml-2 italic">"(edited)"</span> }.into_any()
+                                            } else {
+                                                view! {}.into_any()
+                                            }}
+                                        </div>
+                                    }.into_any(),
+                                    MessageContent::Image { url, name, .. } => view! {
+                                        <div class="mt-1">
+                                            <img src=url.clone() alt=name.clone() class="max-w-sm rounded-md border border-[var(--tile-border-color)]" />
+                                        </div>
+                                    }.into_any(),
+                                    MessageContent::File { url, filename, size } => view! {
+                                        <div class="flex items-center gap-2 mt-1 p-2 rounded-md bg-white/5 border border-[var(--tile-border-color)] inline-flex">
+                                            <span class="text-xl">"📄"</span>
+                                            <a href=url.clone() target="_blank" class="text-blue-400 hover:underline truncate max-w-xs">
+                                                {filename.clone()}
+                                            </a>
+                                            <span class="text-xs text-muted">
+                                                {format!("{:.1} KB", *size as f64 / 1024.0)}
+                                            </span>
+                                        </div>
+                                    }.into_any(),
+                                }
                             }).collect_view()}
                         </div>
                     </div>
@@ -122,14 +131,22 @@ impl TimelineItem {
             }
             .into_any(),
             TimelineItemKind::SystemMessage(sys_msg) => {
+                let display_name = profile_sig
+                    .get()
+                    .display_name
+                    .unwrap_or(sender_id);
+
                 let text = match sys_msg {
-                    SystemMessage::EncryptionEnabled => "Encryption enabled",
-                    SystemMessage::EncryptionDisabled => "Encryption disabled",
-                    SystemMessage::UserJoined => "User joined the room",
-                    SystemMessage::UserLeft => "User left the room",
-                    SystemMessage::CallStarted => "Call started",
-                    SystemMessage::CallEnded => "Call ended",
-                    SystemMessage::Other(string) => string.as_str(),
+                    SystemMessage::RoomCreation => format!("{} created the room", display_name),
+                    SystemMessage::RoomNameChange { new_name } => format!("{} changed the room name to '{}'", display_name, new_name),
+                    SystemMessage::TopicChange { new_topic } => format!("{} changed the topic to '{}'", display_name, new_topic),
+                    SystemMessage::MembershipChange(action) => match action {
+                        MembershipAction::Joined => format!("{} joined the room", display_name),
+                        MembershipAction::Left => format!("{} left the room", display_name),
+                        MembershipAction::Invited { .. } => format!("{} was invited to the room", display_name),
+                        MembershipAction::Kicked { target_id, reason } => format!("{} kicked {}{}", display_name, target_id, if let Some(r) = reason { format!(": {}", r) } else { "".to_string() }),
+                        MembershipAction::Banned { target_id, reason } => format!("{} banned {}{}", display_name, target_id, if let Some(r) = reason { format!(": {}", r) } else { "".to_string() }),
+                    }
                 };
 
                 view! {
@@ -160,7 +177,7 @@ struct FetchMessagesRequest {
 
 #[component]
 fn TimeLine() -> impl IntoView {
-    let (messages, set_messages) = signal(Vec::<ChatMessage>::new());
+    let (messages, set_messages) = signal(Vec::<UiMessage>::new());
 
     let flattened_items = Memo::new(move |_| {
         let msgs = messages.get();
@@ -168,22 +185,20 @@ fn TimeLine() -> impl IntoView {
         let mut last_day: Option<NaiveDate> = None;
 
         for msg in msgs.iter().rev() {
-            let current_date = get_date_from_ts(msg.ts);
+            let current_date = get_date_from_ts(msg.timestamp);
             let current_day = current_date.date_naive();
 
-            let maybe_item = match msg.msg_type.as_str() {
-                "m.room.message" => {
-                    let content = msg.raw_json.clone();
-
+            let maybe_item = match &msg.kind {
+                MessageKind::UserMessage(user_msg) => {
                     let mut grouped = false;
                     if let Some(last_item) = items.last_mut() {
                         if let TimelineItemKind::MessageGroup(ref mut group) = last_item.kind {
-                            let same_sender = last_item.sender == msg.sender;
+                            let same_sender = last_item.sender == msg.sender_id;
                             let same_minute = (current_date.timestamp() / 60)
                                 == (last_item.date.timestamp() / 60);
 
                             if same_sender && same_minute {
-                                group.contents.push(content.clone());
+                                group.contents.push(user_msg.clone());
                                 grouped = true;
                             }
                         }
@@ -192,39 +207,22 @@ fn TimeLine() -> impl IntoView {
                     if !grouped {
                         Some(TimelineItem {
                             date: current_date,
-                            sender: msg.sender.clone(),
-                            id: msg.id.clone(),
+                            sender: msg.sender_id.clone(),
+                            id: msg.event_id.clone(),
                             kind: TimelineItemKind::MessageGroup(TimelineMessageGroup {
-                                contents: vec![content],
+                                contents: vec![user_msg.clone()],
                             }),
                         })
                     } else {
                         None
                     }
                 }
-                "m.room.encrypted" => Some(TimelineItem {
+                MessageKind::SystemMessage(sys_msg) => Some(TimelineItem {
                     date: current_date,
-                    sender: msg.sender.clone(),
-                    id: msg.id.clone(),
-                    kind: TimelineItemKind::MessageGroup(TimelineMessageGroup {
-                        contents: vec!["Failed to decrypt message".to_string()],
-                    }),
+                    sender: msg.sender_id.clone(),
+                    id: msg.event_id.clone(),
+                    kind: TimelineItemKind::SystemMessage(sys_msg.clone()),
                 }),
-                "m.call.member" => Some(TimelineItem {
-                    date: current_date,
-                    sender: msg.sender.clone(),
-                    id: msg.id.clone(),
-                    kind: TimelineItemKind::SystemMessage(SystemMessage::CallStarted),
-                }),
-                // "m.room.encryption" => Some(TimelineItem {
-                //     date: current_date,
-                //     sender: msg.sender.clone(),
-                //     id: msg.id.clone(),
-                //     kind: TimelineItemKind::SystemMessage(SystemMessage::Other(
-                //         msg.raw_json.clone(),
-                //     )),
-                // }),
-                _ => None,
             };
 
             if let Some(item) = maybe_item {
@@ -239,8 +237,6 @@ fn TimeLine() -> impl IntoView {
                 }
 
                 items.push(item);
-            } else {
-                console_error(&format!("Unknown message type: {}", msg.msg_type));
             }
         }
         items.sort_by_key(|item| item.date);
@@ -277,8 +273,8 @@ fn TimeLine() -> impl IntoView {
                 let oldest_id = messages
                     .get_untracked()
                     .iter()
-                    .min_by_key(|m| m.ts)
-                    .map(|m| m.id.clone());
+                    .min_by_key(|m| m.timestamp)
+                    .map(|m| m.event_id.clone());
 
                 let request = FetchMessagesRequest {
                     room_id: rid,
@@ -300,17 +296,17 @@ fn TimeLine() -> impl IntoView {
 
             if let Some(js_val) = result {
                 if let Ok((new_messages, has_more)) =
-                    serde_wasm_bindgen::from_value::<(Vec<ChatMessage>, bool)>(js_val)
+                    serde_wasm_bindgen::from_value::<(Vec<UiMessage>, bool)>(js_val)
                 {
                     set_has_more.set(has_more);
 
                     set_messages.update(|existing| {
-                        let mut seen_ids: std::collections::HashSet<String> =
-                            existing.iter().map(|m| m.id.clone()).collect();
+                        let mut seen_ids: HashSet<String> =
+                            existing.iter().map(|m| m.event_id.clone()).collect();
 
-                        let mut unique_new: Vec<ChatMessage> = new_messages
+                        let mut unique_new: Vec<UiMessage> = new_messages
                             .into_iter()
-                            .filter(|m| seen_ids.insert(m.id.clone()))
+                            .filter(|m| seen_ids.insert(m.event_id.clone()))
                             .collect();
 
                         unique_new.append(existing);
@@ -375,8 +371,8 @@ fn TimeLine() -> impl IntoView {
 
 #[component]
 pub fn Chat(
-    messages: ReadSignal<Vec<ChatMessage>>,
-    set_messages: WriteSignal<Vec<ChatMessage>>,
+    messages: ReadSignal<Vec<UiMessage>>,
+    set_messages: WriteSignal<Vec<UiMessage>>,
 ) -> impl IntoView {
     view! {
         <div class="flex-1 h-full flex gap-3 flex-col overflow-hidden">

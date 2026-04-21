@@ -49,3 +49,4 @@ getrandom = { version = "0.4.2", features = ["wasm_js"] }
 tokio-util = "0.7.18"
 tokio = "1.51.1"
 rusqlite = { version = "0.37.0", features = ["bundled-sqlcipher"] }
+shared = { path = "../shared" }

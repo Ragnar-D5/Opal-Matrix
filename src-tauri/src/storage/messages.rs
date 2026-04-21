@@ -1,6 +1,9 @@
+use log::debug;
 use rusqlite::Connection;
+use serde_json::Value;
+use shared::{MessageContent, MessageKind, SystemMessage, UiMessage, UserMessage};
 
-use crate::{frontend::messages::Message, TauriError};
+use crate::TauriError;
 
 use super::DataBaseModel;
 
@@ -119,4 +122,143 @@ pub fn save_messages(conn: &mut Connection, messages: Vec<MessageRow>) -> Result
 
     tx.commit()?;
     Ok(())
+}
+
+impl TryInto<UiMessage> for MessageRow {
+    type Error = TauriError;
+
+    fn try_into(self) -> Result<UiMessage, Self::Error> {
+        let value: Value = serde_json::from_str(&self.raw_json)?;
+        let content = value.get("content").ok_or("Missing content")?;
+
+        let message_kind = match self.msg_type.as_str() {
+            "m.room.message" => {
+                let msg_type = content
+                    .get("msgtype")
+                    .and_then(|v| v.as_str())
+                    .ok_or("Missing msgtype")?;
+                let mentions = content
+                    .get("m.mentions")
+                    .and_then(|v| serde_json::from_value(v.clone()).ok());
+
+                match msg_type {
+                    "m.text" => MessageKind::UserMessage(UserMessage {
+                        mentions: mentions,
+                        content: MessageContent::Text {
+                            text: content
+                                .get("body")
+                                .and_then(|v| v.as_str())
+                                .ok_or("Missing body")?
+                                .to_string(),
+                            is_edited: false,
+                        },
+                    }),
+                    "m.image" => {
+                        let file = content.get("file").ok_or("Missing file")?;
+                        let info = content.get("info").ok_or("Missing info")?;
+
+                        MessageKind::UserMessage(UserMessage {
+                            mentions: mentions,
+                            content: MessageContent::Image {
+                                name: content
+                                    .get("body")
+                                    .and_then(|v| v.as_str())
+                                    .ok_or("Missing body")?
+                                    .to_string(),
+                                url: file
+                                    .get("url")
+                                    .and_then(|v| v.as_str())
+                                    .ok_or("Missing url")?
+                                    .to_string(),
+                                width: info.get("w").and_then(|v| v.as_u64()).map(|n| n as u32),
+                                height: info.get("h").and_then(|v| v.as_u64()).map(|n| n as u32),
+                            },
+                        })
+                    }
+                    _ => {
+                        debug!("Unsupported msgtype: {}", msg_type);
+                        MessageKind::UserMessage(UserMessage {
+                            mentions: mentions,
+                            content: MessageContent::Text {
+                                text: content
+                                    .get("body")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("[Unsupported message type]")
+                                    .to_string(),
+                                is_edited: false,
+                            },
+                        })
+                    }
+                }
+            }
+            "m.room.member" => {
+                let membership = content
+                    .get("membership")
+                    .and_then(|v| v.as_str())
+                    .ok_or("Missing membership")?;
+                let state_key = value
+                    .get("state_key")
+                    .and_then(|v| v.as_str())
+                    .ok_or(format!("Missing state key: {:?}", value))?
+                    .to_string();
+
+                MessageKind::SystemMessage(shared::SystemMessage::MembershipChange(
+                    match membership {
+                        "join" => shared::MembershipAction::Joined,
+                        "invite" => shared::MembershipAction::Invited(state_key),
+                        "leave" => {
+                            if state_key == self.sender {
+                                shared::MembershipAction::Left
+                            } else {
+                                shared::MembershipAction::Kicked {
+                                    target_id: state_key,
+                                    reason: content
+                                        .get("reason")
+                                        .and_then(|v| v.as_str())
+                                        .map(|s| s.to_string()),
+                                }
+                            }
+                        }
+                        "ban" => shared::MembershipAction::Banned {
+                            target_id: state_key,
+                            reason: content
+                                .get("reason")
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string()),
+                        },
+                        _ => {
+                            return Err(format!("Unknown membership: {membership}").into());
+                        }
+                    },
+                ))
+            }
+            "m.room.create" => MessageKind::SystemMessage(SystemMessage::RoomCreation),
+            "m.room.name" => MessageKind::SystemMessage(SystemMessage::RoomNameChange {
+                new_name: content
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .ok_or("Missing name")?
+                    .to_string(),
+            }),
+            "m.room.topic" => MessageKind::SystemMessage(SystemMessage::TopicChange {
+                new_topic: content
+                    .get("topic")
+                    .and_then(|v| v.as_str())
+                    .ok_or("Missing topic")?
+                    .to_string(),
+            }),
+            _ => return Err(format!("Unsupported message type: {}", self.msg_type).into()),
+        };
+
+        let msg = UiMessage {
+            event_id: self.event_id,
+            timestamp: self.timestamp,
+            sender_id: self.sender,
+            kind: message_kind,
+        };
+
+        debug!("{:?}", msg);
+
+        return Ok(msg);
+    }
 }

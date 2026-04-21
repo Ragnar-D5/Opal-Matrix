@@ -301,7 +301,7 @@ impl AppState {
 }
 
 #[derive(serde::Serialize)]
-enum TauriError {
+pub enum TauriError {
     Wrap(String),
 }
 
@@ -484,7 +484,6 @@ pub fn run() {
             set_recovery_key,
             send_frontend,
             choose_home_server,
-            storage::get_messages,
             storage::get_members,
             matrix_api::rooms::fetch_messages,
         ])
