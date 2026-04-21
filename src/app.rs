@@ -142,6 +142,12 @@ impl MemberStore {
 
         new_signal
     }
+
+    pub fn log_everything(&self) {
+        let rooms = self.rooms.get();
+        let fetching = self.fetching.get();
+        console_error(&format!("Rooms: {:?}, Fetching: {:?}", rooms, fetching));
+    }
 }
 
 #[derive(Clone, Debug, Copy)]

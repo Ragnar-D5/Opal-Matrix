@@ -144,12 +144,14 @@ pub async fn process_message(
 ) -> Result<Value, TauriError> {
     let event_id = raw_message
         .get("event_id")
-        .map(|v| v.to_string())
-        .ok_or("Missing event_id in message")?;
+        .and_then(|v| v.as_str())
+        .ok_or("Missing event_id in message")?
+        .to_string();
     let sender = raw_message
         .get("sender")
-        .map(|v| v.to_string())
-        .ok_or("Missing sender in message")?;
+        .and_then(|v| v.as_str())
+        .ok_or("Missing sender in message")?
+        .to_string();
     let timestamp = raw_message
         .get("origin_server_ts")
         .and_then(|v| v.as_i64())

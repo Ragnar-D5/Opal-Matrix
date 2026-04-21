@@ -63,6 +63,12 @@ impl TimelineItem {
                         let p = profile_sig.get();
                         let initial = p.clone().display_name.unwrap_or_default().chars().next().unwrap_or('?').to_string();
 
+                        if initial == "?" {
+                            console_error(&format!("{:?}", sender_id.chars()));
+                        } else {
+                            console_error(&format!("Found {:?}", sender_id.chars()));
+                        }
+
                         match p.avatar_url {
                             Some(url) => view! {
                                 <img src=url class="w-10 h-10 rounded-full object-cover bg-transparent" alt=initial />
