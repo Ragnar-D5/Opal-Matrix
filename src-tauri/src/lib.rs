@@ -26,7 +26,7 @@ use matrix_api::discovery::choose_home_server;
 
 type Aes256Ctr = ctr::Ctr64BE<Aes256>;
 
-pub const APP_NAME: &str = "Maru";
+pub const APP_NAME: &str = "opal-matrix";
 
 use percent_encoding::{utf8_percent_encode, AsciiSet, CONTROLS};
 
@@ -271,7 +271,6 @@ impl AppState {
             let mut conn_guard = self.connection.lock().await;
             *conn_guard = Some(conn);
         }
-
         self.start_sync(handle, !already_loaded).await?;
 
         Ok(())
@@ -307,6 +306,12 @@ impl AppState {
 #[derive(serde::Serialize)]
 pub enum TauriError {
     Wrap(String),
+}
+
+impl TauriError {
+    pub fn silent() -> Self {
+        Self::Wrap("No error occurred".to_string())
+    }
 }
 
 impl std::fmt::Debug for TauriError {
@@ -358,6 +363,7 @@ async fn try_restore(
         let client_info = client_guard.as_ref().ok_or("Not logged in")?.clone();
 
         state.init_stuff(&handle).await?;
+        // state.set_recovery_key("".to_string()).await?;
 
         Ok(Some(LoginResponse {
             user_id: client_info.user_id,

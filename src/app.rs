@@ -4,7 +4,7 @@ use leptos::leptos_dom::logging::console_error;
 use leptos::task::spawn_local;
 use leptos::{ev::SubmitEvent, prelude::*};
 use serde::{Deserialize, Serialize};
-use shared::UiMessage;
+use shared::{UiMessage, UserMessage};
 use wasm_bindgen::prelude::*;
 use web_sys::HtmlImageElement;
 
@@ -52,9 +52,73 @@ pub enum CurrentWindow {
 
 #[derive(Deserialize, Clone, Debug)]
 pub struct UserProfile {
-    pub user_id: String,
+    user_id: String,
     pub display_name: Option<String>,
     pub avatar_url: Option<String>,
+}
+
+impl UserProfile {
+    pub fn render_icon(&self, size: usize) -> impl IntoView {
+        let initial = if let Some(name) = &self.display_name {
+            name.chars().next().unwrap_or('?').to_string()
+        } else {
+            self.user_id.chars().next().unwrap_or('?').to_string()
+        };
+
+        let size_str = format!("{}px", size);
+        let font_size = format!("{}px", size / 2);
+
+        match &self.avatar_url {
+            Some(url) => view! {
+                <img
+                    class="rounded-full object-cover bg-transparent"
+                    src=url
+                    style:height=size_str.clone()
+                    style:width=size_str
+                    alt=initial
+                />
+            }
+            .into_any(),
+            None => view! {
+                <div
+                    class="rounded-full bg-gray-500 flex items-center justify-center text-white font-bold"
+                    style:height=size_str.clone()
+                    style:width=size_str
+                    style:font-size=font_size
+                >
+                    {initial}
+                </div>
+            }
+            .into_any(),
+        }
+    }
+
+    pub fn render_name(&self, font_size: usize) -> impl IntoView {
+        let name = self.display_name.as_ref().unwrap_or(&self.user_id);
+        let font_size_str = format!("{}px", font_size);
+        let color = self.get_user_color();
+
+        view! {
+            <span
+                style:font-size=font_size_str
+                style:color=color
+                class="font-semibold"
+            >
+                {name.clone()}
+            </span>
+        }
+    }
+
+    fn get_user_color(&self) -> String {
+        let mut hash: u32 = 0;
+        for c in self.user_id.chars() {
+            hash = (c as u32).wrapping_add(hash.wrapping_shl(5).wrapping_sub(hash));
+        }
+
+        let hue = hash % 360;
+
+        format!("hsl({}, 60%, 45%)", hue)
+    }
 }
 
 #[derive(Default, Clone)]
@@ -141,12 +205,6 @@ impl MemberStore {
         }
 
         new_signal
-    }
-
-    pub fn log_everything(&self) {
-        let rooms = self.rooms.get();
-        let fetching = self.fetching.get();
-        console_error(&format!("Rooms: {:?}, Fetching: {:?}", rooms, fetching));
     }
 }
 

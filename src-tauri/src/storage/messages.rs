@@ -137,6 +137,8 @@ impl TryInto<UiMessage> for MessageRow {
 
         let message_kind = match self.msg_type.as_str() {
             "m.room.message" => {
+                let mut user_message = UserMessage::new();
+
                 if let Some(relates_to) = content.get("m.relates_to") {
                     if relates_to.get("rel_type").and_then(|v| v.as_str()) == Some("m.replace") {
                         let event_id = relates_to
@@ -162,7 +164,14 @@ impl TryInto<UiMessage> for MessageRow {
                             }),
                         });
                     }
-                }
+
+                    if let Some(in_reply_to) = relates_to.get("m.in_reply_to") {
+                        if let Some(event_id) = in_reply_to.get("event_id").and_then(|v| v.as_str())
+                        {
+                            user_message.set_replies_to(event_id.to_string());
+                        }
+                    }
+                };
 
                 let msg_type = content
                     .get("msgtype")
@@ -171,21 +180,23 @@ impl TryInto<UiMessage> for MessageRow {
                 let mentions = content
                     .get("m.mentions")
                     .and_then(|v| serde_json::from_value(v.clone()).ok());
+                user_message.set_mentions(mentions);
 
                 match msg_type {
-                    "m.text" => MessageKind::UserMessage(UserMessage {
-                        mentions: mentions,
-                        reactions: Vec::new(),
+                    "m.text" => {
+                        let text = content
+                            .get("body")
+                            .and_then(|v| v.as_str())
+                            .ok_or(format!("Missing body: {:?}", value))?
+                            .to_string();
 
-                        content: MessageContent::Text {
-                            text: content
-                                .get("body")
-                                .and_then(|v| v.as_str())
-                                .ok_or(format!("Missing body: {:?}", value))?
-                                .to_string(),
+                        user_message.set_content(MessageContent::Text {
+                            text,
                             is_edited: false,
-                        },
-                    }),
+                        });
+
+                        MessageKind::UserMessage(user_message)
+                    }
                     "m.image" => {
                         let info = content
                             .get("info")
@@ -226,39 +237,34 @@ impl TryInto<UiMessage> for MessageRow {
                             None
                         };
 
-                        MessageKind::UserMessage(UserMessage {
-                            mentions: mentions,
-                            reactions: Vec::new(),
+                        user_message.set_content(MessageContent::Image {
+                            name: content
+                                .get("body")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("image")
+                                .to_string(),
+                            url: url.to_string(),
+                            width: info.get("w").and_then(|v| v.as_u64()).map(|n| n as u32),
+                            height: info.get("h").and_then(|v| v.as_u64()).map(|n| n as u32),
 
-                            content: MessageContent::Image {
-                                name: content
-                                    .get("body")
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or("image")
-                                    .to_string(),
-                                url: url.to_string(),
-                                width: info.get("w").and_then(|v| v.as_u64()).map(|n| n as u32),
-                                height: info.get("h").and_then(|v| v.as_u64()).map(|n| n as u32),
+                            encryption_info: encryption_info,
+                        });
 
-                                encryption_info: encryption_info,
-                            },
-                        })
+                        MessageKind::UserMessage(user_message)
                     }
                     _ => {
                         debug!("Unsupported msgtype: {}", msg_type);
-                        MessageKind::UserMessage(UserMessage {
-                            mentions: mentions,
-                            reactions: Vec::new(),
 
-                            content: MessageContent::Text {
-                                text: content
-                                    .get("body")
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or("[Unsupported message type]")
-                                    .to_string(),
-                                is_edited: false,
-                            },
-                        })
+                        user_message.set_content(MessageContent::Text {
+                            text: content
+                                .get("body")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("[Unsupported message type]")
+                                .to_string(),
+                            is_edited: false,
+                        });
+
+                        MessageKind::UserMessage(user_message)
                     }
                 }
             }
@@ -354,6 +360,7 @@ impl TryInto<UiMessage> for MessageRow {
             "m.room.encrypted" => MessageKind::UserMessage(UserMessage {
                 mentions: None,
                 reactions: Vec::new(),
+                replies_to: None,
 
                 content: MessageContent::Encrypted,
             }),
@@ -398,10 +405,15 @@ impl TryInto<UiMessage> for MessageRow {
 
                 MessageKind::SystemMessage(SystemMessage::MessageRedacted { event_id })
             }
+            "m.call.invite"
+            | "org.matrix.msc4075.call.notify"
+            | "org.matrix.msc4075.rtc.notification" => {
+                return Err(TauriError::silent());
+            }
             _ => {
                 return Err(
                     format!("Unsupported message type: {}; {:?}", self.msg_type, value).into(),
-                )
+                );
             }
         };
 

@@ -46,52 +46,57 @@ impl TimelineItem {
         let state = expect_context::<AppState>();
         let store = expect_context::<MemberStore>();
 
-        let profile_sig = if let Some(room_id) = state.active_room_id.get() {
-            store.get_profile(&room_id, &self.sender)
-        } else {
+        let Some(room_id) = state.active_room_id.get() else {
             return view! {}.into_any();
         };
+
+        let profile_sig = store.get_profile(&room_id, &self.sender);
 
         let name_sig = profile_sig.clone();
         let sender_id = self.sender.clone();
 
         match &self.kind {
-            TimelineItemKind::MessageGroup(group) => view! {
-                <div class="flex gap-3 p-3 rounded-md hover:bg-black/20">
-                    <div class="shrink-0">
-                    {move || {
-                        let p = profile_sig.get();
-                        let initial = p.clone().display_name.unwrap_or_default().chars().next().unwrap_or('?').to_string();
+            TimelineItemKind::MessageGroup(group) => {
+                let first_msg = group.contents.first();
+                let reply_data = first_msg.and_then(|m| m.replies_to.clone());
 
-                        if initial == "?" {
-                            console_error(&format!("{:?}", sender_id.chars()));
-                        } else {
-                            console_error(&format!("Found {:?}", sender_id.chars()));
-                        }
+                view! {
+                    <div class="flex flex-col gap-1 p-3 rounded-md">
+                        {move || {
+                            if let Some(reply) = &reply_data {
+                                let reply_sender = reply.sender_id.clone().unwrap_or_default();
+                                let reply_text = reply.text.clone().unwrap_or_default();
 
-                        match p.avatar_url {
-                            Some(url) => view! {
-                                <img src=url class="w-10 h-10 rounded-full object-cover bg-transparent" alt=initial />
-                            }.into_any(),
-                            None => view! {
-                                <div class="w-10 h-10 rounded-full bg-gray-600 flex items-center justify-center text-white font-bold">
-                                    {initial}
-                                </div>
-                            }.into_any()
-                        }
-                    }}
-                    </div>
-                    <div class="flex flex-col min-w-0">
-                        <div class="flex items-baseline gap-2">
-                            <span class="text-bright truncate hover:underline cursor-pointer">
-                                {move || name_sig.get().display_name}
-                            </span>
-                            <span class="text-muted text-xs">
-                                {format_date(self.date)}
-                            </span>
-                        </div>
-                        <div class="flex flex-col gap-1 mt-1">
-                            {group.contents.iter().map(|msg| {
+                                // Get profile of the person being replied to
+                                let reply_profile_sig = store.get_profile(&room_id, &reply_sender);
+                                let reply_profile_sig_icon = reply_profile_sig.clone();
+                                let reply_profile_sig_name = reply_profile_sig.clone();
+
+                                view! {
+                                    <div class="flex items-center gap-2 ml-[52px] mb-1 opacity-60 hover:opacity-100 cursor-pointer text-xs relative group/reply">
+                                        <div class="absolute -left-[32px] top-[calc(50%-1px)] w-[28px] h-3.5 border-l-2 border-t-2 border-white/20 rounded-tl-md"></div>
+
+                                        <div class="shrink-0">
+                                            {move || reply_profile_sig_icon.get().render_icon(16)}
+                                        </div>
+
+                                        <span class="font-semibold text-bright/80 hover:underline">
+                                            {move || reply_profile_sig_name.get().render_name(12)}
+                                        </span>
+
+                                        <span class="truncate text-muted line-clamp-1">
+                                            {reply_text}
+                                        </span>
+                                    </div>
+                                }.into_any()
+                            } else {
+                                view! {}.into_any()
+                            }
+                        }}
+                        <div class="flex flex-col w-full">
+                            {group.contents.iter().enumerate().map(|(idx, msg)| {
+                                let is_first = idx == 0;
+
                                 let mut reaction_counts: HashMap<String, usize> = HashMap::new();
                                 for r in &msg.reactions {
                                     *reaction_counts.entry(r.reaction.clone()).or_insert(0) += 1;
@@ -147,35 +152,74 @@ impl TimelineItem {
                                 };
 
                                 view! {
-                                    <div class="group/msg relative">
-                                        {content}
+                                    // NEW ROW WRAPPER: Full width, hover applied here, padding/negative margin extends it to the edges
+                                    <div class="group/msg relative flex gap-3 hover:bg-black/20 px-3 py-1 -mx-3 rounded-md">
 
-                                        // 2. Render Reaction Pills
-                                        {if !reaction_counts.is_empty() {
-                                            console_error(&format!("Rendering reactions: {:?}", reaction_counts));
-                                            view! {
-                                                <div class="flex flex-wrap gap-1 mt-1 mb-2">
-                                                    {reaction_counts.into_iter().map(|(emoji, count)| {
-                                                        view! {
-                                                            <div class="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-white/10 border border-white/5 hover:bg-white/20 cursor-pointer transition-colors">
-                                                                <span class="text-sm leading-none">{emoji}</span>
-                                                                <span class="text-[10px] font-medium text-muted">{count}</span>
-                                                            </div>
-                                                        }
-                                                    }).collect_view()}
-                                                </div>
-                                            }.into_any()
-                                        } else {
-                                            view! {}.into_any()
-                                        }}
+                                        // Left Column: Avatar (only renders on the first message)
+                                        <div class="shrink-0 w-[40px]">
+                                            {if is_first {
+                                                let profile_sig = profile_sig.clone();
+                                                view! {
+                                                    {move || {
+                                                        let profile = profile_sig.get();
+                                                        profile.render_icon(40)
+                                                    }}
+                                                }.into_any()
+                                            } else {
+                                                view! {}.into_any()
+                                            }}
+                                        </div>
+
+                                        // Right Column: Header + Content
+                                        <div class="flex flex-col min-w-0 flex-1">
+
+                                            // Header (only renders on the first message)
+                                            {if is_first {
+                                                let name_sig = name_sig.clone();
+                                                view! {
+                                                    <div class="flex items-baseline gap-2 mb-1">
+                                                        <span class="text-bright truncate hover:underline cursor-pointer">
+                                                            {move || name_sig.get().render_name(16)}
+                                                        </span>
+                                                        <span class="text-muted text-xs">
+                                                            {format_date(self.date)}
+                                                        </span>
+                                                    </div>
+                                                }.into_any()
+                                            } else {
+                                                view! {}.into_any()
+                                            }}
+
+                                            // Message Content & Reactions
+                                            <div>
+                                                {content}
+
+                                                {if !reaction_counts.is_empty() {
+                                                    view! {
+                                                        <div class="flex flex-wrap gap-1 mt-1 mb-2">
+                                                            {reaction_counts.into_iter().map(|(emoji, count)| {
+                                                                view! {
+                                                                    <div class="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-white/10 border border-white/5 hover:bg-white/20 cursor-pointer">
+                                                                        <span class="text-sm leading-none">{emoji}</span>
+                                                                        <span class="text-[10px] font-medium text-muted">{count}</span>
+                                                                    </div>
+                                                                }
+                                                            }).collect_view()}
+                                                        </div>
+                                                    }.into_any()
+                                                } else {
+                                                    view! {}.into_any()
+                                                }}
+                                            </div>
+                                        </div>
                                     </div>
                                 }
                             }).collect_view()}
                         </div>
                     </div>
-                </div>
+                }
+                .into_any()
             }
-            .into_any(),
             TimelineItemKind::DateSeparator => view! {
                 <div class="flex items-center gap-2 my-4">
                     <div class="flex-1 border-t-1 border-[var(--muted-text-color)]"></div>
@@ -187,29 +231,64 @@ impl TimelineItem {
             }
             .into_any(),
             TimelineItemKind::SystemMessage(sys_msg) => {
-                let display_name = profile_sig
-                    .get()
-                    .display_name
-                    .unwrap_or(sender_id);
+                let display_name = profile_sig.get().display_name.unwrap_or(sender_id);
 
                 let text = match sys_msg {
                     SystemMessage::RoomCreation => format!("{} created the room", display_name),
-                    SystemMessage::RoomNameChange { new_name } => format!("{} changed the room name to '{}'", display_name, new_name),
-                    SystemMessage::TopicChange { new_topic } => format!("{} changed the topic to '{}'", display_name, new_topic),
+                    SystemMessage::RoomNameChange { new_name } => {
+                        format!("{} changed the room name to '{}'", display_name, new_name)
+                    }
+                    SystemMessage::TopicChange { new_topic } => {
+                        format!("{} changed the topic to '{}'", display_name, new_topic)
+                    }
                     SystemMessage::MembershipChange(action) => match action {
                         MembershipAction::Joined => format!("{} joined the room", display_name),
                         MembershipAction::Left => format!("{} left the room", display_name),
-                        MembershipAction::Invited { .. } => format!("{} was invited to the room", display_name),
-                        MembershipAction::Kicked { target_id, reason } => format!("{} kicked {}{}", display_name, target_id, if let Some(r) = reason { format!(": {}", r) } else { "".to_string() }),
-                        MembershipAction::Banned { target_id, reason } => format!("{} banned {}{}", display_name, target_id, if let Some(r) = reason { format!(": {}", r) } else { "".to_string() }),
+                        MembershipAction::Invited { .. } => {
+                            format!("{} was invited to the room", display_name)
+                        }
+                        MembershipAction::Kicked { target_id, reason } => format!(
+                            "{} kicked {}{}",
+                            display_name,
+                            target_id,
+                            if let Some(r) = reason {
+                                format!(": {}", r)
+                            } else {
+                                "".to_string()
+                            }
+                        ),
+                        MembershipAction::Banned { target_id, reason } => format!(
+                            "{} banned {}{}",
+                            display_name,
+                            target_id,
+                            if let Some(r) = reason {
+                                format!(": {}", r)
+                            } else {
+                                "".to_string()
+                            }
+                        ),
                     },
                     // _ => "Test".to_string()
-                    SystemMessage::EncryptionEnabled { algorithm } => format!("{} enabled encryption ({})", display_name, algorithm),
-                    SystemMessage::PowerlevelChange => format!("{} changed the power levels", display_name),
-                    SystemMessage::JoinRuleChange { new_rule } => format!("{} changed the join rules to '{}'", display_name, new_rule),
-                    SystemMessage::HistoryVisibilityChange { new_visibility } => format!("{} changed the history visibility to '{}'", display_name, new_visibility),
-                    SystemMessage::GuestAccessChange { new_access } => format!("{} changed the guest access to '{}'", display_name, new_access),
-                    SystemMessage::CallJoined { intent } => format!("{} joined a call ({})", display_name, intent),
+                    SystemMessage::EncryptionEnabled { algorithm } => {
+                        format!("{} enabled encryption ({})", display_name, algorithm)
+                    }
+                    SystemMessage::PowerlevelChange => {
+                        format!("{} changed the power levels", display_name)
+                    }
+                    SystemMessage::JoinRuleChange { new_rule } => {
+                        format!("{} changed the join rules to '{}'", display_name, new_rule)
+                    }
+                    SystemMessage::HistoryVisibilityChange { new_visibility } => format!(
+                        "{} changed the history visibility to '{}'",
+                        display_name, new_visibility
+                    ),
+                    SystemMessage::GuestAccessChange { new_access } => format!(
+                        "{} changed the guest access to '{}'",
+                        display_name, new_access
+                    ),
+                    SystemMessage::CallJoined { intent } => {
+                        format!("{} joined a call ({})", display_name, intent)
+                    }
                     SystemMessage::CallLeft => format!("{} left a call", display_name),
 
                     _ => format!("{} performed an action", display_name),
@@ -254,7 +333,9 @@ fn TimeLine() -> impl IntoView {
         let mut redactions = HashSet::new();
         let mut reactions_map = HashMap::new();
 
-        for msg in msgs.iter() {
+        let mut processed_messages = HashMap::new();
+
+        for msg in msgs.iter().rev() {
             match &msg.kind {
                 MessageKind::SystemMessage(SystemMessage::MessageEdited { event_id, new_text }) => {
                     edits.insert(event_id.clone(), new_text.clone());
@@ -276,6 +357,8 @@ fn TimeLine() -> impl IntoView {
                 }
                 _ => {}
             }
+
+            processed_messages.insert(msg.event_id.clone(), msg.clone());
         }
 
         for msg in msgs.iter_mut().rev() {
@@ -301,8 +384,24 @@ fn TimeLine() -> impl IntoView {
             let current_date = get_date_from_ts(msg.timestamp);
             let current_day = current_date.date_naive();
 
-            let maybe_item = match &msg.kind {
-                MessageKind::UserMessage(user_msg) => {
+            let maybe_item = match msg.kind.clone() {
+                MessageKind::UserMessage(mut user_msg) => {
+                    if let Some(replies_to) = &user_msg.replies_to {
+                        if let Some(original_msg) = processed_messages.get(&replies_to.event_id) {
+                            let original_sender = &original_msg.sender_id;
+                            let text = match &original_msg.kind {
+                                MessageKind::UserMessage(um) => match &um.content {
+                                    MessageContent::Text { text, .. } => text.clone(),
+                                    _ => "[non-text content]".to_string(),
+                                },
+                                MessageKind::SystemMessage(_) => "[system message]".to_string(),
+                            };
+
+                            user_msg.set_reply_sender(original_sender.clone());
+                            user_msg.set_reply_text(text);
+                        }
+                    }
+
                     let mut grouped = false;
                     if let Some(last_item) = items.last_mut() {
                         if let TimelineItemKind::MessageGroup(ref mut group) = last_item.kind {
@@ -310,7 +409,14 @@ fn TimeLine() -> impl IntoView {
                             let same_minute = (current_date.timestamp() / 60)
                                 == (last_item.date.timestamp() / 60);
 
-                            if same_sender && same_minute {
+                            let current_is_reply = user_msg.replies_to.is_some();
+                            let last_is_reply = group
+                                .contents
+                                .last()
+                                .map(|m| m.replies_to.is_some())
+                                .unwrap_or(false);
+
+                            if same_sender && same_minute && !current_is_reply && !last_is_reply {
                                 group.contents.push(user_msg.clone());
                                 grouped = true;
                             }
@@ -465,7 +571,7 @@ fn TimeLine() -> impl IntoView {
     });
 
     view! {
-        <div class="flex-1 w-full w-full overflow-y-auto flex flex-col-reverse p-4 overflow-anchor-auto">
+        <div class="flex-1 w-full w-full overflow-y-auto flex flex-col-reverse p-2 overflow-anchor-auto">
             <For
                 each=move || flattened_items.get()
                 key=|item| item.id.clone()
@@ -473,11 +579,11 @@ fn TimeLine() -> impl IntoView {
             />
 
             <Show
-                        when=move || !is_loading.get()
-                        fallback=|| view! { <div class="text-center p-4 text-muted">"Loading..."</div> }
-                    >
-                        <div node_ref=sentinel_ref class="h-2 w-full shrink-0" />
-                    </Show>
+                when=move || !is_loading.get()
+                fallback=|| view! { <div class="text-center p-4 text-muted">"Loading..."</div> }
+            >
+                <div node_ref=sentinel_ref class="h-2 w-full shrink-0" />
+            </Show>
         </div>
     }
 }

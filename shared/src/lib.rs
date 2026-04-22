@@ -67,6 +67,7 @@ pub enum MessageContent {
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Mentions {
+    #[serde(default)]
     pub room: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub user_ids: Vec<String>,
@@ -79,11 +80,58 @@ pub struct Reaction {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct RepliesTo {
+    pub text: Option<String>,
+    pub sender_id: Option<String>,
+    pub event_id: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct UserMessage {
     pub mentions: Option<Mentions>,
     pub reactions: Vec<Reaction>,
+    pub replies_to: Option<RepliesTo>,
 
     pub content: MessageContent,
+}
+
+impl UserMessage {
+    pub fn new() -> Self {
+        Self {
+            mentions: None,
+            reactions: Vec::new(),
+            replies_to: None,
+            content: MessageContent::Deleted,
+        }
+    }
+
+    pub fn set_content(&mut self, content: MessageContent) {
+        self.content = content;
+    }
+
+    pub fn set_replies_to(&mut self, event_id: String) {
+        self.replies_to = Some(RepliesTo {
+            text: None,
+            sender_id: None,
+            event_id,
+        });
+    }
+
+    pub fn set_mentions(&mut self, mentions: Option<Mentions>) {
+        self.mentions = mentions;
+    }
+
+    pub fn set_reply_text(&mut self, text: String) {
+        if let Some(replies_to) = &mut self.replies_to {
+            replies_to.text = Some(text);
+        }
+    }
+
+    pub fn set_reply_sender(&mut self, sender_id: String) {
+        if let Some(replies_to) = &mut self.replies_to {
+            replies_to.sender_id = Some(sender_id);
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
