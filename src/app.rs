@@ -423,8 +423,10 @@ fn HomePage() -> impl IntoView {
     let dim_text_color = "hsl(220, 15%, 40%)";
     let text_color = "hsl(220, 25%, 60%)";
     let bright_text_color = "hsl(220, 25%, 70%)";
-    let tile_border_color = "rgba(30, 30, 30, 1)";
+    // let tile_border_color = "rgba(30, 30, 30, 1)";
+    let tile_border_color = "rgba(255, 255, 255, 0.3)";
     let muted_text_color = "hsl(220, 15%, 25%)";
+    let gap = "5px";
 
     let root_css_vars = move || {
         let base = format!(
@@ -438,6 +440,7 @@ fn HomePage() -> impl IntoView {
             --bright-text-color: {bright_text_color};
             --tile-border-color: {tile_border_color};
             --muted-text-color: {muted_text_color};
+            --gap: {gap};
             background-color: {bg_color};",
         );
 
@@ -456,7 +459,7 @@ fn HomePage() -> impl IntoView {
     };
 
     view! {
-        <div class="bg-[var(--bg-color)] flex h-screen overflow-hidden p-3 gap-3 relative" style=root_css_vars>
+        <div class="bg-[var(--bg-color)] flex h-screen overflow-hidden p-[var(--gap)] gap-[var(--gap)] relative" style=root_css_vars>
         // <h2>"Login Successful!"</h2>
         // <p>"Welcome, " <strong>{user_id}</strong></p>
 

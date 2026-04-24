@@ -2,10 +2,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use aes::cipher::{KeyIvInit, StreamCipher};
 use aes::Aes256;
-use base64::engine::general_purpose;
+use aes::cipher::{KeyIvInit, StreamCipher};
 use base64::Engine;
+use base64::engine::general_purpose;
 use colored::Colorize;
 use log::info;
 use serde::Serialize;
@@ -28,7 +28,7 @@ type Aes256Ctr = ctr::Ctr64BE<Aes256>;
 
 pub const APP_NAME: &str = "opal-matrix";
 
-use percent_encoding::{utf8_percent_encode, AsciiSet, CONTROLS};
+use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
 
 use crate::frontend::send_sidebar_update;
 

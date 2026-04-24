@@ -411,11 +411,11 @@
   .gap-2 {
     gap: calc(var(--spacing) * 2);
   }
-  .gap-3 {
-    gap: calc(var(--spacing) * 3);
-  }
   .gap-\[1px\] {
     gap: 1px;
+  }
+  .gap-\[var\(--gap\)\] {
+    gap: var(--gap);
   }
   .truncate {
     overflow: hidden;
@@ -557,6 +557,9 @@
   }
   .p-4 {
     padding: calc(var(--spacing) * 4);
+  }
+  .p-\[var\(--gap\)\] {
+    padding: var(--gap);
   }
   .px-2 {
     padding-inline: calc(var(--spacing) * 2);

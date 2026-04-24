@@ -184,7 +184,7 @@ pub fn Sidebar() -> impl IntoView {
     });
 
     view! {
-        <div class="flex h-full gap-3 select-none">
+        <div class="flex h-full gap-[var(--gap)] select-none">
             <FloatingTile>
                 <div class="servers w-16 flex flex-col items-center pt-3 pb-3 overflow-y-auto">
 

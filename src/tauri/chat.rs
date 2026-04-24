@@ -153,7 +153,7 @@ impl TimelineItem {
 
                                 view! {
                                     // NEW ROW WRAPPER: Full width, hover applied here, padding/negative margin extends it to the edges
-                                    <div class="group/msg relative flex gap-3 hover:bg-black/20 px-3 py-1 -mx-3 rounded-md">
+                                    <div class="group/msg relative flex gap-[var(--gap)] hover:bg-black/20 px-3 py-1 -mx-3 rounded-md">
 
                                         // Left Column: Avatar (only renders on the first message)
                                         <div class="shrink-0 w-[40px]">
@@ -594,11 +594,11 @@ pub fn Chat(
     set_messages: WriteSignal<Vec<UiMessage>>,
 ) -> impl IntoView {
     view! {
-        <div class="flex-1 h-full flex gap-3 flex-col overflow-hidden">
+        <div class="flex-1 h-full flex gap-[var(--gap)] flex-col overflow-hidden">
             <FloatingTile>
                 "Chat name goes here"
             </FloatingTile>
-            <div class="flex gap-3 flex-row h-full min-h-0">
+            <div class="flex gap-[var(--gap)] flex-row h-full min-h-0">
                 <FloatingTile class="flex-1 min-h-0, overflow-hidden">
                     <TimeLine/>
                     <input
