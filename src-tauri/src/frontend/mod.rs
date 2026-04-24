@@ -5,10 +5,7 @@ use tauri::{AppHandle, Emitter};
 
 use crate::{
     TauriError,
-    frontend::{
-        members::UserProfile,
-        rooms::{FlatRoom, RoomNode, SidebarState},
-    },
+    frontend::members::UserProfile,
     storage::{fetch_sidebar, members::MemberRow},
 };
 

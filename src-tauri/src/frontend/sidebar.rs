@@ -1,8 +1,4 @@
-use crate::TauriError;
-use crate::storage::fetch_sidebar;
-use rusqlite::Connection;
 use std::collections::{HashMap, HashSet};
-use tauri::{AppHandle, Emitter};
 
 use shared::sidebar::{FlatRoom, RoomKind, RoomNode, SidebarState};
 
