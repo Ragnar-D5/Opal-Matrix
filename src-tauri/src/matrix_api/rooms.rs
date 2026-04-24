@@ -1,22 +1,22 @@
 use log::debug;
 use serde_json::Value;
-use shared::UiMessage;
+use shared::messages::UiMessage;
 use std::sync::Arc;
 
 use crate::{
+    AppState,
     matrix_api::crypto::process_message,
     storage::{
-        messages::{get_messages, save_messages, MessageRow},
+        messages::{MessageRow, get_messages, save_messages},
         rooms::save_prev_token,
     },
-    AppState,
 };
 use log::warn;
 use reqwest::Client;
-use rusqlite::{params, OptionalExtension};
-use tauri::{command, State};
+use rusqlite::{OptionalExtension, params};
+use tauri::{State, command};
 
-use crate::{construct_url, TauriError};
+use crate::{TauriError, construct_url};
 
 async fn get_messages_api(
     room_id: &String,

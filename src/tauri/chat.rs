@@ -8,7 +8,7 @@ use leptos::task::spawn_local;
 use leptos::{leptos_dom::logging::console_error, prelude::*};
 use leptos_use::{use_intersection_observer, UseIntersectionObserverReturn};
 use serde::Serialize;
-use shared::{
+use shared::messages::{
     MembershipAction, MessageContent, MessageKind, Reaction, SystemMessage, UiMessage, UserMessage,
 };
 
@@ -67,24 +67,23 @@ impl TimelineItem {
                                 let reply_sender = reply.sender_id.clone().unwrap_or_default();
                                 let reply_text = reply.text.clone().unwrap_or_default();
 
-                                // Get profile of the person being replied to
                                 let reply_profile_sig = store.get_profile(&room_id, &reply_sender);
                                 let reply_profile_sig_icon = reply_profile_sig.clone();
                                 let reply_profile_sig_name = reply_profile_sig.clone();
 
                                 view! {
-                                    <div class="flex items-center gap-2 ml-[52px] mb-1 opacity-60 hover:opacity-100 cursor-pointer text-xs relative group/reply">
+                                    <div class="flex items-center gap-2 ml-[52px] mb-1 cursor-pointer text-xs relative group/reply">
                                         <div class="absolute -left-[32px] top-[calc(50%-1px)] w-[28px] h-3.5 border-l-2 border-t-2 border-white/20 rounded-tl-md"></div>
 
                                         <div class="shrink-0">
                                             {move || reply_profile_sig_icon.get().render_icon(16)}
                                         </div>
 
-                                        <span class="font-semibold text-bright/80 hover:underline">
+                                        <span class="font-semibold text-bright hover:underline">
                                             {move || reply_profile_sig_name.get().render_name(12)}
                                         </span>
 
-                                        <span class="truncate text-muted line-clamp-1">
+                                        <span class="truncate text-bright line-clamp-1">
                                             {reply_text}
                                         </span>
                                     </div>

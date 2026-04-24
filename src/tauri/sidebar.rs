@@ -3,67 +3,9 @@ use crate::components::FloatingTile;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde::Deserialize;
+use shared::sidebar::{RoomNode, SidebarState};
 
 use crate::hooks::use_tauri_event;
-
-#[derive(Debug, Deserialize, Clone)]
-pub enum RoomNode {
-    Space {
-        room_id: String,
-        name: Option<String>,
-        topic: Option<String>,
-        avatar_url: Option<String>,
-
-        children: Vec<RoomNode>,
-    },
-    Channel {
-        room_id: String,
-        name: Option<String>,
-        topic: Option<String>,
-        avatar_url: Option<String>,
-
-        last_ts: Option<i64>,
-    },
-}
-
-impl RoomNode {
-    pub fn id(&self) -> &str {
-        match self {
-            RoomNode::Space { room_id, .. } => room_id,
-            RoomNode::Channel { room_id, .. } => room_id,
-        }
-    }
-
-    pub fn display_name(&self) -> String {
-        match self {
-            RoomNode::Space { name, .. } | RoomNode::Channel { name, .. } => {
-                name.clone().unwrap_or_else(|| "Unnamed".to_string())
-            }
-        }
-    }
-
-    pub fn last_ts(&self) -> Option<i64> {
-        match self {
-            RoomNode::Space { .. } => None,
-            RoomNode::Channel { last_ts, .. } => *last_ts,
-        }
-    }
-
-    pub fn avatar_url(&self) -> Option<String> {
-        match self {
-            RoomNode::Space { avatar_url, .. } | RoomNode::Channel { avatar_url, .. } => {
-                avatar_url.clone()
-            }
-        }
-    }
-}
-
-#[derive(Debug, Deserialize, Clone, Default)]
-pub struct SidebarState {
-    pub dms: Vec<RoomNode>,
-    pub servers: Vec<RoomNode>,
-    pub orphaned_rooms: Vec<RoomNode>,
-}
 
 #[component]
 fn DmDiv(dm: RoomNode) -> impl IntoView {
@@ -161,8 +103,6 @@ pub fn Sidebar() -> impl IntoView {
     let state = expect_context::<AppState>();
 
     let (sidebar_state, set_sidebar_state) = signal(SidebarState::default());
-
-    let (selected_space, set_selected_space) = signal(None::<String>);
 
     let sidebar_update_event: ReadSignal<Option<SidebarState>> = use_tauri_event("sidebar_update");
 

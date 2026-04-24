@@ -1,8 +1,9 @@
 use log::{debug, info};
 use rusqlite::Connection;
 use serde_json::Value;
-use shared::{
-    EncryptedFileInfo, MessageContent, MessageKind, SystemMessage, UiMessage, UserMessage,
+use shared::messages::{
+    EncryptedFileInfo, MembershipAction, MessageContent, MessageKind, SystemMessage, UiMessage,
+    UserMessage,
 };
 
 use crate::TauriError;
@@ -279,37 +280,33 @@ impl TryInto<UiMessage> for MessageRow {
                     .ok_or(format!("Missing state key: {:?}", value))?
                     .to_string();
 
-                MessageKind::SystemMessage(shared::SystemMessage::MembershipChange(
-                    match membership {
-                        "join" => shared::MembershipAction::Joined,
-                        "invite" => shared::MembershipAction::Invited(state_key),
-                        "leave" => {
-                            if state_key == self.sender {
-                                shared::MembershipAction::Left
-                            } else {
-                                shared::MembershipAction::Kicked {
-                                    target_id: state_key,
-                                    reason: content
-                                        .get("reason")
-                                        .and_then(|v| v.as_str())
-                                        .map(|s| s.to_string()),
-                                }
+                MessageKind::SystemMessage(SystemMessage::MembershipChange(match membership {
+                    "join" => MembershipAction::Joined,
+                    "invite" => MembershipAction::Invited(state_key),
+                    "leave" => {
+                        if state_key == self.sender {
+                            MembershipAction::Left
+                        } else {
+                            MembershipAction::Kicked {
+                                target_id: state_key,
+                                reason: content
+                                    .get("reason")
+                                    .and_then(|v| v.as_str())
+                                    .map(|s| s.to_string()),
                             }
                         }
-                        "ban" => shared::MembershipAction::Banned {
-                            target_id: state_key,
-                            reason: content
-                                .get("reason")
-                                .and_then(|v| v.as_str())
-                                .map(|s| s.to_string()),
-                        },
-                        _ => {
-                            return Err(
-                                format!("Unknown membership: {membership}; {:?}", value).into()
-                            );
-                        }
+                    }
+                    "ban" => MembershipAction::Banned {
+                        target_id: state_key,
+                        reason: content
+                            .get("reason")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string()),
                     },
-                ))
+                    _ => {
+                        return Err(format!("Unknown membership: {membership}; {:?}", value).into());
+                    }
+                }))
             }
             "m.room.create" => MessageKind::SystemMessage(SystemMessage::RoomCreation),
             "m.room.name" => MessageKind::SystemMessage(SystemMessage::RoomNameChange {

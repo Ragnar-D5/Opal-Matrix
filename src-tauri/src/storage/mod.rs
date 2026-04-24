@@ -1,18 +1,18 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
-use tauri::{command, State};
+use tauri::{State, command};
 
-use crate::frontend::members::UserProfile;
-use crate::frontend::rooms::FlatRoom;
 use crate::AppState;
 use crate::TauriError;
+use crate::frontend::members::UserProfile;
 use members::MemberRow;
 use messages::MessageRow;
 use rooms::{RoomRow, RoomUpdate, SpaceChildRow, SpaceParentRow};
 use ruma::OwnedRoomId;
-use rusqlite::params;
 use rusqlite::Connection;
+use rusqlite::params;
+use shared::sidebar::FlatRoom;
 
 pub(crate) mod members;
 pub(crate) mod messages;
