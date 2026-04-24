@@ -3,7 +3,7 @@ use crate::components::FloatingTile;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde::Deserialize;
-use shared::sidebar::{RoomNode, SidebarState};
+use shared::sidebar::{RoomKind, RoomNode, SidebarState};
 
 use crate::hooks::use_tauri_event;
 
@@ -11,9 +11,9 @@ use crate::hooks::use_tauri_event;
 fn DmDiv(dm: RoomNode) -> impl IntoView {
     let state = expect_context::<AppState>();
 
-    let id = dm.id().to_string();
-    let name = dm.display_name();
-    let avatar_url = dm.avatar_url();
+    let id = dm.room_id.to_string();
+    let name = dm.name.unwrap_or_else(|| "Unnamed".to_string());
+    let avatar_url = dm.avatar_url;
     let initial = name.chars().take(2).collect::<String>();
 
     let is_active = Memo::new(move |_| state.active_room_id.get() == Some(id.clone()));
@@ -60,11 +60,12 @@ pub fn IndicatorPill(#[prop(into)] is_active: Signal<bool>) -> impl IntoView {
 pub fn ServerIcon(server: RoomNode) -> impl IntoView {
     let state = expect_context::<AppState>();
 
-    let id = server.id().to_string();
+    let id = server.room_id.to_string();
     let cloned_id = id.clone();
 
     let initial = server
-        .display_name()
+        .name
+        .unwrap_or("?".to_string())
         .chars()
         .next()
         .unwrap_or('?')
@@ -85,7 +86,7 @@ pub fn ServerIcon(server: RoomNode) -> impl IntoView {
                 class=("hover:bg-[var(--color-icon-hover)]", move || !is_active.get())
                 on:click=move |_| state.active_server_id.set(Some(id.clone()))
             >
-                {match server.avatar_url() {
+                {match server.avatar_url {
                     Some(url) => view! {
                         <img class="avatar-img rounded-[25%]" src=url alt=initial.clone() />
                     }.into_any(),
@@ -147,11 +148,11 @@ pub fn Sidebar() -> impl IntoView {
                     <div class="w-8 h-[1px] bg-gray-300 rounded-full my-2 gap-[1px]"></div>
                     <For
                         each=move || sidebar_state.get().servers
-                        key=|server| server.id().to_string()
+                        key=|server| server.room_id.to_string()
                         children=move |server| {
-                            let id_click = server.id().to_string();
-                            let id_active = server.id().to_string();
-                            let initial = server.display_name().chars().next().unwrap_or('?').to_string();
+                            let id_click = server.room_id.to_string();
+                            let id_active = server.room_id.to_string();
+                            let initial = server.name.clone().unwrap_or_else(|| "Unnamed".to_string());
 
                             let is_active = Memo::new(move |_| state.active_server_id.get() == Some(id_active.clone()));
 
@@ -176,10 +177,10 @@ pub fn Sidebar() -> impl IntoView {
                                     <span class="pl-1 text-normal">"Direct messages"</span>
                                     <For
                                         each=move || current_state.dms.clone()
-                                        key=|dm| dm.id().to_string()
+                                        key=|dm| dm.room_id.to_string()
                                         children=move |dm| {
-                                            let click_id = dm.id().to_string();
-                                            let check_id = dm.id().to_string();
+                                            let click_id = dm.room_id.to_string();
+                                            let check_id = dm.room_id.to_string();
                                             let is_active = Memo::new(move |_| state.active_room_id.get() == Some(check_id.clone()));
 
                                             view! {
@@ -192,18 +193,21 @@ pub fn Sidebar() -> impl IntoView {
                             }.into_any(),
 
                             Some(active_id) => {
-                                let active_server = current_state.servers.into_iter().find(|s| s.id() == active_id);
+                                let Some(active_server) = current_state.servers.into_iter().find(|s| s.room_id == active_id) else {
+                                    return view! { <div class="item p-4">"Not found"</div> }.into_any();
+                                };
+                                let name = active_server.name.clone();
 
-                                match active_server {
-                                    Some(RoomNode::Space { name, children, .. }) => view! {
+                                match active_server.kind {
+                                    RoomKind::Space { children } => view! {
                                         <div class="header border-b border-gray-300 p-3 font-bold text-normal">{name.unwrap_or_else(|| "Server".to_string())}</div>
                                         <div class="list pl-1">
                                             <For
                                                 each=move || children.clone()
-                                                key=|child| child.id().to_string()
+                                                key=|child| child.room_id.to_string()
                                                 children=move |child| {
-                                                    let click_id = child.id().to_string();
-                                                    let check_id = child.id().to_string();
+                                                    let click_id = child.room_id.to_string();
+                                                    let check_id = child.room_id.to_string();
                                                     let is_active = Memo::new(move |_| state.active_room_id.get() == Some(check_id.clone()));
 
                                                     view! {
@@ -217,7 +221,7 @@ pub fn Sidebar() -> impl IntoView {
                                                                 class=("text-bright", move || is_active.get())
                                                                 on:click=move |_| state.active_room_id.set(Some(click_id.clone()))
                                                             >
-                                                                "# " {child.display_name()}
+                                                                "# " {child.name}
                                                             </div>
                                                         </div>
                                                         <div class="h-[1px]"></div>

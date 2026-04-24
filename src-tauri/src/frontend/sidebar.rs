@@ -4,7 +4,7 @@ use rusqlite::Connection;
 use std::collections::{HashMap, HashSet};
 use tauri::{AppHandle, Emitter};
 
-use shared::sidebar::{FlatRoom, RoomNode, SidebarState};
+use shared::sidebar::{FlatRoom, RoomKind, RoomNode, SidebarState};
 
 pub fn build_tree(
     mut all_rooms: HashMap<String, FlatRoom>,
@@ -17,13 +17,15 @@ pub fn build_tree(
     // Extract DMs and remove them from the main rooms list
     all_rooms.retain(|room_id, room| {
         if room.is_direct {
-            dms.push(RoomNode::Channel {
+            dms.push(RoomNode {
                 room_id: room_id.clone(),
                 name: room.name.clone(),
                 topic: room.topic.clone(),
                 avatar_url: room.avatar_url.clone(),
 
-                last_ts: room.last_ts,
+                kind: RoomKind::Channel {
+                    last_ts: room.last_ts,
+                },
             });
             false
         } else {
@@ -44,13 +46,15 @@ pub fn build_tree(
     let mut orphaned_channels = Vec::new();
     for (room_id, room) in &all_rooms {
         if room.room_type.is_none() && !all_children.contains(room_id) {
-            orphaned_channels.push(RoomNode::Channel {
+            orphaned_channels.push(RoomNode {
                 room_id: room_id.clone(),
                 name: room.name.clone(),
                 topic: room.topic.clone(),
                 avatar_url: room.avatar_url.clone(),
 
-                last_ts: room.last_ts,
+                kind: RoomKind::Channel {
+                    last_ts: room.last_ts,
+                },
             });
         }
     }
@@ -69,7 +73,7 @@ fn build_node(
 ) -> Option<RoomNode> {
     let room = all_rooms.get(room_id)?;
 
-    if room.room_type.as_deref() == Some("m.space") {
+    let room_kind = if room.room_type.as_deref() == Some("m.space") {
         let mut children_nodes = Vec::new();
 
         if let Some(child_ids) = parent_to_children.get(room_id) {
@@ -80,22 +84,20 @@ fn build_node(
             }
         }
 
-        Some(RoomNode::Space {
-            room_id: room.room_id.clone(),
-            name: room.name.clone(),
-            topic: room.topic.clone(),
-            avatar_url: room.avatar_url.clone(),
+        RoomKind::Space {
             children: children_nodes,
-        })
+        }
     } else {
-        Some(RoomNode::Channel {
-            room_id: room_id.to_string(),
-            name: room.name.clone(),
-            topic: room.topic.clone(),
-            avatar_url: room.avatar_url.clone(),
-
+        RoomKind::Channel {
             last_ts: room.last_ts,
-        })
-    }
-}
+        }
+    };
 
+    return Some(RoomNode {
+        room_id: room_id.to_string(),
+        name: room.name.clone(),
+        topic: room.topic.clone(),
+        avatar_url: room.avatar_url.clone(),
+        kind: room_kind,
+    });
+}
