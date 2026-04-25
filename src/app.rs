@@ -292,8 +292,13 @@ impl AppState {
         });
     }
 
+    pub fn set_server_order(&self, servers: Vec<String>) {
+        self.server_order.set(ServerOrder { servers });
+        self.save_server_order();
+    }
+
     fn save_server_order(&self) {
-        let order = self.server_order.get();
+        let order = self.server_order.get_untracked();
         spawn_local(async move {
             let args = serde_wasm_bindgen::to_value(&AccountDataArgs {
                 payload: AccountDataPayload::ServerOrder(order),
@@ -367,6 +372,16 @@ pub fn App() -> impl IntoView {
                     console_error(&format!("Error fetching breadcrumbs: {:?}", err));
                 }
             }
+
+            match call_tauri_no_args("get_server_order").await {
+                Ok(js_val) => {
+                    let order: ServerOrder = serde_wasm_bindgen::from_value(js_val).unwrap();
+                    state.server_order.set(order);
+                }
+                Err(err) => {
+                    console_error(&format!("Error fetching server order: {:?}", err));
+                }
+            };
 
             let _ = call_tauri_no_args("send_frontend").await;
         });

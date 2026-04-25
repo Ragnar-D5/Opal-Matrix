@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use log::info;
 use rusqlite::Connection;
 use tauri::{AppHandle, Emitter};
 

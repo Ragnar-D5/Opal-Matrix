@@ -36,7 +36,7 @@ async fn set_account_data_api<T: Serialize + AccountData>(
     Ok(())
 }
 
-async fn get_account_data_api<T: DeserializeOwned + AccountData>(
+async fn get_account_data_api<T: DeserializeOwned + Serialize + AccountData + Default>(
     matrix_url: &String,
     user_id: &String,
     access_token: &String,
@@ -59,6 +59,9 @@ async fn get_account_data_api<T: DeserializeOwned + AccountData>(
     if response.status().is_success() {
         let data = response.json::<T>().await?;
         Ok(data)
+    } else if response.status().as_u16() == 404 {
+        set_account_data_api(matrix_url, user_id, access_token, T::default()).await?;
+        Ok(T::default())
     } else {
         Err(format!(
             "Failed to fetch account data: HTTP {}: {}",
@@ -142,6 +145,16 @@ pub async fn get_breadcrumbs(
 ) -> Result<shared::account_data::Breadcrumbs, TauriError> {
     match get_account_data(state, "breadcrumbs".to_string()).await? {
         AccountDataPayload::Breadcrumbs(data) => Ok(data),
+        _ => Err("Unexpected account data type".into()),
+    }
+}
+
+#[command]
+pub async fn get_server_order(
+    state: State<'_, Arc<AppState>>,
+) -> Result<shared::account_data::ServerOrder, TauriError> {
+    match get_account_data(state, "server_order".to_string()).await? {
+        AccountDataPayload::ServerOrder(data) => Ok(data),
         _ => Err("Unexpected account data type".into()),
     }
 }

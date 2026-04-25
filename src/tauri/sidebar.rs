@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::app::{call_tauri_no_args, AppState};
 use crate::components::FloatingTile;
 use leptos::leptos_dom::logging::console_error;
@@ -105,6 +107,7 @@ pub fn Sidebar() -> impl IntoView {
     let state = expect_context::<AppState>();
 
     let (sidebar_state, set_sidebar_state) = signal(SidebarState::default());
+    let (dragged_server_id, set_dragged_server_id) = signal::<Option<String>>(None);
 
     let sidebar_update_event: ReadSignal<Option<SidebarState>> = use_tauri_event("sidebar_update");
 
@@ -114,12 +117,55 @@ pub fn Sidebar() -> impl IntoView {
                 .dms
                 .sort_by(|a, b| b.last_ts().unwrap_or(0).cmp(&a.last_ts().unwrap_or(0)));
 
+            let current_order = state.server_order.get_untracked();
+
+            let order_map: HashMap<&String, usize> = current_order
+                .servers
+                .iter()
+                .enumerate()
+                .map(|(index, id)| (id, index))
+                .collect();
+
+            new_state.servers.sort_by(|a, b| {
+                let pos_a = order_map.get(&a.room_id).copied().unwrap_or(usize::MAX);
+                let pos_b = order_map.get(&b.room_id).copied().unwrap_or(usize::MAX);
+
+                if pos_a == usize::MAX && pos_b == usize::MAX {
+                    let name_a = a.name.as_deref().unwrap_or("");
+                    let name_b = b.name.as_deref().unwrap_or("");
+                    return name_a.cmp(name_b);
+                }
+
+                pos_a.cmp(&pos_b)
+            });
+
+            let final_order: Vec<String> = new_state
+                .servers
+                .iter()
+                .map(|s| s.room_id.clone())
+                .collect();
+
+            if final_order != current_order.servers {
+                state.set_server_order(final_order);
+            }
+
             set_sidebar_state.set(new_state);
         }
     });
 
+    let Ok(img) = web_sys::HtmlImageElement::new() else {
+        return view! { <div class="item p-4">"Error initializing drag image"</div> }.into_any();
+    };
+    img.set_src("data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7");
+
     view! {
         <div class="flex h-full gap-[var(--gap)] select-none">
+            <img
+                id="drag-ghost"
+                src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
+                style="position: absolute; top: -1000px; left: -1000px; opacity: 0;"
+            />
+
             <FloatingTile>
                 <div class="servers w-16 flex flex-col items-center pt-3 pb-3 overflow-y-auto">
 
@@ -147,11 +193,61 @@ pub fn Sidebar() -> impl IntoView {
                             let id_active = server.room_id.to_string();
                             let initial = server.name.clone().unwrap_or_else(|| "Unnamed".to_string());
 
+                            let drag_id = server.room_id.to_string();
+                            let drop_id = server.room_id.to_string();
+
                             let is_active = Memo::new(move |_| state.active_server_id.get() == Some(id_active.clone()));
 
                             view! {
-                                <ServerIcon server=server.clone() />
-                                <div class="h-2"></div>
+                                <div
+                                    draggable="true"
+                                    class="w-full flex flex-col items-center cursor-grab active:cursor-grabbing"
+                                    on:dragstart={
+                                        let img = img.clone();
+
+                                        move |e| {
+                                            if let Some(data_transfer) = e.data_transfer() {
+                                                let _ = data_transfer.set_data("text/plain", &drag_id);
+
+                                                let _ = data_transfer.set_drag_image(&img, 0, 0);
+                                            }
+
+                                            set_dragged_server_id.set(Some(drag_id.clone()));
+                                        }
+                                    }
+                                    on:dragover=move |e| {
+                                        e.prevent_default();
+                                    }
+                                    on:dragenter=move |e| {
+                                        e.prevent_default();
+                                        let Some(source_id) = dragged_server_id.get() else { return };
+
+                                        if source_id != drop_id {
+                                            set_sidebar_state.update(|state| {
+                                                let src_opt = state.servers.iter().position(|s| s.room_id == source_id);
+                                                let dst_opt = state.servers.iter().position(|s| s.room_id == drop_id);
+
+                                                if let (Some(src_idx), Some(dst_idx)) = (src_opt, dst_opt) {
+                                                    let item = state.servers.remove(src_idx);
+                                                    state.servers.insert(dst_idx, item);
+                                                }
+                                            });
+                                        }
+                                    }
+                                    on:dragend=move |_| {
+                                        set_dragged_server_id.set(None);
+
+                                        spawn_local(async move {
+                                            let current_servers = sidebar_state.get_untracked().servers;
+                                            let new_order: Vec<String> = current_servers.into_iter().map(|s| s.room_id).collect();
+
+                                            state.set_server_order(new_order);
+                                        });
+                                    }
+                                >
+                                    <ServerIcon server=server.clone() />
+                                    <div class="h-2 pointer-events-none"></div>
+                                </div>
                             }
                         }
                     />
@@ -231,5 +327,5 @@ pub fn Sidebar() -> impl IntoView {
             </FloatingTile>
 
         </div>
-    }
+    }.into_any()
 }
