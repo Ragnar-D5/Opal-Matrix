@@ -13,6 +13,9 @@ pub struct RoomNode {
     pub topic: Option<String>,
     pub avatar_url: Option<String>,
 
+    pub highlight_count: u32,
+    pub notification_count: u32,
+
     pub kind: RoomKind,
 }
 
@@ -40,4 +43,6 @@ pub struct FlatRoom {
     pub room_type: Option<String>,
     pub is_direct: bool,
     pub last_ts: Option<i64>,
+    pub highlight_count: u32,
+    pub notification_count: u32,
 }

@@ -194,6 +194,9 @@
   .relative {
     position: relative;
   }
+  .static {
+    position: static;
+  }
   .end {
     inset-inline-end: var(--spacing);
   }
@@ -290,8 +293,8 @@
   .h-3 {
     height: calc(var(--spacing) * 3);
   }
-  .h-3\.5 {
-    height: calc(var(--spacing) * 3.5);
+  .h-4\.5 {
+    height: calc(var(--spacing) * 4.5);
   }
   .h-8 {
     height: calc(var(--spacing) * 8);

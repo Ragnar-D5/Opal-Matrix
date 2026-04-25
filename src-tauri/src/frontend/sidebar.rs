@@ -19,6 +19,9 @@ pub fn build_tree(
                 topic: room.topic.clone(),
                 avatar_url: room.avatar_url.clone(),
 
+                highlight_count: room.highlight_count,
+                notification_count: room.notification_count,
+
                 kind: RoomKind::Channel {
                     last_ts: room.last_ts,
                 },
@@ -48,6 +51,9 @@ pub fn build_tree(
                 topic: room.topic.clone(),
                 avatar_url: room.avatar_url.clone(),
 
+                highlight_count: room.highlight_count,
+                notification_count: room.notification_count,
+
                 kind: RoomKind::Channel {
                     last_ts: room.last_ts,
                 },
@@ -69,12 +75,18 @@ fn build_node(
 ) -> Option<RoomNode> {
     let room = all_rooms.get(room_id)?;
 
+    let mut highlight_count = room.highlight_count;
+    let mut notification_count = room.notification_count;
+
     let room_kind = if room.room_type.as_deref() == Some("m.space") {
         let mut children_nodes = Vec::new();
 
         if let Some(child_ids) = parent_to_children.get(room_id) {
             for child_id in child_ids {
                 if let Some(child_node) = build_node(child_id, all_rooms, parent_to_children) {
+                    highlight_count += child_node.highlight_count;
+                    notification_count += child_node.notification_count;
+
                     children_nodes.push(child_node);
                 }
             }
@@ -94,6 +106,10 @@ fn build_node(
         name: room.name.clone(),
         topic: room.topic.clone(),
         avatar_url: room.avatar_url.clone(),
+
+        highlight_count: highlight_count,
+        notification_count: notification_count,
+
         kind: room_kind,
     });
 }

@@ -9,7 +9,6 @@ use base64::engine::general_purpose;
 use colored::Colorize;
 use log::info;
 use serde::Serialize;
-use shared::breadcrumbs::Breadcrumbs;
 use tauri::async_runtime::{JoinHandle, Mutex, RwLock};
 use tauri::{AppHandle, Url};
 use tauri::{Manager, State};

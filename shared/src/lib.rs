@@ -1,3 +1,3 @@
-pub mod breadcrumbs;
+pub mod account_data;
 pub mod messages;
 pub mod sidebar;

@@ -9,3 +9,7 @@ pub struct Breadcrumbs {
     #[serde(default)]
     pub last_space_ids: HashMap<String, String>,
 }
+
+impl super::AccountData for Breadcrumbs {
+    const DATA_KEY: &'static str = "org.opal-matrix.breadcrumbs";
+}

@@ -183,7 +183,6 @@ pub fn Sidebar() -> impl IntoView {
                                         children=move |dm| {
                                             let click_id = dm.room_id.to_string();
                                             let check_id = dm.room_id.to_string();
-                                            let is_active = Memo::new(move |_| state.active_room_id.get() == Some(check_id.clone()));
 
                                             view! {
                                                 <DmDiv dm=dm.clone()
@@ -223,7 +222,7 @@ pub fn Sidebar() -> impl IntoView {
                                                                 class=("text-bright", move || is_active.get())
                                                                 on:click=move |_| state.set_active_room_id(Some(click_id.clone()))
                                                             >
-                                                                "# " {child.name}
+                                                                "# " {child.name} {child.notification_count}
                                                             </div>
                                                         </div>
                                                         <div class="h-[1px]"></div>

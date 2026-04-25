@@ -73,7 +73,7 @@ impl TimelineItem {
 
                                 view! {
                                     <div class="flex items-center gap-2 ml-[52px] mb-1 cursor-pointer text-xs relative group/reply">
-                                        <div class="absolute -left-[32px] top-[calc(50%-1px)] w-[28px] h-3.5 border-l-2 border-t-2 border-white/20 rounded-tl-md"></div>
+                                        <div class="absolute -left-[32px] top-[calc(50%-1px)] w-[28px] h-4.5 border-l-2 border-t-2 border-white/20 rounded-tl-md"></div>
 
                                         <div class="shrink-0">
                                             {move || reply_profile_sig_icon.get().render_icon(16)}
@@ -151,7 +151,6 @@ impl TimelineItem {
                                 };
 
                                 view! {
-                                    // NEW ROW WRAPPER: Full width, hover applied here, padding/negative margin extends it to the edges
                                     <div class="group/msg relative flex gap-[var(--gap)] hover:bg-black/20 px-3 py-1 -mx-3 rounded-md">
 
                                         // Left Column: Avatar (only renders on the first message)

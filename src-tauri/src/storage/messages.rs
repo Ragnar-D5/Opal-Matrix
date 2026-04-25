@@ -1,4 +1,4 @@
-use log::{debug, info};
+use log::{debug, info, warn};
 use rusqlite::Connection;
 use serde_json::Value;
 use shared::messages::{
@@ -408,9 +408,9 @@ impl TryInto<UiMessage> for MessageRow {
                 return Err(TauriError::silent());
             }
             _ => {
-                return Err(
-                    format!("Unsupported message type: {}; {:?}", self.msg_type, value).into(),
-                );
+                warn!("Unsupported message type: {}; {:?}", self.msg_type, value);
+
+                return Err(TauriError::silent());
             }
         };
 

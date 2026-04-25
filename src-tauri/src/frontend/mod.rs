@@ -46,6 +46,8 @@ pub fn send_sidebar_update(
     let (all_rooms, parent_to_children, all_children) = fetch_sidebar(conn, own_user_id)?;
     let tree = sidebar::build_tree(all_rooms, parent_to_children, all_children);
 
+    log::info!("{:?}", tree);
+
     handle.emit("sidebar_update", tree)?;
 
     Ok(())

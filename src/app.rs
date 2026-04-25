@@ -1,11 +1,10 @@
 use std::collections::{HashMap, HashSet};
 
 use leptos::leptos_dom::logging::console_error;
-use leptos::server_fn::server;
 use leptos::task::spawn_local;
 use leptos::{ev::SubmitEvent, prelude::*};
 use serde::{Deserialize, Serialize};
-use shared::breadcrumbs::Breadcrumbs;
+use shared::account_data::Breadcrumbs;
 use shared::messages::UiMessage;
 use wasm_bindgen::prelude::*;
 use web_sys::HtmlImageElement;

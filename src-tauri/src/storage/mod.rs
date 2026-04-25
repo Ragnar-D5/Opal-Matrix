@@ -1,3 +1,4 @@
+use log::info;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -188,7 +189,9 @@ pub async fn apply_sync_changes(
         join_rule = COALESCE(?, join_rule),
         algorithm = COALESCE(?, algorithm),
         room_type = COALESCE(?, room_type),
-        prev_batch = COALESCE(prev_batch, ?)
+        prev_batch = COALESCE(prev_batch, ?),
+        highlight_count = COALESCE(highlight_count, ?),
+        notification_count = COALESCE(notification_count, ?)
     WHERE room_id = ?",
     )?;
     for (room_id, update) in changes.room_updates {
@@ -203,6 +206,8 @@ pub async fn apply_sync_changes(
             update.algorithm,
             update.room_type,
             update.prev_batch,
+            update.highlight_count,
+            update.notification_count,
             room_id.to_string()
         ])?;
     }
@@ -272,7 +277,9 @@ pub fn fetch_sidebar(
                 WHERE msg.room_id = r.room_id
                 ORDER BY msg.timestamp DESC
                 LIMIT 1
-            ) AS last_ts
+            ) AS last_ts,
+            r.highlight_count,
+            r.notification_count
         FROM rooms r",
     )?;
 
@@ -287,11 +294,21 @@ pub fn fetch_sidebar(
             room_type: row.get(4)?,
             is_direct: row.get(5)?,
             last_ts: row.get(6)?,
+            highlight_count: row.get(7)?,
+            notification_count: row.get(8)?,
         })
     })?;
 
     for room in room_iter {
         let room = room?;
+
+        if room.highlight_count + room.notification_count != 0 {
+            info!(
+                "Room {} has {} highlights and {} mentions",
+                room.room_id, room.highlight_count, room.notification_count
+            );
+        }
+
         all_rooms.insert(room.room_id.clone(), room);
     }
 

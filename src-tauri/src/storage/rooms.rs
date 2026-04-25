@@ -18,6 +18,9 @@ pub struct RoomRow {
 
     // pub room_type: Option<String>,
     // pub prev_batch: Option<String>,
+
+    // pub highlight_count: Option<u32>,
+    // pub notification_count: Option<u32>,
 }
 
 impl DataBaseModel for RoomRow {
@@ -39,7 +42,10 @@ impl DataBaseModel for RoomRow {
                 power_levels TEXT,
 
                 room_type TEXT,
-                prev_batch TEXT
+                prev_batch TEXT,
+
+                highlight_count INTEGER,
+                notification_count INTEGER
             )",
         )?;
         Ok(())
@@ -58,6 +64,8 @@ pub struct RoomUpdate {
     pub algorithm: Option<String>,
     pub room_type: Option<String>,
     pub prev_batch: Option<String>,
+    pub highlight_count: Option<u32>,
+    pub notification_count: Option<u32>,
 }
 
 #[derive(Debug, Clone)]

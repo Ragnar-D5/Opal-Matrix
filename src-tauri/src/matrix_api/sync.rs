@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use log::{error, info, trace, warn};
+use log::{debug, error, info, trace, warn};
 use ruma::serde::Raw;
 use serde_json::value::RawValue;
 use tauri::AppHandle;
@@ -187,11 +187,6 @@ async fn handle_sync_response(
 ) -> Result<(), TauriError> {
     let mut changes = SyncChanges::default();
 
-    // let mut call_members_by_room = {
-    // let guard = state.call_members_by_room.lock().await;
-    // guard.clone()
-    // };
-
     for raw_event in response.account_data.events {
         if let Err(e) = extract_account_data(&mut changes, raw_event) {
             log::error!("Error extracting account data: {:?}", e);
@@ -201,8 +196,19 @@ async fn handle_sync_response(
     for (room_id, room) in response.rooms.join {
         changes.joined_rooms.push(room_id.clone());
 
+        let update = changes.room_updates.entry(room_id.clone()).or_default();
+        debug!("{:?}", room.unread_notifications);
+
+        update.highlight_count = room
+            .unread_notifications
+            .highlight_count
+            .map(|v| v.try_into().unwrap_or_default());
+        update.notification_count = room
+            .unread_notifications
+            .notification_count
+            .map(|v| v.try_into().unwrap_or_default());
+
         if let Some(prev_batch) = room.timeline.prev_batch {
-            let update = changes.room_updates.entry(room_id.clone()).or_default();
             update.prev_batch = Some(prev_batch);
         }
 
@@ -211,8 +217,6 @@ async fn handle_sync_response(
             SyncState::Before(v) => v.events,
             _ => vec![],
         };
-
-        // let call_members = call_members_by_room.entry(room_id.to_string()).or_default();
 
         for state_event in room_state_events {
             let data = match state_event.deserialize() {
