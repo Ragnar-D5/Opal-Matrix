@@ -4,7 +4,7 @@ use leptos::leptos_dom::logging::console_error;
 use leptos::task::spawn_local;
 use leptos::{ev::SubmitEvent, prelude::*};
 use serde::{Deserialize, Serialize};
-use shared::account_data::Breadcrumbs;
+use shared::account_data::{AccountDataArgs, AccountDataPayload, Breadcrumbs, ServerOrder};
 use shared::messages::UiMessage;
 use wasm_bindgen::prelude::*;
 use web_sys::HtmlImageElement;
@@ -218,6 +218,7 @@ pub struct AppState {
     pub active_server_id: RwSignal<Option<String>>,
 
     pub breadcrums: RwSignal<Breadcrumbs>,
+    pub server_order: RwSignal<ServerOrder>,
 }
 
 #[derive(Serialize)]
@@ -233,6 +234,7 @@ impl AppState {
             active_room_id: RwSignal::new(None),
             active_server_id: RwSignal::new(None),
             breadcrums: RwSignal::new(Breadcrumbs::default()),
+            server_order: RwSignal::new(ServerOrder::default()),
         }
     }
 
@@ -280,12 +282,25 @@ impl AppState {
     fn save_breadcrumbs(&self) {
         let breadcrumbs = self.breadcrums.get();
         spawn_local(async move {
-            let args = serde_wasm_bindgen::to_value(&BreadcrumbsArgs {
-                breadcrumbs: breadcrumbs,
+            let args = serde_wasm_bindgen::to_value(&AccountDataArgs {
+                payload: AccountDataPayload::Breadcrumbs(breadcrumbs),
             })
             .expect("Failed to serialize breadcrumbs");
-            if let Err(err) = call_tauri("update_breadcrumbs", args).await {
+            if let Err(err) = call_tauri("set_account_data", args).await {
                 console_error(&format!("Error saving breadcrumbs: {:?}", err));
+            }
+        });
+    }
+
+    fn save_server_order(&self) {
+        let order = self.server_order.get();
+        spawn_local(async move {
+            let args = serde_wasm_bindgen::to_value(&AccountDataArgs {
+                payload: AccountDataPayload::ServerOrder(order),
+            })
+            .expect("Failed to serialize server order");
+            if let Err(err) = call_tauri("set_account_data", args).await {
+                console_error(&format!("Error saving server order: {:?}", err));
             }
         });
     }
@@ -301,16 +316,7 @@ pub fn App() -> impl IntoView {
 
     let profile_update =
         use_tauri_event::<HashMap<String, HashMap<String, UserProfile>>>("member_update");
-    Effect::new(move |_| {
-        if let Some(update) = profile_update.get() {
-            console_error(&format!("Profile update received: {:?}", update));
-            // Here you would update the MemberStore based on the received update
-        }
-    });
 
-    // Print the result of fetch_breadcrumbs for debugging
-
-    // Invoke try_restore
     Effect::new(move |_| {
         spawn_local(async move {
             match call_tauri_no_args("try_restore").await {
@@ -332,7 +338,7 @@ pub fn App() -> impl IntoView {
                 }
             }
 
-            match call_tauri_no_args("fetch_breadcrumbs").await {
+            match call_tauri_no_args("get_breadcrumbs").await {
                 Ok(js_val) => {
                     let breadcrumbs: Breadcrumbs = serde_wasm_bindgen::from_value(js_val).unwrap();
 
@@ -361,6 +367,8 @@ pub fn App() -> impl IntoView {
                     console_error(&format!("Error fetching breadcrumbs: {:?}", err));
                 }
             }
+
+            let _ = call_tauri_no_args("send_frontend").await;
         });
     });
 

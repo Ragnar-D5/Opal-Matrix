@@ -302,13 +302,6 @@ pub fn fetch_sidebar(
     for room in room_iter {
         let room = room?;
 
-        if room.highlight_count + room.notification_count != 0 {
-            info!(
-                "Room {} has {} highlights and {} mentions",
-                room.room_id, room.highlight_count, room.notification_count
-            );
-        }
-
         all_rooms.insert(room.room_id.clone(), room);
     }
 

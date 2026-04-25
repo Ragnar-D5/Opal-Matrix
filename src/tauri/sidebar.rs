@@ -118,15 +118,6 @@ pub fn Sidebar() -> impl IntoView {
         }
     });
 
-    Effect::new(move |_| {
-        // fire once after mount/listener setup
-        spawn_local(async move {
-            let _ = call_tauri_no_args("send_frontend").await;
-        });
-
-        console_error(&format!("{:?}", state.active_server_id.get()));
-    });
-
     view! {
         <div class="flex h-full gap-[var(--gap)] select-none">
             <FloatingTile>

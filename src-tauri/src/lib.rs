@@ -496,8 +496,9 @@ pub fn run() {
             choose_home_server,
             storage::get_members,
             matrix_api::rooms::fetch_messages,
-            matrix_api::breadcrumbs::fetch_breadcrumbs,
-            matrix_api::breadcrumbs::update_breadcrumbs,
+            matrix_api::account_data::set_account_data,
+            matrix_api::account_data::get_account_data,
+            matrix_api::account_data::get_breadcrumbs,
         ])
         .register_asynchronous_uri_scheme_protocol(
             "mxc",
