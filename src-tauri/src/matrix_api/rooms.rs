@@ -70,10 +70,6 @@ pub async fn fetch_messages(
     room_id: String,
     oldest_id: Option<String>,
 ) -> Result<(Vec<UiMessage>, bool), TauriError> {
-    debug!(
-        "Fetching messages for room_id: {}, oldest_id: {:?}",
-        room_id, oldest_id
-    );
     let limit = 20;
 
     let mut conn_guard = state.connection.lock().await;

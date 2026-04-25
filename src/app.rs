@@ -1,9 +1,11 @@
 use std::collections::{HashMap, HashSet};
 
 use leptos::leptos_dom::logging::console_error;
+use leptos::server_fn::server;
 use leptos::task::spawn_local;
 use leptos::{ev::SubmitEvent, prelude::*};
 use serde::{Deserialize, Serialize};
+use shared::breadcrumbs::Breadcrumbs;
 use shared::messages::UiMessage;
 use wasm_bindgen::prelude::*;
 use web_sys::HtmlImageElement;
@@ -215,6 +217,13 @@ pub struct AppState {
 
     pub active_room_id: RwSignal<Option<String>>,
     pub active_server_id: RwSignal<Option<String>>,
+
+    pub breadcrums: RwSignal<Breadcrumbs>,
+}
+
+#[derive(Serialize)]
+struct BreadcrumbsArgs {
+    breadcrumbs: Breadcrumbs,
 }
 
 impl AppState {
@@ -224,7 +233,62 @@ impl AppState {
             login_name: RwSignal::new(String::new()),
             active_room_id: RwSignal::new(None),
             active_server_id: RwSignal::new(None),
+            breadcrums: RwSignal::new(Breadcrumbs::default()),
         }
+    }
+
+    pub fn set_active_room_id(&self, room_id: Option<String>) {
+        self.active_room_id.set(room_id.clone());
+
+        let Some(room_id) = room_id else {
+            return;
+        };
+
+        let key = self.active_server_id.get().unwrap_or("dms".to_string());
+
+        self.breadcrums.update(|bc| {
+            bc.last_space_ids.insert(key, room_id.clone());
+        });
+
+        self.append_room_id(room_id.clone());
+        self.save_breadcrumbs();
+    }
+
+    pub fn set_active_server_id(&self, server_id: Option<String>) {
+        self.active_server_id.set(server_id.clone());
+
+        let key = server_id.clone().unwrap_or("dms".to_string());
+
+        if let Some(room_id) = self.breadcrums.get().last_space_ids.get(&key).cloned() {
+            self.active_room_id.set(Some(room_id.clone()));
+            self.append_room_id(room_id);
+
+            self.save_breadcrumbs();
+        }
+    }
+
+    fn append_room_id(&self, room_id: String) {
+        self.breadcrums.update(|bc| {
+            bc.recent_rooms.retain(|id| id != &room_id);
+            bc.recent_rooms.insert(0, room_id);
+
+            if bc.recent_rooms.len() > 10 {
+                bc.recent_rooms.pop();
+            }
+        });
+    }
+
+    fn save_breadcrumbs(&self) {
+        let breadcrumbs = self.breadcrums.get();
+        spawn_local(async move {
+            let args = serde_wasm_bindgen::to_value(&BreadcrumbsArgs {
+                breadcrumbs: breadcrumbs,
+            })
+            .expect("Failed to serialize breadcrumbs");
+            if let Err(err) = call_tauri("update_breadcrumbs", args).await {
+                console_error(&format!("Error saving breadcrumbs: {:?}", err));
+            }
+        });
     }
 }
 
@@ -245,6 +309,8 @@ pub fn App() -> impl IntoView {
         }
     });
 
+    // Print the result of fetch_breadcrumbs for debugging
+
     // Invoke try_restore
     Effect::new(move |_| {
         spawn_local(async move {
@@ -262,7 +328,39 @@ pub fn App() -> impl IntoView {
                             .set(CurrentWindow::HomeserverDiscoveryPage);
                     }
                 }
-                Err(_) => {}
+                Err(_) => {
+                    console_error("Error during restore, showing home server discovery");
+                }
+            }
+
+            match call_tauri_no_args("fetch_breadcrumbs").await {
+                Ok(js_val) => {
+                    let breadcrumbs: Breadcrumbs = serde_wasm_bindgen::from_value(js_val).unwrap();
+
+                    state
+                        .active_room_id
+                        .set(breadcrumbs.recent_rooms.first().cloned());
+
+                    if let Some(room_id) = breadcrumbs.recent_rooms.first().cloned() {
+                        state.active_room_id.set(Some(room_id.clone()));
+
+                        for (server, last_room) in breadcrumbs.clone().last_space_ids {
+                            if last_room == room_id {
+                                if server == "dms" {
+                                    state.active_server_id.set(None);
+                                } else {
+                                    state.active_server_id.set(Some(server.clone()));
+                                }
+                                break;
+                            }
+                        }
+                    }
+
+                    state.breadcrums.set(breadcrumbs);
+                }
+                Err(err) => {
+                    console_error(&format!("Error fetching breadcrumbs: {:?}", err));
+                }
             }
         });
     });

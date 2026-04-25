@@ -1,5 +1,6 @@
 use crate::app::{call_tauri_no_args, AppState};
 use crate::components::FloatingTile;
+use leptos::leptos_dom::logging::console_error;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde::Deserialize;
@@ -84,7 +85,7 @@ pub fn ServerIcon(server: RoomNode) -> impl IntoView {
                 class=("bg-[var(--color-icon-selected)]", move || is_active.get())
                 class=("bg-[var(--color-icon-bg)]", move || !is_active.get())
                 class=("hover:bg-[var(--color-icon-hover)]", move || !is_active.get())
-                on:click=move |_| state.active_server_id.set(Some(id.clone()))
+                on:click=move |_| state.set_active_server_id(Some(id.clone()))
             >
                 {match server.avatar_url {
                     Some(url) => view! {
@@ -122,6 +123,8 @@ pub fn Sidebar() -> impl IntoView {
         spawn_local(async move {
             let _ = call_tauri_no_args("send_frontend").await;
         });
+
+        console_error(&format!("{:?}", state.active_server_id.get()));
     });
 
     view! {
@@ -135,7 +138,7 @@ pub fn Sidebar() -> impl IntoView {
 
                         <div
                             class="server-btn flex items-center justify-center w-10 h-10 bg-gray-700 text-white rounded-[25%] cursor-pointer hover:bg-gray-600 transition-colors"
-                            on:click=move |_| state.active_server_id.set(None)
+                            on:click=move |_| state.set_active_server_id(None)
                         >
                             // Discord generic logo SVG
                             <svg class="w-[60%] h-[60%] fill-current" viewBox="0 0 127.14 96.36">
@@ -144,7 +147,6 @@ pub fn Sidebar() -> impl IntoView {
                         </div>
                     </div>
 
-                    // Divider line
                     <div class="w-8 h-[1px] bg-gray-300 rounded-full my-2 gap-[1px]"></div>
                     <For
                         each=move || sidebar_state.get().servers
@@ -185,7 +187,7 @@ pub fn Sidebar() -> impl IntoView {
 
                                             view! {
                                                 <DmDiv dm=dm.clone()
-                                                    on:click=move |_| state.active_room_id.set(Some(click_id.clone())) />
+                                                    on:click=move |_| state.set_active_room_id(Some(click_id.clone())) />
                                             }
                                         }
                                     />
@@ -219,7 +221,7 @@ pub fn Sidebar() -> impl IntoView {
                                                                 class=("text-dim", move || !is_active.get())
                                                                 class=("bg-[color:var(--color-item-selected)]", move || is_active.get())
                                                                 class=("text-bright", move || is_active.get())
-                                                                on:click=move |_| state.active_room_id.set(Some(click_id.clone()))
+                                                                on:click=move |_| state.set_active_room_id(Some(click_id.clone()))
                                                             >
                                                                 "# " {child.name}
                                                             </div>

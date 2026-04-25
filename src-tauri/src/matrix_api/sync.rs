@@ -9,11 +9,11 @@ use crate::frontend::{send_member_update, send_sidebar_update};
 use crate::storage::members::MemberRow;
 use crate::storage::messages::MessageRow;
 use crate::storage::rooms::{SpaceChildRow, SpaceParentRow};
-use crate::{construct_url, matrix_api::crypto, AppState, TauriError};
+use crate::{AppState, TauriError, construct_url, matrix_api::crypto};
 use reqwest::Client;
 
-use ruma::api::{client::sync::sync_events::v3::Response as SyncResponse, IncomingResponse};
 use ruma::OwnedRoomId;
+use ruma::api::{IncomingResponse, client::sync::sync_events::v3::Response as SyncResponse};
 use tokio_util::sync::CancellationToken;
 
 async fn matrix_sync(
@@ -277,6 +277,11 @@ fn extract_account_data(
     raw_event: Raw<AnyGlobalAccountDataEvent>,
 ) -> Result<(), TauriError> {
     let ev = raw_event.deserialize()?;
+
+    match ev.event_type().to_string().as_str() {
+        "org.opal-matrix.breadcrumbs" => return Ok(()),
+        _ => (),
+    }
 
     match ev {
         AnyGlobalAccountDataEvent::Direct(ev) => {

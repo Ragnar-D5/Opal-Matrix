@@ -9,6 +9,7 @@ use base64::engine::general_purpose;
 use colored::Colorize;
 use log::info;
 use serde::Serialize;
+use shared::breadcrumbs::Breadcrumbs;
 use tauri::async_runtime::{JoinHandle, Mutex, RwLock};
 use tauri::{AppHandle, Url};
 use tauri::{Manager, State};
@@ -496,6 +497,8 @@ pub fn run() {
             choose_home_server,
             storage::get_members,
             matrix_api::rooms::fetch_messages,
+            matrix_api::breadcrumbs::fetch_breadcrumbs,
+            matrix_api::breadcrumbs::update_breadcrumbs,
         ])
         .register_asynchronous_uri_scheme_protocol(
             "mxc",
