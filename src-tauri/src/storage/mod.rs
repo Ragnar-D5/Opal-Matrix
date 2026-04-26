@@ -190,8 +190,8 @@ pub async fn apply_sync_changes(
         algorithm = COALESCE(?, algorithm),
         room_type = COALESCE(?, room_type),
         prev_batch = COALESCE(prev_batch, ?),
-        highlight_count = COALESCE(highlight_count, ?),
-        notification_count = COALESCE(notification_count, ?)
+        highlight_count = COALESCE(?, highlight_count),
+        notification_count = COALESCE(?, notification_count)
     WHERE room_id = ?",
     )?;
     for (room_id, update) in changes.room_updates {
@@ -250,7 +250,23 @@ pub fn fetch_sidebar(
                     ELSE NULL
                 END
             ) AS name,
-            r.topic,
+            COALESCE(
+                r.topic,
+                CASE
+                    WHEN r.is_direct = 1 THEN (
+                        SELECT m.user_id
+                        FROM members m
+                        WHERE m.room_id = r.room_id
+                          AND m.user_id != ?
+                          AND m.membership IN ('join', 'invite')
+                        ORDER BY
+                            CASE WHEN m.membership = 'join' THEN 0 ELSE 1 END,
+                            m.user_id
+                        LIMIT 1
+                    )
+                    ELSE NULL
+                END
+            ) AS topic,
             COALESCE(
                 r.avatar_url,
                 CASE
@@ -285,7 +301,7 @@ pub fn fetch_sidebar(
 
     let mut all_rooms: HashMap<String, FlatRoom> = HashMap::new();
 
-    let room_iter = stmt.query_map([own_user_id, own_user_id], |row| {
+    let room_iter = stmt.query_map([own_user_id, own_user_id, own_user_id], |row| {
         Ok(FlatRoom {
             room_id: row.get(0)?,
             name: row.get(1)?,

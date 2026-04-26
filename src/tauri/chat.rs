@@ -72,7 +72,7 @@ impl TimelineItem {
                                 let reply_profile_sig_name = reply_profile_sig.clone();
 
                                 view! {
-                                    <div class="flex items-center gap-2 ml-[52px] mb-1 cursor-pointer text-xs relative group/reply">
+                                    <div class="flex items-center gap-1 ml-[52px] mb-1 cursor-pointer text-xs relative group/reply">
                                         <div class="absolute -left-[32px] top-[calc(50%-1px)] w-[28px] h-4.5 border-l-2 border-t-2 border-white/20 rounded-tl-md"></div>
 
                                         <div class="shrink-0">
@@ -153,8 +153,7 @@ impl TimelineItem {
                                 view! {
                                     <div class="group/msg relative flex gap-[var(--gap)] hover:bg-black/20 px-3 py-1 -mx-3 rounded-md">
 
-                                        // Left Column: Avatar (only renders on the first message)
-                                        <div class="shrink-0 w-[40px]">
+                                        <div class="shrink-0 mr-2 w-[40px]">
                                             {if is_first {
                                                 let profile_sig = profile_sig.clone();
                                                 view! {
@@ -168,14 +167,12 @@ impl TimelineItem {
                                             }}
                                         </div>
 
-                                        // Right Column: Header + Content
                                         <div class="flex flex-col min-w-0 flex-1">
 
-                                            // Header (only renders on the first message)
                                             {if is_first {
                                                 let name_sig = name_sig.clone();
                                                 view! {
-                                                    <div class="flex items-baseline gap-2 mb-1">
+                                                    <div class="flex items-baseline gap-2">
                                                         <span class="text-bright truncate hover:underline cursor-pointer">
                                                             {move || name_sig.get().render_name(16)}
                                                         </span>
@@ -218,14 +215,28 @@ impl TimelineItem {
                 }
                 .into_any()
             }
-            TimelineItemKind::DateSeparator => view! {
-                <div class="flex items-center gap-2 my-4">
-                    <div class="flex-1 border-t-1 border-[var(--muted-text-color)]"></div>
-                    <span class="text-muted text-sm">
-                        {self.date.format("%d %B %Y").to_string()}
-                    </span>
-                    <div class="flex-1 border-t-1 border-[var(--muted-text-color)]"></div>
-                </div>
+            TimelineItemKind::DateSeparator => {
+                let is_today = self.date.date_naive() == Local::now().date_naive();
+                let is_yesterday = self.date.date_naive()
+                    == (Local::now().date_naive() - chrono::Duration::days(1));
+
+                let label = if is_today {
+                    "Today".to_string()
+                } else if is_yesterday {
+                    "Yesterday".to_string()
+                } else {
+                    self.date.format("%d %B %Y").to_string()
+                };
+
+                view! {
+                    <div class="flex items-center gap-2 my-4">
+                        <div class="flex-1 border-t-1 border-[var(--muted-text-color)]"></div>
+                        <span class="text-muted text-sm">
+                            {label}
+                        </span>
+                        <div class="flex-1 border-t-1 border-[var(--muted-text-color)]"></div>
+                    </div>
+                }
             }
             .into_any(),
             TimelineItemKind::SystemMessage(sys_msg) => {

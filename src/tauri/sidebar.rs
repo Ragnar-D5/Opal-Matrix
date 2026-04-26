@@ -1,13 +1,12 @@
 use std::collections::HashMap;
 
-use crate::app::{call_tauri_no_args, AppState};
+use crate::app::AppState;
 use crate::components::FloatingTile;
-use leptos::leptos_dom::logging::console_error;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use serde::Deserialize;
 use shared::sidebar::{RoomKind, RoomNode, SidebarState};
 
+use crate::components::TextCircle;
 use crate::hooks::use_tauri_event;
 
 #[component]
@@ -15,7 +14,7 @@ fn DmDiv(dm: RoomNode) -> impl IntoView {
     let state = expect_context::<AppState>();
 
     let id = dm.room_id.to_string();
-    let name = dm.name.unwrap_or_else(|| "Unnamed".to_string());
+    let name = dm.name.clone().unwrap_or_else(|| "Unnamed".to_string());
     let avatar_url = dm.avatar_url;
     let initial = name.chars().take(2).collect::<String>();
 
@@ -31,30 +30,46 @@ fn DmDiv(dm: RoomNode) -> impl IntoView {
                 class=("hover:bg-[var(--color-item-hover)]", move || !is_active.get())
                 class=("text-dim", move || !is_active.get())
             >
-                <div class="avatar-circle w-8 h-8 rounded-full">
+                <div class="avatar-circle w-8 h-8 rounded-full"
+                >
                     {match avatar_url {
                         Some(url) => view! {
                             <img class="avatar-img" src=url alt=name.clone() />
                         }.into_any(),
                         None => view! {
-                            <span>{initial}</span>
+                            <TextCircle text=initial color_string=dm.topic.clone().unwrap_or_else(|| "Unnamed".to_string()) class="rounded-full w-8 h-8" />
                         }.into_any(),
                     }}
                 </div>
                 <span class="inline-block align-center pl-2">{name}</span>
+                {
+                    if dm.notification_count > 0 {
+                        view! {
+                            <div class="ml-auto bg-[var(--mention-color)] text-white text-xs font-bold px-1.5 py-0.5 rounded-full">
+                                {dm.notification_count}
+                            </div>
+                        }.into_any()
+                    } else {
+                        view! { <div></div> }.into_any()
+                    }
+                }
             </div>
         </div>
     }
 }
 
 #[component]
-pub fn IndicatorPill(#[prop(into)] is_active: Signal<bool>) -> impl IntoView {
+pub fn IndicatorPill(
+    #[prop(into)] is_active: Signal<bool>,
+    #[prop(into)] has_notifications: Signal<bool>,
+) -> impl IntoView {
     view! {
         <div
             class="absolute left-1 w-1 bg-white rounded-full top-1/2 -translate-y-1/2 transition-all duration-200 ease-in-out"
             class=("h-10", move || is_active.get())
-            class=("h-0", move || !is_active.get())
-            class=("group-hover:h-[20px]", move || !is_active.get())
+            class=("h-3", move || !is_active.get() && has_notifications.get())
+            class=("h-0", move || !is_active.get() && !has_notifications.get())
+            // class=("group-hover:h-[20px]", move || !is_active.get())
         ></div>
     }
 }
@@ -68,6 +83,7 @@ pub fn ServerIcon(server: RoomNode) -> impl IntoView {
 
     let initial = server
         .name
+        .clone()
         .unwrap_or("?".to_string())
         .chars()
         .next()
@@ -75,27 +91,45 @@ pub fn ServerIcon(server: RoomNode) -> impl IntoView {
         .to_string();
 
     let is_active = Memo::new(move |_| state.active_server_id.get() == Some(cloned_id.clone()));
+    let has_notifications = Memo::new(move |_| server.notification_count > 0);
 
     view! {
         <div class="relative flex items-center justify-center group w-full">
+            <IndicatorPill is_active=is_active has_notifications=has_notifications/>
 
-            // Pass the Memo into the extracted pill
-            <IndicatorPill is_active=is_active />
+            // 1. Wrap the icon and the badge in a strictly sized relative container
+            <div class="relative w-10 h-10">
+                <div
+                    class="server-btn flex items-center justify-center w-full h-full text-gray-800 font-semibold rounded-[25%] cursor-pointer transition-colors"
+                    class=("bg-[var(--color-icon-selected)]", move || is_active.get())
+                    class=("bg-[var(--color-icon-bg)]", move || !is_active.get())
+                    class=("hover:bg-[var(--color-icon-hover)]", move || !is_active.get())
+                    on:click=move |_| state.set_active_server_id(Some(id.clone()))
+                >
+                    <div class="avatar-circle w-full h-full rounded-[25%] overflow-hidden">
+                        {match server.avatar_url {
+                            Some(url) => view! {
+                                <img draggable="false" class="avatar-img object-cover w-full h-full" src=url alt=server.name.clone() />
+                            }.into_any(),
+                            None => view! {
+                                <TextCircle text=initial color_string=server.name.clone().unwrap_or_else(|| "Unnamed".to_string()) class="rounded-[25%] w-full h-full" />
+                            }.into_any(),
+                        }}
+                    </div>
+                </div>
 
-            <div
-                class="server-btn flex items-center justify-center w-10 h-10 text-gray-800 font-semibold rounded-[25%] cursor-pointer transition-colors"
-                class=("bg-[var(--color-icon-selected)]", move || is_active.get())
-                class=("bg-[var(--color-icon-bg)]", move || !is_active.get())
-                class=("hover:bg-[var(--color-icon-hover)]", move || !is_active.get())
-                on:click=move |_| state.set_active_server_id(Some(id.clone()))
-            >
-                {match server.avatar_url {
-                    Some(url) => view! {
-                        <img class="avatar-img rounded-[25%]" src=url alt=initial.clone() />
-                    }.into_any(),
-                    None => view! {
-                        <span>{initial}</span>
-                    }.into_any(),
+                {if server.highlight_count > 0 {
+                    view! {
+                        <div class="absolute -bottom-0 -right-0 flex items-center justify-center
+                                    bg-[var(--mention-color)] text-white text-[12px] font-extrabold
+                                    w-4 h-4 rounded-full
+                                    ring-[3px] ring-[#1e1e2e]"
+                        >
+                            {server.highlight_count}
+                        </div>
+                    }.into_any()
+                } else {
+                    view! { <span class="hidden"></span> }.into_any()
                 }}
             </div>
         </div>
@@ -170,14 +204,12 @@ pub fn Sidebar() -> impl IntoView {
                 <div class="servers w-16 flex flex-col items-center pt-3 pb-3 overflow-y-auto">
 
                     <div class="relative flex items-center justify-center group w-full">
-                        // Discord-style dynamic indicator pill
-                        <IndicatorPill is_active=Memo::new(move |_| state.active_server_id.get().is_none()) />
+                        <IndicatorPill is_active=Memo::new(move |_| state.active_server_id.get().is_none()) has_notifications=Memo::new(move |_| false) />
 
                         <div
                             class="server-btn flex items-center justify-center w-10 h-10 bg-gray-700 text-white rounded-[25%] cursor-pointer hover:bg-gray-600 transition-colors"
                             on:click=move |_| state.set_active_server_id(None)
                         >
-                            // Discord generic logo SVG
                             <svg class="w-[60%] h-[60%] fill-current" viewBox="0 0 127.14 96.36">
                                 <path d="M107.7,8.07A105.15,105.15,0,0,0,81.47,0a72.06,72.06,0,0,0-3.36,6.83A97.68,97.68,0,0,0,49,6.83,72.37,72.37,0,0,0,45.64,0,105.89,105.89,0,0,0,19.39,8.09C2.79,32.65-1.71,56.6.54,80.21h0A105.73,105.73,0,0,0,32.71,96.36,77.7,77.7,0,0,0,39.6,85.25a68.42,68.42,0,0,1-10.85-5.18c.91-.66,1.8-1.34,2.66-2a75.57,75.57,0,0,0,64.32,0c.87.71,1.76,1.39,2.66,2a68.68,68.68,0,0,1-10.87,5.19,77,77,0,0,0,6.89,11.1,105.25,105.25,0,0,0,32.19-16.14c2.64-27.38-4.51-51.11-19.32-72.15ZM42.56,65.3c-5.36,0-9.8-4.83-9.8-10.79s4.38-10.79,9.8-10.79,9.85,4.83,9.8,10.79c0,5.96-4.45,10.79-9.8,10.79Zm42,0c-5.36,0-9.8-4.83-9.8-10.79s4.38-10.79,9.8-10.79,9.85,4.83,9.8,10.79c0,5.96-4.45,10.79-9.8,10.79Z"/>
                             </svg>
@@ -189,14 +221,8 @@ pub fn Sidebar() -> impl IntoView {
                         each=move || sidebar_state.get().servers
                         key=|server| server.room_id.to_string()
                         children=move |server| {
-                            let id_click = server.room_id.to_string();
-                            let id_active = server.room_id.to_string();
-                            let initial = server.name.clone().unwrap_or_else(|| "Unnamed".to_string());
-
                             let drag_id = server.room_id.to_string();
                             let drop_id = server.room_id.to_string();
-
-                            let is_active = Memo::new(move |_| state.active_server_id.get() == Some(id_active.clone()));
 
                             view! {
                                 <div
@@ -255,7 +281,8 @@ pub fn Sidebar() -> impl IntoView {
             </FloatingTile>
 
             <FloatingTile>
-                <div class="channels w-75 p-2">
+                <div class="channels w-75"
+                     class=("p-2", move || state.active_server_id.get().is_none())>
                     {move || {
                         let current_state = sidebar_state.get();
 
@@ -269,7 +296,6 @@ pub fn Sidebar() -> impl IntoView {
                                         key=|dm| dm.room_id.to_string()
                                         children=move |dm| {
                                             let click_id = dm.room_id.to_string();
-                                            let check_id = dm.room_id.to_string();
 
                                             view! {
                                                 <DmDiv dm=dm.clone()
@@ -289,7 +315,7 @@ pub fn Sidebar() -> impl IntoView {
                                 match active_server.kind {
                                     RoomKind::Space { children } => view! {
                                         <div class="header border-b border-gray-300 p-3 font-bold text-normal">{name.unwrap_or_else(|| "Server".to_string())}</div>
-                                        <div class="list pl-1">
+                                        <div class="list pr-2">
                                             <For
                                                 each=move || children.clone()
                                                 key=|child| child.room_id.to_string()
@@ -298,18 +324,37 @@ pub fn Sidebar() -> impl IntoView {
                                                     let check_id = child.room_id.to_string();
                                                     let is_active = Memo::new(move |_| state.active_room_id.get() == Some(check_id.clone()));
 
+                                                    let has_notifications = child.notification_count > 0;
+
                                                     view! {
-                                                        <div class="group flex flex-row w-full cursor-pointer">
-                                                            <div class="transition-[width] duration-300 ease-out shrink-0 w-0 group-hover:w-3"></div>
+                                                        <div class="group relative flex flex-row w-full cursor-pointer">
+
+                                                            {move || has_notifications.then(|| view! {
+                                                                <div class="absolute top-1/2 -translate-y-1/2 -left-1 group-hover:left-1.5 transition-[left] duration-300 ease-out w-2 h-2 bg-[var(--bright-text-color)] rounded-full z-10 pointer-events-none"></div>
+                                                            })}
+
+                                                            <div class="transition-[width] duration-300 ease-out shrink-0 w-2 group-hover:w-5"></div>
+
                                                             <div
                                                                 class="flex flex-row flex-grow items-center p-1 rounded-[10px] cursor-pointer transition-colors hover:text-bright"
                                                                 class=("hover:bg-[color:var(--color-item-hover)]", move || !is_active.get())
-                                                                class=("text-dim", move || !is_active.get())
+                                                                class=("text-dim", move || !is_active.get() && !has_notifications)
+                                                                class=("text-bright", move || !is_active.get() && has_notifications || is_active.get())
                                                                 class=("bg-[color:var(--color-item-selected)]", move || is_active.get())
-                                                                class=("text-bright", move || is_active.get())
                                                                 on:click=move |_| state.set_active_room_id(Some(click_id.clone()))
                                                             >
-                                                                "# " {child.name} {child.notification_count}
+                                                                "# " {child.name} {child.highlight_count}
+                                                                {
+                                                                    if child.notification_count > 0 {
+                                                                        view! {
+                                                                            <div class="ml-auto bg-[var(--mention-color)] text-white text-xs font-bold px-1.5 py-0.5 rounded-full">
+                                                                                {child.notification_count}
+                                                                            </div>
+                                                                        }.into_any()
+                                                                    } else {
+                                                                        view! { <div></div> }.into_any()
+                                                                    }
+                                                                }
                                                             </div>
                                                         </div>
                                                         <div class="h-[1px]"></div>

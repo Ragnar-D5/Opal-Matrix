@@ -1,5 +1,7 @@
+use super::components::TextCircle;
 use std::collections::{HashMap, HashSet};
 
+use colorsys::Hsl;
 use leptos::leptos_dom::logging::console_error;
 use leptos::task::spawn_local;
 use leptos::{ev::SubmitEvent, prelude::*};
@@ -60,14 +62,9 @@ pub struct UserProfile {
 
 impl UserProfile {
     pub fn render_icon(&self, size: usize) -> impl IntoView {
-        let initial = if let Some(name) = &self.display_name {
-            name.chars().next().unwrap_or('?').to_string()
-        } else {
-            self.user_id.chars().next().unwrap_or('?').to_string()
-        };
-
         let size_str = format!("{}px", size);
-        let font_size = format!("{}px", size / 2);
+
+        let name = self.display_name.clone().unwrap_or(self.user_id.clone());
 
         match &self.avatar_url {
             Some(url) => view! {
@@ -76,19 +73,17 @@ impl UserProfile {
                     src=url
                     style:height=size_str.clone()
                     style:width=size_str
-                    alt=initial
+                    alt=name
                 />
             }
             .into_any(),
             None => view! {
-                <div
-                    class="rounded-full bg-gray-500 flex items-center justify-center text-white font-bold"
-                    style:height=size_str.clone()
-                    style:width=size_str
-                    style:font-size=font_size
-                >
-                    {initial}
-                </div>
+                <TextCircle
+                    text=name
+                    color_string=self.user_id.clone()
+                    class="rounded-full"
+                    style=format!("height: {}; width: {};", size_str, size_str)
+                />
             }
             .into_any(),
         }
@@ -97,7 +92,7 @@ impl UserProfile {
     pub fn render_name(&self, font_size: usize) -> impl IntoView {
         let name = self.display_name.as_ref().unwrap_or(&self.user_id);
         let font_size_str = format!("{}px", font_size);
-        let color = self.get_user_color();
+        let color = self.get_user_color().to_css_string();
 
         view! {
             <span
@@ -110,15 +105,19 @@ impl UserProfile {
         }
     }
 
-    fn get_user_color(&self) -> String {
+    fn get_user_color(&self) -> Hsl {
+        Self::get_color(self.user_id.clone())
+    }
+
+    pub fn get_color(string: String) -> Hsl {
         let mut hash: u32 = 0;
-        for c in self.user_id.chars() {
+        for c in string.chars() {
             hash = (c as u32).wrapping_add(hash.wrapping_shl(5).wrapping_sub(hash));
         }
 
         let hue = hash % 360;
 
-        format!("hsl({}, 60%, 45%)", hue)
+        Hsl::new(hue as f64, 90.0, 70.0, None)
     }
 }
 
@@ -547,6 +546,7 @@ fn HomePage() -> impl IntoView {
     let tile_border_color = "rgba(255, 255, 255, 0.3)";
     let muted_text_color = "hsl(220, 15%, 25%)";
     let gap = "5px";
+    let mention_color = "rgb(255, 100, 100)";
 
     let root_css_vars = move || {
         let base = format!(
@@ -561,6 +561,7 @@ fn HomePage() -> impl IntoView {
             --tile-border-color: {tile_border_color};
             --muted-text-color: {muted_text_color};
             --gap: {gap};
+            --mention-color: {mention_color};
             background-color: {bg_color};",
         );
 
