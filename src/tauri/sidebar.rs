@@ -66,10 +66,15 @@ pub fn IndicatorPill(
     view! {
         <div
             class="absolute left-1 w-1 bg-white rounded-full top-1/2 -translate-y-1/2 transition-all duration-200 ease-in-out"
+
             class=("h-10", move || is_active.get())
             class=("h-3", move || !is_active.get() && has_notifications.get())
             class=("h-0", move || !is_active.get() && !has_notifications.get())
-            // class=("group-hover:h-[20px]", move || !is_active.get())
+            class=("group-hover:h-5", move || !is_active.get())
+
+            class=("opacity-100", move || is_active.get() || has_notifications.get())
+            class=("opacity-0", move || !is_active.get() && !has_notifications.get())
+            class=("group-hover:opacity-100", move || !is_active.get())
         ></div>
     }
 }
@@ -343,7 +348,7 @@ pub fn Sidebar() -> impl IntoView {
                                                                 class=("bg-[color:var(--color-item-selected)]", move || is_active.get())
                                                                 on:click=move |_| state.set_active_room_id(Some(click_id.clone()))
                                                             >
-                                                                "# " {child.name} {child.highlight_count}
+                                                                "# " {child.name}
                                                                 {
                                                                     if child.notification_count > 0 {
                                                                         view! {
