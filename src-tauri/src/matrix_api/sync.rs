@@ -298,9 +298,11 @@ fn extract_account_data(
 
             changes.direct_rooms = Some(dms);
         }
-        _ => {
-            trace!("Unhandled global account data event: {:?}", ev);
-        }
+        _ => match ev.event_type().to_string().as_str() {
+            "org.opal-matrix.breadcrumbs" => return Ok(()),
+            "im.vector.settings.breadcrumbs" => return Ok(()),
+            _ => trace!("Unhandled global account data event: {:?}", ev),
+        },
     }
 
     Ok(())
