@@ -197,7 +197,6 @@ async fn handle_sync_response(
         changes.joined_rooms.push(room_id.clone());
 
         let update = changes.room_updates.entry(room_id.clone()).or_default();
-        debug!("{:?}", room.unread_notifications);
 
         update.highlight_count = room
             .unread_notifications
