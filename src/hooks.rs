@@ -1,5 +1,4 @@
 use leptos::leptos_dom::logging::console_error;
-use leptos::leptos_dom::logging::console_log;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use send_wrapper::SendWrapper;

@@ -220,11 +220,6 @@ pub struct AppState {
     pub server_order: RwSignal<ServerOrder>,
 }
 
-#[derive(Serialize)]
-struct BreadcrumbsArgs {
-    breadcrumbs: Breadcrumbs,
-}
-
 impl AppState {
     pub fn new() -> Self {
         Self {
@@ -490,12 +485,6 @@ fn LoginPage() -> impl IntoView {
     }
 }
 
-#[derive(Serialize)]
-struct GetMessagesArgs {
-    room_id: String,
-    limit: usize,
-}
-
 #[component]
 fn HomePage() -> impl IntoView {
     let state = expect_context::<AppState>();
@@ -525,14 +514,11 @@ fn HomePage() -> impl IntoView {
             match call_tauri("set_recovery_key", args).await {
                 Ok(_) => {}
                 Err(err) => {
-                    // Handle error, maybe show an error message
+                    console_error(&format!("Error setting recovery key: {:?}", err));
                 }
             }
         });
     };
-
-    let gap_size = "2".to_string();
-    let padding = "2".to_string();
 
     let color_item_hover = "rgba(200, 200, 255, 0.05)";
     let color_item_selected = "rgba(255, 255, 255, 0.1)";

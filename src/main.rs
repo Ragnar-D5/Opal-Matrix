@@ -2,7 +2,6 @@ mod app;
 mod components;
 mod hooks;
 mod tauri;
-mod theming;
 
 use app::*;
 use leptos::prelude::*;
