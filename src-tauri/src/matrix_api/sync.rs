@@ -8,6 +8,7 @@ use tauri::AppHandle;
 use crate::frontend::{send_member_update, send_sidebar_update};
 use crate::storage::members::MemberRow;
 use crate::storage::messages::MessageRow;
+use crate::storage::receipts::ReadReceiptRow;
 use crate::storage::rooms::{SpaceChildRow, SpaceParentRow};
 use crate::{AppState, TauriError, construct_url, matrix_api::crypto};
 use reqwest::Client;
@@ -177,8 +178,8 @@ use crate::storage::{self, SyncChanges};
 
 use ruma::api::client::sync::sync_events::v3::State as SyncState;
 use ruma::events::{
-    AnyGlobalAccountDataEvent, AnyStateEventContent, AnySyncMessageLikeEvent, AnySyncStateEvent,
-    AnySyncTimelineEvent,
+    AnyGlobalAccountDataEvent, AnyStateEventContent, AnySyncEphemeralRoomEvent,
+    AnySyncMessageLikeEvent, AnySyncStateEvent, AnySyncTimelineEvent,
 };
 async fn handle_sync_response(
     state: &std::sync::Arc<AppState>,
@@ -241,6 +242,25 @@ async fn handle_sync_response(
             let data = raw_event.deserialize()?;
             extract_timeline(&mut changes, &room_id, data, raw_json, raw_event.clone())?;
         }
+
+        for raw_event in room.ephemeral.events {
+            let data = match raw_event.deserialize() {
+                Ok(data) => data,
+                Err(e) => {
+                    warn!(
+                        "Skipping malformed ephemeral event in room {}: {} | raw={}",
+                        room_id,
+                        e,
+                        raw_event.json().get()
+                    );
+                    continue;
+                }
+            };
+
+            if let Err(e) = extract_ephemeral(&mut changes, &room_id, data) {
+                warn!("Error extracting ephemeral event: {:?}", e);
+            }
+        }
     }
 
     let sidebar_needs_update = !changes.joined_rooms.is_empty()
@@ -275,6 +295,41 @@ async fn handle_sync_response(
     Ok(())
 }
 
+fn extract_ephemeral(
+    changes: &mut SyncChanges,
+    room_id: &OwnedRoomId,
+    ev: AnySyncEphemeralRoomEvent,
+) -> Result<(), TauriError> {
+    match ev {
+        AnySyncEphemeralRoomEvent::Receipt(ev) => {
+            for (event_id, receipts_by_type) in ev.content.iter() {
+                let event_id_str = event_id.to_string();
+
+                for (receipt_type, users) in receipts_by_type.iter() {
+                    let receipt_type_str = receipt_type.to_string();
+
+                    for (user_id, receipt) in users.iter() {
+                        let user_id_str = user_id.to_string();
+
+                        let ts = receipt.ts.map(|t| t.as_secs().into()).unwrap_or_default();
+
+                        changes.read_receipts.push(ReadReceiptRow {
+                            room_id: room_id.to_string(),
+                            user_id: user_id_str,
+                            receipt_type: receipt_type_str.clone(),
+                            event_id: event_id_str.clone(),
+                            ts,
+                        });
+                    }
+                }
+            }
+        }
+        _ => (),
+    }
+
+    Ok(())
+}
+
 fn extract_account_data(
     changes: &mut SyncChanges,
     raw_event: Raw<AnyGlobalAccountDataEvent>,
@@ -300,7 +355,7 @@ fn extract_account_data(
         }
         _ => match ev.event_type().to_string().as_str() {
             "org.opal-matrix.breadcrumbs" => return Ok(()),
-            "im.vector.settings.breadcrumbs" => return Ok(()),
+            "im.vector.setting.breadcrumbs" => return Ok(()),
             _ => trace!("Unhandled global account data event: {:?}", ev),
         },
     }

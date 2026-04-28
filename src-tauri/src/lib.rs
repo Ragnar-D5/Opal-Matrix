@@ -500,6 +500,7 @@ pub fn run() {
             matrix_api::account_data::get_account_data,
             matrix_api::account_data::get_breadcrumbs,
             matrix_api::account_data::get_server_order,
+            storage::receipts::get_receipt,
         ])
         .register_asynchronous_uri_scheme_protocol(
             "mxc",

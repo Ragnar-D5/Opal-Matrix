@@ -22,6 +22,7 @@ enum TimelineItemKind {
     MessageGroup(TimelineMessageGroup),
     DateSeparator,
     SystemMessage(SystemMessage),
+    NewMessageIndicator,
 }
 
 #[derive(PartialEq, Clone)]
@@ -239,6 +240,19 @@ impl TimelineItem {
                 }
             }
             .into_any(),
+            // Discord style new message indicator
+            TimelineItemKind::NewMessageIndicator => view! {
+                <div class="flex items-center w-full my-4 pr-4">
+                    <div class="flex-1 border-2 border-[#00ffff] rounded-full"></div>
+
+                    <span class="relative flex items-center h-[20px] bg-[#00ffff] text-[var(--bg-color)] text-[10px] font-bold px-2 rounded-r-[3px] ml-1 uppercase tracking-wider select-none">
+                        // The left-pointing arrow (<) built using CSS borders
+                        <div class="absolute -left-[6px] top-0 w-0 h-0 border-y-[10px] border-y-transparent border-r-[6px] border-r-[#00ffff]"></div>
+                        "New"
+                    </span>
+                </div>
+            }
+            .into_any(),
             TimelineItemKind::SystemMessage(sys_msg) => {
                 let display_name = profile_sig.get().display_name.unwrap_or(sender_id);
 
@@ -329,14 +343,21 @@ struct FetchMessagesRequest {
     oldest_id: Option<String>,
 }
 
+#[derive(Serialize)]
+struct ReceiptArgs {
+    room_id: String,
+}
+
 #[component]
 fn TimeLine() -> impl IntoView {
     let (messages, set_messages) = signal(Vec::<UiMessage>::new());
+    let (read_marker_id, set_read_marker_id) = signal::<Option<String>>(None);
 
     let flattened_items = Memo::new(move |_| {
         let mut msgs = messages.get();
         let mut items: Vec<TimelineItem> = Vec::new();
         let mut last_day: Option<NaiveDate> = None;
+        let marker_id = read_marker_id.get();
 
         let mut edits = HashMap::new();
         let mut redactions = HashSet::new();
@@ -469,6 +490,32 @@ fn TimeLine() -> impl IntoView {
         }
         items.sort_by_key(|item| item.date);
         items.reverse();
+
+        if let Some(m_id) = marker_id {
+            console_error(&format!("Read marker ID: {}", m_id));
+            if let Some(marker_msg) = msgs.iter().find(|m| m.event_id == m_id) {
+                let ts = get_date_from_ts(marker_msg.timestamp);
+
+                let pos = items
+                    .iter()
+                    .position(|item| item.id == m_id || item.date <= ts);
+
+                if let Some(p) = pos {
+                    if p > 0 {
+                        items.insert(
+                            p,
+                            TimelineItem {
+                                date: ts,
+                                sender: String::new(),
+                                id: "new-messages-divider".to_string(),
+                                kind: TimelineItemKind::NewMessageIndicator,
+                            },
+                        );
+                    }
+                }
+            }
+        }
+
         items
     });
 
@@ -576,6 +623,44 @@ fn TimeLine() -> impl IntoView {
                 },
                 std::time::Duration::from_millis(1),
             );
+        }
+    });
+
+    Effect::new(move |_| {
+        let rid = state.active_room_id.get();
+
+        if let Some(room_id) = rid {
+            // 1. Reset state for new room
+            set_messages.set(Vec::new());
+            set_has_more.set(true);
+            set_initial_loaded.set(false);
+            set_read_marker_id.set(None);
+
+            // 2. Fetch the read marker independently
+            spawn_local(async move {
+                let args = match serde_wasm_bindgen::to_value(&ReceiptArgs {
+                    room_id: room_id.clone(),
+                }) {
+                    Ok(a) => a,
+                    Err(e) => {
+                        console_error(&format!("Failed to serialize receipt args: {:?}", e));
+                        return;
+                    }
+                };
+
+                match call_tauri("get_receipt", args).await {
+                    Ok(marker) => match serde_wasm_bindgen::from_value::<Option<String>>(marker) {
+                        Ok(parsed_marker) => {
+                            set_read_marker_id.set(parsed_marker);
+                        }
+                        Err(e) => console_error(&format!("Failed to parse receipt: {:?}", e)),
+                    },
+                    Err(e) => console_error(&format!("Tauri get_receipt call failed: {:?}", e)),
+                }
+            });
+
+            // 3. Trigger initial message load
+            set_timeout(move || fetch_more(()), std::time::Duration::from_millis(1));
         }
     });
 

@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use log::info;
 use rusqlite::Connection;
 use tauri::{AppHandle, Emitter};
 
@@ -45,6 +44,7 @@ pub fn send_sidebar_update(
     own_user_id: &String,
 ) -> Result<(), TauriError> {
     let (all_rooms, parent_to_children, all_children) = fetch_sidebar(conn, own_user_id)?;
+
     let tree = sidebar::build_tree(all_rooms, parent_to_children, all_children);
 
     handle.emit("sidebar_update", tree)?;

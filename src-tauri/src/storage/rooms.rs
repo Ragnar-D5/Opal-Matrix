@@ -1,26 +1,27 @@
 use super::DataBaseModel;
 use crate::TauriError;
 
+#[derive(Debug, Clone, Default)]
 pub struct RoomRow {
-    // pub room_id: String,
-    // pub name: Option<String>,
-    // pub topic: Option<String>,
-    // pub avatar_url: Option<String>,
+    pub room_id: String,
+    pub name: Option<String>,
+    pub topic: Option<String>,
+    pub avatar_url: Option<String>,
 
-    // pub algorithm: Option<String>,
+    pub algorithm: Option<String>,
 
-    // pub is_direct: bool,
-    // pub join_rule: JoinRule,
-    // pub history_visibility: HistoryVisibility,
-    // pub guest_access: GuestAccess,
+    pub is_direct: bool,
+    pub join_rule: Option<String>,
+    pub history_visibility: Option<String>,
+    pub guest_access: Option<String>,
 
-    // pub power_levels: Option<String>,
+    pub power_levels: Option<String>,
 
-    // pub room_type: Option<String>,
-    // pub prev_batch: Option<String>,
+    pub room_type: Option<String>,
+    pub prev_batch: Option<String>,
 
-    // pub highlight_count: Option<u32>,
-    // pub notification_count: Option<u32>,
+    pub highlight_count: Option<u32>,
+    pub notification_count: Option<u32>,
 }
 
 impl DataBaseModel for RoomRow {
@@ -50,22 +51,6 @@ impl DataBaseModel for RoomRow {
         )?;
         Ok(())
     }
-}
-
-#[derive(Default, Debug, Clone)]
-pub struct RoomUpdate {
-    pub name: Option<String>,
-    pub topic: Option<String>,
-    pub avatar_url: Option<String>,
-    pub power_levels: Option<String>,
-    pub guest_access: Option<String>,
-    pub history_visibility: Option<String>,
-    pub join_rule: Option<String>,
-    pub algorithm: Option<String>,
-    pub room_type: Option<String>,
-    pub prev_batch: Option<String>,
-    pub highlight_count: Option<u32>,
-    pub notification_count: Option<u32>,
 }
 
 #[derive(Debug, Clone)]

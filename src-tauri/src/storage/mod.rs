@@ -9,7 +9,8 @@ use crate::TauriError;
 use crate::frontend::members::UserProfile;
 use members::MemberRow;
 use messages::MessageRow;
-use rooms::{RoomRow, RoomUpdate, SpaceChildRow, SpaceParentRow};
+use receipts::ReadReceiptRow;
+use rooms::{RoomRow, SpaceChildRow, SpaceParentRow};
 use ruma::OwnedRoomId;
 use rusqlite::Connection;
 use rusqlite::params;
@@ -17,6 +18,7 @@ use shared::sidebar::FlatRoom;
 
 pub(crate) mod members;
 pub(crate) mod messages;
+pub(crate) mod receipts;
 pub(crate) mod rooms;
 
 pub async fn init_storage(
@@ -40,6 +42,7 @@ pub async fn init_storage(
     MemberRow::create_table(&conn)?;
     SpaceChildRow::create_table(&conn)?;
     SpaceParentRow::create_table(&conn)?;
+    ReadReceiptRow::create_table(&conn)?;
 
     Ok((db_exists, conn))
 }
@@ -53,10 +56,11 @@ pub struct SyncChanges {
     pub joined_rooms: Vec<OwnedRoomId>,
     pub new_messages: Vec<MessageRow>,
     pub member_updates: Vec<MemberRow>,
+    pub read_receipts: Vec<ReadReceiptRow>,
 
     pub direct_rooms: Option<HashSet<OwnedRoomId>>,
 
-    pub room_updates: HashMap<OwnedRoomId, RoomUpdate>,
+    pub room_updates: HashMap<OwnedRoomId, RoomRow>,
 
     pub space_children: Vec<SpaceChildRow>,
 
@@ -212,6 +216,28 @@ pub async fn apply_sync_changes(
         ])?;
     }
     drop(stmt_room_state);
+
+    let mut stmt_receipts = tx.prepare(
+        "INSERT INTO read_receipts (room_id, user_id, receipt_type, event_id, ts)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(room_id, user_id, receipt_type) DO UPDATE SET
+            event_id = excluded.event_id,
+            ts = excluded.ts",
+    )?;
+    for receipt in changes.read_receipts {
+        info!(
+            "Updating receipt for room {}, user {}, type {}: event {}, ts {}",
+            receipt.room_id, receipt.user_id, receipt.receipt_type, receipt.event_id, receipt.ts
+        );
+        stmt_receipts.execute(params![
+            receipt.room_id,
+            receipt.user_id,
+            receipt.receipt_type,
+            receipt.event_id,
+            receipt.ts
+        ])?;
+    }
+    drop(stmt_receipts);
 
     tx.commit()?;
 
