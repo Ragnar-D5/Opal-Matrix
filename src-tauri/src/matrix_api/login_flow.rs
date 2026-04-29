@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Context};
 use serde::Deserialize;
+use tauri_plugin_http::reqwest;
 use version_compare::Version;
 
 #[derive(Deserialize)]

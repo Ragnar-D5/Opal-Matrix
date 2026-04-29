@@ -24,6 +24,8 @@ use matrix_api::authentication;
 use matrix_api::crypto;
 use matrix_api::discovery::choose_home_server;
 
+use tauri_plugin_http::reqwest;
+
 type Aes256Ctr = ctr::Ctr64BE<Aes256>;
 
 pub const APP_NAME: &str = "opal-matrix";
@@ -438,6 +440,7 @@ async fn send_frontend(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_http::init())
         .setup(|app| {
             let data_dir = app
                 .path()

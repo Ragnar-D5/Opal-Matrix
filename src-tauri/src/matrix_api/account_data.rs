@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
 use crate::{AppState, TauriError, construct_url};
-use reqwest::Client;
 use serde::{Serialize, de::DeserializeOwned};
 use shared::account_data::{AccountData, AccountDataPayload};
 use tauri::{State, command};
+use tauri_plugin_http::reqwest::Client;
 
 async fn set_account_data_api<T: Serialize + AccountData>(
     matrix_url: &String,

@@ -1,36 +1,36 @@
 use log::warn;
-use ruma::api::client::backup::EncryptedSessionData;
 use ruma::RoomId;
+use ruma::api::client::backup::EncryptedSessionData;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::str::FromStr;
 
-use crate::authentication::get_account_data;
 use crate::AppState;
+use crate::authentication::get_account_data;
 use bytes::Bytes;
 
-use crate::construct_url;
-use crate::TauriError;
 use crate::APP_NAME;
+use crate::TauriError;
+use crate::construct_url;
 use http::Response as HttpResponse;
 use matrix_sdk_crypto::olm::ExportedRoomKey;
 use matrix_sdk_crypto::store::types::BackupDecryptionKey;
 use matrix_sdk_crypto::{
-    types::requests::AnyOutgoingRequest, DecryptionSettings, EncryptionSyncChanges, OlmMachine,
+    DecryptionSettings, EncryptionSyncChanges, OlmMachine, types::requests::AnyOutgoingRequest,
 };
 use matrix_sdk_sqlite::SqliteCryptoStore;
-use reqwest::Client;
+use tauri_plugin_http::reqwest::{self, Client};
 
 use log::{error, info};
 
-use ruma::api::client::sync::sync_events::v3::Response as SyncResponse;
 use ruma::OwnedRoomId;
+use ruma::api::client::sync::sync_events::v3::Response as SyncResponse;
 use ruma::{OwnedDeviceId, UserId};
 
 use keyring::Entry;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use serde_json::Value;
+use serde_json::json;
 
 const LAST_USER_KEY: &str = "__last_active_user__";
 
@@ -644,9 +644,9 @@ pub async fn set_room_keys(
 }
 
 use {
-    aes::cipher::{KeyInit, KeyIvInit, StreamCipher}, // KeyInit/KeyIvInit give us new_from_slice(s)
     aes::Aes256,
-    base64::{engine::general_purpose::STANDARD as b64, Engine},
+    aes::cipher::{KeyInit, KeyIvInit, StreamCipher}, // KeyInit/KeyIvInit give us new_from_slice(s)
+    base64::{Engine, engine::general_purpose::STANDARD as b64},
     ctr::Ctr64BE,
     hkdf::Hkdf,
     hmac::{Hmac, Mac},

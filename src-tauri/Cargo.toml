@@ -22,7 +22,6 @@ tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-reqwest = { version = "0.13.2", features = ["json"] }
 tauri-plugin-log = "2"
 log = "0.4.29"
 anyhow = "1.0.102"
@@ -48,5 +47,6 @@ ctr = "0.10.0"
 getrandom = { version = "0.4.2", features = ["wasm_js"] }
 tokio-util = "0.7.18"
 tokio = "1.51.1"
-rusqlite = { version = "0.37.0", features = ["bundled-sqlcipher"] }
+rusqlite = { version = "0.37.0", features = ["bundled"] }
 shared = { path = "../shared" }
+tauri-plugin-http = { version = "2", features = ["json"] }

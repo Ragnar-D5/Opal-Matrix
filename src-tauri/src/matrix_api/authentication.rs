@@ -4,8 +4,8 @@ use crate::{construct_url, ClientInfo};
 use serde_json::Value;
 
 use crate::{RefreshToken, TauriError, Token};
-use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use tauri_plugin_http::reqwest::Client;
 
 #[derive(Serialize)]
 struct MatrixLoginIdentifier {

@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use anyhow::Context;
 use serde::Deserialize;
+use tauri_plugin_http::reqwest;
 
 use crate::TauriError;
 

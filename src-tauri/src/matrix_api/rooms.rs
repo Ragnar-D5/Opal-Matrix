@@ -2,6 +2,7 @@ use log::debug;
 use serde_json::Value;
 use shared::messages::UiMessage;
 use std::sync::Arc;
+use tauri_plugin_http::reqwest::Client;
 
 use crate::{
     AppState,
@@ -12,7 +13,6 @@ use crate::{
     },
 };
 use log::warn;
-use reqwest::Client;
 use rusqlite::{OptionalExtension, params};
 use tauri::{State, command};
 
