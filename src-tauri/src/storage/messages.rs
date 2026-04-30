@@ -127,6 +127,12 @@ pub fn save_messages(conn: &mut Connection, messages: Vec<MessageRow>) -> Result
     Ok(())
 }
 
+pub fn message_exists(conn: &Connection, event_id: &str) -> Result<bool, TauriError> {
+    let mut stmt = conn.prepare("SELECT 1 FROM messages WHERE event_id = ? LIMIT 1")?;
+    let exists = stmt.exists(rusqlite::params![event_id])?;
+    Ok(exists)
+}
+
 impl TryInto<UiMessage> for MessageRow {
     type Error = TauriError;
 

@@ -1,12 +1,13 @@
 use std::collections::HashSet;
 
-use log::{debug, error, info, trace, warn};
+use log::{info, trace, warn};
 use ruma::serde::Raw;
 use serde_json::value::RawValue;
 use tauri::AppHandle;
 use tauri_plugin_http::reqwest::{self, Client};
 
 use crate::frontend::{send_member_update, send_sidebar_update};
+use crate::matrix_api::rooms::backfill_gap;
 use crate::storage::members::MemberRow;
 use crate::storage::messages::MessageRow;
 use crate::storage::receipts::ReadReceiptRow;
@@ -32,11 +33,20 @@ async fn matrix_sync(
         &"sync".to_string(),
     ])?;
 
-    if let Some(since_token) = since {
-        let params = [("since", since_token), ("timeout", 30000.to_string())];
+    let mut params = vec![("timeout", "30000".to_string())];
 
-        url = reqwest::Url::parse_with_params(url.as_str(), params)?;
+    if let Some(since_token) = since {
+        params.push(("since", since_token));
     }
+
+    // Increase timeline limit to 100 to avoid missing messages after being offline.
+    // This is the most necessary change to fix missing messages after short periods of inactivity.
+    params.push((
+        "filter",
+        "{\"room\":{\"timeline\":{\"limit\":100}}}".to_string(),
+    ));
+
+    url = reqwest::Url::parse_with_params(url.as_str(), &params)?;
 
     let res = client
         .get(url)
@@ -196,6 +206,8 @@ async fn handle_sync_response(
 
     info!("{:?}", response.presence);
 
+    let mut backfill_rooms = Vec::new();
+
     for (room_id, room) in response.rooms.join {
         changes.joined_rooms.push(room_id.clone());
 
@@ -211,7 +223,11 @@ async fn handle_sync_response(
             .map(|v| v.try_into().unwrap_or_default());
 
         if let Some(prev_batch) = room.timeline.prev_batch {
-            update.prev_batch = Some(prev_batch);
+            update.prev_batch = Some(prev_batch.clone());
+
+            if room.timeline.limited {
+                backfill_rooms.push((room_id.clone(), prev_batch));
+            }
         }
 
         let room_state_events = match room.state {
@@ -241,7 +257,18 @@ async fn handle_sync_response(
             let clone = raw_event.clone();
             let raw_json = clone.json();
 
-            let data = raw_event.deserialize()?;
+            let data = match raw_event.deserialize() {
+                Ok(data) => data,
+                Err(e) => {
+                    warn!(
+                        "Skipping malformed timeline event in room {}: {} | raw={}",
+                        room_id,
+                        e,
+                        raw_event.json().get()
+                    );
+                    continue;
+                }
+            };
             extract_timeline(&mut changes, &room_id, data, raw_json, raw_event.clone())?;
         }
 
@@ -290,6 +317,20 @@ async fn handle_sync_response(
         if sidebar_needs_update {
             send_sidebar_update(conn, handle, &client.user_id)?;
         }
+    }
+
+    for (room_id, prev_batch) in backfill_rooms {
+        warn!(
+            "Room {} timeline is limited! Starting backfill from {}",
+            room_id, prev_batch
+        );
+
+        let state = state.clone();
+        tauri::async_runtime::spawn(async move {
+            if let Err(e) = backfill_gap(&state, room_id.to_string(), prev_batch).await {
+                log::error!("Backfill error for room {}: {:?}", room_id, e);
+            }
+        });
     }
 
     send_member_update(handle, changes.member_updates.into())?;
@@ -459,14 +500,6 @@ fn extract_timeline(
     raw_json: &RawValue,
     state_event: Raw<AnySyncTimelineEvent>,
 ) -> Result<(), TauriError> {
-    // if state_event
-    //     .clone()
-    //     .into_json()
-    //     .to_string()
-    //     .contains("$cse5M93hIaL9xnDvUJ93MNIIb6LRw6dluFAuowNWiGI")
-    // {
-    //     info!("Found event with specific ID in room {}: {:?}", room_id, ev);
-    // }
     match ev {
         AnySyncTimelineEvent::MessageLike(ev) => extract_message(changes, room_id, ev, raw_json)?,
         AnySyncTimelineEvent::State(ev) => {
@@ -494,16 +527,6 @@ fn extract_message(
         AnySyncMessageLikeEvent::Message(ev) => {
             if let Some(or) = ev.as_original() {
                 warn!("Unimplemented message type in room {}: {:?}", room_id, or);
-
-                // changes.new_messages.push(MessageRow {
-                //     event_id: or.event_id.to_string(),
-                //     room_id: room_id.to_string(),
-                //     sender: or.sender.to_string(),
-                //     body: None,
-                //     raw_json: raw_json.get().to_string(),
-                //     msg_type: "message".to_string(),
-                //     timestamp: or.origin_server_ts.as_secs().into(),
-                // });
             }
         }
         AnySyncMessageLikeEvent::RoomMessage(ev) => {

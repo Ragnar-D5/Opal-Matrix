@@ -195,3 +195,97 @@ pub async fn fetch_messages(
         has_moe,
     ))
 }
+
+pub async fn backfill_gap(
+    state: &AppState,
+    room_id: String,
+    start_token: String,
+) -> Result<(), TauriError> {
+    let mut current_token = start_token;
+
+    let access_token = state.check_token().await?;
+    let matrix_url = {
+        let guard = state.matrix_url.read().await;
+        guard.clone().ok_or("Matrix URL not set")?
+    };
+
+    loop {
+        let (api_messages, next_token) =
+            get_messages_api(&room_id, &current_token, &matrix_url, &access_token, 50).await?;
+
+        if api_messages.is_empty() {
+            break;
+        }
+
+        let mut new_rows = Vec::new();
+        let mut hit_existing = false;
+
+        {
+            let mut conn_guard = state.connection.lock().await;
+            let conn = conn_guard.as_mut().ok_or("Database not initialized")?;
+
+            for msg_val in api_messages {
+                let clone = msg_val.clone();
+                let Some(event_id) = clone.get("event_id").and_then(|v| v.as_str()) else {
+                    continue;
+                };
+
+                if crate::storage::messages::message_exists(conn, event_id)? {
+                    hit_existing = true;
+                    break;
+                }
+
+                let Some(msg_type) = msg_val.get("type").and_then(|v| v.as_str()) else {
+                    continue;
+                };
+
+                let processed_msg = if msg_type == "m.room.encrypted" {
+                    match process_message(state, &room_id, msg_val.clone()).await {
+                        Ok(res) => res,
+                        Err(_) => continue,
+                    }
+                } else {
+                    msg_val
+                };
+
+                let Some(final_type) = processed_msg.get("type").and_then(|v| v.as_str()) else {
+                    continue;
+                };
+                let Some(timestamp) = processed_msg
+                    .get("origin_server_ts")
+                    .and_then(|v| v.as_i64())
+                else {
+                    continue;
+                };
+                let Some(sender) = processed_msg.get("sender").and_then(|v| v.as_str()) else {
+                    continue;
+                };
+
+                new_rows.push(MessageRow {
+                    event_id: event_id.to_string(),
+                    room_id: room_id.clone(),
+                    sender: sender.to_string(),
+                    msg_type: final_type.to_string(),
+                    raw_json: processed_msg.to_string(),
+                    timestamp: timestamp / 1000,
+                });
+            }
+
+            if !new_rows.is_empty() {
+                save_messages(conn, new_rows)?;
+            }
+        }
+
+        if hit_existing {
+            break;
+        }
+
+        if let Some(token) = next_token {
+            current_token = token;
+        } else {
+            break;
+        }
+    }
+
+    Ok(())
+}

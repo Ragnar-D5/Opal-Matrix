@@ -68,7 +68,7 @@ pub fn IndicatorPill(
             class="absolute left-1 w-1 bg-white rounded-full top-1/2 -translate-y-1/2 transition-all duration-200 ease-in-out"
 
             class=("h-10", move || is_active.get())
-            class=("h-3", move || !is_active.get() && has_notifications.get())
+            class=("h-2", move || !is_active.get() && has_notifications.get())
             class=("h-0", move || !is_active.get() && !has_notifications.get())
             class=("group-hover:h-5", move || !is_active.get())
 
