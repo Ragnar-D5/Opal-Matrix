@@ -194,6 +194,8 @@ async fn handle_sync_response(
         }
     }
 
+    info!("{:?}", response.presence);
+
     for (room_id, room) in response.rooms.join {
         changes.joined_rooms.push(room_id.clone());
 

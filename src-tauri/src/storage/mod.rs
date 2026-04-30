@@ -225,10 +225,6 @@ pub async fn apply_sync_changes(
             ts = excluded.ts",
     )?;
     for receipt in changes.read_receipts {
-        info!(
-            "Updating receipt for room {}, user {}, type {}: event {}, ts {}",
-            receipt.room_id, receipt.user_id, receipt.receipt_type, receipt.event_id, receipt.ts
-        );
         stmt_receipts.execute(params![
             receipt.room_id,
             receipt.user_id,
