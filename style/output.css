@@ -858,10 +858,10 @@
       }
     }
   }
-  .group-hover\:h-5 {
+  .group-hover\:h-\[25px\] {
     &:is(:where(.group):hover *) {
       @media (hover: hover) {
-        height: calc(var(--spacing) * 5);
+        height: 25px;
       }
     }
   }
