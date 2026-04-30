@@ -242,7 +242,7 @@ impl TimelineItem {
             .into_any(),
             // Discord style new message indicator
             TimelineItemKind::NewMessageIndicator => view! {
-                <div class="flex items-center w-full my-4 pr-4">
+                <div class="flex items-center w-full pr-4">
                     <div class="flex-1 border-2 border-[#00ffff] rounded-full"></div>
 
                     <span class="relative flex items-center h-[20px] bg-[#00ffff] text-[var(--bg-color)] text-[10px] font-bold px-2 rounded-r-[3px] ml-1 uppercase tracking-wider select-none">
@@ -492,7 +492,6 @@ fn TimeLine() -> impl IntoView {
         items.reverse();
 
         if let Some(m_id) = marker_id {
-            console_error(&format!("Read marker ID: {}", m_id));
             if let Some(marker_msg) = msgs.iter().find(|m| m.event_id == m_id) {
                 let ts = get_date_from_ts(marker_msg.timestamp);
 
@@ -526,17 +525,14 @@ fn TimeLine() -> impl IntoView {
     let state = expect_context::<AppState>();
     let fetch_more = move |_: ()| {
         if is_loading.get_untracked() {
-            console_error("Already loading, skipping...");
             return;
         }
         if !has_more.get_untracked() {
-            console_error("No more messages to load, skipping...");
             return;
         }
 
         let room_id = state.active_room_id.get_untracked();
         if room_id.is_none() {
-            console_error("No active room ID, skipping...");
             return;
         }
 
