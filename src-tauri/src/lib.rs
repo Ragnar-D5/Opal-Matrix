@@ -390,7 +390,6 @@ async fn login(
     // Ensure no sync iteration is still running with an old crypto machine/token pair, fixes an error only occuring on Android?
     state.stop_sync().await?;
 
-    debug!("matrix_url: {:?}", state.matrix_url.read().await.as_deref());
     let matrix_url = state
         .matrix_url
         .read()
