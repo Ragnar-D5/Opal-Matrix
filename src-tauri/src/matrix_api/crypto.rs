@@ -129,7 +129,7 @@ pub async fn get_or_create_passphrase(user_id: String) -> Result<String, TauriEr
 
             entry.set_password(&new_passphrase)?;
 
-            info!("New passphrase: {}", new_passphrase);
+            info!("Generated and stored new passphrase for user {}", user_id);
 
             Ok(new_passphrase)
         }
