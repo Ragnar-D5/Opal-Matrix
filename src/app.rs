@@ -457,19 +457,19 @@ fn LoginPage() -> impl IntoView {
                 <input
                     id="username-input"
                     placeholder="Username"
-                    class="p-2.5 text-xl rounded-lg"
+                    class="p-2.5 text-xl rounded-lg select-none"
                     on:input=move |ev| set_username.set(event_target_value(&ev))
                 />
                 <input
                     id="password-input"
                     placeholder="Password"
-                    class="p-2.5 text-xl rounded-lg"
+                    class="p-2.5 text-xl rounded-lg select-none"
                     on:input=move |ev| set_password.set(event_target_value(&ev))
                     type="password"
                 />
                 <button
                     type="submit"
-                    class="mt-5 px-5 py-2.5 bg-blue-500 text-white rounded-md border-none cursor-pointer"
+                    class="mt-5 px-5 py-2.5 bg-blue-500 text-white rounded-md border-none cursor-pointer select-none"
                 >
                     "Login"
                 </button>
