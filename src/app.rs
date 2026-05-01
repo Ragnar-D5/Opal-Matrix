@@ -451,36 +451,32 @@ fn LoginPage() -> impl IntoView {
     };
 
     view! {
-        <div class="login-wrapper">
-            <h1>"Welcome to Tauri + Leptos"</h1>
+        <div class="flex flex-col items-center pt-[50px]">
 
-            <div class="row">
-                <a href="https://tauri.app" target="_blank">
-                    <img src="public/tauri.svg" class="logo tauri" alt="Tauri logo"/>
-                </a>
-                <a href="https://docs.rs/leptos/" target="_blank">
-                    <img src="public/leptos.svg" class="logo leptos" alt="Leptos logo"/>
-                </a>
-            </div>
-            <p>"Click on the Tauri and Leptos logos to learn more."</p>
-
-            <form style="display: flex; flex-direction: column;" on:submit=login>
+            <form class="flex flex-col gap-4" on:submit=login>
                 <input
                     id="username-input"
                     placeholder="Username"
+                    class="p-2.5 text-xl rounded-lg"
                     on:input=move |ev| set_username.set(event_target_value(&ev))
                 />
                 <input
                     id="password-input"
                     placeholder="Password"
+                    class="p-2.5 text-xl rounded-lg"
                     on:input=move |ev| set_password.set(event_target_value(&ev))
                     type="password"
                 />
-                <button type="submit">"Login"</button>
+                <button
+                    type="submit"
+                    class="mt-5 px-5 py-2.5 bg-blue-500 text-white rounded-md border-none cursor-pointer"
+                >
+                    "Login"
+                </button>
             </form>
 
             // Show errors if there are any
-            <p style="color: red;">{ move || error_msg.get() }</p>
+            <p class="text-red-300">{ move || error_msg.get() }</p>
         </div>
     }
 }
