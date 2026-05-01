@@ -379,9 +379,9 @@ async fn try_restore(
 
 #[tauri::command(rename_all = "snake_case")]
 async fn login(
-    matrix_url: String,
     username: String,
     password: String,
+    recovery_key: String,
     state: State<'_, Arc<AppState>>,
     handle: AppHandle,
 ) -> Result<LoginResponse, TauriError> {
@@ -389,6 +389,14 @@ async fn login(
 
     // Ensure no sync iteration is still running with an old crypto machine/token pair, fixes an error only occuring on Android?
     state.stop_sync().await?;
+
+    debug!("matrix_url: {:?}", state.matrix_url.read().await.as_deref());
+    let matrix_url = state
+        .matrix_url
+        .read()
+        .await
+        .clone()
+        .expect("Has to be a valid home server url at this point");
 
     let (client_info, token) =
         authentication::matrix_login(username, password, matrix_url.clone()).await?;
@@ -406,6 +414,8 @@ async fn login(
     state.save_session().await?;
 
     state.init_stuff(&handle).await?;
+
+    state.set_recovery_key(recovery_key).await?;
 
     Ok(LoginResponse {
         user_id: client_info.user_id,

@@ -1,6 +1,7 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use anyhow::Context;
+use log::info;
 use serde::Deserialize;
 use tauri::State;
 use tauri_plugin_http::reqwest;
@@ -103,9 +104,10 @@ pub async fn try_home_server(url: String) -> Result<String, (String, TauriError)
 #[tauri::command]
 pub async fn choose_home_server(
     url: String,
-    state: State<'_, AppState>,
+    state: State<'_, Arc<AppState>>,
 ) -> Result<String, (String, TauriError)> {
     let client = reqwest::Client::new();
+    info!("Setting matrix_url to {url}");
 
     let res = client
         .get(format!("https://{url}/.well-known/matrix/client"))

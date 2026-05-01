@@ -27,9 +27,9 @@ pub struct MatrixLoginResponse {
 
 #[derive(Serialize, Deserialize)]
 struct LoginArgs {
-    matrix_url: String,
     username: String,
     password: String,
+    recovery_key: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -409,6 +409,7 @@ fn LoginPage() -> impl IntoView {
 
     let (username, set_username) = signal(String::new());
     let (password, set_password) = signal(String::new());
+    let (recovery_key, set_recovery_key) = signal(String::new());
     let (error_msg, set_error_msg) = signal(String::new());
 
     let username_ref = NodeRef::<leptos::html::Input>::new();
@@ -423,15 +424,16 @@ fn LoginPage() -> impl IntoView {
         spawn_local(async move {
             let username = username.get_untracked();
             let password = password.get_untracked();
+            let recovery_key = recovery_key.get_untracked();
 
-            if username.is_empty() || password.is_empty() {
+            if username.is_empty() || password.is_empty() || recovery_key.is_empty() {
                 return;
             }
 
             let args = serde_wasm_bindgen::to_value(&LoginArgs {
                 username: username,
                 password: password,
-                matrix_url: "https://matrix.erik-is.gay".to_string(),
+                recovery_key: recovery_key,
             })
             .unwrap();
 
@@ -473,6 +475,13 @@ fn LoginPage() -> impl IntoView {
                     placeholder="Password"
                     class="p-2.5 text-xl rounded-lg select-none"
                     on:input=move |ev| set_password.set(event_target_value(&ev))
+                    type="password"
+                />
+                <input
+                    id="recovery-key-input"
+                    placeholder="Recovery Key"
+                    class="p-2.5 text-xl rounded-lg select-none"
+                    on:input=move |ev| set_recovery_key.set(event_target_value(&ev))
                     type="password"
                 />
                 <button
@@ -624,16 +633,13 @@ pub fn HomeserverDiscoveryPage() -> impl IntoView {
         });
     };
 
-    let choose_home_server = move || {
+    let choose_home_server = async move || {
         let chosen_server = text.get_untracked();
 
-        spawn_local(async move {
-            let args =
-                serde_wasm_bindgen::to_value(&HomeServerArgs { url: chosen_server }).unwrap();
+        let args = serde_wasm_bindgen::to_value(&HomeServerArgs { url: chosen_server }).unwrap();
 
-            // TODO: refactor code be less duplicate, see discovery.rs for reference
-            call_tauri("choose_home_server", args).await.unwrap();
-        });
+        // TODO: refactor code be less duplicate, see discovery.rs for reference
+        call_tauri("choose_home_server", args).await.unwrap();
     };
 
     view! {
@@ -658,8 +664,12 @@ pub fn HomeserverDiscoveryPage() -> impl IntoView {
                 <button
                     class="mt-5 px-5 py-2.5 bg-blue-500 text-white rounded-md border-none cursor-pointer select-none"
                     on:click=move |_| {
-                        choose_home_server();
+                        spawn_local(async move {
+
+                        choose_home_server().await;
                         state.current_window.set(CurrentWindow::LoginPage);
+                        }
+                        )
                     }
                 >
                     "Login Page"
