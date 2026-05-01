@@ -386,6 +386,10 @@ async fn login(
     handle: AppHandle,
 ) -> Result<LoginResponse, TauriError> {
     info!("Logging in new");
+
+    // Ensure no sync iteration is still running with an old crypto machine/token pair, fixes an error only occuring on Android?
+    state.stop_sync().await?;
+
     let (client_info, token) =
         authentication::matrix_login(username, password, matrix_url.clone()).await?;
 
