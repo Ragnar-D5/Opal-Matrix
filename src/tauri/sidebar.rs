@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use crate::app::AppState;
 use crate::components::FloatingTile;
+use leptos::leptos_dom::logging::console_error;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use shared::sidebar::{RoomKind, RoomNode, SidebarState};
@@ -350,10 +351,11 @@ pub fn Sidebar() -> impl IntoView {
                                                             >
                                                                 "# " {child.name}
                                                                 {
-                                                                    if child.notification_count > 0 {
+
+                                                                    if child.highlight_count > 0 {
                                                                         view! {
                                                                             <div class="ml-auto bg-[var(--mention-color)] text-white text-xs font-bold px-1.5 py-0.5 rounded-full">
-                                                                                {child.notification_count}
+                                                                                {child.highlight_count}
                                                                             </div>
                                                                         }.into_any()
                                                                     } else {
