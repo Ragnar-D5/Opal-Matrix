@@ -629,29 +629,29 @@ pub fn HomeserverDiscoveryPage() -> impl IntoView {
     };
 
     view! {
-        <div style="display: flex; flex-direction: column; align-items: center; padding-top: 50px;">
+        <div class="flex flex-col items-center pt-[50px]">
             <input
                 type="text"
                 placeholder="example.org"
+                class="p-2.5 text-xl rounded-lg select-none"
                 on:input=move |ev| {
                     set_text.set(event_target_value(&ev));
                     try_home_server();
                 }
                 prop:value=text
-                style="padding: 10px; font-size: 1.2rem; border-radius: 8px;"
             />
 
             // The button only renders when is_valid is true
             <Show
                 when=move || is_valid.get()
-                fallback=|| view! { <p style="color: gray;">"Checking server..."</p> }
+                fallback= || view! { <p class="text-gray-600 select-none">"Checking server..."</p> }
             >
                 <button
+                    class="mt-5 px-5 py-2.5 bg-blue-500 text-white rounded-md border-none cursor-pointer select-none"
                     on:click=move |_| {
                         choose_home_server();
                         state.current_window.set(CurrentWindow::LoginPage);
                     }
-                    style="margin-top: 20px; padding: 10px 20px; background-color: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer;"
                 >
                     "Login Page"
                 </button>
