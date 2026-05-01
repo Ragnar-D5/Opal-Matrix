@@ -467,6 +467,7 @@ pub fn run() {
         })
         .plugin(
             tauri_plugin_log::Builder::new()
+                .level(log::LevelFilter::Debug)
                 .level_for("reqwest", log::LevelFilter::Off)
                 .level_for("keyring", log::LevelFilter::Off)
                 .level_for("matrix_sdk_crypto", log::LevelFilter::Off)
