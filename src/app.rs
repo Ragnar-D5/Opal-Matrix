@@ -602,7 +602,7 @@ pub fn HomeserverDiscoveryPage() -> impl IntoView {
 
             match call_tauri("try_home_server", args).await {
                 Ok(url) => {
-                    if url == *text.read() {
+                    if url == *text.read_untracked() {
                         set_is_valid.set(true);
                     } else {
                         set_is_valid.set(false);
@@ -611,7 +611,7 @@ pub fn HomeserverDiscoveryPage() -> impl IntoView {
                 }
                 Err(e) => {
                     let arr: js_sys::Array = e.into();
-                    if arr.get(0) == *text.read() {
+                    if arr.get(0) == *text.read_untracked() {
                         set_is_valid.set(false)
                     }
                     // if no server can be found here
@@ -621,7 +621,7 @@ pub fn HomeserverDiscoveryPage() -> impl IntoView {
     };
 
     let choose_home_server = move || {
-        let chosen_server = text.get();
+        let chosen_server = text.get_untracked();
 
         spawn_local(async move {
             let args =
