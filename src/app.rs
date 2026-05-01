@@ -411,6 +411,13 @@ fn LoginPage() -> impl IntoView {
     let (password, set_password) = signal(String::new());
     let (error_msg, set_error_msg) = signal(String::new());
 
+    let username_ref = NodeRef::<leptos::html::Input>::new();
+    Effect::new(move || {
+        if let Some(el) = username_ref.get() {
+            let _ = el.focus();
+        }
+    });
+
     let login = move |ev: SubmitEvent| {
         ev.prevent_default();
         spawn_local(async move {
@@ -458,6 +465,7 @@ fn LoginPage() -> impl IntoView {
                     id="username-input"
                     placeholder="Username"
                     class="p-2.5 text-xl rounded-lg select-none"
+                    node_ref=username_ref
                     on:input=move |ev| set_username.set(event_target_value(&ev))
                 />
                 <input
@@ -634,6 +642,7 @@ pub fn HomeserverDiscoveryPage() -> impl IntoView {
                 type="text"
                 placeholder="example.org"
                 class="p-2.5 text-xl rounded-lg select-none"
+                autofocus
                 on:input=move |ev| {
                     set_text.set(event_target_value(&ev));
                     try_home_server();
