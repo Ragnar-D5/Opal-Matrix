@@ -343,8 +343,19 @@ pub fn fetch_sidebar(
         all_rooms.insert(room.room_id.clone(), room);
     }
 
-    let mut stmt_links = conn
-        .prepare("SELECT parent_room_id, child_room_id FROM space_children ORDER BY order_str")?;
+    // Only respect child links if the child isn't a space, or if it is a space AND has a valid backlink.
+    // This prevents un-consented spaces from swallowing top-level servers.
+    let mut stmt_links = conn.prepare(
+        "SELECT sc.parent_room_id, sc.child_room_id
+        FROM space_children sc
+        LEFT JOIN rooms child_room ON sc.child_room_id = child_room.room_id
+        LEFT JOIN space_parents sp ON sc.child_room_id = sp.child_room_id AND sc.parent_room_id = sp.parent_room_id
+        WHERE child_room.room_id IS NULL
+           OR child_room.room_type IS NULL
+           OR child_room.room_type != 'm.space'
+           OR sp.parent_room_id IS NOT NULL
+        ORDER BY sc.order_str"
+    )?;
 
     let mut parent_to_children: HashMap<String, Vec<String>> = HashMap::new();
     let mut all_children: HashSet<String> = HashSet::new();

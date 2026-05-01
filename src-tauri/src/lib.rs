@@ -8,11 +8,9 @@ use base64::Engine;
 use base64::engine::general_purpose;
 use colored::Colorize;
 use log::info;
-use ruma::api::OutgoingRequestAppserviceExt;
-use ruma::{DeviceId, UserId};
+use ruma::UserId;
 use serde::Serialize;
 use tauri::async_runtime::{JoinHandle, Mutex, RwLock};
-use tauri::ipc::IpcResponse;
 use tauri::{AppHandle, Url};
 use tauri::{Manager, State};
 use tokio_util::sync::CancellationToken;
@@ -36,7 +34,6 @@ pub const APP_NAME: &str = "opal-matrix";
 use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
 
 use crate::frontend::send_sidebar_update;
-use crate::matrix_api::account_data;
 use crate::matrix_api::authentication::get_account_data;
 use crate::matrix_api::crypto::decrypt_ssss_aes_hmac_sha2;
 use crate::matrix_api::discovery::Authentication;
@@ -367,20 +364,18 @@ impl AppState {
             user_signing_key: None,
         };
 
-        let status = olm_machine.import_cross_signing_keys(import).await?;
+        olm_machine.import_cross_signing_keys(import).await?;
 
         let upload_request = device.verify().await?;
         let url = format!("{matrix_url}/_matrix/client/v3/keys/signatures/upload");
 
         let client = Client::new();
-        let res = client
+        client
             .post(url)
             .bearer_auth(token)
             .json(&serde_json::to_value(upload_request.signed_keys).unwrap())
             .send()
             .await?;
-
-        info!("Response: {:?}", res);
 
         Ok(())
     }
