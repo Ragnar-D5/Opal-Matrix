@@ -98,7 +98,6 @@ impl UserProfile {
             <span
                 style:font-size=font_size_str
                 style:color=color
-                class="font-bold"
             >
                 {name.clone()}
             </span>
