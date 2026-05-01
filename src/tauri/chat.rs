@@ -319,7 +319,7 @@ impl TimelineItem {
 
                 view! {
                     <div class="flex items-center justify-center my-2">
-                        <span class="text-muted text-sm italic">
+                        <span class="text-muted text-sm">
                             {text}
                         </span>
                     </div>
