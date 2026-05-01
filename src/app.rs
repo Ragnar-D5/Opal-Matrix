@@ -593,14 +593,14 @@ pub fn HomeserverDiscoveryPage() -> impl IntoView {
     let (text, set_text) = signal(String::new());
     let (is_valid, set_is_valid) = signal(false);
 
-    let send_home_server = move || {
+    let try_home_server = move || {
         let current_value = text.get();
 
         spawn_local(async move {
             let args =
                 serde_wasm_bindgen::to_value(&HomeServerArgs { url: current_value }).unwrap();
 
-            match call_tauri("choose_home_server", args).await {
+            match call_tauri("try_home_server", args).await {
                 Ok(url) => {
                     if url == *text.read() {
                         set_is_valid.set(true);
@@ -619,6 +619,19 @@ pub fn HomeserverDiscoveryPage() -> impl IntoView {
             }
         });
     };
+
+    let choose_home_server = move || {
+        let chosen_server = text.get();
+
+        spawn_local(async move {
+            let args =
+                serde_wasm_bindgen::to_value(&HomeServerArgs { url: chosen_server }).unwrap();
+
+            // TODO: refactor code be less duplicate, see discovery.rs for reference
+            call_tauri("choose_home_server", args).await.unwrap();
+        });
+    };
+
     view! {
         <div style="display: flex; flex-direction: column; align-items: center; padding-top: 50px;">
             <input
@@ -626,7 +639,7 @@ pub fn HomeserverDiscoveryPage() -> impl IntoView {
                 placeholder="example.org"
                 on:input=move |ev| {
                     set_text.set(event_target_value(&ev));
-                    send_home_server();
+                    try_home_server();
                 }
                 prop:value=text
                 style="padding: 10px; font-size: 1.2rem; border-radius: 8px;"
@@ -639,6 +652,7 @@ pub fn HomeserverDiscoveryPage() -> impl IntoView {
             >
                 <button
                     on:click=move |_| {
+                        choose_home_server();
                         state.current_window.set(CurrentWindow::LoginPage);
                     }
                     style="margin-top: 20px; padding: 10px 20px; background-color: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer;"

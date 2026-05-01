@@ -22,7 +22,7 @@ mod storage;
 
 use matrix_api::authentication;
 use matrix_api::crypto;
-use matrix_api::discovery::choose_home_server;
+use matrix_api::discovery::{choose_home_server, try_home_server};
 
 use tauri_plugin_http::reqwest;
 
@@ -33,6 +33,7 @@ pub const APP_NAME: &str = "opal-matrix";
 use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
 
 use crate::frontend::send_sidebar_update;
+use crate::matrix_api::discovery::Authentication;
 
 const MATRIX_ID_SET: &AsciiSet = &CONTROLS.add(b'!').add(b':');
 
@@ -101,6 +102,7 @@ struct AppState {
     next_batch: RwLock<Option<String>>,
 
     matrix_url: RwLock<Option<String>>,
+    auth_provider: RwLock<Option<Authentication>>,
 
     refresh_lock: Mutex<()>,
 
@@ -496,6 +498,7 @@ pub fn run() {
             try_restore,
             set_recovery_key,
             send_frontend,
+            try_home_server,
             choose_home_server,
             storage::get_members,
             matrix_api::rooms::fetch_messages,
