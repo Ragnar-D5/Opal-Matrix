@@ -1,6 +1,6 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::{construct_url, ClientInfo};
+use crate::{ClientInfo, construct_url};
 use serde_json::Value;
 
 use crate::{RefreshToken, TauriError, Token};
@@ -21,6 +21,9 @@ struct MatrixLoginRequest {
 
     identifier: MatrixLoginIdentifier,
     password: String,
+
+    initial_device_display_name: String,
+
     refresh_token: bool,
 }
 
@@ -78,6 +81,9 @@ pub async fn matrix_login(
             id_type: "m.id.user".to_string(),
             user: username,
         },
+
+        initial_device_display_name: "Opal Matrix on Linux".to_string(),
+
         password: password,
         refresh_token: true,
     };
