@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use aes::Aes256;
 use aes::cipher::{KeyIvInit, StreamCipher};
@@ -8,13 +8,16 @@ use base64::Engine;
 use base64::engine::general_purpose;
 use colored::Colorize;
 use log::info;
+use ruma::api::OutgoingRequestAppserviceExt;
+use ruma::{DeviceId, UserId};
 use serde::Serialize;
 use tauri::async_runtime::{JoinHandle, Mutex, RwLock};
+use tauri::ipc::IpcResponse;
 use tauri::{AppHandle, Url};
 use tauri::{Manager, State};
 use tokio_util::sync::CancellationToken;
 
-use matrix_sdk_crypto::OlmMachine;
+use matrix_sdk_crypto::{CrossSigningKeyExport, OlmMachine};
 
 mod frontend;
 mod matrix_api;
@@ -24,7 +27,7 @@ use matrix_api::authentication;
 use matrix_api::crypto;
 use matrix_api::discovery::{choose_home_server, try_home_server};
 
-use tauri_plugin_http::reqwest;
+use tauri_plugin_http::reqwest::{self, Client};
 
 type Aes256Ctr = ctr::Ctr64BE<Aes256>;
 
@@ -33,6 +36,9 @@ pub const APP_NAME: &str = "opal-matrix";
 use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
 
 use crate::frontend::send_sidebar_update;
+use crate::matrix_api::account_data;
+use crate::matrix_api::authentication::get_account_data;
+use crate::matrix_api::crypto::decrypt_ssss_aes_hmac_sha2;
 use crate::matrix_api::discovery::Authentication;
 
 const MATRIX_ID_SET: &AsciiSet = &CONTROLS.add(b'!').add(b':');
@@ -302,6 +308,79 @@ impl AppState {
         let token = self.check_token().await?;
 
         crypto::set_room_keys(&olm_machine, &matrix_url, &token, &recovery_key).await?;
+
+        let client_info = self.client.read().await.clone().ok_or("Not logged in")?;
+
+        let device = olm_machine
+            .get_device(
+                &UserId::parse(client_info.user_id.as_str()).expect("Failted to parse user id"),
+                client_info.device_id.as_str().into(),
+                Some(Duration::from_secs(10)),
+            )
+            .await?
+            .ok_or("No device for some reason")?;
+
+        info!("Device {:?}", device);
+
+        let res = get_account_data(
+            &token,
+            &matrix_url,
+            &olm_machine.user_id().to_string(),
+            &"m.secret_storage.default_key".to_string(),
+        )
+        .await?;
+
+        let default_key_id = res["key"]
+            .as_str()
+            .ok_or("Missing default_key in account data")?;
+        let res = get_account_data(
+            &token,
+            &matrix_url,
+            &olm_machine.user_id().to_string(),
+            &"m.cross_signing.self_signing".to_string(),
+        )
+        .await?;
+
+        let enc = &res["encrypted"][default_key_id];
+
+        let ciphertext = enc["ciphertext"]
+            .as_str()
+            .ok_or("Missing ciphertext in encrypted key data")?;
+        let mac = enc["mac"]
+            .as_str()
+            .ok_or("Missing mac in encrypted key data")?;
+        let iv = enc["iv"]
+            .as_str()
+            .ok_or("Missing ephemeral in encrypted key data")?;
+
+        let self_signing_key = decrypt_ssss_aes_hmac_sha2(
+            recovery_key.as_str(),
+            "m.cross_signing.self_signing",
+            ciphertext,
+            iv,
+            mac,
+        )?;
+
+        let import = CrossSigningKeyExport {
+            self_signing_key: Some(self_signing_key),
+            master_key: None,
+            user_signing_key: None,
+        };
+
+        let status = olm_machine.import_cross_signing_keys(import).await?;
+
+        let upload_request = device.verify().await?;
+        let url = format!("{matrix_url}/_matrix/client/v3/keys/signatures/upload");
+
+        let client = Client::new();
+        let res = client
+            .post(url)
+            .bearer_auth(token)
+            .json(&serde_json::to_value(upload_request.signed_keys).unwrap())
+            .send()
+            .await?;
+
+        info!("Response: {:?}", res);
 
         Ok(())
     }
