@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::app::AppState;
+use crate::app::{AppState, MemberStore};
 use crate::components::FloatingTile;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -80,6 +80,40 @@ pub fn IndicatorPill(
 }
 
 #[component]
+pub fn CutoutBadge(
+    count: u32,
+    children: Children,
+    #[prop(into, optional)] class: String,
+) -> impl IntoView {
+    let mask_style = if count > 0 {
+        "-webkit-mask: radial-gradient(circle 11px at calc(100% - 8px) calc(100% - 8px), transparent 11px, black 11.5px); mask: radial-gradient(circle 11px at calc(100% - 8px) calc(100% - 8px), transparent 11px, black 11.5px);"
+    } else {
+        ""
+    };
+
+    view! {
+        <div class="relative w-fit h-fit">
+            <div class=format!("w-full h-full {class}") style=mask_style>
+                {children()}
+            </div>
+
+            {if count > 0 {
+                view! {
+                    <div class="absolute -bottom-0 -right-0 flex items-center justify-center
+                                bg-[var(--mention-color)] text-white text-[12px] font-extrabold
+                                w-4 h-4 rounded-full"
+                    >
+                        {count}
+                    </div>
+                }.into_any()
+            } else {
+                view! { <span class="hidden"></span> }.into_any()
+            }}
+        </div>
+    }
+}
+
+#[component]
 pub fn ServerIcon(server: RoomNode) -> impl IntoView {
     let state = expect_context::<AppState>();
 
@@ -102,40 +136,27 @@ pub fn ServerIcon(server: RoomNode) -> impl IntoView {
         <div class="relative flex items-center justify-center group w-full">
             <IndicatorPill is_active=is_active has_notifications=has_notifications/>
 
-            // 1. Wrap the icon and the badge in a strictly sized relative container
             <div class="relative w-10 h-10">
-                <div
-                    class="server-btn flex items-center justify-center w-full h-full text-gray-800 font-semibold rounded-[25%] cursor-pointer transition-colors"
-                    class=("bg-[var(--color-icon-selected)]", move || is_active.get())
-                    class=("bg-[var(--color-icon-bg)]", move || !is_active.get())
-                    class=("hover:bg-[var(--color-icon-hover)]", move || !is_active.get())
-                    on:click=move |_| state.set_active_server_id(Some(id.clone()))
-                >
-                    <div class="avatar-circle w-full h-full rounded-[25%] overflow-hidden">
-                        {match server.avatar_url {
-                            Some(url) => view! {
-                                <img draggable="false" class="avatar-img object-cover w-full h-full" src=url alt=server.name.clone() />
-                            }.into_any(),
-                            None => view! {
-                                <TextCircle text=initial color_string=server.name.clone().unwrap_or_else(|| "Unnamed".to_string()) class="rounded-[25%] w-full h-full" />
-                            }.into_any(),
-                        }}
-                    </div>
-                </div>
-
-                {if server.highlight_count > 0 {
-                    view! {
-                        <div class="absolute -bottom-0 -right-0 flex items-center justify-center
-                                    bg-[var(--mention-color)] text-white text-[12px] font-extrabold
-                                    w-4 h-4 rounded-full
-                                    ring-[3px] ring-[#1e1e2e]"
-                        >
-                            {server.highlight_count}
+                <CutoutBadge count=server.highlight_count>
+                    <div
+                        class="server-btn flex items-center justify-center w-10 h-10 text-gray-800 font-semibold rounded-[25%] cursor-pointer transition-colors"
+                        class=("bg-[var(--color-icon-selected)]", move || is_active.get())
+                        class=("bg-[var(--color-icon-bg)]", move || !is_active.get())
+                        class=("hover:bg-[var(--color-icon-hover)]", move || !is_active.get())
+                        on:click=move |_| state.set_active_server_id(Some(id.clone()))
+                    >
+                        <div class="avatar-circle w-full h-full rounded-[25%] overflow-hidden">
+                            {match server.avatar_url {
+                                Some(url) => view! {
+                                    <img draggable="false" class="avatar-img object-cover w-full h-full" src=url alt=server.name.clone() />
+                                }.into_any(),
+                                None => view! {
+                                    <TextCircle text=initial color_string=server.name.clone().unwrap_or_else(|| "Unnamed".to_string()) class="rounded-[25%] w-full h-full" />
+                                }.into_any(),
+                            }}
                         </div>
-                    }.into_any()
-                } else {
-                    view! { <span class="hidden"></span> }.into_any()
-                }}
+                    </div>
+                </CutoutBadge>
             </div>
         </div>
     }
@@ -143,7 +164,8 @@ pub fn ServerIcon(server: RoomNode) -> impl IntoView {
 
 #[component]
 pub fn Sidebar() -> impl IntoView {
-    let state = expect_context::<AppState>();
+    let state: AppState = expect_context();
+    let members: MemberStore = expect_context();
 
     let (sidebar_state, set_sidebar_state) = signal(SidebarState::default());
     let (dragged_server_id, set_dragged_server_id) = signal::<Option<String>>(None);
@@ -197,6 +219,17 @@ pub fn Sidebar() -> impl IntoView {
     };
     img.set_src("data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7");
 
+    let active_dms = Memo::new(move |_| {
+        sidebar_state.with(|state| {
+            state
+                .dms
+                .iter()
+                .filter(|dm| dm.notification_count > 0)
+                .cloned()
+                .collect::<Vec<_>>()
+        })
+    });
+
     view! {
         <div class="flex h-full gap-[var(--gap)] select-none">
             <img
@@ -221,7 +254,51 @@ pub fn Sidebar() -> impl IntoView {
                         </div>
                     </div>
 
-                    <div class="w-8 h-[1px] bg-gray-300 rounded-full my-2 gap-[1px]"></div>
+                    <For
+                        each=move || active_dms.get()
+                        key=|dm| dm.room_id.to_string()
+                        children=move |dm| {
+                            let click_id = dm.room_id.to_string();
+                            let clone = click_id.clone();
+                            let initial = dm.name.clone().unwrap_or_else(|| "Unnamed".to_string()).chars().next().unwrap_or_default().to_string();
+
+                            let is_active = Memo::new(move |_| state.active_room_id.get() == Some(click_id.clone()));
+                            let has_notifications = Memo::new(move |_| dm.notification_count > 0);
+
+                            view! {
+                                <div class="h-2"></div>
+                                <div
+                                    class="relative flex items-center justify-center group w-full cursor-pointer"
+                                    on:click=move |_| {
+                                        state.set_active_server_id(None); // Switch context to DMs
+                                        state.set_active_room_id(Some(clone.clone())); // Select the specific DM
+                                    }
+                                >
+                                    // 3. Render the pill
+                                    <IndicatorPill is_active=is_active has_notifications=has_notifications />
+
+                                    <CutoutBadge count=dm.notification_count class="justify-center flex">
+                                        <div class="avatar-circle w-10 h-10 rounded-full"
+                                            style:justify-content="center">
+                                            {match dm.avatar_url {
+                                                Some(url) => view! {
+                                                    // Note: Added 'object-cover' here to keep images from stretching!
+                                                    <img class="avatar-img w-full h-full object-cover"
+                                                    src=url alt=dm.name.clone() />
+                                                }.into_any(),
+                                                None => view! {
+                                                    <TextCircle text=initial color_string=dm.topic.clone().unwrap_or_else(|| "Unnamed".to_string()) class="rounded-full w-10 h-10" />
+                                                }.into_any(),
+                                            }}
+                                        </div>
+                                    </CutoutBadge>
+                                </div>
+                            }
+                        }
+                    />
+
+
+                    <div class="w-8 h-[1px] bg-red-500 rounded-full my-2 gap-[1px]"></div>
                     <For
                         each=move || sidebar_state.get().servers
                         key=|server| server.room_id.to_string()

@@ -1,12 +1,12 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Clone, Deserialize)]
+#[derive(Debug, Serialize, Clone, Deserialize, PartialEq)]
 pub enum RoomKind {
     Space { children: Vec<RoomNode> },
     Channel { last_ts: Option<i64> },
 }
 
-#[derive(Debug, Serialize, Clone, Deserialize)]
+#[derive(Debug, Serialize, Clone, Deserialize, PartialEq)]
 pub struct RoomNode {
     pub room_id: String,
     pub name: Option<String>,
