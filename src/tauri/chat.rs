@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::app::{call_tauri, AppState, MemberStore};
 use crate::components::FloatingTile;
+use crate::hooks::use_tauri_event;
 use chrono::{DateTime, Local, NaiveDate, TimeZone};
 use leptos::html::Div;
 use leptos::task::spawn_local;
@@ -353,8 +354,35 @@ fn TimeLine() -> impl IntoView {
     let (messages, set_messages) = signal(Vec::<UiMessage>::new());
     let (read_marker_id, set_read_marker_id) = signal::<Option<String>>(None);
 
+    // Listen to messages_update
+    let messages_update_event: ReadSignal<Option<HashMap<String, Vec<UiMessage>>>> =
+        use_tauri_event("messages_update");
+
+    Effect::new(move |_| {
+        if let Some(update) = messages_update_event.get() {
+            let room_id = expect_context::<AppState>().active_room_id.get();
+            if let Some(rid) = room_id {
+                if let Some(new_msgs) = update.get(&rid) {
+                    set_messages.update(|existing| {
+                        let mut seen_ids: HashSet<String> =
+                            existing.iter().map(|m| m.event_id.clone()).collect();
+
+                        let mut unique_new: Vec<UiMessage> = new_msgs
+                            .iter()
+                            .filter(|m| seen_ids.insert(m.event_id.clone()))
+                            .cloned()
+                            .collect();
+
+                        existing.extend(unique_new);
+                    });
+                }
+            }
+        }
+    });
+
     let flattened_items = Memo::new(move |_| {
         let mut msgs = messages.get();
+        msgs.sort_by_key(|m| m.timestamp);
         let mut items: Vec<TimelineItem> = Vec::new();
         let mut last_day: Option<NaiveDate> = None;
         let marker_id = read_marker_id.get();
@@ -365,7 +393,7 @@ fn TimeLine() -> impl IntoView {
 
         let mut processed_messages = HashMap::new();
 
-        for msg in msgs.iter().rev() {
+        for msg in msgs.iter() {
             match &msg.kind {
                 MessageKind::SystemMessage(SystemMessage::MessageEdited { event_id, new_text }) => {
                     edits.insert(event_id.clone(), new_text.clone());
@@ -391,7 +419,7 @@ fn TimeLine() -> impl IntoView {
             processed_messages.insert(msg.event_id.clone(), msg.clone());
         }
 
-        for msg in msgs.iter_mut().rev() {
+        for msg in msgs.iter_mut() {
             if let MessageKind::SystemMessage(
                 SystemMessage::MessageEdited { .. }
                 | SystemMessage::MessageRedacted { .. }
@@ -448,6 +476,7 @@ fn TimeLine() -> impl IntoView {
 
                             if same_sender && same_minute && !current_is_reply && !last_is_reply {
                                 group.contents.push(user_msg.clone());
+                                last_item.id = format!("{}_{}", last_item.id, msg.event_id);
                                 grouped = true;
                             }
                         }
@@ -488,7 +517,6 @@ fn TimeLine() -> impl IntoView {
                 items.push(item);
             }
         }
-        items.sort_by_key(|item| item.date);
         items.reverse();
 
         if let Some(m_id) = marker_id {

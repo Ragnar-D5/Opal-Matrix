@@ -1,8 +1,9 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use log::{info, trace, warn};
 use ruma::serde::Raw;
 use serde_json::value::RawValue;
+use shared::messages::UiMessage;
 use tauri::AppHandle;
 use tauri_plugin_http::reqwest::{self, Client};
 
@@ -316,6 +317,23 @@ async fn handle_sync_response(
 
         if sidebar_needs_update {
             send_sidebar_update(conn, handle, &client.user_id)?;
+        }
+        if !changes.new_messages.is_empty() {
+            let messages: HashMap<String, Vec<UiMessage>> = changes
+                .new_messages
+                .into_iter()
+                .filter_map(|msg_row| {
+                    let room_id = msg_row.room_id.clone();
+
+                    let converted = msg_row.try_into().ok()?;
+                    Some((room_id, converted))
+                })
+                .fold(HashMap::new(), |mut acc, (room_id, ui_msg)| {
+                    acc.entry(room_id).or_default().push(ui_msg);
+                    acc
+                });
+
+            crate::frontend::send_messages_update(handle, messages)?;
         }
     }
 

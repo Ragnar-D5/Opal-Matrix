@@ -2,7 +2,6 @@ use std::collections::HashMap;
 
 use crate::app::AppState;
 use crate::components::FloatingTile;
-use leptos::leptos_dom::logging::console_error;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use shared::sidebar::{RoomKind, RoomNode, SidebarState};

@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use rusqlite::Connection;
+use shared::messages::UiMessage;
 use tauri::{AppHandle, Emitter};
 
 use crate::{
@@ -10,7 +11,7 @@ use crate::{
 };
 
 pub(crate) mod members;
-pub(crate) mod rooms;
+pub(crate) mod messages;
 pub(crate) mod sidebar;
 
 pub fn send_member_update(handle: &AppHandle, updates: Vec<MemberRow>) -> Result<(), TauriError> {
@@ -48,6 +49,15 @@ pub fn send_sidebar_update(
     let tree = sidebar::build_tree(all_rooms, parent_to_children, all_children);
 
     handle.emit("sidebar_update", tree)?;
+
+    Ok(())
+}
+
+pub fn send_messages_update(
+    handle: &AppHandle,
+    messages: HashMap<String, Vec<UiMessage>>,
+) -> Result<(), TauriError> {
+    handle.emit("messages_update", messages)?;
 
     Ok(())
 }
