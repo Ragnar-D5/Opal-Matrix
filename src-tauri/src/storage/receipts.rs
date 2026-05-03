@@ -58,14 +58,10 @@ pub async fn get_receipt(
 
     let mut stmt = conn.prepare(
         "SELECT event_id FROM read_receipts
-         WHERE room_id = ?1 AND user_id = ?2 LIMIT 1",
+            WHERE receipt_type = 'm.read' AND room_id = ?1 AND user_id = ?2 LIMIT 1",
     )?;
 
     let mut rows = stmt.query(rusqlite::params![room_id, user_id])?;
-    info!(
-        "Querying read receipt for room_id: {}, user_id: {}",
-        room_id, user_id
-    );
 
     if let Some(row) = rows.next()? {
         let event_id: String = row.get(0)?;

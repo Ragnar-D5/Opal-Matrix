@@ -12,6 +12,7 @@ use serde::Serialize;
 use shared::messages::{
     MembershipAction, MessageContent, MessageKind, Reaction, SystemMessage, UiMessage, UserMessage,
 };
+use shared::sidebar::{RoomKind, RoomNode, SidebarState};
 
 use crate::components::user_profile::UserProfileExt;
 
@@ -340,6 +341,30 @@ fn get_date_from_ts(ts: i64) -> DateTime<Local> {
         .unwrap_or_else(|| DateTime::UNIX_EPOCH.with_timezone(&Local))
 }
 
+fn room_has_notifications(state: &SidebarState, room_id: &str) -> bool {
+    fn find_in_nodes(nodes: &[RoomNode], room_id: &str) -> Option<u32> {
+        for node in nodes {
+            if node.room_id == room_id {
+                return Some(node.notification_count);
+            }
+
+            if let RoomKind::Space { children } = &node.kind {
+                if let Some(count) = find_in_nodes(children, room_id) {
+                    return Some(count);
+                }
+            }
+        }
+
+        None
+    }
+
+    find_in_nodes(&state.dms, room_id)
+        .or_else(|| find_in_nodes(&state.orphaned_rooms, room_id))
+        .or_else(|| find_in_nodes(&state.servers, room_id))
+        .unwrap_or(0)
+        > 0
+}
+
 #[derive(Serialize)]
 struct FetchMessagesRequest {
     room_id: String,
@@ -355,6 +380,10 @@ struct ReceiptArgs {
 fn TimeLine() -> impl IntoView {
     let (messages, set_messages) = signal(Vec::<UiMessage>::new());
     let (read_marker_id, set_read_marker_id) = signal::<Option<String>>(None);
+
+    let state = expect_context::<AppState>();
+
+    let sidebar_update_event: ReadSignal<Option<SidebarState>> = use_tauri_event("sidebar_update");
 
     // Listen to messages_update
     let messages_update_event: ReadSignal<Option<HashMap<String, Vec<UiMessage>>>> =
@@ -382,6 +411,18 @@ fn TimeLine() -> impl IntoView {
         }
     });
 
+    let has_unread_notifications = Memo::new(move |_| {
+        let Some(room_id) = state.active_room_id.get() else {
+            return false;
+        };
+
+        let Some(sidebar_state) = sidebar_update_event.get() else {
+            return false;
+        };
+
+        room_has_notifications(&sidebar_state, &room_id)
+    });
+
     let flattened_items = Memo::new(move |_| {
         let mut msgs = messages.get();
         msgs.sort_by_key(|m| m.timestamp);
@@ -389,6 +430,7 @@ fn TimeLine() -> impl IntoView {
         let mut items: Vec<TimelineItem> = Vec::new();
         let mut last_day: Option<NaiveDate> = None;
         let marker_id = read_marker_id.get();
+        let has_unread = has_unread_notifications.get();
 
         let mut edits = HashMap::new();
         let mut redactions = HashSet::new();
@@ -474,7 +516,7 @@ fn TimeLine() -> impl IntoView {
             }
 
             if let Some(m_id) = &marker_id {
-                if !inserted_marker {
+                if !inserted_marker && has_unread {
                     let is_after_marker =
                         seen_marker_id || marker_ts.is_some_and(|ts| msg.timestamp > ts);
 
@@ -568,7 +610,6 @@ fn TimeLine() -> impl IntoView {
     let (has_more, set_has_more) = signal(true);
     let (initial_loaded, set_initial_loaded) = signal(false);
 
-    let state = expect_context::<AppState>();
     let fetch_more = move |_: ()| {
         if is_loading.get_untracked() {
             return;
@@ -658,6 +699,7 @@ fn TimeLine() -> impl IntoView {
             set_messages.set(Vec::new());
             set_has_more.set(true);
             set_initial_loaded.set(false);
+            set_read_marker_id.set(None);
 
             set_timeout(
                 move || {
@@ -670,15 +712,14 @@ fn TimeLine() -> impl IntoView {
 
     Effect::new(move |_| {
         let rid = state.active_room_id.get();
+        let has_unread = has_unread_notifications.get();
 
         if let Some(room_id) = rid {
-            // 1. Reset state for new room
-            set_messages.set(Vec::new());
-            set_has_more.set(true);
-            set_initial_loaded.set(false);
-            set_read_marker_id.set(None);
+            if !has_unread {
+                set_read_marker_id.set(None);
+                return;
+            }
 
-            // 2. Fetch the read marker independently
             spawn_local(async move {
                 let args = match serde_wasm_bindgen::to_value(&ReceiptArgs {
                     room_id: room_id.clone(),
@@ -700,9 +741,8 @@ fn TimeLine() -> impl IntoView {
                     Err(e) => console_error(&format!("Tauri get_receipt call failed: {:?}", e)),
                 }
             });
-
-            // 3. Trigger initial message load
-            set_timeout(move || fetch_more(()), std::time::Duration::from_millis(1));
+        } else {
+            set_read_marker_id.set(None);
         }
     });
 

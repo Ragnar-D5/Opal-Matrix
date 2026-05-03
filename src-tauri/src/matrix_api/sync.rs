@@ -37,14 +37,15 @@ async fn matrix_sync(
         &"sync".to_string(),
     ])?;
 
-    let mut params = vec![("timeout", "30000".to_string())];
+    let mut params = vec![];
 
     if let Some(since_token) = since {
         params.push(("since", since_token));
+        params.push(("timeout", "30000".to_string()));
+    } else {
+        params.push(("timeout", "0".to_string()));
     }
 
-    // Increase timeline limit to 100 to avoid missing messages after being offline.
-    // This is the most necessary change to fix missing messages after short periods of inactivity.
     params.push((
         "filter",
         "{\"room\":{\"timeline\":{\"limit\":100}}}".to_string(),
@@ -207,8 +208,8 @@ fn convert_presence(presence: PresenceEventContent) -> PresenceInfo {
 
 use ruma::api::client::sync::sync_events::v3::State as SyncState;
 use ruma::events::{
-    AnyGlobalAccountDataEvent, AnyStateEventContent, AnySyncEphemeralRoomEvent,
-    AnySyncMessageLikeEvent, AnySyncStateEvent, AnySyncTimelineEvent,
+    AnyGlobalAccountDataEvent, AnyRoomAccountDataEvent, AnyStateEventContent,
+    AnySyncEphemeralRoomEvent, AnySyncMessageLikeEvent, AnySyncStateEvent, AnySyncTimelineEvent,
 };
 async fn handle_sync_response(
     state: &std::sync::Arc<AppState>,
@@ -222,8 +223,6 @@ async fn handle_sync_response(
             log::error!("Error extracting account data: {:?}", e);
         }
     }
-
-    info!("{:?}", response.presence);
 
     let payload: HashMap<String, PresenceInfo> = response
         .presence
@@ -284,7 +283,6 @@ async fn handle_sync_response(
                 }
             };
             extract_state(&mut changes, &room_id, data.clone(), state_event.clone())?;
-            // extract_special_state(&mut changes, &room_id, data, call_members)?;
         }
 
         for raw_event in room.timeline.events {
@@ -322,6 +320,25 @@ async fn handle_sync_response(
 
             if let Err(e) = extract_ephemeral(&mut changes, &room_id, data) {
                 warn!("Error extracting ephemeral event: {:?}", e);
+            }
+        }
+
+        for raw_event in room.account_data.events {
+            let data = match raw_event.deserialize() {
+                Ok(data) => data,
+                Err(e) => {
+                    warn!(
+                        "Skipping malformed account data event in room {}: {} | raw={}",
+                        room_id,
+                        e,
+                        raw_event.json().get()
+                    );
+                    continue;
+                }
+            };
+
+            if let Err(e) = extract_room_account_data(&mut changes, &room_id, data) {
+                warn!("Error extracting account data event: {:?}", e);
             }
         }
     }
@@ -385,6 +402,32 @@ async fn handle_sync_response(
     }
 
     send_member_update(handle, changes.member_updates.into())?;
+
+    Ok(())
+}
+
+fn extract_room_account_data(
+    changes: &mut SyncChanges,
+    room_id: &OwnedRoomId,
+    ev: AnyRoomAccountDataEvent,
+) -> Result<(), TauriError> {
+    match ev.event_type().to_string().as_str() {
+        "org.opal-matrix.breadcrumbs" => return Ok(()),
+        _ => (),
+    }
+
+    match ev {
+        AnyRoomAccountDataEvent::FullyRead(ev) => {
+            changes.read_receipts.push(ReadReceiptRow {
+                room_id: room_id.to_string(),
+                user_id: "".to_string(),
+                receipt_type: "m.fully_read".to_string(),
+                event_id: ev.content.event_id.to_string(),
+                ts: 0,
+            });
+        }
+        _ => (),
+    }
 
     Ok(())
 }
