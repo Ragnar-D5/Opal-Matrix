@@ -1,8 +1,9 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::app::{call_tauri, AppState, MemberStore};
+use crate::app::call_tauri;
 use crate::components::FloatingTile;
 use crate::hooks::use_tauri_event;
+use crate::state::{AppState, MemberStore};
 use chrono::{DateTime, Local, NaiveDate, TimeZone};
 use leptos::html::Div;
 use leptos::task::spawn_local;
@@ -48,8 +49,8 @@ fn format_date(date: DateTime<Local>) -> String {
 
 impl TimelineItem {
     fn render(&self) -> impl IntoView {
-        let state = expect_context::<AppState>();
-        let store = expect_context::<MemberStore>();
+        let state: AppState = expect_context();
+        let store: MemberStore = expect_context();
 
         let Some(room_id) = state.active_room_id.get() else {
             return view! {}.into_any();
@@ -772,6 +773,7 @@ pub fn Chat(
     view! {
         <div class="flex-1 h-full flex gap-[var(--gap)] flex-col overflow-hidden">
             <FloatingTile>
+
                 "Chat name goes here"
             </FloatingTile>
             <div class="flex gap-[var(--gap)] flex-row h-full min-h-0">

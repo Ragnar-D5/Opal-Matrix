@@ -1,6 +1,7 @@
 mod app;
 mod components;
 mod hooks;
+mod state;
 mod tauri;
 
 use app::*;
