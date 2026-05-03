@@ -1,13 +1,12 @@
-use super::components::TextCircle;
 use std::collections::{HashMap, HashSet};
 
-use colorsys::Hsl;
 use leptos::leptos_dom::logging::console_error;
 use leptos::task::spawn_local;
 use leptos::{ev::SubmitEvent, prelude::*};
 use serde::{Deserialize, Serialize};
 use shared::account_data::{AccountDataArgs, AccountDataPayload, Breadcrumbs, ServerOrder};
 use shared::messages::UiMessage;
+use shared::user_profile::{PresenceInfo, UserProfile};
 use wasm_bindgen::prelude::*;
 use web_sys::HtmlImageElement;
 
@@ -53,76 +52,11 @@ pub enum CurrentWindow {
     LoadingPage,
 }
 
-#[derive(Deserialize, Clone, Debug)]
-pub struct UserProfile {
-    user_id: String,
-    pub display_name: Option<String>,
-    pub avatar_url: Option<String>,
-}
-
-impl UserProfile {
-    pub fn render_icon(&self, size: usize) -> impl IntoView {
-        let size_str = format!("{}px", size);
-
-        let name = self.display_name.clone().unwrap_or(self.user_id.clone());
-
-        match &self.avatar_url {
-            Some(url) => view! {
-                <img
-                    class="rounded-full object-cover bg-transparent"
-                    src=url
-                    style:height=size_str.clone()
-                    style:width=size_str
-                    alt=name
-                />
-            }
-            .into_any(),
-            None => view! {
-                <TextCircle
-                    text=name
-                    color_string=self.user_id.clone()
-                    class="rounded-full"
-                    style=format!("height: {}; width: {};", size_str, size_str)
-                />
-            }
-            .into_any(),
-        }
-    }
-
-    pub fn render_name(&self, font_size: usize) -> impl IntoView {
-        let name = self.display_name.as_ref().unwrap_or(&self.user_id);
-        let font_size_str = format!("{}px", font_size);
-        let color = self.get_user_color().to_css_string();
-
-        view! {
-            <span
-                style:font-size=font_size_str
-                style:color=color
-            >
-                {name.clone()}
-            </span>
-        }
-    }
-
-    fn get_user_color(&self) -> Hsl {
-        Self::get_color(self.user_id.clone())
-    }
-
-    pub fn get_color(string: String) -> Hsl {
-        let mut hash: u32 = 0;
-        for c in string.chars() {
-            hash = (c as u32).wrapping_add(hash.wrapping_shl(5).wrapping_sub(hash));
-        }
-
-        let hue = hash % 360;
-
-        Hsl::new(hue as f64, 90.0, 70.0, None)
-    }
-}
-
 #[derive(Default, Clone)]
 pub struct MemberStore {
     pub rooms: RwSignal<HashMap<String, HashMap<String, ArcRwSignal<UserProfile>>>>,
+    pub presences: RwSignal<HashMap<String, ArcRwSignal<PresenceInfo>>>,
+
     pub fetching: RwSignal<HashSet<String>>,
 }
 
@@ -202,6 +136,22 @@ impl MemberStore {
                 }
             });
         }
+
+        new_signal
+    }
+
+    pub fn get_presence(&self, user_id: &String) -> ArcRwSignal<PresenceInfo> {
+        let existing_signal = self.presences.with_untracked(|p| p.get(user_id).cloned());
+
+        if let Some(sig) = existing_signal {
+            return sig;
+        }
+
+        let new_signal = ArcRwSignal::new(PresenceInfo::default());
+
+        self.presences.update(|presences| {
+            presences.insert(user_id.clone(), new_signal.clone());
+        });
 
         new_signal
     }
@@ -310,10 +260,37 @@ pub fn App() -> impl IntoView {
     provide_context(state);
 
     let store = MemberStore::default();
+    let store_for_profiles = store.clone();
+    let store_for_presences = store.clone();
+
     provide_context(store);
 
     let profile_update =
         use_tauri_event::<HashMap<String, HashMap<String, UserProfile>>>("member_update");
+
+    Effect::new(move |_| {
+        if let Some(updates) = profile_update.get() {
+            for (room_id, users) in updates.iter() {
+                for (user_id, profile) in users.iter() {
+                    store_for_profiles
+                        .get_profile(room_id, user_id)
+                        .set(profile.clone());
+                }
+            }
+        }
+    });
+
+    let presence_update = use_tauri_event::<HashMap<String, PresenceInfo>>("presence_update");
+
+    Effect::new(move |_| {
+        if let Some(updates) = presence_update.get() {
+            for (user_id, presence) in updates.iter() {
+                store_for_presences
+                    .get_presence(user_id)
+                    .set(presence.clone());
+            }
+        }
+    });
 
     Effect::new(move |_| {
         spawn_local(async move {
@@ -545,6 +522,10 @@ fn HomePage() -> impl IntoView {
     let muted_text_color = "hsl(220, 15%, 25%)";
     let gap = "5px";
     let mention_color = "rgb(255, 100, 100)";
+    let presence_online_color = "rgb(100, 255, 100)";
+    let presence_idle_color = "rgb(255, 255, 100)";
+    let presence_busy_color = "rgb(255, 100, 100)";
+    let presence_offline_color = "rgb(150, 150, 150)";
 
     let root_css_vars = move || {
         let base = format!(
@@ -560,6 +541,12 @@ fn HomePage() -> impl IntoView {
             --muted-text-color: {muted_text_color};
             --gap: {gap};
             --mention-color: {mention_color};
+
+            --presence-online-color: {presence_online_color};
+            --presence-idle-color: {presence_idle_color};
+            --presence-busy-color: {presence_busy_color};
+            --presence-offline-color: {presence_offline_color};
+
             background-color: {bg_color};",
         );
 

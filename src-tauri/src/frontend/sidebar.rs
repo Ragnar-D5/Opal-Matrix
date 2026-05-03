@@ -1,8 +1,13 @@
 use std::collections::{HashMap, HashSet};
 
+use rusqlite::Connection;
 use shared::sidebar::{FlatRoom, RoomKind, RoomNode, SidebarState};
 
+use crate::storage::members::get_other_member_in_dm;
+
 pub fn build_tree(
+    conn: &Connection,
+    own_id: &String,
     mut all_rooms: HashMap<String, FlatRoom>,
     parent_to_children: HashMap<String, Vec<String>>,
     all_children: HashSet<String>,
@@ -13,11 +18,15 @@ pub fn build_tree(
     // Extract DMs and remove them from the main rooms list
     all_rooms.retain(|room_id, room| {
         if room.is_direct {
+            let dm_user_id = get_other_member_in_dm(conn, room_id, own_id);
+
             dms.push(RoomNode {
                 room_id: room_id.clone(),
                 name: room.name.clone(),
                 topic: room.topic.clone(),
                 avatar_url: room.avatar_url.clone(),
+
+                dm_user_id: dm_user_id,
 
                 highlight_count: room.highlight_count,
                 notification_count: room.notification_count,
@@ -50,6 +59,8 @@ pub fn build_tree(
                 name: room.name.clone(),
                 topic: room.topic.clone(),
                 avatar_url: room.avatar_url.clone(),
+
+                dm_user_id: None,
 
                 highlight_count: room.highlight_count,
                 notification_count: room.notification_count,
@@ -106,6 +117,8 @@ fn build_node(
         name: room.name.clone(),
         topic: room.topic.clone(),
         avatar_url: room.avatar_url.clone(),
+
+        dm_user_id: None,
 
         highlight_count: highlight_count,
         notification_count: notification_count,

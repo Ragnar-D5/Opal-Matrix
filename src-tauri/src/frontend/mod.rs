@@ -1,16 +1,14 @@
 use std::collections::HashMap;
 
 use rusqlite::Connection;
-use shared::messages::UiMessage;
+use shared::{messages::UiMessage, user_profile::UserProfile};
 use tauri::{AppHandle, Emitter};
 
 use crate::{
     TauriError,
-    frontend::members::UserProfile,
     storage::{fetch_sidebar, members::MemberRow},
 };
 
-pub(crate) mod members;
 pub(crate) mod messages;
 pub(crate) mod sidebar;
 
@@ -46,7 +44,13 @@ pub fn send_sidebar_update(
 ) -> Result<(), TauriError> {
     let (all_rooms, parent_to_children, all_children) = fetch_sidebar(conn, own_user_id)?;
 
-    let tree = sidebar::build_tree(all_rooms, parent_to_children, all_children);
+    let tree = sidebar::build_tree(
+        conn,
+        own_user_id,
+        all_rooms,
+        parent_to_children,
+        all_children,
+    );
 
     handle.emit("sidebar_update", tree)?;
 

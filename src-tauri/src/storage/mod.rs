@@ -1,3 +1,4 @@
+use shared::user_profile::UserProfile;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -5,7 +6,6 @@ use tauri::{State, command};
 
 use crate::AppState;
 use crate::TauriError;
-use crate::frontend::members::UserProfile;
 use members::MemberRow;
 use messages::MessageRow;
 use receipts::ReadReceiptRow;

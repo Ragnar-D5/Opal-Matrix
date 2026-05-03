@@ -1,6 +1,9 @@
 use leptos::prelude::*;
+use shared::user_profile::UserProfile;
+use user_profile::UserProfileExt;
 
-use crate::app::UserProfile;
+pub(crate) mod presence;
+pub(crate) mod user_profile;
 
 #[component]
 pub fn FloatingTile(#[prop(into, optional)] class: String, children: Children) -> impl IntoView {

@@ -1,8 +1,10 @@
 use std::fmt::Debug;
 
+use crate::TauriError;
+
 use super::DataBaseModel;
 use ruma::events::room::member::MembershipState as RumaMembershipState;
-use rusqlite::{types::FromSql, ToSql};
+use rusqlite::{Connection, ToSql, types::FromSql};
 
 #[derive(Debug, Clone)]
 pub enum MembershipState {
@@ -76,5 +78,23 @@ impl DataBaseModel for MemberRow {
             ",
         )?;
         Ok(())
+    }
+}
+
+pub fn get_other_member_in_dm(
+    conn: &Connection,
+    room_id: &String,
+    own_id: &String,
+) -> Option<String> {
+    let mut stmt = conn.prepare(
+        "SELECT user_id FROM members WHERE room_id = ? AND user_id != ? AND membership = 'join' LIMIT 1",
+    ).ok()?;
+
+    let mut rows = stmt.query(rusqlite::params![room_id, own_id]).ok()?;
+
+    if let Ok(Some(row)) = rows.next() {
+        row.get(0).ok()
+    } else {
+        None
     }
 }

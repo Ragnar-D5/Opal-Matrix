@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use crate::app::{AppState, MemberStore};
+use crate::components::presence::PresenceBadge;
 use crate::components::FloatingTile;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -11,7 +12,8 @@ use crate::hooks::use_tauri_event;
 
 #[component]
 fn DmDiv(dm: RoomNode) -> impl IntoView {
-    let state = expect_context::<AppState>();
+    let state: AppState = expect_context();
+    let members: MemberStore = expect_context();
 
     let id = dm.room_id.to_string();
     let name = dm.name.clone().unwrap_or_else(|| "Unnamed".to_string());
@@ -19,6 +21,18 @@ fn DmDiv(dm: RoomNode) -> impl IntoView {
     let initial = name.chars().take(2).collect::<String>();
 
     let is_active = Memo::new(move |_| state.active_room_id.get() == Some(id.clone()));
+
+    let avatar_content = match avatar_url {
+        Some(url) => view! {
+            <img class="avatar-img w-8 h-8 rounded-full object-cover" src=url alt=name.clone() />
+        }.into_any(),
+        None => view! {
+            <TextCircle text=initial color_string=dm.topic.clone().unwrap_or_else(|| "Unnamed".to_string()) class="rounded-full w-8 h-8" />
+        }.into_any(),
+    };
+
+    let members = members.clone();
+    let presence = members.get_presence(&dm.dm_user_id.unwrap_or_default());
 
     view! {
         <div class="group flex flex-row w-full cursor-pointer">
@@ -30,17 +44,9 @@ fn DmDiv(dm: RoomNode) -> impl IntoView {
                 class=("hover:bg-[var(--color-item-hover)]", move || !is_active.get())
                 class=("text-dim", move || !is_active.get())
             >
-                <div class="avatar-circle w-8 h-8 rounded-full"
-                >
-                    {match avatar_url {
-                        Some(url) => view! {
-                            <img class="avatar-img" src=url alt=name.clone() />
-                        }.into_any(),
-                        None => view! {
-                            <TextCircle text=initial color_string=dm.topic.clone().unwrap_or_else(|| "Unnamed".to_string()) class="rounded-full w-8 h-8" />
-                        }.into_any(),
-                    }}
-                </div>
+                <PresenceBadge presence=presence>
+                    {avatar_content}
+                </PresenceBadge>
                 <span class="inline-block align-center pl-2">{name}</span>
                 {
                     if dm.notification_count > 0 {
@@ -165,7 +171,6 @@ pub fn ServerIcon(server: RoomNode) -> impl IntoView {
 #[component]
 pub fn Sidebar() -> impl IntoView {
     let state: AppState = expect_context();
-    let members: MemberStore = expect_context();
 
     let (sidebar_state, set_sidebar_state) = signal(SidebarState::default());
     let (dragged_server_id, set_dragged_server_id) = signal::<Option<String>>(None);
@@ -270,11 +275,10 @@ pub fn Sidebar() -> impl IntoView {
                                 <div
                                     class="relative flex items-center justify-center group w-full cursor-pointer"
                                     on:click=move |_| {
-                                        state.set_active_server_id(None); // Switch context to DMs
-                                        state.set_active_room_id(Some(clone.clone())); // Select the specific DM
+                                        state.set_active_server_id(None);
+                                        state.set_active_room_id(Some(clone.clone()));
                                     }
                                 >
-                                    // 3. Render the pill
                                     <IndicatorPill is_active=is_active has_notifications=has_notifications />
 
                                     <CutoutBadge count=dm.notification_count class="justify-center flex">

@@ -13,6 +13,8 @@ use shared::messages::{
     MembershipAction, MessageContent, MessageKind, Reaction, SystemMessage, UiMessage, UserMessage,
 };
 
+use crate::components::user_profile::UserProfileExt;
+
 #[derive(PartialEq, Clone)]
 struct TimelineMessageGroup {
     contents: Vec<UserMessage>,
@@ -367,7 +369,7 @@ fn TimeLine() -> impl IntoView {
                         let mut seen_ids: HashSet<String> =
                             existing.iter().map(|m| m.event_id.clone()).collect();
 
-                        let mut unique_new: Vec<UiMessage> = new_msgs
+                        let unique_new: Vec<UiMessage> = new_msgs
                             .iter()
                             .filter(|m| seen_ids.insert(m.event_id.clone()))
                             .cloned()
@@ -383,6 +385,7 @@ fn TimeLine() -> impl IntoView {
     let flattened_items = Memo::new(move |_| {
         let mut msgs = messages.get();
         msgs.sort_by_key(|m| m.timestamp);
+
         let mut items: Vec<TimelineItem> = Vec::new();
         let mut last_day: Option<NaiveDate> = None;
         let marker_id = read_marker_id.get();
@@ -393,31 +396,49 @@ fn TimeLine() -> impl IntoView {
 
         let mut processed_messages = HashMap::new();
 
-        for msg in msgs.iter() {
-            match &msg.kind {
-                MessageKind::SystemMessage(SystemMessage::MessageEdited { event_id, new_text }) => {
-                    edits.insert(event_id.clone(), new_text.clone());
-                }
-                MessageKind::SystemMessage(SystemMessage::MessageRedacted { event_id }) => {
-                    redactions.insert(event_id.clone());
-                }
-                MessageKind::SystemMessage(SystemMessage::MessageReacted {
-                    event_id,
-                    reaction,
-                }) => {
-                    reactions_map.insert(
-                        event_id.clone(),
-                        Reaction {
-                            sender_id: msg.sender_id.clone(),
-                            reaction: reaction.clone(),
-                        },
-                    );
-                }
-                _ => {}
-            }
+        let marker_ts = marker_id
+            .as_ref()
+            .and_then(|mid| msgs.iter().find(|m| m.event_id == *mid))
+            .map(|m| m.timestamp);
 
-            processed_messages.insert(msg.event_id.clone(), msg.clone());
-        }
+        msgs = msgs
+            .into_iter()
+            .filter(|msg| {
+                let result = match &msg.kind {
+                    MessageKind::SystemMessage(SystemMessage::MessageEdited {
+                        event_id,
+                        new_text,
+                    }) => {
+                        edits.insert(event_id.clone(), new_text.clone());
+                        false
+                    }
+                    MessageKind::SystemMessage(SystemMessage::MessageRedacted { event_id }) => {
+                        redactions.insert(event_id.clone());
+                        false
+                    }
+                    MessageKind::SystemMessage(SystemMessage::MessageReacted {
+                        event_id,
+                        ref reaction,
+                    }) => {
+                        reactions_map.insert(
+                            event_id.clone(),
+                            Reaction {
+                                sender_id: msg.sender_id.clone(),
+                                reaction: reaction.clone(),
+                            },
+                        );
+                        false
+                    }
+                    _ => true,
+                };
+
+                processed_messages.insert(msg.event_id.clone(), msg.clone());
+                result
+            })
+            .collect();
+
+        let mut seen_marker_id = false;
+        let mut inserted_marker = false;
 
         for msg in msgs.iter_mut() {
             if let MessageKind::SystemMessage(
@@ -441,6 +462,37 @@ fn TimeLine() -> impl IntoView {
 
             let current_date = get_date_from_ts(msg.timestamp);
             let current_day = current_date.date_naive();
+
+            if Some(current_day) != last_day {
+                items.push(TimelineItem {
+                    date: current_date,
+                    sender: String::new(),
+                    id: format!("date-sep-{}", current_day),
+                    kind: TimelineItemKind::DateSeparator,
+                });
+                last_day = Some(current_day);
+            }
+
+            if let Some(m_id) = &marker_id {
+                if !inserted_marker {
+                    let is_after_marker =
+                        seen_marker_id || marker_ts.is_some_and(|ts| msg.timestamp > ts);
+
+                    if is_after_marker {
+                        items.push(TimelineItem {
+                            date: current_date,
+                            sender: String::new(),
+                            id: "new-message-indicator".to_string(),
+                            kind: TimelineItemKind::NewMessageIndicator,
+                        });
+                        inserted_marker = true;
+                    }
+
+                    if msg.event_id == *m_id {
+                        seen_marker_id = true;
+                    }
+                }
+            }
 
             let maybe_item = match msg.kind.clone() {
                 MessageKind::UserMessage(mut user_msg) => {
@@ -504,44 +556,10 @@ fn TimeLine() -> impl IntoView {
             };
 
             if let Some(item) = maybe_item {
-                if Some(current_day) != last_day {
-                    items.push(TimelineItem {
-                        date: current_date,
-                        sender: String::new(),
-                        id: format!("date-sep-{}", current_day),
-                        kind: TimelineItemKind::DateSeparator,
-                    });
-                    last_day = Some(current_date.date_naive());
-                }
-
                 items.push(item);
             }
         }
         items.reverse();
-
-        if let Some(m_id) = marker_id {
-            if let Some(marker_msg) = msgs.iter().find(|m| m.event_id == m_id) {
-                let ts = get_date_from_ts(marker_msg.timestamp);
-
-                let pos = items
-                    .iter()
-                    .position(|item| item.id == m_id || item.date <= ts);
-
-                if let Some(p) = pos {
-                    if p > 0 {
-                        items.insert(
-                            p,
-                            TimelineItem {
-                                date: ts,
-                                sender: String::new(),
-                                id: "new-messages-divider".to_string(),
-                                kind: TimelineItemKind::NewMessageIndicator,
-                            },
-                        );
-                    }
-                }
-            }
-        }
 
         items
     });
