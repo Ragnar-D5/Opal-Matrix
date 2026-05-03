@@ -775,8 +775,7 @@ fn ChatHeader(#[prop(into)] room_header: Signal<RoomHeader>) -> impl IntoView {
     let member_store: MemberStore = expect_context();
 
     view! {
-        <FloatingTile class="h-12 items-start flex-row">
-            <div class="w-2"></div>
+        <FloatingTile class="h-12 items-start flex-row gap-1 pl-1">
             <div class="w-10 self-center flex items-center justify-center">
                 {move || match room_header.get() {
                     RoomHeader::Channel { .. } => view! {
