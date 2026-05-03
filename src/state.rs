@@ -4,7 +4,7 @@ use leptos::{leptos_dom::logging::console_error, prelude::RwSignal, task::spawn_
 use serde::Serialize;
 use shared::{
     account_data::{AccountDataArgs, AccountDataPayload, Breadcrumbs, ServerOrder},
-    sidebar::SidebarState,
+    sidebar::{RoomKind, RoomNode, SidebarState},
     user_profile::{PresenceInfo, UserProfile},
 };
 
@@ -23,6 +23,12 @@ pub struct AppState {
     pub server_order: RwSignal<ServerOrder>,
 
     pub sidebar_state: RwSignal<SidebarState>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum RoomHeader {
+    Channel { name: String },
+    DM(ArcRwSignal<UserProfile>),
 }
 
 impl AppState {
@@ -109,6 +115,73 @@ impl AppState {
             }
         });
     }
+
+    pub fn get_active_profile(
+        &self,
+        member_store: MemberStore,
+    ) -> Option<ArcRwSignal<UserProfile>> {
+        let Some(current_room_id) = self.active_room_id.get() else {
+            return None;
+        };
+
+        for dm in self
+            .sidebar_state
+            .get()
+            .dms
+            .iter()
+            .filter(|d| d.room_id == current_room_id)
+        {
+            if let Some(user_id) = &dm.dm_user_id {
+                if user_id.is_empty() {
+                    continue;
+                }
+
+                return Some(member_store.get_profile(&current_room_id, user_id));
+            }
+        }
+
+        return None;
+    }
+
+    pub fn get_room_header(&self, member_store: MemberStore) -> RoomHeader {
+        if let Some(profile) = self.get_active_profile(member_store) {
+            return RoomHeader::DM(profile);
+        }
+
+        let Some(active_room_id) = self.active_room_id.get() else {
+            return RoomHeader::Channel {
+                name: "Unknown Room".to_string(),
+            };
+        };
+
+        let sidebar_state = self.sidebar_state.get();
+        let name = find_room_name_in_nodes(&sidebar_state.servers, &active_room_id)
+            .or_else(|| find_room_name_in_nodes(&sidebar_state.orphaned_rooms, &active_room_id))
+            .or_else(|| find_room_name_in_nodes(&sidebar_state.dms, &active_room_id))
+            .unwrap_or("Unknown Room".to_string());
+
+        RoomHeader::Channel { name }
+    }
+}
+
+fn find_room_name_in_nodes(nodes: &[RoomNode], room_id: &str) -> Option<String> {
+    for node in nodes {
+        if node.room_id == room_id {
+            return Some(
+                node.name
+                    .clone()
+                    .unwrap_or_else(|| "Unknown Room".to_string()),
+            );
+        }
+
+        if let RoomKind::Space { children } = &node.kind {
+            if let Some(name) = find_room_name_in_nodes(children, room_id) {
+                return Some(name);
+            }
+        }
+    }
+
+    None
 }
 
 #[derive(Default, Clone)]

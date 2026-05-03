@@ -1,3 +1,4 @@
+use crate::state::RoomHeader;
 use std::collections::{HashMap, HashSet};
 
 use crate::app::call_tauri;
@@ -70,7 +71,10 @@ impl TimelineItem {
                     <div class="flex flex-col gap-1 p-3 rounded-md">
                         {move || {
                             if let Some(reply) = &reply_data {
-                                let reply_sender = reply.sender_id.clone().unwrap_or_default();
+                                let Some(reply_sender) = reply.sender_id.clone() else {
+                                    return view! {}.into_any();
+                                };
+
                                 let reply_text = reply.text.clone().unwrap_or_default();
 
                                 let reply_profile_sig = store.get_profile(&room_id, &reply_sender);
@@ -766,16 +770,53 @@ fn TimeLine() -> impl IntoView {
 }
 
 #[component]
-pub fn Chat(
-    messages: ReadSignal<Vec<UiMessage>>,
-    set_messages: WriteSignal<Vec<UiMessage>>,
-) -> impl IntoView {
+fn ChatHeader(#[prop(into)] room_header: Signal<RoomHeader>) -> impl IntoView {
+    view! {
+        <FloatingTile class="h-12 items-start flex-row">
+            <div class="w-2"></div>
+            <div class="w-10 self-center">
+                {move || match room_header.get() {
+                    RoomHeader::Channel { .. } => view! {
+                        <div class="w-8 h-8 text-end">
+                            <span class="text-lg text-bright self-center align-middle">"#"</span>
+                        </div>
+                    }.into_any(),
+                    RoomHeader::DM(profile) => {
+                        let profile = profile.get();
+                        profile.render_icon(32)
+                    }.into_any()
+                }}
+            </div>
+            <div class="flex-1 flex flex-col self-center">
+                {move || match room_header.get() {
+                    RoomHeader::Channel { name } => view! {
+                        <span class="text-bright font-semibold text-sm">
+                            {name}
+                        </span>
+                    }.into_any(),
+                    RoomHeader::DM(profile) => {
+                        let profile = profile.get();
+                        profile.render_name(14)
+                    }.into_any()
+                }}
+            </div>
+        </FloatingTile>
+    }
+}
+
+#[component]
+pub fn Chat() -> impl IntoView {
+    let state: AppState = expect_context();
+    let member_store: MemberStore = expect_context();
+
+    let header = Memo::new({
+        let member_store = member_store.clone();
+        move |_| state.get_room_header(member_store.clone())
+    });
+
     view! {
         <div class="flex-1 h-full flex gap-[var(--gap)] flex-col overflow-hidden">
-            <FloatingTile>
-
-                "Chat name goes here"
-            </FloatingTile>
+            <ChatHeader room_header=header />
             <div class="flex gap-[var(--gap)] flex-row h-full min-h-0">
                 <FloatingTile class="flex-1 min-h-0, overflow-hidden">
                     <TimeLine/>

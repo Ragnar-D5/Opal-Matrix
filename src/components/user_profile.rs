@@ -49,6 +49,7 @@ impl UserProfileExt for shared::user_profile::UserProfile {
             <span
                 style:font-size=font_size_str
                 style:color=color
+                class="font-semibold"
             >
                 {name.clone()}
             </span>
