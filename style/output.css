@@ -221,11 +221,17 @@
   .-right-0 {
     right: calc(var(--spacing) * -0);
   }
+  .-right-\[3px\] {
+    right: calc(3px * -1);
+  }
   .right-0 {
     right: calc(var(--spacing) * 0);
   }
   .-bottom-0 {
     bottom: calc(var(--spacing) * -0);
+  }
+  .-bottom-\[3px\] {
+    bottom: calc(3px * -1);
   }
   .-left-1 {
     left: calc(var(--spacing) * -1);

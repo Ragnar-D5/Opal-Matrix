@@ -9,7 +9,6 @@ use crate::{
     storage::{fetch_sidebar, members::MemberRow},
 };
 
-pub(crate) mod messages;
 pub(crate) mod sidebar;
 
 pub fn send_member_update(handle: &AppHandle, updates: Vec<MemberRow>) -> Result<(), TauriError> {

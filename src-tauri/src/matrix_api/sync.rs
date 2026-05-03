@@ -1,10 +1,13 @@
 use std::collections::{HashMap, HashSet};
 
 use log::{info, trace, warn};
+use ruma::events::presence::PresenceEventContent;
+use ruma::presence::PresenceState;
 use ruma::serde::Raw;
 use serde_json::value::RawValue;
 use shared::messages::UiMessage;
-use tauri::AppHandle;
+use shared::user_profile::{PresenceInfo, PresenceStatus};
+use tauri::{AppHandle, Emitter};
 use tauri_plugin_http::reqwest::{self, Client};
 
 use crate::frontend::{send_member_update, send_sidebar_update};
@@ -187,6 +190,21 @@ async fn run_sync_loop(
 
 use crate::storage::{self, SyncChanges};
 
+fn convert_presence(presence: PresenceEventContent) -> PresenceInfo {
+    let status = match presence.presence {
+        PresenceState::Offline => PresenceStatus::Offline,
+        PresenceState::Online => PresenceStatus::Online,
+        PresenceState::Unavailable => PresenceStatus::Unavailable,
+        _ => PresenceStatus::Offline,
+    };
+
+    PresenceInfo {
+        status: status,
+        last_active_ago: presence.last_active_ago.map(|v| v.into()),
+        status_msg: presence.status_msg,
+    }
+}
+
 use ruma::api::client::sync::sync_events::v3::State as SyncState;
 use ruma::events::{
     AnyGlobalAccountDataEvent, AnyStateEventContent, AnySyncEphemeralRoomEvent,
@@ -206,6 +224,21 @@ async fn handle_sync_response(
     }
 
     info!("{:?}", response.presence);
+
+    let payload: HashMap<String, PresenceInfo> = response
+        .presence
+        .events
+        .into_iter()
+        .filter_map(|ev| {
+            if let Ok(data) = ev.deserialize() {
+                Some((data.sender.to_string(), convert_presence(data.content)))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    handle.emit("presence_update", payload)?;
 
     let mut backfill_rooms = Vec::new();
 
