@@ -280,7 +280,7 @@ fn HomePage() -> impl IntoView {
     let (recovery_key, set_recovery_key) = signal(String::new());
     let (messages, set_messages) = signal(Vec::<UiMessage>::new());
     let (bg_loaded, set_bg_loaded) = signal(false);
-    let bg_url = "https://i.imgur.com/t9plvkd.pn".to_string();
+    let bg_url = "https://i.imgur.com/t9plvkd.png".to_string();
 
     let bg_url_clone = bg_url.clone();
     Effect::new(move |_| {
