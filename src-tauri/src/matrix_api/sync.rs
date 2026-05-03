@@ -352,6 +352,8 @@ async fn handle_sync_response(
                 || update.avatar_url.is_some()
                 || update.room_type.is_some()
                 || update.topic.is_some()
+                || update.highlight_count.is_some()
+                || update.notification_count.is_some()
         });
 
     {
@@ -366,6 +368,7 @@ async fn handle_sync_response(
         let client = client_guard.as_ref().ok_or("Client info not initialized")?;
 
         if sidebar_needs_update {
+            info!("Sidebar update needed, sending update event");
             send_sidebar_update(conn, handle, &client.user_id)?;
         }
         if !changes.new_messages.is_empty() {

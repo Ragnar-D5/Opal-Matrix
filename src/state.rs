@@ -4,6 +4,7 @@ use leptos::{leptos_dom::logging::console_error, prelude::RwSignal, task::spawn_
 use serde::Serialize;
 use shared::{
     account_data::{AccountDataArgs, AccountDataPayload, Breadcrumbs, ServerOrder},
+    sidebar::SidebarState,
     user_profile::{PresenceInfo, UserProfile},
 };
 
@@ -20,6 +21,8 @@ pub struct AppState {
 
     pub breadcrums: RwSignal<Breadcrumbs>,
     pub server_order: RwSignal<ServerOrder>,
+
+    pub sidebar_state: RwSignal<SidebarState>,
 }
 
 impl AppState {
@@ -31,6 +34,7 @@ impl AppState {
             active_server_id: RwSignal::new(None),
             breadcrums: RwSignal::new(Breadcrumbs::default()),
             server_order: RwSignal::new(ServerOrder::default()),
+            sidebar_state: RwSignal::new(SidebarState::default()),
         }
     }
 

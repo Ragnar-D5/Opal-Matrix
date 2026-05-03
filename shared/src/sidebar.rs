@@ -30,7 +30,7 @@ impl RoomNode {
     }
 }
 
-#[derive(Debug, Serialize, Clone, Default, Deserialize)]
+#[derive(Debug, Serialize, Clone, Default, Deserialize, PartialEq)]
 pub struct SidebarState {
     pub dms: Vec<RoomNode>,
     pub servers: Vec<RoomNode>,

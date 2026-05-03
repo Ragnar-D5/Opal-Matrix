@@ -120,50 +120,72 @@ pub fn CutoutBadge(
 }
 
 #[component]
-pub fn ServerIcon(server: RoomNode) -> impl IntoView {
+pub fn ServerIcon(server_id: String) -> impl IntoView {
     let state = expect_context::<AppState>();
 
-    let id = server.room_id.to_string();
-    let cloned_id = id.clone();
+    let server_id_for_lookup = server_id.clone();
+    let server_id_for_active = server_id.clone();
+    let server_id_for_click = server_id.clone();
 
-    let initial = server
-        .name
-        .clone()
-        .unwrap_or("?".to_string())
-        .chars()
-        .next()
-        .unwrap_or('?')
-        .to_string();
+    let server = Memo::new(move |_| {
+        state.sidebar_state.with(|state| {
+            state
+                .servers
+                .iter()
+                .find(|srv| srv.room_id == server_id_for_lookup)
+                .cloned()
+        })
+    });
 
-    let is_active = Memo::new(move |_| state.active_server_id.get() == Some(cloned_id.clone()));
-    let has_notifications = Memo::new(move |_| server.notification_count > 0);
+    let is_active =
+        Memo::new(move |_| state.active_server_id.get() == Some(server_id_for_active.clone()));
+    let has_notifications = Memo::new(move |_| {
+        server
+            .get()
+            .map(|server| server.notification_count > 0)
+            .unwrap_or(false)
+    });
 
     view! {
         <div class="relative flex items-center justify-center group w-full">
             <IndicatorPill is_active=is_active has_notifications=has_notifications/>
 
-            <div class="relative w-10 h-10">
-                <CutoutBadge count=server.highlight_count>
-                    <div
-                        class="server-btn flex items-center justify-center w-10 h-10 text-gray-800 font-semibold rounded-[25%] cursor-pointer transition-colors"
-                        class=("bg-[var(--color-icon-selected)]", move || is_active.get())
-                        class=("bg-[var(--color-icon-bg)]", move || !is_active.get())
-                        class=("hover:bg-[var(--color-icon-hover)]", move || !is_active.get())
-                        on:click=move |_| state.set_active_server_id(Some(id.clone()))
-                    >
-                        <div class="avatar-circle w-full h-full rounded-[25%] overflow-hidden">
-                            {match server.avatar_url {
-                                Some(url) => view! {
-                                    <img draggable="false" class="avatar-img object-cover w-full h-full" src=url alt=server.name.clone() />
-                                }.into_any(),
-                                None => view! {
-                                    <TextCircle text=initial color_string=server.name.clone().unwrap_or_else(|| "Unnamed".to_string()) class="rounded-[25%] w-full h-full" />
-                                }.into_any(),
-                            }}
-                        </div>
+            {move || {
+                let server_id_for_click = server_id_for_click.clone();
+
+                let Some(server) = server.get() else {
+                    return view! { <div class="relative w-10 h-10"></div> }.into_any();
+                };
+
+                let name = server.name.clone().unwrap_or("?".to_string());
+                let initial = name.chars().next().unwrap_or('?').to_string();
+                let color_string = server.name.clone().unwrap_or_else(|| "Unnamed".to_string());
+
+                view! {
+                    <div class="relative w-10 h-10">
+                        <CutoutBadge count=server.highlight_count>
+                            <div
+                                class="server-btn flex items-center justify-center w-10 h-10 text-gray-800 font-semibold rounded-[25%] cursor-pointer transition-colors"
+                                class=("bg-[var(--color-icon-selected)]", move || is_active.get())
+                                class=("bg-[var(--color-icon-bg)]", move || !is_active.get())
+                                class=("hover:bg-[var(--color-icon-hover)]", move || !is_active.get())
+                                on:click=move |_| state.set_active_server_id(Some(server_id_for_click.clone()))
+                            >
+                                <div class="avatar-circle w-full h-full rounded-[25%] overflow-hidden">
+                                    {match server.avatar_url {
+                                        Some(url) => view! {
+                                            <img draggable="false" class="avatar-img object-cover w-full h-full" src=url alt=name.clone() />
+                                        }.into_any(),
+                                        None => view! {
+                                            <TextCircle text=initial color_string=color_string class="rounded-[25%] w-full h-full" />
+                                        }.into_any(),
+                                    }}
+                                </div>
+                            </div>
+                        </CutoutBadge>
                     </div>
-                </CutoutBadge>
-            </div>
+                }.into_any()
+            }}
         </div>
     }
 }
@@ -172,7 +194,6 @@ pub fn ServerIcon(server: RoomNode) -> impl IntoView {
 pub fn Sidebar() -> impl IntoView {
     let state: AppState = expect_context();
 
-    let (sidebar_state, set_sidebar_state) = signal(SidebarState::default());
     let (dragged_server_id, set_dragged_server_id) = signal::<Option<String>>(None);
 
     let sidebar_update_event: ReadSignal<Option<SidebarState>> = use_tauri_event("sidebar_update");
@@ -215,7 +236,7 @@ pub fn Sidebar() -> impl IntoView {
                 state.set_server_order(final_order);
             }
 
-            set_sidebar_state.set(new_state);
+            state.sidebar_state.set(new_state);
         }
     });
 
@@ -225,7 +246,7 @@ pub fn Sidebar() -> impl IntoView {
     img.set_src("data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7");
 
     let active_dms = Memo::new(move |_| {
-        sidebar_state.with(|state| {
+        state.sidebar_state.with(|state| {
             state
                 .dms
                 .iter()
@@ -304,7 +325,7 @@ pub fn Sidebar() -> impl IntoView {
 
                     <div class="w-8 h-[1px] bg-red-500 rounded-full my-2 gap-[1px]"></div>
                     <For
-                        each=move || sidebar_state.get().servers
+                        each=move || state.sidebar_state.get().servers
                         key=|server| server.room_id.to_string()
                         children=move |server| {
                             let drag_id = server.room_id.to_string();
@@ -335,7 +356,7 @@ pub fn Sidebar() -> impl IntoView {
                                         let Some(source_id) = dragged_server_id.get() else { return };
 
                                         if source_id != drop_id {
-                                            set_sidebar_state.update(|state| {
+                                            state.sidebar_state.update(|state| {
                                                 let src_opt = state.servers.iter().position(|s| s.room_id == source_id);
                                                 let dst_opt = state.servers.iter().position(|s| s.room_id == drop_id);
 
@@ -350,14 +371,14 @@ pub fn Sidebar() -> impl IntoView {
                                         set_dragged_server_id.set(None);
 
                                         spawn_local(async move {
-                                            let current_servers = sidebar_state.get_untracked().servers;
+                                            let current_servers = state.sidebar_state.get_untracked().servers;
                                             let new_order: Vec<String> = current_servers.into_iter().map(|s| s.room_id).collect();
 
                                             state.set_server_order(new_order);
                                         });
                                     }
                                 >
-                                    <ServerIcon server=server.clone() />
+                                    <ServerIcon server_id=server.room_id.clone() />
                                     <div class="h-2 pointer-events-none"></div>
                                 </div>
                             }
@@ -370,7 +391,7 @@ pub fn Sidebar() -> impl IntoView {
                 <div class="channels w-75"
                      class=("p-2", move || state.active_server_id.get().is_none())>
                     {move || {
-                        let current_state = sidebar_state.get();
+                        let current_state = state.sidebar_state.get();
 
                         match state.active_server_id.get() {
                             None => view! {
