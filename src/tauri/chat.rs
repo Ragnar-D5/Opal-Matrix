@@ -2,6 +2,7 @@ use crate::state::RoomHeader;
 use std::collections::{HashMap, HashSet};
 
 use crate::app::call_tauri;
+use crate::components::presence::PresenceBadge;
 use crate::components::FloatingTile;
 use crate::hooks::use_tauri_event;
 use crate::state::{AppState, MemberStore};
@@ -771,32 +772,40 @@ fn TimeLine() -> impl IntoView {
 
 #[component]
 fn ChatHeader(#[prop(into)] room_header: Signal<RoomHeader>) -> impl IntoView {
+    let member_store: MemberStore = expect_context();
+
     view! {
         <FloatingTile class="h-12 items-start flex-row">
             <div class="w-2"></div>
-            <div class="w-10 self-center">
+            <div class="w-10 self-center flex items-center justify-center">
                 {move || match room_header.get() {
                     RoomHeader::Channel { .. } => view! {
-                        <div class="w-8 h-8 text-end">
+                        <div class="w-8 text-end">
                             <span class="text-lg text-bright self-center align-middle">"#"</span>
                         </div>
                     }.into_any(),
                     RoomHeader::DM(profile) => {
                         let profile = profile.get();
-                        profile.render_icon(32)
+                        let presence = member_store.get_presence(&profile.user_id);
+
+                        view! {
+                            <PresenceBadge presence=presence>
+                                {profile.render_icon(32)}
+                            </PresenceBadge>
+                        }
                     }.into_any()
                 }}
             </div>
-            <div class="flex-1 flex flex-col self-center">
+            <div class="flex-1 flex flex-col self-center text-bright text-m font-semibold">
                 {move || match room_header.get() {
                     RoomHeader::Channel { name } => view! {
-                        <span class="text-bright font-semibold text-sm">
+                        <span>
                             {name}
                         </span>
                     }.into_any(),
                     RoomHeader::DM(profile) => {
                         let profile = profile.get();
-                        profile.render_name(14)
+                        profile.render_name(16)
                     }.into_any()
                 }}
             </div>

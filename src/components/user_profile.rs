@@ -20,7 +20,7 @@ impl UserProfileExt for shared::user_profile::UserProfile {
         match &self.avatar_url {
             Some(url) => view! {
                 <img
-                    class="rounded-full object-cover bg-transparent"
+                    class="rounded-full object-cover bg-transparent block"
                     src=url
                     style:height=size_str.clone()
                     style:width=size_str
