@@ -10,7 +10,7 @@ use chrono::{DateTime, Local, NaiveDate, TimeZone};
 use leptos::html::Div;
 use leptos::task::spawn_local;
 use leptos::{leptos_dom::logging::console_error, prelude::*};
-use leptos_use::{use_intersection_observer, UseIntersectionObserverReturn};
+use leptos_use::{use_intersection_observer, use_toggle, UseIntersectionObserverReturn};
 use serde::Serialize;
 use shared::messages::{
     MembershipAction, MessageContent, MessageKind, Reaction, SystemMessage, UiMessage, UserMessage,
@@ -771,7 +771,10 @@ fn TimeLine() -> impl IntoView {
 }
 
 #[component]
-fn ChatHeader(#[prop(into)] room_header: Signal<RoomHeader>) -> impl IntoView {
+fn ChatHeader(
+    room_header: Memo<RoomHeader>,
+    set_chat_sidebar_open: WriteSignal<bool>,
+) -> impl IntoView {
     let member_store: MemberStore = expect_context();
 
     view! {
@@ -808,6 +811,14 @@ fn ChatHeader(#[prop(into)] room_header: Signal<RoomHeader>) -> impl IntoView {
                     }.into_any()
                 }}
             </div>
+            <div class="self-center">
+                <button
+                    class="text-bright hover:text-white transition-opacity"
+                    on:click=move |_| set_chat_sidebar_open.update(|v| *v = !*v)
+                >
+                    "Toggle Sidebar"
+                </button>
+            </div>
         </FloatingTile>
     }
 }
@@ -822,10 +833,23 @@ pub fn Chat() -> impl IntoView {
         move |_| state.get_room_header(member_store.clone())
     });
 
+    let (chat_sidebar_open, set_chat_sidebar_open) = signal(false);
+
     view! {
         <div class="flex-1 h-full flex gap-[var(--gap)] flex-col overflow-hidden">
-            <ChatHeader room_header=header />
-            <div class="flex gap-[var(--gap)] flex-row h-full min-h-0">
+            <ChatHeader room_header=header set_chat_sidebar_open=set_chat_sidebar_open />
+            <div class=move || {
+                let gap_class = if chat_sidebar_open.get() {
+                    "gap-[var(--gap)]"
+                } else {
+                    "gap-0"
+                };
+
+                format!(
+                    "flex flex-row h-full min-h-0 transition-all duration-200 {}",
+                    gap_class
+                )
+            }>
                 <FloatingTile class="flex-1 min-h-0, overflow-hidden">
                     <TimeLine/>
                     <input
@@ -834,9 +858,20 @@ pub fn Chat() -> impl IntoView {
                                class="w-full h-15 border-1 border-[var(--tile-border-color)] bg-[rgba(0, 0, 0, 1)] outline-none text-[var(--text-color)]"
                     />
                 </FloatingTile>
-                <FloatingTile class="hidden xl:flex w-90 p-2 h-full">
-                    "Chat info goes here"
-                </FloatingTile>
+                <div
+                    class="flex-shrink-0 origin-right overflow-hidden transition-all duration-200 ease-out"
+                    style=move || {
+                        if chat_sidebar_open.get() {
+                            "width: 16rem; transform: scaleX(1); opacity: 1; pointer-events: auto;"
+                        } else {
+                            "width: 0rem; transform: scaleX(0); opacity: 0; pointer-events: none;"
+                        }
+                    }
+                >
+                    <FloatingTile class="w-full h-full">
+                        "Sidebar content goes here"
+                    </FloatingTile>
+                </div>
             </div>
         </div>
     }

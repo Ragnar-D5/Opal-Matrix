@@ -388,7 +388,7 @@ pub fn Sidebar() -> impl IntoView {
             </FloatingTile>
 
             <FloatingTile>
-                <div class="channels w-75"
+                <div class="channels w-65"
                      class=("p-2", move || state.active_server_id.get().is_none())>
                     {move || {
                         let current_state = state.sidebar_state.get();

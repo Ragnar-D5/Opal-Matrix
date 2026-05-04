@@ -402,11 +402,8 @@
   .w-16 {
     width: calc(var(--spacing) * 16);
   }
-  .w-75 {
-    width: calc(var(--spacing) * 75);
-  }
-  .w-90 {
-    width: calc(var(--spacing) * 90);
+  .w-65 {
+    width: calc(var(--spacing) * 65);
   }
   .w-\[28px\] {
     width: 28px;
@@ -444,6 +441,9 @@
   .flex-grow {
     flex-grow: 1;
   }
+  .origin-right {
+    transform-origin: 100%;
+  }
   .-translate-y-1\/2 {
     --tw-translate-y: calc(calc(1 / 2 * 100%) * -1);
     translate: var(--tw-translate-x) var(--tw-translate-y);
@@ -480,6 +480,9 @@
   }
   .justify-center {
     justify-content: center;
+  }
+  .gap-0 {
+    gap: calc(var(--spacing) * 0);
   }
   .gap-1 {
     gap: calc(var(--spacing) * 1);
@@ -871,6 +874,11 @@
     transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));
     transition-duration: var(--tw-duration, var(--default-transition-duration));
   }
+  .transition-opacity {
+    transition-property: opacity;
+    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));
+    transition-duration: var(--tw-duration, var(--default-transition-duration));
+  }
   .duration-200 {
     --tw-duration: 200ms;
     transition-duration: 200ms;
@@ -985,6 +993,13 @@
       }
     }
   }
+  .hover\:text-white {
+    &:hover {
+      @media (hover: hover) {
+        color: var(--color-white);
+      }
+    }
+  }
   .hover\:underline {
     &:hover {
       @media (hover: hover) {
@@ -995,11 +1010,6 @@
   .active\:cursor-grabbing {
     &:active {
       cursor: grabbing;
-    }
-  }
-  .xl\:flex {
-    @media (width >= 80rem) {
-      display: flex;
     }
   }
 }
