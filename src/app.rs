@@ -346,7 +346,8 @@ fn HomePage() -> impl IntoView {
             --presence-busy-color: {presence_busy_color};
             --presence-offline-color: {presence_offline_color};
 
-            background-color: {bg_color};",
+            background-color: {bg_color};
+            line-height: 22px",
         );
 
         if bg_loaded.get() {

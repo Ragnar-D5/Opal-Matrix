@@ -162,7 +162,7 @@ impl TimelineItem {
                                 };
 
                                 view! {
-                                    <div class="group/msg relative flex gap-[var(--gap)] hover:bg-black/20 px-3 py-1 -mx-3 rounded-md">
+                                    <div class="group/msg relative flex gap-[var(--gap)] hover:bg-black/20 px-3 py-[2px] -mx-3 rounded-md">
 
                                         <div class="shrink-0 mr-2 w-[40px]">
                                             {if is_first {

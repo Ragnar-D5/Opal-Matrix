@@ -705,11 +705,11 @@
   .py-0\.5 {
     padding-block: calc(var(--spacing) * 0.5);
   }
-  .py-1 {
-    padding-block: calc(var(--spacing) * 1);
-  }
   .py-2\.5 {
     padding-block: calc(var(--spacing) * 2.5);
+  }
+  .py-\[2px\] {
+    padding-block: 2px;
   }
   .pt-3 {
     padding-top: calc(var(--spacing) * 3);
