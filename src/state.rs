@@ -27,8 +27,9 @@ pub struct AppState {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum RoomHeader {
-    Channel { name: String },
+    Channel(RoomNode),
     DM(ArcRwSignal<UserProfile>),
+    Unknown,
 }
 
 impl AppState {
@@ -149,34 +150,27 @@ impl AppState {
         }
 
         let Some(active_room_id) = self.active_room_id.get() else {
-            return RoomHeader::Channel {
-                name: "Unknown Room".to_string(),
-            };
+            return RoomHeader::Unknown;
         };
 
         let sidebar_state = self.sidebar_state.get();
-        let name = find_room_name_in_nodes(&sidebar_state.servers, &active_room_id)
-            .or_else(|| find_room_name_in_nodes(&sidebar_state.orphaned_rooms, &active_room_id))
-            .or_else(|| find_room_name_in_nodes(&sidebar_state.dms, &active_room_id))
-            .unwrap_or("Unknown Room".to_string());
+        let Some(node) = find_node_in_nodes(&sidebar_state.servers, &active_room_id) else {
+            return RoomHeader::Unknown;
+        };
 
-        RoomHeader::Channel { name }
+        RoomHeader::Channel(node.clone())
     }
 }
 
-fn find_room_name_in_nodes(nodes: &[RoomNode], room_id: &str) -> Option<String> {
+fn find_node_in_nodes<'a>(nodes: &'a [RoomNode], room_id: &str) -> Option<&'a RoomNode> {
     for node in nodes {
         if node.room_id == room_id {
-            return Some(
-                node.name
-                    .clone()
-                    .unwrap_or_else(|| "Unknown Room".to_string()),
-            );
+            return Some(node);
         }
 
         if let RoomKind::Space { children } = &node.kind {
-            if let Some(name) = find_room_name_in_nodes(children, room_id) {
-                return Some(name);
+            if let Some(found) = find_node_in_nodes(children, room_id) {
+                return Some(found);
             }
         }
     }

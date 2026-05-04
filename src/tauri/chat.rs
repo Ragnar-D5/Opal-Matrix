@@ -771,16 +771,13 @@ fn TimeLine() -> impl IntoView {
 }
 
 #[component]
-fn ChatHeader(
-    room_header: Memo<RoomHeader>,
-    set_chat_sidebar_open: WriteSignal<bool>,
-) -> impl IntoView {
+fn ChatHeader(header: Memo<RoomHeader>, set_chat_sidebar_open: WriteSignal<bool>) -> impl IntoView {
     let member_store: MemberStore = expect_context();
 
     view! {
         <FloatingTile class="h-12 items-start flex-row gap-1 pl-1">
             <div class="w-10 self-center flex items-center justify-center">
-                {move || match room_header.get() {
+                {move || match header.get() {
                     RoomHeader::Channel { .. } => view! {
                         <div class="w-8 text-end">
                             <span class="text-lg text-bright self-center align-middle">"#"</span>
@@ -795,19 +792,29 @@ fn ChatHeader(
                                 {profile.render_icon(32)}
                             </PresenceBadge>
                         }
+                    }.into_any(),
+                    RoomHeader::Unknown => view! {
+                        <div class="w-8 text-end">
+                            <span class="text-lg text-bright self-center align-middle">"?"</span>
+                        </div>
                     }.into_any()
                 }}
             </div>
             <div class="flex-1 flex flex-col self-center text-bright text-m font-semibold">
-                {move || match room_header.get() {
-                    RoomHeader::Channel { name } => view! {
+                {move || match header.get() {
+                    RoomHeader::Channel(node) => view! {
                         <span>
-                            {name}
+                            {node.name}
                         </span>
                     }.into_any(),
                     RoomHeader::DM(profile) => {
                         let profile = profile.get();
                         profile.render_name(16)
+                    }.into_any(),
+                    RoomHeader::Unknown => view! {
+                        <span>
+                            "Unknown Room"
+                        </span>
                     }.into_any()
                 }}
             </div>
@@ -837,7 +844,7 @@ pub fn Chat() -> impl IntoView {
 
     view! {
         <div class="flex-1 h-full flex gap-[var(--gap)] flex-col overflow-hidden">
-            <ChatHeader room_header=header set_chat_sidebar_open=set_chat_sidebar_open />
+            <ChatHeader header=header set_chat_sidebar_open=set_chat_sidebar_open />
             <div class=move || {
                 let gap_class = if chat_sidebar_open.get() {
                     "gap-[var(--gap)]"
@@ -862,17 +869,87 @@ pub fn Chat() -> impl IntoView {
                     class="flex-shrink-0 origin-right overflow-hidden transition-all duration-200 ease-out"
                     style=move || {
                         if chat_sidebar_open.get() {
-                            "width: 16rem; transform: scaleX(1); opacity: 1; pointer-events: auto;"
+                            "width: 16rem; transform: scaleX(1); pointer-events: auto;"
                         } else {
-                            "width: 0rem; transform: scaleX(0); opacity: 0; pointer-events: none;"
+                            "width: 0rem; transform: scaleX(0); pointer-events: none;"
                         }
                     }
                 >
-                    <FloatingTile class="w-full h-full">
-                        "Sidebar content goes here"
-                    </FloatingTile>
+                    <div
+                        class="h-full transition-opacity duration-200 ease-out"
+                        style=move || {
+                            if chat_sidebar_open.get() {
+                                "opacity: 1;"
+                            } else {
+                                "opacity: 0;"
+                            }
+                        }
+                    >
+                        <FloatingTile class="w-full h-full">
+                            <ChatInfo header=header />
+                        </FloatingTile>
+                    </div>
                 </div>
             </div>
+        </div>
+    }
+}
+
+#[component]
+fn ChatInfo(header: Memo<RoomHeader>) -> impl IntoView {
+    view! {
+        <div class="flex flex-col w-full overflow-hidden">
+            {move || match header.get() {
+                RoomHeader::DM(profile) => {
+                    let profile = profile.get();
+                    let p_clone = profile.clone();
+                    let banner_color = profile.get_user_color().to_css_string();
+
+                    let members: MemberStore = expect_context();
+                    let presence = members.get_presence(&profile.user_id);
+
+                    let banner_height = 80;
+                    let icon_size = 80;
+                    let icon_radius = icon_size / 2;
+                    let ring_width = 6;
+                    let left_offset = 16;
+
+                    let cutout_radius = icon_radius + ring_width;
+
+                    let cx = left_offset + icon_radius;
+                    let cy = banner_height;
+
+                    let banner_mask = format!(
+                        "-webkit-mask-image: radial-gradient(circle {cutout_radius}px at {cx}px {cy}px, transparent 100%, black 100%); \
+                         mask-image: radial-gradient(circle {cutout_radius}px at {cx}px {cy}px, transparent 100%, black 100%); \
+                         -webkit-mask-composite: destination-out; \
+                         mask-composite: exclude;"
+                    );
+
+                    view! {
+                        <div class="relative flex flex-col w-full">
+                            <div
+                                class="h-20 w-full"
+                                style=format!("background-color: {banner_color}; {banner_mask}")
+                            ></div>
+
+                            <div class="absolute top-10 left-4">
+                                <PresenceBadge presence=presence>
+                                    {profile.render_icon(icon_size)}
+                                </PresenceBadge>
+                            </div>
+
+                            <div class="px-4 pt-14 pb-6">
+                                <h2 class="text-xl font-bold text-bright">
+                                    {p_clone.render_name(16)}
+                                </h2>
+                                <p class="text-sm text-muted">"Direct Message"</p>
+                            </div>
+                        </div>
+                    }.into_any()
+                },
+                _ => view! { <div class="px-4 py-4">"..."</div> }.into_any()
+            }}
         </div>
     }
 }
