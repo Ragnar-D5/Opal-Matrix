@@ -46,19 +46,15 @@ pub fn PresenceBadge(
     let radius = size_px / 2.0;
     let smooth_radius = radius + 0.5;
     let cutout_offset = size_px * 5.0 / 16.0;
+    let badge_shift = size_px * 1.0 / 16.0;
 
     let mask_style = format!(
         "-webkit-mask: radial-gradient(circle at calc(100% - {cutout_offset}px) calc(100% - {cutout_offset}px), transparent {radius}px, black {smooth_radius}px); \
             mask: radial-gradient(circle at calc(100% - {cutout_offset}px) calc(100% - {cutout_offset}px), transparent {radius}px, black {smooth_radius}px);"
     );
 
-    let badge_offset = size_px * 3.0 / 16.0;
-
     view! {
-        <div
-            class="relative inline-flex shrink-0"
-            style=format!("padding-right: {badge_offset}px; padding-bottom: {badge_offset}px;")
-        >
+        <div class="relative inline-flex shrink-0">
             <div class=format!("w-full h-full {class}") style=mask_style>
                 {children()}
             </div>
@@ -66,7 +62,7 @@ pub fn PresenceBadge(
             <div
                 class="absolute flex items-center justify-center text-white text-[12px] font-extrabold rounded-full"
                 style=format!(
-                    "width: {size_px}px; height: {size_px}px; bottom: 0; right: 0;"
+                    "width: {size_px}px; height: {size_px}px; bottom: -{}px; right: -{}px;", 3.0 * badge_shift, 3.0 * badge_shift
                 )
             >
                 {svg}
