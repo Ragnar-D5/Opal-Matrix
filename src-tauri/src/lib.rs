@@ -386,9 +386,38 @@ pub enum TauriError {
     Wrap(String),
 }
 
+trait AsInfo {
+    fn as_info(self) -> TauriError;
+}
+
+impl<T> AsInfo for T
+where
+    T: ToString,
+{
+    fn as_info(self) -> TauriError {
+        TauriError::as_info(self.to_string())
+    }
+}
+
 impl TauriError {
     pub fn silent() -> Self {
         Self::Wrap("No error occurred".to_string())
+    }
+
+    pub fn as_info<T: ToString>(value: T) -> Self {
+        let val = value.to_string();
+        let location = std::panic::Location::caller();
+
+        log::logger().log(
+            &log::Record::builder()
+                .args(format_args!("{}", val))
+                .level(log::Level::Info)
+                .target(module_path!())
+                .file(Some(location.file()))
+                .line(Some(location.line()))
+                .build(),
+        );
+        Self::Wrap(val)
     }
 }
 
