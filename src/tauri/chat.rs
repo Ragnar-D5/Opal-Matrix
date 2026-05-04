@@ -898,7 +898,7 @@ pub fn Chat() -> impl IntoView {
 #[component]
 fn ChatInfo(header: Memo<RoomHeader>) -> impl IntoView {
     view! {
-        <div class="flex flex-col w-full overflow-hidden">
+        <div class="flex flex-col w-full overflow-visible">
             {move || match header.get() {
                 RoomHeader::DM(profile) => {
                     let profile = profile.get();
@@ -908,8 +908,8 @@ fn ChatInfo(header: Memo<RoomHeader>) -> impl IntoView {
                     let members: MemberStore = expect_context();
                     let presence = members.get_presence(&profile.user_id);
 
-                    let banner_height = 80;
-                    let icon_size = 80;
+                    let banner_height = 108;
+                    let icon_size = 70;
                     let icon_radius = icon_size / 2;
                     let ring_width = 6;
                     let left_offset = 16;
@@ -929,17 +929,17 @@ fn ChatInfo(header: Memo<RoomHeader>) -> impl IntoView {
                     view! {
                         <div class="relative flex flex-col w-full">
                             <div
-                                class="h-20 w-full"
+                                class="h-30 w-full"
                                 style=format!("background-color: {banner_color}; {banner_mask}")
                             ></div>
 
-                            <div class="absolute top-10 left-4">
-                                <PresenceBadge presence=presence>
+                            <div class="absolute top-[73px] left-4">
+                                <PresenceBadge presence=presence size=25.0>
                                     {profile.render_icon(icon_size)}
                                 </PresenceBadge>
                             </div>
 
-                            <div class="px-4 pt-14 pb-6">
+                            <div class="px-2 pt-10 pb-6">
                                 <h2 class="text-xl font-bold text-bright">
                                     {p_clone.render_name(16)}
                                 </h2>
