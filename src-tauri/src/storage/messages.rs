@@ -368,11 +368,9 @@ impl TryInto<UiMessage> for MessageRow {
                 content: MessageContent::Encrypted,
             }),
             "org.matrix.msc3401.call.member" => {
-                // If the content object is empty, the user has left the call.
                 if content.as_object().map_or(true, |obj| obj.is_empty()) {
                     MessageKind::SystemMessage(SystemMessage::CallLeft)
                 } else {
-                    // If it has data, they joined. We can grab the intent to see if it's voice or video.
                     let intent = content
                         .get("m.call.intent")
                         .and_then(|v| v.as_str())

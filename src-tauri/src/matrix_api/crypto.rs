@@ -499,7 +499,6 @@ pub async fn set_room_keys(
     token: &String,
     recovery_key: &String,
 ) -> Result<(), TauriError> {
-    // Get the key version
     let version;
 
     let client = Client::new();
@@ -531,7 +530,6 @@ pub async fn set_room_keys(
         return Err(format!("Web request failed: {}", res.status()).into());
     }
 
-    // Get the key from account data
     let res = get_account_data(
         token,
         matrix_url,
@@ -567,7 +565,6 @@ pub async fn set_room_keys(
     let backup_private_key_b64 =
         decrypt_ssss_aes_hmac_sha2(recovery_key, "m.megolm_backup.v1", ciphertext, iv, mac)?;
 
-    // Get the encrypted keys
     let url = construct_url(vec![
         matrix_url,
         "_matrix",
@@ -662,7 +659,6 @@ pub fn decrypt_ssss_aes_hmac_sha2(
 ) -> Result<String, TauriError> {
     let clean_key = recovery_key_base58.replace(" ", "");
 
-    // 1) Decode Base58 Recovery Key
     let decoded_base58 = bs58::decode(clean_key).into_vec()?;
     let ssss_key = match decoded_base58.len() {
         35 => &decoded_base58[2..34], // Matrix keys have a 2-byte prefix and 1-byte suffix
@@ -670,7 +666,6 @@ pub fn decrypt_ssss_aes_hmac_sha2(
         _ => return Err("Invalid Matrix recovery key length".into()),
     };
 
-    // Decode Base64 inputs
     let ciphertext = b64.decode(ciphertext_b64)?;
     let iv = b64.decode(iv_b64)?;
     let expected_mac = b64.decode(mac_b64)?;
@@ -679,7 +674,6 @@ pub fn decrypt_ssss_aes_hmac_sha2(
         return Err("IV must be exactly 16 bytes".into());
     }
 
-    // 2) HKDF-SHA256 derivation
     let mut okm = [0u8; 64];
     Hkdf::<Sha256>::new(None, ssss_key)
         .expand(event_type.as_bytes(), &mut okm)
@@ -687,7 +681,6 @@ pub fn decrypt_ssss_aes_hmac_sha2(
 
     let (aes_key, hmac_key) = okm.split_at(32);
 
-    // 3) Verify MAC
     let mut mac_verifier = Hmac::<Sha256>::new_from_slice(hmac_key)?;
     mac_verifier.update(&ciphertext);
     mac_verifier
@@ -696,10 +689,8 @@ pub fn decrypt_ssss_aes_hmac_sha2(
 
     let mut cipher = Ctr64BE::<Aes256>::new_from_slices(aes_key, &iv)
         .map_err(|_| "Invalid AES key or IV length")?;
-    // 4) AES-CTR Decrypt
     let mut plaintext = ciphertext.clone();
     cipher.apply_keystream(&mut plaintext);
 
-    // 5) Return UTF-8
     Ok(String::from_utf8(plaintext)?)
 }
