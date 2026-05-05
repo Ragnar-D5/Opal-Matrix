@@ -411,8 +411,8 @@
   .w-65 {
     width: calc(var(--spacing) * 65);
   }
-  .w-\[16rem\] {
-    width: 16rem;
+  .w-\[20rem\] {
+    width: 20rem;
   }
   .w-\[28px\] {
     width: 28px;

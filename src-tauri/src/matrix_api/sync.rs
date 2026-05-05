@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use log::{info, trace, warn};
 use ruma::events::presence::PresenceEventContent;
@@ -11,6 +12,7 @@ use tauri::{AppHandle, Emitter};
 use tauri_plugin_http::reqwest::{self, Client};
 
 use crate::frontend::{send_member_update, send_sidebar_update};
+use crate::matrix_api::handle_sync_calls;
 use crate::matrix_api::rooms::backfill_gap;
 use crate::storage::members::MemberRow;
 use crate::storage::messages::MessageRow;
@@ -189,7 +191,7 @@ async fn run_sync_loop(
     Ok(())
 }
 
-use crate::storage::{self, SyncChanges};
+use crate::storage::{self, SyncChanges, apply_sync_changes, handle_safe_stuff};
 
 fn convert_presence(presence: PresenceEventContent) -> PresenceInfo {
     let status = match presence.presence {
@@ -212,7 +214,7 @@ use ruma::events::{
     AnySyncEphemeralRoomEvent, AnySyncMessageLikeEvent, AnySyncStateEvent, AnySyncTimelineEvent,
 };
 async fn handle_sync_response(
-    state: &std::sync::Arc<AppState>,
+    state: &Arc<AppState>,
     handle: &AppHandle,
     response: SyncResponse,
 ) -> Result<(), TauriError> {
@@ -362,7 +364,11 @@ async fn handle_sync_response(
             .as_mut()
             .ok_or("Database connection not initialized")?;
 
-        storage::apply_sync_changes(conn, changes.clone()).await?;
+        let (token, matrix_url) = state.get_api().await?;
+
+        let res = apply_sync_changes(conn, changes.clone()).await?;
+        let stuff = handle_sync_calls(&token, &matrix_url, res).await?;
+        handle_safe_stuff(conn, stuff).await?;
 
         let client_guard = state.client.read().await;
         let client = client_guard.as_ref().ok_or("Client info not initialized")?;

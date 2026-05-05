@@ -8,6 +8,7 @@ use crate::{
     AppState,
     matrix_api::crypto::process_message,
     storage::{
+        members::{MemberRow, MembershipState},
         messages::{MessageRow, get_messages, save_messages},
         rooms::save_prev_token,
     },
@@ -288,4 +289,63 @@ pub async fn backfill_gap(
     }
 
     Ok(())
+}
+
+pub async fn get_members_api(
+    token: &String,
+    matrix_url: &String,
+    room_id: String,
+) -> Result<Vec<MemberRow>, TauriError> {
+    let url = construct_url(vec![
+        matrix_url,
+        "_matrix",
+        "client",
+        "v3",
+        "rooms",
+        &room_id,
+        "joined_members",
+    ])?;
+
+    let client = Client::new();
+    let res = client.get(url).bearer_auth(token).send().await?;
+
+    if res.status().is_success() {
+        let val: Value = res.json().await?;
+
+        let Some(joined) = val.get("joined") else {
+            return Err("No joined field".into());
+        };
+
+        let mut members = Vec::new();
+
+        for (user_id, info) in joined.as_object().unwrap() {
+            let display_name = info
+                .get("display_name")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let avatar_url = info
+                .get("avatar_url")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+
+            members.push(MemberRow {
+                room_id: room_id.clone(),
+                user_id: user_id.clone(),
+                display_name,
+                avatar_url,
+                membership: MembershipState::Join,
+            });
+        }
+
+        Ok(members)
+    } else {
+        return Err(format!(
+            "Failed to fetch members: HTTP {}: {}",
+            res.status(),
+            res.text()
+                .await
+                .unwrap_or_else(|_| "No response body".to_string())
+        )
+        .into());
+    }
 }

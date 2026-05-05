@@ -379,6 +379,39 @@ impl AppState {
 
         Ok(())
     }
+
+    pub async fn get_api(self: &Arc<Self>) -> Result<(String, String), TauriError> {
+        let token = self.check_token().await?;
+
+        let matrix_url = {
+            let url_guard = self.matrix_url.read().await;
+            url_guard.as_ref().ok_or("Not logged in")?.clone()
+        };
+
+        Ok((token, matrix_url))
+    }
+
+    pub async fn get_api_with_url<T>(
+        self: &Arc<Self>,
+        parts: Vec<T>,
+    ) -> Result<(String, Url), TauriError>
+    where
+        T: AsRef<str>,
+    {
+        let token = self.check_token().await?;
+        let matrix_url = {
+            let url_guard = self.matrix_url.read().await;
+            url_guard.as_ref().ok_or("Not logged in")?.clone()
+        };
+
+        let all_parts: Vec<String> = std::iter::once(matrix_url)
+            .chain(parts.into_iter().map(|s| s.as_ref().to_string()))
+            .collect();
+
+        let url = construct_url(all_parts)?;
+
+        Ok((token, url))
+    }
 }
 
 #[derive(serde::Serialize)]
@@ -623,6 +656,7 @@ pub fn run() {
             matrix_api::account_data::get_account_data,
             matrix_api::account_data::get_breadcrumbs,
             matrix_api::account_data::get_server_order,
+            storage::members::get_members_for_room,
             storage::receipts::get_receipt,
         ])
         .register_asynchronous_uri_scheme_protocol(

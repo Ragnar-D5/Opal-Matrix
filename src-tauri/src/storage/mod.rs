@@ -1,3 +1,4 @@
+use log::info;
 use shared::user_profile::UserProfile;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -66,17 +67,38 @@ pub struct SyncChanges {
     pub space_parents: Vec<SpaceParentRow>,
 }
 
+pub struct SyncCallsToExecute {
+    pub get_members: Vec<OwnedRoomId>,
+}
+
+#[derive(Default)]
+pub struct SafeStuff {
+    pub memberships: Vec<MemberRow>,
+}
+
 pub async fn apply_sync_changes(
     conn: &mut Connection,
     changes: SyncChanges,
-) -> Result<(), TauriError> {
+) -> Result<SyncCallsToExecute, TauriError> {
+    let mut new_rooms = Vec::new();
+
     let tx = conn.transaction()?;
 
+    let mut stmt_room_exists = tx.prepare("SELECT room_id FROM rooms WHERE room_id = ?")?;
     let mut stmt_ensure_rooms = tx.prepare("INSERT OR IGNORE INTO rooms (room_id) VALUES (?)")?;
 
     for room_id in &changes.joined_rooms {
+        let exists: bool = stmt_room_exists
+            .query_row(params![room_id.to_string()], |_| Ok(()))
+            .is_ok();
+
+        if !exists {
+            new_rooms.push(room_id.clone());
+        }
+
         stmt_ensure_rooms.execute(params![room_id.to_string()])?;
     }
+    drop(stmt_room_exists);
     drop(stmt_ensure_rooms);
 
     let mut stmt_space_children = tx.prepare(
@@ -236,7 +258,9 @@ pub async fn apply_sync_changes(
 
     tx.commit()?;
 
-    Ok(())
+    Ok(SyncCallsToExecute {
+        get_members: new_rooms,
+    })
 }
 
 pub fn fetch_sidebar(
@@ -416,4 +440,29 @@ pub async fn get_members(
     }
 
     Ok(members)
+}
+
+pub async fn handle_safe_stuff(conn: &mut Connection, stuff: SafeStuff) -> Result<(), TauriError> {
+    let tx = conn.transaction()?;
+
+    let mut stmt_members = tx.prepare(
+        "INSERT INTO members (room_id, user_id, display_name, avatar_url, membership)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(room_id, user_id) DO UPDATE SET
+            display_name = excluded.display_name,
+            avatar_url = excluded.avatar_url,
+            membership = excluded.membership",
+    )?;
+
+    for member in stuff.memberships {
+        stmt_members.execute(params![
+            member.room_id,
+            member.user_id,
+            member.display_name,
+            member.avatar_url,
+            member.membership
+        ])?;
+    }
+
+    Ok(())
 }

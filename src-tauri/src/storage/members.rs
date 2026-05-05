@@ -1,10 +1,11 @@
-use std::fmt::Debug;
+use std::{fmt::Debug, sync::Arc};
 
-use crate::TauriError;
+use crate::{AppState, TauriError};
 
 use super::DataBaseModel;
 use ruma::events::room::member::MembershipState as RumaMembershipState;
 use rusqlite::{Connection, ToSql, types::FromSql};
+use tauri::{State, command};
 
 #[derive(Debug, Clone)]
 pub enum MembershipState {
@@ -97,4 +98,22 @@ pub fn get_other_member_in_dm(
     } else {
         None
     }
+}
+
+#[command(rename_all = "snake_case")]
+pub async fn get_members_for_room(
+    state: State<'_, Arc<AppState>>,
+    room_id: String,
+) -> Result<Vec<String>, TauriError> {
+    let mut conn_guard = state.connection.lock().await;
+    let conn = conn_guard
+        .as_mut()
+        .ok_or("Database connection not available")?;
+
+    let mut stmt = conn.prepare("SELECT user_id FROM members WHERE room_id = ?")?;
+
+    let member_iter = stmt.query_map(rusqlite::params![room_id], |row| Ok(row.get(0)?))?;
+
+    let members = member_iter.filter_map(Result::ok).collect();
+    Ok(members)
 }

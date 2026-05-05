@@ -10,12 +10,13 @@ use chrono::{DateTime, Local, NaiveDate, TimeZone};
 use leptos::html::Div;
 use leptos::task::spawn_local;
 use leptos::{leptos_dom::logging::console_error, prelude::*};
-use leptos_use::{use_intersection_observer, use_toggle, UseIntersectionObserverReturn};
+use leptos_use::{use_intersection_observer, UseIntersectionObserverReturn};
 use serde::Serialize;
 use shared::messages::{
     MembershipAction, MessageContent, MessageKind, Reaction, SystemMessage, UiMessage, UserMessage,
 };
 use shared::sidebar::{RoomKind, RoomNode, SidebarState};
+use shared::user_profile::UserProfile;
 
 use crate::components::user_profile::UserProfileExt;
 
@@ -840,7 +841,7 @@ pub fn Chat() -> impl IntoView {
         move |_| state.get_room_header(member_store.clone())
     });
 
-    let (chat_sidebar_open, set_chat_sidebar_open) = signal(false);
+    let (chat_sidebar_open, set_chat_sidebar_open) = signal(true);
 
     view! {
         <div class="flex-1 h-full flex gap-[var(--gap)] flex-col overflow-hidden">
@@ -855,7 +856,7 @@ pub fn Chat() -> impl IntoView {
                     />
                 </FloatingTile>
                 <Show when=move || chat_sidebar_open.get()>
-                    <div class="flex-shrink-0 h-full w-[16rem] ml-[var(--gap)]">
+                    <div class="flex-shrink-0 h-full w-[20rem] ml-[var(--gap)]">
                         <FloatingTile class="w-full h-full overflow-hidden">
                             <ChatInfo header=header />
                         </FloatingTile>
@@ -868,6 +869,8 @@ pub fn Chat() -> impl IntoView {
 
 #[component]
 fn ChatInfo(header: Memo<RoomHeader>) -> impl IntoView {
+    let state: AppState = expect_context();
+
     view! {
         <div class="flex flex-col w-full overflow-visible">
             {move || match header.get() {
@@ -919,8 +922,78 @@ fn ChatInfo(header: Memo<RoomHeader>) -> impl IntoView {
                         </div>
                     }.into_any()
                 },
+                RoomHeader::Channel(..) => view! {
+                    <MemberList room_id=state.active_room_id />
+                    <span>Test</span>
+                }.into_any(),
                 _ => view! { <div class="px-4 py-4">"..."</div> }.into_any()
             }}
+        </div>
+    }
+}
+
+#[derive(Serialize)]
+struct MembersForRoom {
+    room_id: String,
+}
+
+#[component]
+fn MemberList(room_id: RwSignal<Option<String>>) -> impl IntoView {
+    let member_store: MemberStore = expect_context();
+    let store_clone = member_store.clone();
+
+    let members = LocalResource::new(move || {
+        let room_id = room_id.get().unwrap_or_default();
+        let store = store_clone.clone();
+
+        async move {
+            let args = serde_wasm_bindgen::to_value(&MembersForRoom {
+                room_id: room_id.clone(),
+            })
+            .expect("Failed to serialize members request");
+
+            match call_tauri("get_members_for_room", args).await {
+                Ok(js_val) => match serde_wasm_bindgen::from_value::<Vec<String>>(js_val) {
+                    Ok(members) => members
+                        .iter()
+                        .map(|user_id| store.get_profile(&room_id, user_id))
+                        .collect(),
+                    Err(e) => {
+                        console_error(&format!("Failed to parse members response: {:?}", e));
+                        Vec::new()
+                    }
+                },
+                Err(e) => {
+                    console_error(&format!("Tauri get_members_for_room call failed: {:?}", e));
+                    Vec::new()
+                }
+            }
+        }
+    });
+
+    view! {
+        <div class="flex flex-col gap-2 p-3">
+            <For
+                each=move || members.get().unwrap_or_default()
+                key=|member| member.get().user_id.clone()
+                children=move |member| {
+                    let member = member.get();
+
+                    let presence = member_store.get_presence(&member.user_id);
+                    let clone = member.clone();
+
+                    view! {
+                        <div class="flex items-center gap-2">
+                            <PresenceBadge presence=presence>
+                                {member.render_icon(24)}
+                            </PresenceBadge>
+                            <span class="text-bright">
+                                {clone.render_name(16)}
+                            </span>
+                        </div>
+                    }
+                }
+            />
         </div>
     }
 }
