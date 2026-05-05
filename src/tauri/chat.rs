@@ -910,7 +910,7 @@ fn ChatInfo(header: Memo<RoomHeader>) -> impl IntoView {
                                 </PresenceBadge>
                             </div>
 
-                            <div class="px-2 pt-10 pb-6">
+                            <div class="px-4 pt-10 pb-6">
                                 <h2 class="text-xl font-bold text-bright">
                                     {p_clone.render_name(16)}
                                 </h2>
