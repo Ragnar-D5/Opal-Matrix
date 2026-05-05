@@ -289,6 +289,9 @@
   .ml-\[52px\] {
     margin-left: 52px;
   }
+  .ml-\[var\(--gap\)\] {
+    margin-left: var(--gap);
+  }
   .ml-auto {
     margin-left: auto;
   }
@@ -408,6 +411,9 @@
   .w-65 {
     width: calc(var(--spacing) * 65);
   }
+  .w-\[16rem\] {
+    width: 16rem;
+  }
   .w-\[28px\] {
     width: 28px;
   }
@@ -443,9 +449,6 @@
   }
   .flex-grow {
     flex-grow: 1;
-  }
-  .origin-right {
-    transform-origin: 100%;
   }
   .-translate-y-1\/2 {
     --tw-translate-y: calc(calc(1 / 2 * 100%) * -1);
@@ -483,9 +486,6 @@
   }
   .justify-center {
     justify-content: center;
-  }
-  .gap-0 {
-    gap: calc(var(--spacing) * 0);
   }
   .gap-1 {
     gap: calc(var(--spacing) * 1);

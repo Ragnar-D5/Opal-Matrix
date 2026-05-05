@@ -845,18 +845,7 @@ pub fn Chat() -> impl IntoView {
     view! {
         <div class="flex-1 h-full flex gap-[var(--gap)] flex-col overflow-hidden">
             <ChatHeader header=header set_chat_sidebar_open=set_chat_sidebar_open />
-            <div class=move || {
-                let gap_class = if chat_sidebar_open.get() {
-                    "gap-[var(--gap)]"
-                } else {
-                    "gap-0"
-                };
-
-                format!(
-                    "flex flex-row h-full min-h-0 transition-all duration-200 {}",
-                    gap_class
-                )
-            }>
+            <div class="flex flex-row h-full min-h-0">
                 <FloatingTile class="flex-1 min-h-0, overflow-hidden">
                     <TimeLine/>
                     <input
@@ -865,31 +854,13 @@ pub fn Chat() -> impl IntoView {
                                class="w-full h-15 border-1 border-[var(--tile-border-color)] bg-[rgba(0, 0, 0, 1)] outline-none text-[var(--text-color)]"
                     />
                 </FloatingTile>
-                <div
-                    class="flex-shrink-0 origin-right overflow-hidden transition-all duration-200 ease-out"
-                    style=move || {
-                        if chat_sidebar_open.get() {
-                            "width: 16rem; transform: scaleX(1); pointer-events: auto;"
-                        } else {
-                            "width: 0rem; transform: scaleX(0); pointer-events: none;"
-                        }
-                    }
-                >
-                    <div
-                        class="h-full transition-opacity duration-200 ease-out"
-                        style=move || {
-                            if chat_sidebar_open.get() {
-                                "opacity: 1;"
-                            } else {
-                                "opacity: 0;"
-                            }
-                        }
-                    >
-                        <FloatingTile class="w-full h-full">
+                <Show when=move || chat_sidebar_open.get()>
+                    <div class="flex-shrink-0 h-full w-[16rem] ml-[var(--gap)]">
+                        <FloatingTile class="w-full h-full overflow-hidden">
                             <ChatInfo header=header />
                         </FloatingTile>
                     </div>
-                </div>
+                </Show>
             </div>
         </div>
     }
