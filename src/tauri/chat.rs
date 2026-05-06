@@ -787,9 +787,18 @@ fn ChatHeader(header: Memo<RoomHeader>, set_chat_sidebar_open: WriteSignal<bool>
                         let profile_sig = handle.profile;
 
                         view! {
-                            <PresenceBadge presence=presence>
-                                {move || profile_sig.get().render_icon(32)}
-                            </PresenceBadge>
+                            {move || {
+                                if let Some(profile) = profile_sig.get() {
+                                    let presence = presence.clone();
+                                    view! {
+                                        <PresenceBadge presence=presence>
+                                            {profile.render_icon(32)}
+                                        </PresenceBadge>
+                                    }.into_any()
+                                } else {
+                                    view! {}.into_any()
+                                }
+                            }}
                         }
                     }.into_any(),
                     RoomHeader::Unknown => view! {
@@ -911,9 +920,18 @@ fn ChatInfo(header: Memo<RoomHeader>) -> impl IntoView {
                             ></div>
 
                             <div class="absolute top-[73px] left-4">
-                                <PresenceBadge presence=presence size=25.0>
-                                    {move || profile_sig_icon.get().render_icon(icon_size as usize)}
-                                </PresenceBadge>
+                                {move || {
+                                    if let Some(profile) = profile_sig_icon.get() {
+                                        let presence = presence.clone();
+                                        view! {
+                                            <PresenceBadge presence=presence size=25.0>
+                                                {profile.render_icon(icon_size as usize)}
+                                            </PresenceBadge>
+                                        }.into_any()
+                                    } else {
+                                        view! {}.into_any()
+                                    }
+                                }}
                             </div>
 
                             <div class="px-4 pt-10 pb-6">
@@ -988,9 +1006,18 @@ fn MemberList(room_id: RwSignal<Option<String>>) -> impl IntoView {
 
                     view! {
                         <div class="flex items-center gap-2">
-                            <PresenceBadge presence=presence size=15.5>
-                                {move || profile_sig.get().render_icon(32)}
-                            </PresenceBadge>
+                            {move || {
+                                if let Some(profile) = profile_sig.get() {
+                                    let presence = presence.clone();
+                                    view! {
+                                        <PresenceBadge presence=presence size=15.5>
+                                            {profile.render_icon(32)}
+                                        </PresenceBadge>
+                                    }.into_any()
+                                } else {
+                                    view! {}.into_any()
+                                }
+                            }}
                             <span class="text-bright">
                                 {move || sig_clone.get().render_name(16)}
                             </span>
