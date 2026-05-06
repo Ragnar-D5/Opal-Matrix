@@ -882,20 +882,21 @@ fn ChatInfo(header: Memo<RoomHeader>) -> impl IntoView {
                     let members: MemberStore = expect_context();
                     let presence = members.get_presence(&profile.user_id);
 
-                    let banner_height = 108;
-                    let icon_size = 70;
-                    let icon_radius = icon_size / 2;
-                    let ring_width = 6;
-                    let left_offset = 16;
+                    let banner_height = 108.0;
+                    let icon_size = 70.0;
+                    let icon_radius = icon_size / 2.0;
+                    let ring_width = 6.0;
+                    let left_offset = 16.0;
 
                     let cutout_radius = icon_radius + ring_width;
+                    let smooth_cutout_radius = cutout_radius + 0.5;
 
                     let cx = left_offset + icon_radius;
                     let cy = banner_height;
 
                     let banner_mask = format!(
-                        "-webkit-mask-image: radial-gradient(circle {cutout_radius}px at {cx}px {cy}px, transparent 100%, black 100%); \
-                         mask-image: radial-gradient(circle {cutout_radius}px at {cx}px {cy}px, transparent 100%, black 100%); \
+                        "-webkit-mask-image: radial-gradient(circle at {cx}px {cy}px, transparent {cutout_radius}px, black {smooth_cutout_radius}px); \
+                         mask-image: radial-gradient(circle at {cx}px {cy}px, transparent {cutout_radius}px, black {smooth_cutout_radius}px); \
                          -webkit-mask-composite: destination-out; \
                          mask-composite: exclude;"
                     );
@@ -909,7 +910,7 @@ fn ChatInfo(header: Memo<RoomHeader>) -> impl IntoView {
 
                             <div class="absolute top-[73px] left-4">
                                 <PresenceBadge presence=presence size=25.0>
-                                    {profile.render_icon(icon_size)}
+                                    {profile.render_icon(icon_size as usize)}
                                 </PresenceBadge>
                             </div>
 
