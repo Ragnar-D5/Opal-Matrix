@@ -1,5 +1,6 @@
 use colorsys::Hsl;
 use leptos::prelude::*;
+use shared::user_profile::UserProfile;
 
 use super::TextCircle;
 
@@ -11,7 +12,7 @@ pub trait UserProfileExt {
     fn get_color(string: String) -> Hsl;
 }
 
-impl UserProfileExt for shared::user_profile::UserProfile {
+impl UserProfileExt for UserProfile {
     fn render_icon(self, size: usize) -> impl IntoView {
         let size_str = format!("{}px", size);
 
@@ -69,5 +70,26 @@ impl UserProfileExt for shared::user_profile::UserProfile {
         let hue = hash % 360;
 
         Hsl::new(hue as f64, 90.0, 70.0, None)
+    }
+}
+
+pub trait UserProfileMaybeExt {
+    fn render_icon(self, size: usize) -> impl IntoView;
+    fn render_name(self, font_size: usize) -> impl IntoView;
+}
+
+impl UserProfileMaybeExt for Option<UserProfile> {
+    fn render_icon(self, size: usize) -> impl IntoView {
+        match self {
+            Some(profile) => profile.render_icon(size).into_any(),
+            None => view! {}.into_any(),
+        }
+    }
+
+    fn render_name(self, font_size: usize) -> impl IntoView {
+        match self {
+            Some(profile) => profile.render_name(font_size).into_any(),
+            None => view! {}.into_any(),
+        }
     }
 }

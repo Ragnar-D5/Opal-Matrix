@@ -1,11 +1,10 @@
-use crate::state::RoomHeader;
+use crate::state::{AppState, MemberProfileHandle, MemberStore, RoomHeader};
 use std::collections::{HashMap, HashSet};
 
 use crate::app::call_tauri;
 use crate::components::presence::PresenceBadge;
 use crate::components::FloatingTile;
 use crate::hooks::use_tauri_event;
-use crate::state::{AppState, MemberStore};
 use chrono::{DateTime, Local, NaiveDate, TimeZone};
 use leptos::html::Div;
 use leptos::task::spawn_local;
@@ -17,7 +16,7 @@ use shared::messages::{
 };
 use shared::sidebar::{RoomKind, RoomNode, SidebarState};
 
-use crate::components::user_profile::UserProfileExt;
+use crate::components::user_profile::{UserProfileExt, UserProfileMaybeExt};
 
 #[derive(PartialEq, Clone)]
 struct TimelineMessageGroup {
@@ -264,7 +263,7 @@ impl TimelineItem {
             }
             .into_any(),
             TimelineItemKind::SystemMessage(sys_msg) => {
-                let display_name = profile_sig.get().display_name.unwrap_or(sender_id);
+                let display_name = profile_sig.get().unwrap_or_default().display_name.unwrap_or(sender_id);
 
                 let text = match sys_msg {
                     SystemMessage::RoomCreation => format!("{} created the room", display_name),
@@ -783,13 +782,13 @@ fn ChatHeader(header: Memo<RoomHeader>, set_chat_sidebar_open: WriteSignal<bool>
                             <span class="text-lg text-bright self-center align-middle">"#"</span>
                         </div>
                     }.into_any(),
-                    RoomHeader::DM(profile) => {
-                        let profile = profile.get();
-                        let presence = member_store.get_presence(&profile.user_id);
+                    RoomHeader::DM(handle) => {
+                        let presence = member_store.get_presence(&handle.user_id);
+                        let profile_sig = handle.profile;
 
                         view! {
                             <PresenceBadge presence=presence>
-                                {profile.render_icon(32)}
+                                {move || profile_sig.get().render_icon(32)}
                             </PresenceBadge>
                         }
                     }.into_any(),
@@ -807,9 +806,9 @@ fn ChatHeader(header: Memo<RoomHeader>, set_chat_sidebar_open: WriteSignal<bool>
                             {node.name}
                         </span>
                     }.into_any(),
-                    RoomHeader::DM(profile) => {
-                        let profile = profile.get();
-                        profile.render_name(16)
+                    RoomHeader::DM(handle) => {
+                        let profile_sig = handle.profile;
+                        view! { {move || profile_sig.get().render_name(16)} }.into_any()
                     }.into_any(),
                     RoomHeader::Unknown => view! {
                         <span>
@@ -873,13 +872,14 @@ fn ChatInfo(header: Memo<RoomHeader>) -> impl IntoView {
     view! {
         <div class="flex flex-col w-full overflow-visible">
             {move || match header.get() {
-                RoomHeader::DM(profile) => {
-                    let profile = profile.get();
-                    let p_clone = profile.clone();
-                    let banner_color = profile.get_user_color().to_css_string();
-
+                RoomHeader::DM(handle) => {
                     let members: MemberStore = expect_context();
-                    let presence = members.get_presence(&profile.user_id);
+                    let presence = members.get_presence(&handle.user_id);
+                    let profile_sig = handle.profile;
+                    let banner_color = profile_sig
+                        .get()
+                        .map(|profile| profile.get_user_color().to_css_string())
+                        .unwrap_or_else(|| "transparent".to_string());
 
                     let banner_height = 108.0;
                     let icon_size = 70.0;
@@ -900,6 +900,9 @@ fn ChatInfo(header: Memo<RoomHeader>) -> impl IntoView {
                          mask-composite: exclude;"
                     );
 
+                    let profile_sig_icon = profile_sig.clone();
+                    let profile_sig_name = profile_sig.clone();
+
                     view! {
                         <div class="relative flex flex-col w-full">
                             <div
@@ -909,13 +912,13 @@ fn ChatInfo(header: Memo<RoomHeader>) -> impl IntoView {
 
                             <div class="absolute top-[73px] left-4">
                                 <PresenceBadge presence=presence size=25.0>
-                                    {profile.render_icon(icon_size as usize)}
+                                    {move || profile_sig_icon.get().render_icon(icon_size as usize)}
                                 </PresenceBadge>
                             </div>
 
                             <div class="px-4 pt-10 pb-6">
                                 <h2 class="text-xl font-bold text-bright">
-                                    {p_clone.render_name(16)}
+                                    {move || profile_sig_name.get().render_name(16)}
                                 </h2>
                                 <p class="text-sm text-muted">"Direct Message"</p>
                             </div>
@@ -955,7 +958,10 @@ fn MemberList(room_id: RwSignal<Option<String>>) -> impl IntoView {
                 Ok(js_val) => match serde_wasm_bindgen::from_value::<Vec<String>>(js_val) {
                     Ok(members) => members
                         .iter()
-                        .map(|user_id| store.get_profile(&room_id, user_id))
+                        .map(|user_id| MemberProfileHandle {
+                            user_id: user_id.clone(),
+                            profile: store.get_profile(&room_id, user_id),
+                        })
                         .collect(),
                     Err(e) => {
                         console_error(&format!("Failed to parse members response: {:?}", e));
@@ -974,17 +980,16 @@ fn MemberList(room_id: RwSignal<Option<String>>) -> impl IntoView {
         <div class="flex flex-col gap-2 p-3">
             <For
                 each=move || members.get().unwrap_or_default()
-                key=|member| member.with(|m| m.user_id.clone())
+                key=|member| member.user_id.clone()
                 children=move |member| {
-                    let member_sig = member;
-                    let user_id = member_sig.with_untracked(|m| m.user_id.clone());
-                    let presence = member_store.get_presence(&user_id);
-                    let sig_clone = member_sig.clone();
+                    let presence = member_store.get_presence(&member.user_id);
+                    let profile_sig = member.profile;
+                    let sig_clone = profile_sig.clone();
 
                     view! {
                         <div class="flex items-center gap-2">
                             <PresenceBadge presence=presence size=15.5>
-                                {move || member_sig.get().render_icon(32)}
+                                {move || profile_sig.get().render_icon(32)}
                             </PresenceBadge>
                             <span class="text-bright">
                                 {move || sig_clone.get().render_name(16)}

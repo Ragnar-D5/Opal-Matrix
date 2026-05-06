@@ -26,9 +26,15 @@ pub struct AppState {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct MemberProfileHandle {
+    pub user_id: String,
+    pub profile: ArcRwSignal<Option<UserProfile>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum RoomHeader {
     Channel(RoomNode),
-    DM(ArcRwSignal<UserProfile>),
+    DM(MemberProfileHandle),
     Unknown,
 }
 
@@ -120,7 +126,7 @@ impl AppState {
     pub fn get_active_profile(
         &self,
         member_store: MemberStore,
-    ) -> Option<ArcRwSignal<UserProfile>> {
+    ) -> Option<MemberProfileHandle> {
         let Some(current_room_id) = self.active_room_id.get() else {
             return None;
         };
@@ -137,7 +143,10 @@ impl AppState {
                     continue;
                 }
 
-                return Some(member_store.get_profile(&current_room_id, user_id));
+                return Some(MemberProfileHandle {
+                    user_id: user_id.clone(),
+                    profile: member_store.get_profile(&current_room_id, user_id),
+                });
             }
         }
 
@@ -180,7 +189,7 @@ fn find_node_in_nodes<'a>(nodes: &'a [RoomNode], room_id: &str) -> Option<&'a Ro
 
 #[derive(Default, Clone)]
 pub struct MemberStore {
-    pub rooms: RwSignal<HashMap<String, HashMap<String, ArcRwSignal<UserProfile>>>>,
+    pub rooms: RwSignal<HashMap<String, HashMap<String, ArcRwSignal<Option<UserProfile>>>>>,
     pub presences: RwSignal<HashMap<String, ArcRwSignal<PresenceInfo>>>,
 
     pub fetching: RwSignal<HashSet<String>>,
@@ -192,7 +201,11 @@ struct GetMembersArgs {
 }
 
 impl MemberStore {
-    pub fn get_profile(&self, room_id: &String, user_id: &String) -> ArcRwSignal<UserProfile> {
+    pub fn get_profile(
+        &self,
+        room_id: &String,
+        user_id: &String,
+    ) -> ArcRwSignal<Option<UserProfile>> {
         let existing_signal = self.rooms.with_untracked(|rooms| {
             rooms
                 .get(room_id)
@@ -204,11 +217,7 @@ impl MemberStore {
             return sig;
         }
 
-        let new_signal = ArcRwSignal::new(UserProfile {
-            user_id: user_id.clone(),
-            display_name: None,
-            avatar_url: None,
-        });
+        let new_signal = ArcRwSignal::new(None);
 
         self.rooms.update(|rooms| {
             rooms
@@ -246,9 +255,9 @@ impl MemberStore {
                             for (user_id, profile) in updates.into_iter() {
                                 let profile_signal = room_entry
                                     .entry(user_id.clone())
-                                    .or_insert_with(|| ArcRwSignal::new(profile.clone()));
+                                    .or_insert_with(|| ArcRwSignal::new(Some(profile.clone())));
 
-                                profile_signal.set(profile);
+                                profile_signal.set(Some(profile));
                             }
                         });
                         store.fetching.update(|f| {

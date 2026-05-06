@@ -73,7 +73,7 @@ pub fn App() -> impl IntoView {
                 for (user_id, profile) in users.iter() {
                     store_for_profiles
                         .get_profile(room_id, user_id)
-                        .set(profile.clone());
+                        .set(Some(profile.clone()));
                 }
             }
         }
