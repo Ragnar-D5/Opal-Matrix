@@ -974,20 +974,20 @@ fn MemberList(room_id: RwSignal<Option<String>>) -> impl IntoView {
         <div class="flex flex-col gap-2 p-3">
             <For
                 each=move || members.get().unwrap_or_default()
-                key=|member| member.get().user_id.clone()
+                key=|member| member.with(|m| m.user_id.clone())
                 children=move |member| {
-                    let member = member.get();
-
-                    let presence = member_store.get_presence(&member.user_id);
-                    let clone = member.clone();
+                    let member_sig = member;
+                    let user_id = member_sig.with_untracked(|m| m.user_id.clone());
+                    let presence = member_store.get_presence(&user_id);
+                    let sig_clone = member_sig.clone();
 
                     view! {
                         <div class="flex items-center gap-2">
                             <PresenceBadge presence=presence size=15.5>
-                                {member.render_icon(32)}
+                                {move || member_sig.get().render_icon(32)}
                             </PresenceBadge>
                             <span class="text-bright">
-                                {clone.render_name(16)}
+                                {move || sig_clone.get().render_name(16)}
                             </span>
                         </div>
                     }
