@@ -984,8 +984,8 @@ fn MemberList(room_id: RwSignal<Option<String>>) -> impl IntoView {
 
                     view! {
                         <div class="flex items-center gap-2">
-                            <PresenceBadge presence=presence>
-                                {member.render_icon(24)}
+                            <PresenceBadge presence=presence size=15.5>
+                                {member.render_icon(32)}
                             </PresenceBadge>
                             <span class="text-bright">
                                 {clone.render_name(16)}
