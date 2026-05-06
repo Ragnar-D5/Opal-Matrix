@@ -16,7 +16,6 @@ use shared::messages::{
     MembershipAction, MessageContent, MessageKind, Reaction, SystemMessage, UiMessage, UserMessage,
 };
 use shared::sidebar::{RoomKind, RoomNode, SidebarState};
-use shared::user_profile::UserProfile;
 
 use crate::components::user_profile::UserProfileExt;
 
@@ -115,7 +114,7 @@ impl TimelineItem {
 
                                 let content = match &msg.content {
                                     MessageContent::Text { text, is_edited } => view! {
-                                        <div class="text-normal leading-relaxed break-words">
+                                        <div class="text-normal leading-relaxed break-words cursor-text">
                                             {text.clone()}
                                             {if *is_edited {
                                                 view! { <span class="text-xs text-muted ml-2 italic">"(edited)"</span> }.into_any()
@@ -185,7 +184,7 @@ impl TimelineItem {
                                                 let name_sig = name_sig.clone();
                                                 view! {
                                                     <div class="flex items-baseline gap-2">
-                                                        <span class="text-bright truncate hover:underline cursor-pointer">
+                                                        <span class="text-bright truncate cursor-pointer">
                                                             {move || name_sig.get().render_name(16)}
                                                         </span>
                                                         <span class="text-muted text-xs">
@@ -925,7 +924,6 @@ fn ChatInfo(header: Memo<RoomHeader>) -> impl IntoView {
                 },
                 RoomHeader::Channel(..) => view! {
                     <MemberList room_id=state.active_room_id />
-                    <span>Test</span>
                 }.into_any(),
                 _ => view! { <div class="px-4 py-4">"..."</div> }.into_any()
             }}

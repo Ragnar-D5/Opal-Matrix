@@ -347,6 +347,8 @@ fn HomePage() -> impl IntoView {
             --presence-offline-color: {presence_offline_color};
 
             background-color: {bg_color};
+            cursor: default;
+
             line-height: 22px",
         );
 

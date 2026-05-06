@@ -20,7 +20,7 @@ impl UserProfileExt for shared::user_profile::UserProfile {
         match &self.avatar_url {
             Some(url) => view! {
                 <img
-                    class="rounded-full object-cover bg-transparent block"
+                    class="rounded-full object-cover bg-transparent block select-none"
                     src=url
                     style:height=size_str.clone()
                     style:width=size_str
@@ -32,7 +32,7 @@ impl UserProfileExt for shared::user_profile::UserProfile {
                 <TextCircle
                     text=name
                     color_string=self.user_id.clone()
-                    class="rounded-full"
+                    class="rounded-full select-none"
                     style=format!("height: {}; width: {};", size_str, size_str)
                 />
             }
@@ -48,8 +48,8 @@ impl UserProfileExt for shared::user_profile::UserProfile {
         view! {
             <span
                 style:font-size=font_size_str
-                style:color=color
-                class="font-semibold"
+                style:color=color.clone()
+                class="font-semibold cursor-pointer hover:underline"
             >
                 {name.clone()}
             </span>
