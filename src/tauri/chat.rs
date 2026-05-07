@@ -71,25 +71,27 @@ fn render_span(span: RichTextSpan) -> impl IntoView {
         } => {
             let profile_sig = store.get_profile(&room_id, &user_id);
 
-            let colors = Memo::new(move |_| {
+            let color = Memo::new(move |_| {
                 let profile = profile_sig.get().unwrap_or_default();
-                let name_color = profile.get_user_color();
-                let mut bg_color = name_color.clone();
-                bg_color.set_alpha(0.1);
-
-                (name_color.to_css_string(), bg_color.to_css_string())
+                profile.get_user_color().to_css_string()
             });
 
             view! {
-                <span
-                    class="rounded cursor-pointer font-medium transition-colors px-1"
-                    style:color=move || colors.get().0
-                    style:background-color=move || colors.get().1
-                    title=user_id
-                >
-                    "@" {display_name}
-                </span>
-            }
+                    <span class="relative p-[2px] group cursor-pointer">
+                        <span
+                            class="absolute inset-0 rounded -z-10 opacity-10 group-hover:opacity-40 transition-opacity duration-200"
+                            style:background-color=move || color.get()
+                        />
+
+                        <span
+                            class="relative"
+                            style:color=move || color.get()
+                            title=user_id
+                        >
+                            "@" {display_name}
+                        </span>
+                    </span>
+                }
             .into_any()
         }
 
