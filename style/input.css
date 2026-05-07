@@ -1,12 +1,25 @@
 @import "tailwindcss";
 
-/*@font-face {*/
-/*font-family: "AppFont";*/
-/*src: url("/fonts/Comfortaa-VariableFont_wght.ttf") format("truetype");*/
-/*font-weight: 100 900;*/
-/*font-style: normal;*/
-/*font-display: block;*/
-/*}*/
+/*Define some vars*/
+:root {
+    --color-item-hover: rgba(200, 200, 255, 0.05);
+    --color-item-selected: rgba(255, 255, 255, 0.1);
+    --bg-color: #1e1e2e;
+    --floating-bg-color: rgba(0, 0, 0, 0.4);
+    --pill-border-color: rgba(255, 255, 255, 0.8);
+    --dim-text-color: hsl(220, 15%, 40%);
+    --text-color: hsl(220, 25%, 60%);
+    --bright-text-color: hsl(220, 25%, 70%);
+    --tile-border-color: rgba(255, 255, 255, 0.3);
+    --muted-text-color: hsl(220, 15%, 25%);
+    --gap: 5px;
+    --mention-color: rgb(255, 100, 100);
+    --presence-online-color: rgb(100, 255, 100);
+    --presence-idle-color: rgb(255, 255, 100);
+    --presence-busy-color: rgb(255, 100, 100);
+    --presence-offline-color: rgb(150, 150, 150);
+    --accent-color: #46aec5;
+}
 
 @theme {
     --font-sans: "AppFont", ui-sans-serif, system-ui, sans-serif;

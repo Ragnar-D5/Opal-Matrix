@@ -215,6 +215,9 @@
   .top-0 {
     top: calc(var(--spacing) * 0);
   }
+  .top-1 {
+    top: calc(var(--spacing) * 1);
+  }
   .top-1\/2 {
     top: calc(1 / 2 * 100%);
   }
@@ -232,6 +235,9 @@
   }
   .-bottom-0 {
     bottom: calc(var(--spacing) * -0);
+  }
+  .bottom-1 {
+    bottom: calc(var(--spacing) * 1);
   }
   .-left-1 {
     left: calc(var(--spacing) * -1);
@@ -259,9 +265,6 @@
   }
   .z-50 {
     z-index: 50;
-  }
-  .-mx-3 {
-    margin-inline: calc(var(--spacing) * -3);
   }
   .mx-0\.5 {
     margin-inline: calc(var(--spacing) * 0.5);
@@ -667,6 +670,9 @@
   .bg-\[color\:var\(--color-item-selected\)\] {
     background-color: var(--color-item-selected);
   }
+  .bg-\[var\(--accent-color\)\] {
+    background-color: var(--accent-color);
+  }
   .bg-\[var\(--bg-color\)\] {
     background-color: var(--bg-color);
   }
@@ -751,9 +757,6 @@
   .px-2 {
     padding-inline: calc(var(--spacing) * 2);
   }
-  .px-3 {
-    padding-inline: calc(var(--spacing) * 3);
-  }
   .px-4 {
     padding-inline: calc(var(--spacing) * 4);
   }
@@ -763,8 +766,14 @@
   .py-0\.5 {
     padding-block: calc(var(--spacing) * 0.5);
   }
+  .py-2 {
+    padding-block: calc(var(--spacing) * 2);
+  }
   .py-2\.5 {
     padding-block: calc(var(--spacing) * 2.5);
+  }
+  .py-3 {
+    padding-block: calc(var(--spacing) * 3);
   }
   .py-4 {
     padding-block: calc(var(--spacing) * 4);
@@ -798,6 +807,9 @@
   }
   .pl-2 {
     padding-left: calc(var(--spacing) * 2);
+  }
+  .pl-4 {
+    padding-left: calc(var(--spacing) * 4);
   }
   .text-center {
     text-align: center;
@@ -1102,6 +1114,25 @@
       cursor: grabbing;
     }
   }
+}
+:root {
+  --color-item-hover: rgba(200, 200, 255, 0.05);
+  --color-item-selected: rgba(255, 255, 255, 0.1);
+  --bg-color: #1e1e2e;
+  --floating-bg-color: rgba(0, 0, 0, 0.4);
+  --pill-border-color: rgba(255, 255, 255, 0.8);
+  --dim-text-color: hsl(220, 15%, 40%);
+  --text-color: hsl(220, 25%, 60%);
+  --bright-text-color: hsl(220, 25%, 70%);
+  --tile-border-color: rgba(255, 255, 255, 0.3);
+  --muted-text-color: hsl(220, 15%, 25%);
+  --gap: 5px;
+  --mention-color: rgb(255, 100, 100);
+  --presence-online-color: rgb(100, 255, 100);
+  --presence-idle-color: rgb(255, 255, 100);
+  --presence-busy-color: rgb(255, 100, 100);
+  --presence-offline-color: rgb(150, 150, 150);
+  --accent-color: #46aec5;
 }
 @property --tw-translate-x {
   syntax: "*";

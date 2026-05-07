@@ -123,10 +123,7 @@ impl AppState {
         });
     }
 
-    pub fn get_active_profile(
-        &self,
-        member_store: MemberStore,
-    ) -> Option<MemberProfileHandle> {
+    pub fn get_active_profile(&self, member_store: MemberStore) -> Option<MemberProfileHandle> {
         let Some(current_room_id) = self.active_room_id.get() else {
             return None;
         };

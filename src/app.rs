@@ -311,45 +311,9 @@ fn HomePage() -> impl IntoView {
         });
     };
 
-    let color_item_hover = "rgba(200, 200, 255, 0.05)";
-    let color_item_selected = "rgba(255, 255, 255, 0.1)";
-    let bg_color = "#1e1e2e";
-    let floating_bg_color = "rgba(0, 0, 0, 0.4)";
-    let pill_border_color = "rgba(255, 255, 255, 0.8)";
-    let dim_text_color = "hsl(220, 15%, 40%)";
-    let text_color = "hsl(220, 25%, 60%)";
-    let bright_text_color = "hsl(220, 25%, 70%)";
-    // let tile_border_color = "rgba(30, 30, 30, 1)";
-    let tile_border_color = "rgba(255, 255, 255, 0.3)";
-    let muted_text_color = "hsl(220, 15%, 25%)";
-    let gap = "5px";
-    let mention_color = "rgb(255, 100, 100)";
-    let presence_online_color = "rgb(100, 255, 100)";
-    let presence_idle_color = "rgb(255, 255, 100)";
-    let presence_busy_color = "rgb(255, 100, 100)";
-    let presence_offline_color = "rgb(150, 150, 150)";
-
     let root_css_vars = move || {
         let base = format!(
-            "--color-item-hover: {color_item_hover};
-            --color-item-selected: {color_item_selected};
-            --bg-color: {bg_color};
-            --floating-bg-color: {floating_bg_color};
-            --pill-border-color: {pill_border_color};
-            --dim-text-color: {dim_text_color};
-            --text-color: {text_color};
-            --bright-text-color: {bright_text_color};
-            --tile-border-color: {tile_border_color};
-            --muted-text-color: {muted_text_color};
-            --gap: {gap};
-            --mention-color: {mention_color};
-
-            --presence-online-color: {presence_online_color};
-            --presence-idle-color: {presence_idle_color};
-            --presence-busy-color: {presence_busy_color};
-            --presence-offline-color: {presence_offline_color};
-
-            background-color: {bg_color};
+            "background-color: var(--bg-color);
             cursor: default;
 
             line-height: 22px",

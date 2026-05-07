@@ -6,15 +6,14 @@ use crate::components::presence::PresenceBadge;
 use crate::components::FloatingTile;
 use crate::hooks::use_tauri_event;
 use chrono::{DateTime, Local, NaiveDate, TimeZone};
-use colorsys::ColorAlpha;
 use leptos::html::Div;
 use leptos::task::spawn_local;
 use leptos::{leptos_dom::logging::console_error, prelude::*};
 use leptos_use::{use_intersection_observer, UseIntersectionObserverReturn};
 use serde::Serialize;
 use shared::messages::{
-    MembershipAction, MessageContent, MessageKind, Reaction, RichTextSpan, SystemMessage,
-    UiMessage, UserMessage,
+    MembershipAction, MessageContent, MessageKind, Reaction, RepliesTo, RichTextSpan,
+    SystemMessage, UiMessage, UserMessage,
 };
 use shared::sidebar::{RoomKind, RoomNode, SidebarState};
 use web_sys::{DomParser, MouseEvent, SupportedType};
@@ -61,7 +60,7 @@ fn render_span(span: RichTextSpan) -> impl IntoView {
 
     match span {
         RichTextSpan::Plain(text) => view! {
-            <span>{text}</span>
+            <span class="cursor-text">{text}</span>
         }
         .into_any(),
 
@@ -219,6 +218,48 @@ fn render_link(span: RichTextSpan) -> impl IntoView {
     }.into_any()
 }
 
+#[component]
+fn ReplyPreview(replies_to: Option<RepliesTo>) -> impl IntoView {
+    let state: AppState = expect_context();
+    let store: MemberStore = expect_context();
+
+    let Some(room_id) = state.active_room_id.get() else {
+        return view! {}.into_any();
+    };
+
+    if let Some(replies_to) = replies_to {
+        if let Some(sender_id) = &replies_to.sender_id {
+            let profile_sig = store.get_profile(&room_id, sender_id);
+            let sig_clone = profile_sig.clone();
+
+            let text = replies_to.text.clone().unwrap_or_default();
+
+            view! {
+                <div class="flex items-center gap-1 ml-[52px] mb-1 cursor-pointer text-xs relative group/reply">
+                    <div class="absolute -left-[32px] top-[calc(50%-1px)] w-[28px] h-4.5 border-l-2 border-t-2 border-white/20 rounded-tl-md"></div>
+
+                    <div class="shrink-0">
+                        {move || profile_sig.get().render_icon(16)}
+                    </div>
+
+                    <span class="font-semibold text-bright hover:underline">
+                        {move || sig_clone.get().render_name(12)}
+                    </span>
+
+                    <span class="truncate text-bright line-clamp-1">
+                        {text.into_iter().map(render_span).collect_view()}
+                    </span>
+                </div>
+            }
+            .into_any()
+        } else {
+            view! {}.into_any()
+        }
+    } else {
+        view! {}.into_any()
+    }
+}
+
 impl TimelineItem {
     fn render(&self) -> impl IntoView {
         let state: AppState = expect_context();
@@ -233,49 +274,39 @@ impl TimelineItem {
         let name_sig = profile_sig.clone();
         let sender_id = self.sender.clone();
 
+        let own_user_id = state.user_id.get();
+
         match &self.kind {
             TimelineItemKind::MessageGroup(group) => {
                 let first_msg = group.contents.first();
-                let reply_data = first_msg.and_then(|m| m.replies_to.clone());
+                let first_message_mentions_user = first_msg
+                    .and_then(|msg| msg.mentions.as_ref())
+                    .map(|mentions| mentions.user_ids.contains(&own_user_id))
+                    .unwrap_or(false);
+
+                let first_reply_data = first_msg.and_then(|m| m.replies_to.clone());
+                let highlight_reply_preview = first_message_mentions_user && first_reply_data.is_some();
 
                 view! {
-                    <div class="flex flex-col gap-1 p-3 rounded-md">
-                        {move || {
-                            if let Some(reply) = &reply_data {
-                                let Some(reply_sender) = reply.sender_id.clone() else {
-                                    return view! {}.into_any();
-                                };
-
-                                let reply_spans = reply.text.clone().unwrap_or_default();
-
-                                let reply_profile_sig = store.get_profile(&room_id, &reply_sender);
-                                let reply_profile_sig_icon = reply_profile_sig.clone();
-                                let reply_profile_sig_name = reply_profile_sig.clone();
-
-                                view! {
-                                    <div class="flex items-center gap-1 ml-[52px] mb-1 cursor-pointer text-xs relative group/reply">
-                                        <div class="absolute -left-[32px] top-[calc(50%-1px)] w-[28px] h-4.5 border-l-2 border-t-2 border-white/20 rounded-tl-md"></div>
-
-                                        <div class="shrink-0">
-                                            {move || reply_profile_sig_icon.get().render_icon(16)}
-                                        </div>
-
-                                        <span class="font-semibold text-bright hover:underline">
-                                            {move || reply_profile_sig_name.get().render_name(12)}
-                                        </span>
-
-                                        <span class="truncate text-bright line-clamp-1">
-                                            {reply_spans.into_iter().map(render_span).collect_view()}
-                                        </span>
-                                    </div>
-                                }.into_any()
-                            } else {
-                                view! {}.into_any()
-                            }
-                        }}
+                    <div class="flex flex-col gap-1 py-3 rounded-md">
                         <div class="flex flex-col w-full">
                             {group.contents.iter().enumerate().map(|(idx, msg)| {
                                 let is_first = idx == 0;
+                                let message_mentions_user = msg
+                                    .mentions
+                                    .as_ref()
+                                    .map(|mentions| mentions.user_ids.contains(&own_user_id))
+                                    .unwrap_or(false);
+
+                                let reply_data = if is_first {
+                                    first_reply_data.clone()
+                                } else {
+                                    None
+                                };
+
+                                let show_highlight = message_mentions_user || (is_first && highlight_reply_preview);
+
+                                let (hovered, set_hovered) = signal(false);
 
                                 let mut reaction_counts: HashMap<String, usize> = HashMap::new();
                                 for r in &msg.reactions {
@@ -284,7 +315,7 @@ impl TimelineItem {
 
                                 let content = match &msg.content {
                                     MessageContent::Text { spans, is_edited } => view! {
-                                        <div class="text-normal leading-relaxed break-words cursor-text">
+                                        <div class="text-normal leading-relaxed break-words">
                                             {spans.clone().into_iter().map(render_span).collect_view()}
                                             {if *is_edited {
                                                 view! { <span class="text-xs text-muted ml-2 italic">"(edited)"</span> }.into_any()
@@ -333,60 +364,90 @@ impl TimelineItem {
                                 };
 
                                 view! {
-                                    <div class="group/msg relative flex gap-[var(--gap)] hover:bg-black/20 px-3 py-[2px] -mx-3 rounded-md">
-
-                                        <div class="shrink-0 mr-2 w-[40px]">
-                                            {if is_first {
-                                                let profile_sig = profile_sig.clone();
-                                                view! {
-                                                    {move || {
-                                                        let profile = profile_sig.get();
-                                                        profile.render_icon(40)
-                                                    }}
-                                                }.into_any()
+                                    <div
+                                        class="group/msg relative flex flex-col gap-[var(--gap)] hover:bg-black/20 ml-1 pl-4 py-[2px] rounded-md"
+                                        style:background=move || {
+                                            let hovered = hovered.get();
+                                            if show_highlight {
+                                                format!(
+                                                    "linear-gradient(in oklch to right, oklch(from var(--accent-color) l c h / {}) 40%, oklch(from var(--accent-color) l c h / 0) 100%)",
+                                                    if hovered { "0.05" } else { "0.1" }
+                                                )
+                                            } else if hovered {
+                                                "rgba(0, 0, 0, 0.2)".to_string()
                                             } else {
-                                                view! {}.into_any()
-                                            }}
-                                        </div>
+                                                "transparent".to_string()
+                                            }
+                                        }
+                                        on:mouseenter=move |_| set_hovered.set(true)
+                                        on:mouseleave=move |_| set_hovered.set(false)
+                                    >
+                                        {if show_highlight {
+                                            view! {
+                                                <div class="absolute left-1 top-1 bottom-1 w-1 rounded-full bg-[var(--accent-color)] pointer-events-none"></div>
+                                            }.into_any()
+                                        } else {
+                                            view! {}.into_any()
+                                        }}
 
-                                        <div class="flex flex-col min-w-0 flex-1">
+                                        {if is_first {
+                                            view! { <ReplyPreview replies_to=reply_data.clone() /> }.into_any()
+                                        } else {
+                                            view! {}.into_any()
+                                        }}
 
-                                            {if is_first {
-                                                let name_sig = name_sig.clone();
-                                                view! {
-                                                    <div class="flex items-baseline gap-2">
-                                                        <span class="text-bright truncate cursor-pointer">
-                                                            {move || name_sig.get().render_name(16)}
-                                                        </span>
-                                                        <span class="text-muted text-xs">
-                                                            {format_date(self.date)}
-                                                        </span>
-                                                    </div>
-                                                }.into_any()
-                                            } else {
-                                                view! {}.into_any()
-                                            }}
-
-                                            // Message Content & Reactions
-                                            <div>
-                                                {content}
-
-                                                {if !reaction_counts.is_empty() {
+                                        <div class="flex gap-[var(--gap)]">
+                                            <div class="shrink-0 mr-2 w-[40px] self-center">
+                                                {if is_first {
+                                                    let profile_sig = profile_sig.clone();
                                                     view! {
-                                                        <div class="flex flex-wrap gap-1 mt-1 mb-2">
-                                                            {reaction_counts.into_iter().map(|(emoji, count)| {
-                                                                view! {
-                                                                    <div class="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-white/10 border border-white/5 hover:bg-white/20 cursor-pointer">
-                                                                        <span class="text-sm leading-none">{emoji}</span>
-                                                                        <span class="text-[10px] font-medium text-muted">{count}</span>
-                                                                    </div>
-                                                                }
-                                                            }).collect_view()}
+                                                        {move || {
+                                                            let profile = profile_sig.get();
+                                                            profile.render_icon(40)
+                                                        }}
+                                                    }.into_any()
+                                                } else {
+                                                    view! {}.into_any()
+                                                }}
+                                            </div>
+
+                                            <div class="flex flex-col min-w-0 flex-1">
+                                                {if is_first {
+                                                    let name_sig = name_sig.clone();
+                                                    view! {
+                                                        <div class="flex items-baseline gap-2">
+                                                            <span class="text-bright truncate cursor-pointer">
+                                                                {move || name_sig.get().render_name(16)}
+                                                            </span>
+                                                            <span class="text-muted text-xs">
+                                                                {format_date(self.date)}
+                                                            </span>
                                                         </div>
                                                     }.into_any()
                                                 } else {
                                                     view! {}.into_any()
                                                 }}
+
+                                                <div>
+                                                    {content}
+
+                                                    {if !reaction_counts.is_empty() {
+                                                        view! {
+                                                            <div class="flex flex-wrap gap-1 mt-1 mb-2">
+                                                                {reaction_counts.into_iter().map(|(emoji, count)| {
+                                                                    view! {
+                                                                        <div class="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-white/10 border border-white/5 hover:bg-white/20 cursor-pointer">
+                                                                            <span class="text-sm leading-none">{emoji}</span>
+                                                                            <span class="text-[10px] font-medium text-muted">{count}</span>
+                                                                        </div>
+                                                                    }
+                                                                }).collect_view()}
+                                                            </div>
+                                                        }.into_any()
+                                                    } else {
+                                                        view! {}.into_any()
+                                                    }}
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -421,7 +482,6 @@ impl TimelineItem {
                 }
             }
             .into_any(),
-            // Discord style new message indicator
             TimelineItemKind::NewMessageIndicator => view! {
                 <div class="flex items-center w-full pr-4">
                     <div class="flex-1 border-2 border-[#00ffff] rounded-full"></div>
@@ -472,7 +532,6 @@ impl TimelineItem {
                             }
                         ),
                     },
-                    // _ => "Test".to_string()
                     SystemMessage::EncryptionEnabled { algorithm } => {
                         format!("{} enabled encryption ({})", display_name, algorithm)
                     }
@@ -558,11 +617,10 @@ fn TimeLine() -> impl IntoView {
     let (messages, set_messages) = signal(Vec::<UiMessage>::new());
     let (read_marker_id, set_read_marker_id) = signal::<Option<String>>(None);
 
-    let state = expect_context::<AppState>();
+    let state: AppState = expect_context();
 
     let sidebar_update_event: ReadSignal<Option<SidebarState>> = use_tauri_event("sidebar_update");
 
-    // Listen to messages_update
     let messages_update_event: ReadSignal<Option<HashMap<String, Vec<UiMessage>>>> =
         use_tauri_event("messages_update");
 
@@ -928,7 +986,7 @@ fn TimeLine() -> impl IntoView {
     });
 
     view! {
-        <div class="flex-1 w-full w-full overflow-y-auto flex flex-col-reverse p-2 overflow-anchor-auto">
+        <div class="flex-1 w-full w-full overflow-y-auto flex flex-col-reverse py-2 overflow-anchor-auto">
             <For
                 each=move || flattened_items.get()
                 key=|item| item.id.clone()
