@@ -6,6 +6,7 @@ use crate::components::presence::PresenceBadge;
 use crate::components::FloatingTile;
 use crate::hooks::use_tauri_event;
 use chrono::{DateTime, Local, NaiveDate, TimeZone};
+use colorsys::ColorAlpha;
 use leptos::html::Div;
 use leptos::task::spawn_local;
 use leptos::{leptos_dom::logging::console_error, prelude::*};
@@ -51,27 +52,53 @@ fn format_date(date: DateTime<Local>) -> String {
 }
 
 fn render_span(span: RichTextSpan) -> impl IntoView {
+    let state: AppState = expect_context();
+    let store: MemberStore = expect_context();
+
+    let Some(room_id) = state.active_room_id.get() else {
+        return view! {}.into_any();
+    };
+
     match span {
         RichTextSpan::Plain(text) => view! {
             <span>{text}</span>
-        }.into_any(),
+        }
+        .into_any(),
 
-        // Discord style: blurple background with hover effects
-        RichTextSpan::UserMention { user_id, display_name } => view! {
-            <span
-                class="bg-[#5865F2]/30 text-[#dee0fc] hover:bg-[#5865F2] hover:text-white px-1 mx-0.5 rounded cursor-pointer font-medium transition-colors"
-                title=user_id // Show the real Matrix ID on hover
-            >
-                "@" {display_name}
-            </span>
-        }.into_any(),
+        RichTextSpan::UserMention {
+            user_id,
+            display_name,
+        } => {
+            let profile_sig = store.get_profile(&room_id, &user_id);
 
-        // Discord style @everyone/@here equivalent
+            let colors = Memo::new(move |_| {
+                let profile = profile_sig.get().unwrap_or_default();
+                let name_color = profile.get_user_color();
+                let mut bg_color = name_color.clone();
+                bg_color.set_alpha(0.1);
+
+                (name_color.to_css_string(), bg_color.to_css_string())
+            });
+
+            view! {
+                <span
+                    class="rounded cursor-pointer font-medium transition-colors px-1"
+                    style:color=move || colors.get().0
+                    style:background-color=move || colors.get().1
+                    title=user_id
+                >
+                    "@" {display_name}
+                </span>
+            }
+            .into_any()
+        }
+
         RichTextSpan::RoomMention => view! {
             <span class="bg-[#FEE75C]/30 text-[#FEE75C] px-1 mx-0.5 rounded font-medium">
                 "@room"
             </span>
-        }.into_any(),
+        }
+        .into_any(),
 
         RichTextSpan::Link { url, text } => {
             let clone = url.clone();
@@ -85,15 +112,17 @@ fn render_span(span: RichTextSpan) -> impl IntoView {
             };
 
             view! {
-            <a
-                href=url.clone()
-                target="_blank"
-                class="text-[#00A8FC] hover:underline"
-                on:click=on_click
-            >
-                {url.clone()}
-            </a>
-        }.into_any()},
+                <a
+                    href=url.clone()
+                    target="_blank"
+                    class="text-[#00A8FC] hover:underline"
+                    on:click=on_click
+                >
+                    {url.clone()}
+                </a>
+            }
+            .into_any()
+        }
     }
 }
 

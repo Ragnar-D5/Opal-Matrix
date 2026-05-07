@@ -633,9 +633,6 @@
   .bg-\[\#00ffff\] {
     background-color: #00ffff;
   }
-  .bg-\[\#5865F2\]\/30 {
-    background-color: color-mix(in oklab, #5865F2 30%, transparent);
-  }
   .bg-\[\#FEE75C\]\/30 {
     background-color: color-mix(in oklab, #FEE75C 30%, transparent);
   }
@@ -839,9 +836,6 @@
   .text-\[\#FEE75C\] {
     color: #FEE75C;
   }
-  .text-\[\#dee0fc\] {
-    color: #dee0fc;
-  }
   .text-\[var\(--bg-color\)\] {
     color: var(--bg-color);
   }
@@ -980,13 +974,6 @@
     &:is(:where(.group):hover *) {
       @media (hover: hover) {
         opacity: 100%;
-      }
-    }
-  }
-  .hover\:bg-\[\#5865F2\] {
-    &:hover {
-      @media (hover: hover) {
-        background-color: #5865F2;
       }
     }
   }
