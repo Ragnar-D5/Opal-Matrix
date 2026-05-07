@@ -17,7 +17,7 @@ use shared::messages::{
     UiMessage, UserMessage,
 };
 use shared::sidebar::{RoomKind, RoomNode, SidebarState};
-use web_sys::MouseEvent;
+use web_sys::{DomParser, MouseEvent, SupportedType};
 
 use crate::components::user_profile::{UserProfileExt, UserProfileMaybeExt};
 
@@ -126,6 +126,97 @@ fn render_span(span: RichTextSpan) -> impl IntoView {
     }
 }
 
+#[derive(Serialize)]
+struct FetchArgs {
+    url: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct OgData {
+    pub title: String,
+    pub description: Option<String>,
+    pub image: Option<String>,
+}
+
+pub fn parse_og_tags_in_browser(html: &str) -> Option<OgData> {
+    let parser = DomParser::new().ok()?;
+    let doc = parser
+        .parse_from_string(html, SupportedType::TextHtml)
+        .ok()?;
+
+    let get_meta = |property: &str| -> Option<String> {
+        let selector = format!("meta[property='{}'], meta[name='{}']", property, property);
+        if let Ok(Some(element)) = doc.query_selector(&selector) {
+            element.get_attribute("content")
+        } else {
+            None
+        }
+    };
+
+    let title = get_meta("og:title").or_else(|| {
+        doc.query_selector("title")
+            .ok()
+            .flatten()
+            .and_then(|t| t.text_content())
+    })?;
+
+    let description = get_meta("og:description").or_else(|| get_meta("description"));
+    let image = get_meta("og:image");
+
+    Some(OgData {
+        title,
+        description,
+        image,
+    })
+}
+
+async fn fetch_preview_data(url: String) -> Result<OgData, String> {
+    // Convert our arguments to a JS object for Tauri
+    let args = serde_wasm_bindgen::to_value(&FetchArgs { url }).map_err(|e| e.to_string())?;
+
+    // Call the Rust backend to bypass CORS
+    let html_js = call_tauri("fetch_raw_html", args)
+        .await
+        .map_err(|e| e.as_string().unwrap_or_default())?;
+
+    // Extract the string and parse it
+    let html_str = html_js.as_string().ok_or("Failed to fetch HTML")?;
+    parse_og_tags_in_browser(&html_str).ok_or("No OpenGraph tags found".to_string())
+}
+
+fn render_link(span: RichTextSpan) -> impl IntoView {
+    let RichTextSpan::Link { url, .. } = span else {
+        return view! {}.into_any();
+    };
+
+    let preview = LocalResource::new(move || {
+        let fetch_url = url.clone();
+        async move { fetch_preview_data(fetch_url).await }
+    });
+
+    view! {
+        <Suspense fallback=move || view! {
+            <div class="animate-pulse bg-white/5 w-full max-w-sm h-24 rounded-md mt-2"></div>
+        }>
+            {move || {
+                preview.get().and_then(|res| res.ok()).map(|data| {
+                    view! {
+                        <div class="flex flex-col max-w-sm rounded-md bg-white/5 border border-white/10 overflow-hidden mt-2 cursor-pointer hover:bg-white/10">
+                            {data.image.map(|img| view! {
+                                <img src=img class="w-full h-32 object-cover" />
+                            })}
+                            <div class="p-3">
+                                <span class="text-sm font-bold text-bright line-clamp-1">{data.title}</span>
+                                <span class="text-xs text-muted line-clamp-2 mt-1">{data.description}</span>
+                            </div>
+                        </div>
+                    }
+                })
+            }}
+        </Suspense>
+    }.into_any()
+}
+
 impl TimelineItem {
     fn render(&self) -> impl IntoView {
         let state: AppState = expect_context();
@@ -198,6 +289,7 @@ impl TimelineItem {
                                             } else {
                                                 view! {}.into_any()
                                             }}
+                                            {spans.clone().into_iter().map(render_link).collect_view()}
                                         </div>
                                     }.into_any(),
                                     MessageContent::Image { url, name, encryption_info, .. } => {

@@ -5,6 +5,13 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [dependencies]
+web-sys = { version = "0.3.95", features = [
+  "DomParser",
+  "SupportedType",
+  "Document",
+  "Element",
+  "Node",
+] }
 leptos = { version = "0.8", features = ["csr"] }
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
@@ -15,7 +22,6 @@ console_error_panic_hook = "0.1.7"
 colored = "3.1.1"
 send_wrapper = { version = "0.6.0", features = ["futures"] }
 stylist = "0.15.1"
-web-sys = "0.3.95"
 chrono = "0.4.44"
 leptos-use = "0.18.3"
 shared = { path = "./shared" }
@@ -23,4 +29,4 @@ urlencoding = "2.1.3"
 colorsys = "0.7.3"
 
 [workspace]
-members = ["shared","src-tauri"]
+members = ["shared", "src-tauri"]

@@ -11,7 +11,7 @@ use log::info;
 use ruma::UserId;
 use serde::Serialize;
 use tauri::async_runtime::{JoinHandle, Mutex, RwLock};
-use tauri::{AppHandle, Url};
+use tauri::{AppHandle, Url, command};
 use tauri::{Manager, State};
 use tokio_util::sync::CancellationToken;
 
@@ -588,6 +588,13 @@ async fn send_frontend(
     Ok(())
 }
 
+#[command]
+async fn fetch_raw_html(url: String) -> Result<String, TauriError> {
+    let res = reqwest::get(url).await?;
+
+    res.text().await.map_err(|e| e.into())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -647,6 +654,7 @@ pub fn run() {
         )
         .invoke_handler(tauri::generate_handler![
             login,
+            fetch_raw_html,
             try_restore,
             set_recovery_key,
             send_frontend,
