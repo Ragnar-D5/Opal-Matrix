@@ -370,7 +370,7 @@ impl TimelineItem {
                                             let hovered = hovered.get();
                                             if show_highlight {
                                                 format!(
-                                                    "linear-gradient(in oklch to right, oklch(from var(--accent-color) l c h / {}) 40%, oklch(from var(--accent-color) l c h / 0) 100%)",
+                                                    "linear-gradient(in oklch to right, oklch(from var(--accent-color) l c h / {}) 20%, oklch(from var(--accent-color) l c h / 0) 100%)",
                                                     if hovered { "0.05" } else { "0.1" }
                                                 )
                                             } else if hovered {
