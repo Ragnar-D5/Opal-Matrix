@@ -6,13 +6,15 @@ use crate::components::presence::PresenceBadge;
 use crate::components::FloatingTile;
 use crate::hooks::use_tauri_event;
 use chrono::{DateTime, Local, NaiveDate, TimeZone};
+use leptos::attr::autofocus;
 use leptos::html::Div;
 use leptos::task::spawn_local;
 use leptos::{leptos_dom::logging::console_error, prelude::*};
 use leptos_use::{use_intersection_observer, UseIntersectionObserverReturn};
 use serde::Serialize;
 use shared::messages::{
-    MembershipAction, MessageContent, MessageKind, Reaction, SystemMessage, UiMessage, UserMessage,
+    MembershipAction, MessageContent, MessageKind, Reaction, RichTextSpan, SystemMessage,
+    UiMessage, UserMessage,
 };
 use shared::sidebar::{RoomKind, RoomNode, SidebarState};
 
@@ -48,6 +50,37 @@ fn format_date(date: DateTime<Local>) -> String {
     }
 }
 
+fn render_span(span: RichTextSpan) -> impl IntoView {
+    match span {
+        RichTextSpan::Plain(text) => view! {
+            <span>{text}</span>
+        }.into_any(),
+
+        // Discord style: blurple background with hover effects
+        RichTextSpan::UserMention { user_id, display_name } => view! {
+            <span
+                class="bg-[#5865F2]/30 text-[#dee0fc] hover:bg-[#5865F2] hover:text-white px-1 mx-0.5 rounded cursor-pointer font-medium transition-colors"
+                title=user_id // Show the real Matrix ID on hover
+            >
+                "@" {display_name}
+            </span>
+        }.into_any(),
+
+        // Discord style @everyone/@here equivalent
+        RichTextSpan::RoomMention => view! {
+            <span class="bg-[#FEE75C]/30 text-[#FEE75C] px-1 mx-0.5 rounded font-medium">
+                "@room"
+            </span>
+        }.into_any(),
+
+        RichTextSpan::Link { url, text } => view! {
+            <a href=url.clone() target="_blank" rel="noopener noreferrer" class="text-[#00A8FC] hover:underline">
+                {url.clone()}
+            </a>
+        }.into_any(),
+    }
+}
+
 impl TimelineItem {
     fn render(&self) -> impl IntoView {
         let state: AppState = expect_context();
@@ -75,7 +108,7 @@ impl TimelineItem {
                                     return view! {}.into_any();
                                 };
 
-                                let reply_text = reply.text.clone().unwrap_or_default();
+                                let reply_spans = reply.text.clone().unwrap_or_default();
 
                                 let reply_profile_sig = store.get_profile(&room_id, &reply_sender);
                                 let reply_profile_sig_icon = reply_profile_sig.clone();
@@ -94,7 +127,7 @@ impl TimelineItem {
                                         </span>
 
                                         <span class="truncate text-bright line-clamp-1">
-                                            {reply_text}
+                                            {reply_spans.into_iter().map(render_span).collect_view()}
                                         </span>
                                     </div>
                                 }.into_any()
@@ -112,9 +145,9 @@ impl TimelineItem {
                                 }
 
                                 let content = match &msg.content {
-                                    MessageContent::Text { text, is_edited } => view! {
+                                    MessageContent::Text { spans, is_edited } => view! {
                                         <div class="text-normal leading-relaxed break-words cursor-text">
-                                            {text.clone()}
+                                            {spans.clone().into_iter().map(render_span).collect_view()}
                                             {if *is_edited {
                                                 view! { <span class="text-xs text-muted ml-2 italic">"(edited)"</span> }.into_any()
                                             } else {
@@ -454,9 +487,9 @@ fn TimeLine() -> impl IntoView {
                 let result = match &msg.kind {
                     MessageKind::SystemMessage(SystemMessage::MessageEdited {
                         event_id,
-                        new_text,
+                        new_spans,
                     }) => {
-                        edits.insert(event_id.clone(), new_text.clone());
+                        edits.insert(event_id.clone(), new_spans.clone());
                         false
                     }
                     MessageKind::SystemMessage(SystemMessage::MessageRedacted { event_id }) => {
@@ -500,8 +533,8 @@ fn TimeLine() -> impl IntoView {
             if redactions.contains(&msg.event_id) {
                 msg.delete();
             }
-            if let Some(new_text) = edits.get(&msg.event_id) {
-                msg.edit(new_text.clone());
+            if let Some(new_spans) = edits.get(&msg.event_id) {
+                msg.edit(new_spans.clone());
             }
             if let Some(reaction) = reactions_map.get(&msg.event_id) {
                 msg.add_reaction(reaction.clone());
@@ -548,10 +581,14 @@ fn TimeLine() -> impl IntoView {
                             let original_sender = &original_msg.sender_id;
                             let text = match &original_msg.kind {
                                 MessageKind::UserMessage(um) => match &um.content {
-                                    MessageContent::Text { text, .. } => text.clone(),
-                                    _ => "[non-text content]".to_string(),
+                                    MessageContent::Text { spans, .. } => spans.clone(),
+                                    _ => {
+                                        vec![RichTextSpan::Plain("[non-text content]".to_string())]
+                                    }
                                 },
-                                MessageKind::SystemMessage(_) => "[system message]".to_string(),
+                                MessageKind::SystemMessage(_) => {
+                                    vec![RichTextSpan::Plain("[system message]".to_string())]
+                                }
                             };
 
                             user_msg.set_reply_sender(original_sender.clone());
@@ -839,6 +876,33 @@ fn ChatHeader(header: Memo<RoomHeader>, set_chat_sidebar_open: WriteSignal<bool>
 }
 
 #[component]
+fn ChatInput(header: Memo<RoomHeader>) -> impl IntoView {
+    view! {
+        <div class="p-2 w-full rounded-full">
+            <input
+                type="text"
+                placeholder={move || match header.get() {
+                    RoomHeader::Channel(node) => format!("Message #{}", node.name.clone().unwrap_or(node.room_id.clone())),
+                    RoomHeader::DM(handle) => format!(
+                        "Message @{}",
+                        handle
+                            .profile
+                            .get()
+                            .unwrap_or_default()
+                            .display_name
+                            .unwrap_or(handle.user_id.clone())
+                    ),
+                    RoomHeader::Unknown => "Message someone".to_string(),
+                }}
+                class="w-full h-13 border-1 border-[var(--tile-border-color)] outline-none text-[var(--text-color)] p-3 rounded-lg bg-[rgba(0, 0, 0, 0.6)]"
+                style="background-color: rgba(0, 0, 0, 0.2);"
+                autofocus
+            />
+        </div>
+    }
+}
+
+#[component]
 pub fn Chat() -> impl IntoView {
     let state: AppState = expect_context();
     let member_store: MemberStore = expect_context();
@@ -856,11 +920,7 @@ pub fn Chat() -> impl IntoView {
             <div class="flex flex-row h-full min-h-0">
                 <FloatingTile class="flex-1 min-h-0, overflow-hidden">
                     <TimeLine/>
-                    <input
-                        type="text"
-                        placeholder="Type a message..."
-                               class="w-full h-15 border-1 border-[var(--tile-border-color)] bg-[rgba(0, 0, 0, 1)] outline-none text-[var(--text-color)]"
-                    />
+                    <ChatInput header=header />
                 </FloatingTile>
                 <Show when=move || chat_sidebar_open.get()>
                     <div class="flex-shrink-0 h-full w-[20rem] ml-[var(--gap)]">

@@ -374,7 +374,6 @@ async fn handle_sync_response(
         let client = client_guard.as_ref().ok_or("Client info not initialized")?;
 
         if sidebar_needs_update {
-            info!("Sidebar update needed, sending update event");
             send_sidebar_update(conn, handle, &client.user_id)?;
         }
         if !changes.new_messages.is_empty() {

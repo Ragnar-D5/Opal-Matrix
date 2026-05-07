@@ -1,9 +1,12 @@
+use ego_tree::NodeRef;
+use linkify::LinkFinder;
 use log::{debug, warn};
 use rusqlite::Connection;
+use scraper::{Html, Node};
 use serde_json::Value;
 use shared::messages::{
-    EncryptedFileInfo, MembershipAction, MessageContent, MessageKind, SystemMessage, UiMessage,
-    UserMessage,
+    EncryptedFileInfo, MembershipAction, MessageContent, MessageKind, RichTextSpan, SystemMessage,
+    UiMessage, UserMessage,
 };
 
 use crate::TauriError;
@@ -133,6 +136,128 @@ pub fn message_exists(conn: &Connection, event_id: &str) -> Result<bool, TauriEr
     Ok(exists)
 }
 
+fn walk_node(node: NodeRef<'_, Node>, spans: &mut Vec<RichTextSpan>) {
+    match node.value() {
+        Node::Text(text) => {
+            let content = text.text.to_string();
+            if !content.is_empty() {
+                spans.push(RichTextSpan::Plain(content));
+            }
+        }
+
+        Node::Element(elem) => {
+            let tag_name = elem.name();
+
+            if tag_name == "br" {
+                spans.push(RichTextSpan::Plain("\n".to_string()));
+                return;
+            }
+
+            if tag_name == "a" {
+                if let Some(href) = elem.attr("href") {
+                    if href.starts_with("https://matrix.to/#/@") || href.starts_with("matrix:u/") {
+                        let user_id = extract_mxid(href);
+                        let display_name = extract_inner_text(node);
+
+                        spans.push(RichTextSpan::UserMention {
+                            user_id,
+                            display_name,
+                        });
+                        return; // Stop recursing; we consumed the children for the display name
+                    } else if href.starts_with("https://matrix.to/#/") && href.contains("room") {
+                        spans.push(RichTextSpan::RoomMention);
+                        return;
+                    } else {
+                        spans.push(RichTextSpan::Link {
+                            url: href.to_string(),
+                            text: None,
+                        });
+                        return;
+                    }
+                }
+            }
+
+            for child in node.children() {
+                walk_node(child, spans);
+            }
+        }
+
+        _ => {
+            for child in node.children() {
+                walk_node(child, spans);
+            }
+        }
+    }
+}
+
+fn extract_inner_text(node: NodeRef<'_, Node>) -> String {
+    let mut text = String::new();
+    for child in node.children() {
+        if let Node::Text(t) = child.value() {
+            text.push_str(&t.text);
+        } else {
+            text.push_str(&extract_inner_text(child));
+        }
+    }
+    text
+}
+
+fn extract_mxid(href: &str) -> String {
+    if let Some(idx) = href.find('@') {
+        href[idx..].to_string()
+    } else {
+        href.to_string()
+    }
+}
+
+fn parse_html_to_spans(html: &str, fallback_body: &str) -> Vec<RichTextSpan> {
+    let document = Html::parse_fragment(html);
+    let mut spans = Vec::new();
+
+    for node in document.tree.root().children() {
+        walk_node(node, &mut spans);
+    }
+
+    if spans.is_empty() {
+        vec![RichTextSpan::Plain(fallback_body.to_string())]
+    } else {
+        spans
+    }
+}
+
+pub fn parse_plain_text_to_spans(text: &str) -> Vec<RichTextSpan> {
+    let mut spans = Vec::new();
+    let mut finder = LinkFinder::new();
+    finder.kinds(&[linkify::LinkKind::Url]);
+
+    let mut last_end = 0;
+
+    for link in finder.links(text) {
+        if link.start() > last_end {
+            spans.push(RichTextSpan::Plain(
+                text[last_end..link.start()].to_string(),
+            ));
+        }
+
+        spans.push(RichTextSpan::Link {
+            url: link.as_str().to_string(),
+            text: None,
+        });
+
+        last_end = link.end();
+    }
+
+    if last_end < text.len() {
+        spans.push(RichTextSpan::Plain(text[last_end..].to_string()));
+    }
+
+    if spans.is_empty() {
+        vec![RichTextSpan::Plain(text.to_string())]
+    } else {
+        spans
+    }
+}
+
 impl TryInto<UiMessage> for MessageRow {
     type Error = TauriError;
 
@@ -167,7 +292,7 @@ impl TryInto<UiMessage> for MessageRow {
                             sender_id: self.sender,
                             kind: MessageKind::SystemMessage(SystemMessage::MessageEdited {
                                 event_id,
-                                new_text,
+                                new_spans: vec![RichTextSpan::Plain(new_text)],
                             }),
                         });
                     }
@@ -191,14 +316,28 @@ impl TryInto<UiMessage> for MessageRow {
 
                 match msg_type {
                     "m.text" => {
-                        let text = content
+                        let body = content
                             .get("body")
                             .and_then(|v| v.as_str())
                             .ok_or(format!("Missing body: {:?}", value))?
                             .to_string();
 
+                        let format = content.get("format").and_then(|v| v.as_str());
+                        let formatted_body = content
+                            .get("formatted_body")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string());
+
+                        let spans = if format == Some("org.matrix.custom.html")
+                            && let Some(html) = formatted_body
+                        {
+                            parse_html_to_spans(&html, &body)
+                        } else {
+                            parse_plain_text_to_spans(&body)
+                        };
+
                         user_message.set_content(MessageContent::Text {
-                            text,
+                            spans,
                             is_edited: false,
                         });
 
@@ -263,11 +402,13 @@ impl TryInto<UiMessage> for MessageRow {
                         debug!("Unsupported msgtype: {}", msg_type);
 
                         user_message.set_content(MessageContent::Text {
-                            text: content
-                                .get("body")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("[Unsupported message type]")
-                                .to_string(),
+                            spans: vec![RichTextSpan::Plain(
+                                content
+                                    .get("body")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("[Unsupported message type]")
+                                    .to_string(),
+                            )],
                             is_edited: false,
                         });
 

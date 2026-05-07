@@ -617,6 +617,7 @@ pub fn run() {
                 .level_for("keyring", log::LevelFilter::Off)
                 .level_for("matrix_sdk_crypto", log::LevelFilter::Off)
                 .level_for("rustls_platform_verifier", log::LevelFilter::Off)
+                .level_for("html5ever", log::LevelFilter::Off)
                 .format(|out, message, record| {
                     let level = match record.level() {
                         log::Level::Error => "ERROR".red().bold(),

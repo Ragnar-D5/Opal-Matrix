@@ -19,20 +19,42 @@ pub enum MembershipAction {
 pub enum SystemMessage {
     RoomCreation,
     MembershipChange(MembershipAction),
-    RoomNameChange { new_name: String },
-    TopicChange { new_topic: String },
-    EncryptionEnabled { algorithm: String },
+    RoomNameChange {
+        new_name: String,
+    },
+    TopicChange {
+        new_topic: String,
+    },
+    EncryptionEnabled {
+        algorithm: String,
+    },
     PowerlevelChange,
-    JoinRuleChange { new_rule: String },
-    HistoryVisibilityChange { new_visibility: String },
-    GuestAccessChange { new_access: String },
+    JoinRuleChange {
+        new_rule: String,
+    },
+    HistoryVisibilityChange {
+        new_visibility: String,
+    },
+    GuestAccessChange {
+        new_access: String,
+    },
 
-    CallJoined { intent: String },
+    CallJoined {
+        intent: String,
+    },
     CallLeft,
 
-    MessageEdited { event_id: String, new_text: String },
-    MessageReacted { event_id: String, reaction: String },
-    MessageRedacted { event_id: String },
+    MessageEdited {
+        event_id: String,
+        new_spans: Vec<RichTextSpan>,
+    },
+    MessageReacted {
+        event_id: String,
+        reaction: String,
+    },
+    MessageRedacted {
+        event_id: String,
+    },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -43,9 +65,23 @@ pub struct EncryptedFileInfo {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub enum RichTextSpan {
+    Plain(String),
+    UserMention {
+        user_id: String,
+        display_name: String,
+    },
+    RoomMention,
+    Link {
+        url: String,
+        text: Option<String>,
+    },
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum MessageContent {
     Text {
-        text: String,
+        spans: Vec<RichTextSpan>,
         is_edited: bool,
     },
     Image {
@@ -81,7 +117,7 @@ pub struct Reaction {
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct RepliesTo {
-    pub text: Option<String>,
+    pub text: Option<Vec<RichTextSpan>>,
     pub sender_id: Option<String>,
     pub event_id: String,
 }
@@ -121,9 +157,9 @@ impl UserMessage {
         self.mentions = mentions;
     }
 
-    pub fn set_reply_text(&mut self, text: String) {
+    pub fn set_reply_text(&mut self, spans: Vec<RichTextSpan>) {
         if let Some(replies_to) = &mut self.replies_to {
-            replies_to.text = Some(text);
+            replies_to.text = Some(spans);
         }
     }
 
@@ -158,10 +194,10 @@ impl UiMessage {
         }
     }
 
-    pub fn edit(&mut self, new_text: String) {
+    pub fn edit(&mut self, new_spans: Vec<RichTextSpan>) {
         if let MessageKind::UserMessage(user_message) = &mut self.kind {
             user_message.content = MessageContent::Text {
-                text: new_text,
+                spans: new_spans,
                 is_edited: true,
             };
         }
