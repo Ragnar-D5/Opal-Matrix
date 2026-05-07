@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 use serde::Deserialize;
 use tauri_plugin_http::reqwest;
 use version_compare::Version;

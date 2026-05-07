@@ -1,12 +1,11 @@
 use crate::state::{AppState, MemberProfileHandle, MemberStore, RoomHeader};
 use std::collections::{HashMap, HashSet};
 
-use crate::app::call_tauri;
+use crate::app::{call_tauri, openUrl};
 use crate::components::presence::PresenceBadge;
 use crate::components::FloatingTile;
 use crate::hooks::use_tauri_event;
 use chrono::{DateTime, Local, NaiveDate, TimeZone};
-use leptos::attr::autofocus;
 use leptos::html::Div;
 use leptos::task::spawn_local;
 use leptos::{leptos_dom::logging::console_error, prelude::*};
@@ -17,6 +16,7 @@ use shared::messages::{
     UiMessage, UserMessage,
 };
 use shared::sidebar::{RoomKind, RoomNode, SidebarState};
+use web_sys::MouseEvent;
 
 use crate::components::user_profile::{UserProfileExt, UserProfileMaybeExt};
 
@@ -73,11 +73,27 @@ fn render_span(span: RichTextSpan) -> impl IntoView {
             </span>
         }.into_any(),
 
-        RichTextSpan::Link { url, text } => view! {
-            <a href=url.clone() target="_blank" rel="noopener noreferrer" class="text-[#00A8FC] hover:underline">
+        RichTextSpan::Link { url, text } => {
+            let clone = url.clone();
+
+            let on_click = move |ev: MouseEvent| {
+                ev.prevent_default(); // Stop the webview from navigating
+                let u = clone.clone();
+                spawn_local(async move {
+                    let _ = openUrl(&u);
+                });
+            };
+
+            view! {
+            <a
+                href=url.clone()
+                target="_blank"
+                class="text-[#00A8FC] hover:underline"
+                on:click=on_click
+            >
                 {url.clone()}
             </a>
-        }.into_any(),
+        }.into_any()},
     }
 }
 

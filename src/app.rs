@@ -18,6 +18,9 @@ use crate::tauri::{chat::Chat, sidebar::Sidebar};
 extern "C" {
     #[wasm_bindgen(js_namespace = ["window", "__TAURI__", "core"])]
     fn invoke(cmd: &str, args: JsValue) -> js_sys::Promise;
+
+    #[wasm_bindgen(js_namespace = ["__TAURI__", "opener"])]
+    pub fn openUrl(url: &str) -> js_sys::Promise;
 }
 
 #[derive(Deserialize, Debug, Clone)]
