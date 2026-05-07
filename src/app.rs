@@ -102,7 +102,7 @@ pub fn App() -> impl IntoView {
                         serde_wasm_bindgen::from_value(js_val).unwrap();
 
                     if let Some(response) = response_option {
-                        state.login_name.set(response.user_id);
+                        state.user_id.set(response.user_id);
                         state.current_window.set(CurrentWindow::HomePage);
                     } else {
                         state
@@ -220,7 +220,7 @@ fn LoginPage() -> impl IntoView {
                     let response: MatrixLoginResponse =
                         serde_wasm_bindgen::from_value(js_val).unwrap();
 
-                    state.login_name.set(response.user_id);
+                    state.user_id.set(response.user_id);
                     state.current_window.set(CurrentWindow::HomePage);
                 }
                 Err(err) => {

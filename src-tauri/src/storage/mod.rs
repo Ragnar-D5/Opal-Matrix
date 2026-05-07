@@ -1,4 +1,3 @@
-use log::info;
 use shared::user_profile::UserProfile;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -32,10 +31,12 @@ pub async fn init_storage(
 
     let conn = Connection::open(&db_path).map_err(|e| format!("Failed to open database: {e}"))?;
 
-    // conn.pragma_update(None, "key", db_passphrase)?;
+    if false {
+        conn.pragma_update(None, "key", db_passphrase)?;
 
-    // conn.query_row("SELECT count(*) FROM sqlite_master", [], |_| Ok(()))
-    //     .map_err(|e| format!("Failed to access database: {e}"))?;
+        conn.query_row("SELECT count(*) FROM sqlite_master", [], |_| Ok(()))
+            .map_err(|e| format!("Failed to access database: {e}"))?;
+    }
 
     RoomRow::create_table(&conn)?;
     MessageRow::create_table(&conn)?;
