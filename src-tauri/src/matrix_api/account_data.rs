@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::{AppState, TauriError, construct_url};
 use serde::{Serialize, de::DeserializeOwned};
-use shared::account_data::{AccountData, AccountDataPayload};
+use shared::account_data::{AccountData, AccountDataPayload, AccountDataType};
 use tauri::{State, command};
 use tauri_plugin_http::reqwest::Client;
 
@@ -93,14 +93,14 @@ pub async fn set_account_data(
     payload: AccountDataPayload,
 ) -> Result<(), TauriError> {
     let (matrix_url, access_token, user_id) = {
-        let m = state.matrix_url.read().await;
+        let m = state.home_server_info.read().await;
         let t = state.token.read().await;
         let c = state.client.read().await;
 
         let url = m.as_ref().ok_or("Not logged in")?.clone();
         let token = t.as_ref().ok_or("Not logged in")?.access_token.clone();
         let id = c.as_ref().ok_or("Not logged in")?.user_id.clone();
-        (url, token, id)
+        (url.base_url, token, id)
     };
 
     match payload {
@@ -115,24 +115,37 @@ pub async fn set_account_data(
     Ok(())
 }
 
+/// Command to get account data. The `data_type` parameter specifies which type of account data to fetch (e.g., "breadcrumbs" or "server_order").
+///
+/// Example usage from a leptos frontend:
+/// ```rust
+/// use shared::account_data::{AccountDataPayload, AccountDataType, GetAccountDataArgs};
+/// use leptos::prelude::*;
+///
+/// let payload = GetAccountDataArgs {
+///     data_type: AccountDataType::Breadcrumbs,
+/// };
+///
+/// let data = invoke("get_account_data", serde_wasm_bindgen::to_value(&payload)?).await?;
+/// ```
 #[command(rename_all = "snake_case")]
 pub async fn get_account_data(
     state: State<'_, Arc<AppState>>,
-    data_type: String,
+    data_type: AccountDataType,
 ) -> Result<AccountDataPayload, TauriError> {
     let (matrix_url, access_token, user_id) = {
-        let m = state.matrix_url.read().await;
+        let m = state.home_server_info.read().await;
         let t = state.token.read().await;
         let c = state.client.read().await;
 
         let url = m.as_ref().ok_or("Not logged in")?.clone();
         let token = t.as_ref().ok_or("Not logged in")?.access_token.clone();
         let id = c.as_ref().ok_or("Not logged in")?.user_id.clone();
-        (url, token, id)
+        (url.base_url, token, id)
     };
 
-    match data_type.as_str() {
-        "breadcrumbs" => {
+    match data_type {
+        AccountDataType::Breadcrumbs => {
             let data = get_account_data_api::<shared::account_data::Breadcrumbs>(
                 &matrix_url,
                 &user_id,
@@ -141,7 +154,7 @@ pub async fn get_account_data(
             .await?;
             Ok(AccountDataPayload::Breadcrumbs(data))
         }
-        "server_order" => {
+        AccountDataType::ServerOrder => {
             let data = get_account_data_api::<shared::account_data::ServerOrder>(
                 &matrix_url,
                 &user_id,
@@ -150,25 +163,40 @@ pub async fn get_account_data(
             .await?;
             Ok(AccountDataPayload::ServerOrder(data))
         }
-        _ => Err("Unknown account data type".into()),
     }
 }
 
+/// Convenience command to directly get breadcrumbs without needing to specify the data type.
+///
+/// Example usage from a leptos frontend:
+/// ```rust
+/// use leptos::prelude::*;
+///
+/// let breadcrumbs = invoke("get_breadcrumbs", ()).await?;
+/// ```
 #[command]
 pub async fn get_breadcrumbs(
     state: State<'_, Arc<AppState>>,
 ) -> Result<shared::account_data::Breadcrumbs, TauriError> {
-    match get_account_data(state, "breadcrumbs".to_string()).await? {
+    match get_account_data(state, AccountDataType::Breadcrumbs).await? {
         AccountDataPayload::Breadcrumbs(data) => Ok(data),
         _ => Err("Unexpected account data type".into()),
     }
 }
 
+/// Convenience command to directly get server order without needing to specify the data type.
+///
+/// Example usage from a leptos frontend:
+/// ```rust
+/// use leptos::prelude::*;
+///
+/// let server_order = invoke("get_server_order", ()).await?;
+/// ```
 #[command]
 pub async fn get_server_order(
     state: State<'_, Arc<AppState>>,
 ) -> Result<shared::account_data::ServerOrder, TauriError> {
-    match get_account_data(state, "server_order".to_string()).await? {
+    match get_account_data(state, AccountDataType::ServerOrder).await? {
         AccountDataPayload::ServerOrder(data) => Ok(data),
         _ => Err("Unexpected account data type".into()),
     }

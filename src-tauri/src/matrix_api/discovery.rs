@@ -1,12 +1,15 @@
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
+use std::sync::Arc;
 
 use anyhow::Context;
 use log::info;
+use ruma::api::auth_scheme::SendAccessToken;
 use serde::Deserialize;
 use tauri::State;
-use tauri_plugin_http::reqwest;
+use tauri_plugin_http::reqwest::{self, Client};
 
-use crate::{AppState, TauriError};
+use crate::state::HomeServerInfo;
+use crate::{AppState, TauriError, create_http_response};
 
 #[derive(Debug, Deserialize)]
 pub struct WellKnown {
@@ -38,7 +41,7 @@ pub struct Authentication {
 // Right now this is just used to check wether a server actually lives at the specified url
 #[allow(dead_code)]
 #[derive(Debug, Deserialize)]
-pub struct VersionsResponse {
+pub struct VersionsResponseErik {
     pub versions: Vec<String>,
 
     pub unstable_features: HashMap<String, bool>,
@@ -83,7 +86,7 @@ pub async fn try_home_server(url: String) -> Result<String, (String, TauriError)
                 well_known.homeserver.base_url
             ))
             .map_err(|e| (url.clone(), e.into()))?;
-        let _parse_test: VersionsResponse = ver.json().await.context("Failed to parse response from /_matrix/client/versions. Does a Matrix server live here?").map_err(|e| (url.clone(), e.into()))?;
+        let _parse_test: VersionsResponseErik = ver.json().await.context("Failed to parse response from /_matrix/client/versions. Does a Matrix server live here?").map_err(|e| (url.clone(), e.into()))?;
         Ok(url)
     } else {
         return Err((
@@ -103,8 +106,8 @@ pub async fn try_home_server(url: String) -> Result<String, (String, TauriError)
 /// This is largely duplicate code from `try_home_server`, but is used to actually alter the state of the app.
 #[tauri::command]
 pub async fn choose_home_server(
-    url: String,
     state: State<'_, Arc<AppState>>,
+    url: String,
 ) -> Result<String, (String, TauriError)> {
     let client = reqwest::Client::new();
     info!("Setting matrix_url to {url}");
@@ -124,7 +127,12 @@ pub async fn choose_home_server(
             .await
             .context("Failed to parse .well-known response") // TODO: Change how this is handled, since right now the error might originate from the server not supporting oidc or the json being malformed
             .map_err(|e| (url.clone(), e.into()))?;
-        *state.matrix_url.write().await = Some(well_known.homeserver.base_url);
+
+        *state.home_server_info.write().await = Some(
+            HomeServerInfo::try_new(well_known.homeserver.base_url)
+                .await
+                .map_err(|e| (url.clone(), e.into()))?,
+        );
         *state.auth_provider.write().await = Some(well_known.authentication);
         Ok(url)
     } else {
@@ -137,4 +145,23 @@ pub async fn choose_home_server(
             .into(),
         ));
     }
+}
+use ruma::api::client::discovery::get_supported_versions::{
+    Request as VersionsRequest, Response as VersionsResponse,
+};
+use ruma::api::{IncomingResponse, OutgoingRequest, SupportedVersions};
+pub async fn fetch_supported_versions(base_url: String) -> Result<SupportedVersions, TauriError> {
+    let req = VersionsRequest::new().try_into_http_request::<Vec<u8>>(
+        base_url.as_str(),
+        SendAccessToken::None,
+        (),
+    )?;
+
+    let http_req = reqwest::Request::try_from(req)?;
+
+    let res = create_http_response(Client::new().execute(http_req).await?)
+        .await
+        .map_err(|e| format!("Failed to create HTTP response: {:?}", e))?;
+
+    Ok(VersionsResponse::try_from_http_response(res)?.as_supported_versions())
 }

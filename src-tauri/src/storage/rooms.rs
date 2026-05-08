@@ -3,14 +3,14 @@ use crate::TauriError;
 
 #[derive(Debug, Clone, Default)]
 pub struct RoomRow {
-    pub room_id: String,
+    // pub room_id: String,
     pub name: Option<String>,
     pub topic: Option<String>,
     pub avatar_url: Option<String>,
 
     pub algorithm: Option<String>,
 
-    pub is_direct: bool,
+    // pub is_direct: bool,
     pub join_rule: Option<String>,
     pub history_visibility: Option<String>,
     pub guest_access: Option<String>,

@@ -1,12 +1,30 @@
 use log::debug;
+use ruma::UInt;
 use serde_json::Value;
 use shared::messages::UiMessage;
-use std::sync::Arc;
-use tauri_plugin_http::reqwest::Client;
+use std::borrow::Cow;
+use std::{str::FromStr, sync::Arc};
+use tauri_plugin_http::reqwest::{self, Client};
+
+use ruma::api::client::message::get_message_events::v3::{
+    Request as MessageEventsRequest, Response as MessageEventsResponse,
+};
+use ruma::api::{IncomingResponse, OutgoingRequest};
+
+use ruma::{
+    OwnedRoomId,
+    api::{
+        auth_scheme::SendAccessToken,
+        client::membership::joined_members::v3::{
+            Request as JoinedMembersRequest, Response as JoinedMembersResponse,
+        },
+    },
+};
 
 use crate::{
     AppState,
     matrix_api::crypto::process_message,
+    state::HomeServerInfo,
     storage::{
         members::{MemberRow, MembershipState},
         messages::{MessageRow, get_messages, save_messages},
@@ -17,52 +35,40 @@ use log::warn;
 use rusqlite::{OptionalExtension, params};
 use tauri::{State, command};
 
-use crate::{TauriError, construct_url};
+use crate::{TauriError, create_http_response};
 
 async fn get_messages_api(
     room_id: &String,
     prev_batch: &String,
-    matrix_url: &String,
+    server_info: &HomeServerInfo,
     access_token: &String,
     limit: usize,
 ) -> Result<(Vec<Value>, Option<String>), TauriError> {
-    let client = Client::new();
+    let mut req = MessageEventsRequest::backward(OwnedRoomId::from_str(room_id.as_str())?);
 
-    let url = construct_url(vec![
-        matrix_url,
-        "_matrix",
-        "client",
-        "v3",
-        "rooms",
-        room_id,
-        format!("messages?from={prev_batch}&dir=b&limit={limit}").as_str(),
-    ])?;
+    req.limit = UInt::try_from(limit)?;
+    req.from = Some(prev_batch.to_string());
 
-    let res = client.get(url).bearer_auth(access_token).send().await?;
+    let req = req.try_into_http_request::<Vec<u8>>(
+        &server_info.base_url,
+        SendAccessToken::Always(access_token),
+        Cow::Owned(server_info.supported_versions.clone()),
+    )?;
 
-    if res.status().is_success() {
-        let res_json = res.json::<serde_json::Value>().await?;
+    let http_req = reqwest::Request::try_from(req)?;
 
-        let next_batch = res_json
-            .get("end")
-            .and_then(|b| b.as_str())
-            .map(|s| s.to_string());
+    let res = create_http_response(Client::new().execute(http_req).await?).await?;
 
-        if let Some(chunk) = res_json.get("chunk").and_then(|c| c.as_array()) {
-            return Ok((chunk.clone(), next_batch));
-        } else {
-            return Err("Malformed response: missing 'chunk' array".into());
-        }
-    } else {
-        return Err(format!(
-            "Failed to fetch messages: HTTP {}: {}",
-            res.status(),
-            res.text()
-                .await
-                .unwrap_or_else(|_| "No response body".to_string())
-        )
-        .into());
-    }
+    let messages_res = MessageEventsResponse::try_from_http_response(res)?;
+
+    Ok((
+        messages_res
+            .chunk
+            .iter()
+            .map(|v| Value::from(v.json().get()))
+            .collect(),
+        messages_res.end,
+    ))
 }
 
 #[command(rename_all = "snake_case")]
@@ -110,10 +116,10 @@ pub async fn fetch_messages(
         ));
     };
 
-    let (access_token, matrix_url) = state.get_api().await?;
+    let (access_token, server_info) = state.get_api().await?;
 
     let (api_messages, next_token) =
-        get_messages_api(&room_id, &prev_token, &matrix_url, &access_token, limit).await?;
+        get_messages_api(&room_id, &prev_token, &server_info, &access_token, limit).await?;
 
     if let Some(next_token) = next_token {
         save_prev_token(conn, &room_id, &next_token)?;
@@ -188,21 +194,17 @@ pub async fn fetch_messages(
 }
 
 pub async fn backfill_gap(
-    state: &AppState,
+    state: &Arc<AppState>,
     room_id: String,
     start_token: String,
 ) -> Result<(), TauriError> {
     let mut current_token = start_token;
 
-    let access_token = state.check_token().await?;
-    let matrix_url = {
-        let guard = state.matrix_url.read().await;
-        guard.clone().ok_or("Matrix URL not set")?
-    };
+    let (access_token, server_info) = state.get_api().await?;
 
     loop {
         let (api_messages, next_token) =
-            get_messages_api(&room_id, &current_token, &matrix_url, &access_token, 50).await?;
+            get_messages_api(&room_id, &current_token, &server_info, &access_token, 50).await?;
 
         if api_messages.is_empty() {
             break;
@@ -282,62 +284,35 @@ pub async fn backfill_gap(
 }
 
 pub async fn get_members_api(
-    token: &String,
-    matrix_url: &String,
+    server_info: &HomeServerInfo,
+    access_token: String,
     room_id: String,
 ) -> Result<Vec<MemberRow>, TauriError> {
-    let url = construct_url(vec![
-        matrix_url,
-        "_matrix",
-        "client",
-        "v3",
-        "rooms",
-        &room_id,
-        "joined_members",
-    ])?;
+    let req = JoinedMembersRequest::new(OwnedRoomId::from_str(room_id.as_str())?)
+        .try_into_http_request::<Vec<u8>>(
+            server_info.base_url.as_str(),
+            SendAccessToken::Always(access_token.as_str()),
+            Cow::Owned(server_info.supported_versions.clone()),
+        )?;
 
-    let client = Client::new();
-    let res = client.get(url).bearer_auth(token).send().await?;
+    let http_req = reqwest::Request::try_from(req)?;
 
-    if res.status().is_success() {
-        let val: Value = res.json().await?;
+    let res = create_http_response(Client::new().execute(http_req).await?).await?;
 
-        let Some(joined) = val.get("joined") else {
-            return Err("No joined field".into());
-        };
+    let mut members = Vec::new();
+    let joined_members = JoinedMembersResponse::try_from_http_response(res)?.joined;
 
-        let mut members = Vec::new();
-
-        for (user_id, info) in joined.as_object().unwrap() {
-            let display_name = info
-                .get("display_name")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            let avatar_url = info
-                .get("avatar_url")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-
-            members.push(MemberRow {
-                room_id: room_id.clone(),
-                user_id: user_id.clone(),
-                display_name,
-                avatar_url,
-                membership: MembershipState::Join,
-            });
-        }
-
-        Ok(members)
-    } else {
-        return Err(format!(
-            "Failed to fetch members: HTTP {}: {}",
-            res.status(),
-            res.text()
-                .await
-                .unwrap_or_else(|_| "No response body".to_string())
-        )
-        .into());
+    for (user_id, member_info) in joined_members {
+        members.push(MemberRow {
+            room_id: room_id.clone(),
+            user_id: user_id.to_string(),
+            display_name: member_info.display_name.clone(),
+            avatar_url: member_info.avatar_url.clone().map(|m| m.to_string()),
+            membership: MembershipState::Join,
+        });
     }
+
+    return Ok(members);
 }
 
 #[command(rename_all = "snake_case")]

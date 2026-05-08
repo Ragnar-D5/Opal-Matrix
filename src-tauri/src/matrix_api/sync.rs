@@ -1,90 +1,88 @@
-use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use std::{
+    borrow::Cow,
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use log::{trace, warn};
-use ruma::events::presence::PresenceEventContent;
-use ruma::presence::PresenceState;
-use ruma::serde::Raw;
+use ruma::{
+    OwnedRoomId, UInt,
+    api::{
+        IncomingResponse, OutgoingRequest,
+        auth_scheme::SendAccessToken,
+        client::{
+            filter::FilterDefinition,
+            sync::sync_events::v3::{
+                Filter, Request as SyncRequest, Response as SyncResponse, State as SyncState,
+            },
+        },
+    },
+    events::{
+        AnyGlobalAccountDataEvent, AnyRoomAccountDataEvent, AnyStateEventContent,
+        AnySyncEphemeralRoomEvent, AnySyncMessageLikeEvent, AnySyncStateEvent,
+        AnySyncTimelineEvent, presence::PresenceEventContent,
+    },
+    presence::PresenceState,
+    serde::Raw,
+};
+
 use serde_json::value::RawValue;
-use shared::messages::UiMessage;
-use shared::user_profile::{PresenceInfo, PresenceStatus};
+use shared::{
+    messages::UiMessage,
+    user_profile::{PresenceInfo, PresenceStatus},
+};
 use tauri::{AppHandle, Emitter};
 use tauri_plugin_http::reqwest::{self, Client};
 
-use crate::frontend::{send_member_update, send_sidebar_update};
-use crate::matrix_api::handle_sync_calls;
-use crate::matrix_api::rooms::backfill_gap;
-use crate::state::AppState;
-use crate::storage::members::MemberRow;
-use crate::storage::messages::MessageRow;
-use crate::storage::receipts::ReadReceiptRow;
-use crate::storage::rooms::{SpaceChildRow, SpaceParentRow};
-use crate::{TauriError, construct_url, matrix_api::crypto};
+use crate::{
+    TauriError, create_http_response,
+    frontend::{send_member_update, send_sidebar_update},
+    matrix_api::{crypto, handle_sync_calls, rooms::backfill_gap},
+    state::{AppState, HomeServerInfo},
+    storage::{
+        members::MemberRow,
+        messages::MessageRow,
+        receipts::ReadReceiptRow,
+        rooms::{SpaceChildRow, SpaceParentRow},
+    },
+};
 
-use ruma::OwnedRoomId;
-use ruma::api::{IncomingResponse, client::sync::sync_events::v3::Response as SyncResponse};
 use tokio_util::sync::CancellationToken;
 
 async fn matrix_sync(
+    server_info: &HomeServerInfo,
     access_token: &String,
-    matrix_url: &String,
     since: Option<String>,
 ) -> Result<SyncResponse, TauriError> {
-    let client = Client::new();
+    let mut req = SyncRequest::new();
 
-    let mut url = construct_url(vec![
-        matrix_url,
-        &"_matrix".to_string(),
-        &"client".to_string(),
-        &"v3".to_string(),
-        &"sync".to_string(),
-    ])?;
-
-    let mut params = vec![];
-
-    if let Some(since_token) = since {
-        params.push(("since", since_token));
-        params.push(("timeout", "30000".to_string()));
+    req.timeout = if since.is_some() {
+        Some(std::time::Duration::from_secs(30))
     } else {
-        params.push(("timeout", "0".to_string()));
-    }
+        Some(std::time::Duration::from_secs(0))
+    };
+    req.since = since.clone();
+    req.set_presence = PresenceState::Online;
 
-    params.push((
-        "filter",
-        "{\"room\":{\"timeline\":{\"limit\":100}}}".to_string(),
-    ));
+    let mut filter = FilterDefinition::empty();
 
-    url = reqwest::Url::parse_with_params(url.as_str(), &params)?;
+    filter.room.timeline.limit = Some(UInt::try_from(100)?);
 
-    let res = client
-        .get(url)
-        .timeout(std::time::Duration::from_secs(35))
-        .bearer_auth(access_token)
-        .send()
-        .await
-        .map_err(|e| format!("Network error: {e}"))?;
+    req.filter = Some(Filter::FilterDefinition(filter));
 
-    let status = res.status();
-    let headers = res.headers().clone();
-    let body_bytes = res
-        .bytes()
-        .await
-        .map_err(|e| format!("Failed to read response body: {e}"))?;
+    let req = req.try_into_http_request::<Vec<u8>>(
+        &server_info.base_url,
+        SendAccessToken::Always(access_token),
+        Cow::Owned(server_info.supported_versions.clone()),
+    )?;
 
-    let mut builder = http::Response::builder().status(status);
+    let http_req = reqwest::Request::try_from(req)?;
 
-    for (key, value) in headers.iter() {
-        builder = builder.header(key, value);
-    }
+    let res = create_http_response(Client::new().execute(http_req).await?).await?;
 
-    let http_response = builder
-        .body(body_bytes.to_vec())
-        .map_err(|e| format!("Failed to build HTTP response: {e}"))?;
+    let sync_response = SyncResponse::try_from_http_response(res)?;
 
-    match SyncResponse::try_from_http_response(http_response) {
-        Ok(sync_response) => Ok(sync_response),
-        Err(e) => Err(format!("Failed to parse sync response: {e}").into()),
-    }
+    Ok(sync_response)
 }
 
 impl AppState {
@@ -159,13 +157,9 @@ async fn run_sync_loop(
     };
 
     while !cancel.is_cancelled() {
-        let access_token = state.check_token().await?;
-        let matrix_url = {
-            let guard = state.matrix_url.read().await;
-            guard.as_ref().cloned().ok_or("Matrix URL not set")?
-        };
+        let (access_token, server_info) = state.get_api().await?;
 
-        let sync_res = matrix_sync(&access_token, &matrix_url, since.clone()).await?;
+        let sync_res = matrix_sync(&server_info, &access_token, since.clone()).await?;
         since = Some(sync_res.next_batch.clone());
 
         {
@@ -181,10 +175,15 @@ async fn run_sync_loop(
                 .ok_or("Crypto machine not initialized")?
         };
 
-        let res = crypto::process_sync_response(&olm_machine, sync_res, &access_token, &matrix_url)
-            .await?;
+        let res = crypto::process_sync_response(
+            &olm_machine,
+            sync_res,
+            &access_token,
+            &server_info.base_url,
+        )
+        .await?;
 
-        handle_sync_response(&state, &handle, res.clone()).await?;
+        handle_sync_response(&state, &handle, res).await?;
 
         state.save_session().await?;
     }
@@ -209,11 +208,6 @@ fn convert_presence(presence: PresenceEventContent) -> PresenceInfo {
     }
 }
 
-use ruma::api::client::sync::sync_events::v3::State as SyncState;
-use ruma::events::{
-    AnyGlobalAccountDataEvent, AnyRoomAccountDataEvent, AnyStateEventContent,
-    AnySyncEphemeralRoomEvent, AnySyncMessageLikeEvent, AnySyncStateEvent, AnySyncTimelineEvent,
-};
 async fn handle_sync_response(
     state: &Arc<AppState>,
     handle: &AppHandle,
@@ -365,10 +359,14 @@ async fn handle_sync_response(
             .as_mut()
             .ok_or("Database connection not initialized")?;
 
-        let (token, matrix_url) = state.get_api().await?;
+        let server_info = {
+            let guard = state.home_server_info.read().await;
+            guard.as_ref().cloned().ok_or("Matrix URL not set")?
+        };
+        let access_token = state.check_token().await?;
 
         let res = apply_sync_changes(conn, changes.clone()).await?;
-        let stuff = handle_sync_calls(&token, &matrix_url, res).await?;
+        let stuff = handle_sync_calls(server_info, access_token, res).await?;
         handle_safe_stuff(conn, stuff).await?;
 
         let client_guard = state.client.read().await;

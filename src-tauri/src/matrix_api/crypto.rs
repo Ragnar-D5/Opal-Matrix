@@ -163,8 +163,8 @@ pub async fn process_message(
     };
     let access_token = state.check_token().await?;
     let matrix_url = {
-        let guard = state.matrix_url.read().await;
-        guard.clone().ok_or("Matrix URL not set")?
+        let guard = state.home_server_info.read().await;
+        guard.clone().ok_or("Matrix URL not set")?.base_url
     };
 
     let decryption_settings = DecryptionSettings {

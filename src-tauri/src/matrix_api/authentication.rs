@@ -1,170 +1,104 @@
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::borrow::Cow;
 
 use crate::{
-    construct_url,
-    state::{ClientInfo, RefreshToken, Token},
+    construct_url, create_http_response,
+    state::{ClientInfo, HomeServerInfo, RefreshToken, Token},
+};
+use ruma::api::{
+    IncomingResponse, OutgoingRequest,
+    auth_scheme::SendAccessToken,
+    client::{
+        session::{
+            login::v3::{LoginInfo, Password, Request as LoginRequest, Response as LoginResponse},
+            refresh_token::v3::{Request as RefrefreshRequest, Response as RefreshResponse},
+        },
+        uiaa::UserIdentifier,
+    },
 };
 use serde_json::Value;
 
 use crate::TauriError;
-use serde::{Deserialize, Serialize};
-use tauri_plugin_http::reqwest::Client;
-
-#[derive(Serialize)]
-struct MatrixLoginIdentifier {
-    #[serde(rename = "type")]
-    id_type: String,
-    user: String,
-}
-
-#[derive(Serialize)]
-struct MatrixLoginRequest {
-    #[serde(rename = "type")]
-    login_type: String,
-
-    identifier: MatrixLoginIdentifier,
-    password: String,
-
-    initial_device_display_name: String,
-
-    refresh_token: bool,
-}
-
-#[derive(Deserialize)]
-pub struct MatrixLoginResponse {
-    pub access_token: String,
-    pub refresh_token: Option<String>,
-
-    pub device_id: String,
-    pub user_id: String,
-
-    pub expires_in_ms: Option<u64>,
-}
-
-impl Into<(ClientInfo, Token)> for MatrixLoginResponse {
-    fn into(self) -> (ClientInfo, Token) {
-        let refresh_token =
-            if let (Some(token), Some(ms)) = (self.refresh_token, self.expires_in_ms) {
-                Some(RefreshToken::new(token, ms / 1000))
-            } else {
-                None
-            };
-
-        return (
-            ClientInfo {
-                user_id: self.user_id,
-                device_id: self.device_id,
-            },
-            Token {
-                access_token: self.access_token,
-                refresh_token: refresh_token,
-            },
-        );
-    }
-}
+use tauri_plugin_http::reqwest::{self, Client};
 
 pub async fn matrix_login(
+    server_info: HomeServerInfo,
     username: String,
     password: String,
-    matrix_url: String,
 ) -> Result<(ClientInfo, Token), TauriError> {
     let client = Client::new();
 
-    let payload = MatrixLoginRequest {
-        login_type: "m.login.password".to_string(),
+    let mut req = LoginRequest::new(LoginInfo::Password(Password::new(
+        UserIdentifier::UserIdOrLocalpart(username),
+        password,
+    )));
 
-        identifier: MatrixLoginIdentifier {
-            id_type: "m.id.user".to_string(),
-            user: username,
-        },
+    req.device_id = None;
+    req.initial_device_display_name = Some("Opal Matrix on Linux".to_string());
+    req.refresh_token = true;
 
-        initial_device_display_name: "Opal Matrix on Linux".to_string(),
+    let req = req.try_into_http_request::<Vec<u8>>(
+        server_info.base_url.as_str(),
+        SendAccessToken::None,
+        Cow::Owned(server_info.supported_versions),
+    )?;
 
-        password: password,
-        refresh_token: true,
-    };
+    let http_req = reqwest::Request::try_from(req)?;
 
-    let res = client
-        .post(format!("{matrix_url}/_matrix/client/v3/login"))
-        .json(&payload)
-        .send()
+    let res = create_http_response(client.execute(http_req).await?)
         .await
-        .map_err(|e| format!("Network error: {}", e))?;
+        .map_err(|e| format!("Failed to create HTTP response: {:?}", e))?;
 
-    if res.status().is_success() {
-        let json_res: MatrixLoginResponse = res
-            .json()
-            .await
-            .map_err(|e| format!("Parse error: {}", e))?;
+    let ruma_res = LoginResponse::try_from_http_response(res)
+        .map_err(|e| format!("Failed to parse response: {}", e))?;
 
-        return Ok(json_res.into());
-    } else {
-        return Err(format!("Web request failed: {}", res.status()).into());
-    }
+    let refresh_token = ruma_res.refresh_token.clone();
+    let expires_in_ms = ruma_res.expires_in.map(|d| d.as_secs() as u64).unwrap_or(0);
+
+    return Ok((
+        ClientInfo {
+            user_id: ruma_res.user_id.to_string(),
+            device_id: ruma_res.device_id.to_string(),
+        },
+        Token {
+            access_token: ruma_res.access_token,
+            refresh_token: refresh_token.map(|token| RefreshToken::new(token, expires_in_ms)),
+        },
+    ));
 }
 
-#[derive(Serialize)]
-struct MatrixRefreshRequest {
+pub async fn refresh_token(
+    server_info: HomeServerInfo,
     refresh_token: String,
-}
-
-#[derive(Serialize, Deserialize)]
-struct MatrixRefreshResponse {
-    access_token: String,
-    refresh_token: Option<String>,
-
-    expires_in_ms: Option<u64>,
-}
-
-impl Into<Token> for MatrixRefreshResponse {
-    fn into(self) -> Token {
-        let refresh_token =
-            if let (Some(token), Some(ms)) = (self.refresh_token, self.expires_in_ms) {
-                Some(RefreshToken::new(token, ms / 1000))
-            } else {
-                None
-            };
-        return Token {
-            access_token: self.access_token,
-            refresh_token: refresh_token,
-        };
-    }
-}
-
-pub async fn refresh_token(refresh_token: String, matrix_url: String) -> Result<Token, TauriError> {
+) -> Result<Token, TauriError> {
     let client = Client::new();
-    let payload = MatrixRefreshRequest {
-        refresh_token: refresh_token,
-    };
+    let payload = RefrefreshRequest::new(refresh_token);
 
-    let url = construct_url(vec![
-        matrix_url,
-        "_matrix".to_string(),
-        "client".to_string(),
-        "v3".to_string(),
-        "refresh".to_string(),
-    ])?;
+    let req = payload.try_into_http_request::<Vec<u8>>(
+        &server_info.base_url.as_str(),
+        SendAccessToken::None,
+        Cow::Owned(server_info.supported_versions),
+    )?;
+
+    let req = reqwest::Request::try_from(req)?;
 
     let res = client
-        .post(url)
-        .json(&payload)
-        .send()
+        .execute(req)
         .await
         .map_err(|e| format!("Network error: {e}"))?;
 
-    if res.status().is_success() {
-        let json_res: MatrixRefreshResponse =
-            res.json().await.map_err(|e| format!("Parse error: {e}"))?;
+    let refresh_res = RefreshResponse::try_from_http_response(create_http_response(res).await?)
+        .map_err(|e| format!("Failed to parse response: {e}"))?;
 
-        return Ok(json_res.into());
-    } else {
-        return Err(format!(
-            "Web request failed: {}, {}",
-            res.status(),
-            res.text().await.unwrap_or_else(|_| "Unknown error".into())
-        )
-        .into());
-    }
+    Ok(Token {
+        access_token: refresh_res.access_token,
+        refresh_token: Some(RefreshToken::new(
+            refresh_res.refresh_token.ok_or("No new refresh token")?,
+            refresh_res
+                .expires_in_ms
+                .map(|ms| ms.as_secs())
+                .unwrap_or(0),
+        )),
+    })
 }
 
 pub async fn get_account_data(

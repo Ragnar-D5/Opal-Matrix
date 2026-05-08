@@ -1,5 +1,5 @@
 use log::info;
-use ruma::UserId;
+use ruma::{UserId, api::SupportedVersions};
 use std::{
     path::PathBuf,
     sync::Arc,
@@ -20,9 +20,9 @@ use crate::{
     matrix_api::{
         authentication::{self, get_account_data},
         crypto::{self, decrypt_ssss_aes_hmac_sha2},
-        discovery::Authentication,
+        discovery::{Authentication, fetch_supported_versions},
     },
-    storage,
+    state, storage,
 };
 
 #[derive(Default, Clone)]
@@ -74,6 +74,21 @@ pub struct ClientInfo {
     pub device_id: String,
 }
 
+#[derive(Clone)]
+pub struct HomeServerInfo {
+    pub base_url: String,
+    pub supported_versions: SupportedVersions,
+}
+
+impl HomeServerInfo {
+    pub async fn try_new(base_url: String) -> Result<Self, TauriError> {
+        Ok(HomeServerInfo {
+            base_url: base_url.clone(),
+            supported_versions: fetch_supported_versions(base_url.clone()).await?,
+        })
+    }
+}
+
 #[derive(Default)]
 pub struct AppState {
     pub app_data_dir: PathBuf,
@@ -83,7 +98,7 @@ pub struct AppState {
 
     pub next_batch: RwLock<Option<String>>,
 
-    pub matrix_url: RwLock<Option<String>>,
+    pub home_server_info: RwLock<Option<HomeServerInfo>>,
     pub auth_provider: RwLock<Option<Authentication>>,
 
     pub refresh_lock: Mutex<()>,
@@ -110,8 +125,8 @@ impl AppState {
         };
 
         let matrix_url = {
-            let url_guard = self.matrix_url.read().await;
-            url_guard.as_ref().ok_or("Not logged in")?.clone()
+            let url_guard = self.home_server_info.read().await;
+            url_guard.as_ref().ok_or("Not logged in")?.clone().base_url
         };
 
         let session = crypto::StoredSession {
@@ -122,7 +137,7 @@ impl AppState {
             expires_at: token.refresh_token.clone().map(|r| r.expires_at),
             next_batch: self.next_batch.read().await.clone(),
             recovery_key: self.recovery_key.read().await.clone(),
-            homeserver_url: matrix_url.clone(),
+            homeserver_url: matrix_url.to_string(),
         };
 
         crypto::save_session(&session).await?;
@@ -142,12 +157,14 @@ impl AppState {
             }
         };
 
-        let matrix_url = {
-            let url_guard = self.matrix_url.read().await;
-            url_guard.as_ref().ok_or("Not logged in")?.clone()
-        };
+        let server_info = self
+            .home_server_info
+            .read()
+            .await
+            .clone()
+            .ok_or("Not logged in")?;
 
-        let res = authentication::refresh_token(refresh_token.token, matrix_url).await?;
+        let res = authentication::refresh_token(server_info, refresh_token.token).await?;
 
         {
             let mut write_guard = self.token.write().await;
@@ -183,8 +200,8 @@ impl AppState {
                 let mut client_guard = self.client.write().await;
                 *client_guard = Some(client_info);
 
-                let mut url_guard = self.matrix_url.write().await;
-                *url_guard = Some(session.homeserver_url);
+                let mut server_guard = self.home_server_info.write().await;
+                *server_guard = Some(HomeServerInfo::try_new(session.homeserver_url).await?);
 
                 let mut recovery_guard = self.recovery_key.write().await;
                 *recovery_guard = session.recovery_key;
@@ -268,8 +285,12 @@ impl AppState {
         }
 
         let matrix_url = {
-            let url_guard = self.matrix_url.read().await;
-            url_guard.as_ref().ok_or("Not logged in")?.clone()
+            let server_guard = self.home_server_info.read().await;
+            server_guard
+                .as_ref()
+                .ok_or("Not logged in")?
+                .clone()
+                .base_url
         };
 
         let olm_machine = {
@@ -357,15 +378,15 @@ impl AppState {
         Ok(())
     }
 
-    pub async fn get_api(self: &Arc<Self>) -> Result<(String, String), TauriError> {
+    pub async fn get_api(self: &Arc<Self>) -> Result<(String, HomeServerInfo), TauriError> {
         let token = self.check_token().await?;
 
-        let matrix_url = {
-            let url_guard = self.matrix_url.read().await;
-            url_guard.as_ref().ok_or("Not logged in")?.clone()
+        let server_info = {
+            let server_guard = self.home_server_info.read().await;
+            server_guard.as_ref().ok_or("Not logged in")?.clone()
         };
 
-        Ok((token, matrix_url))
+        Ok((token, server_info))
     }
 
     pub async fn get_api_with_url<T>(
@@ -377,8 +398,8 @@ impl AppState {
     {
         let token = self.check_token().await?;
         let matrix_url = {
-            let url_guard = self.matrix_url.read().await;
-            url_guard.as_ref().ok_or("Not logged in")?.clone()
+            let url_guard = self.home_server_info.read().await;
+            url_guard.as_ref().ok_or("Not logged in")?.clone().base_url
         };
 
         let all_parts: Vec<String> = std::iter::once(matrix_url)

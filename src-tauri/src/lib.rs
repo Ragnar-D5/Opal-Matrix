@@ -4,6 +4,7 @@ use aes::Aes256;
 use aes::cipher::{KeyIvInit, StreamCipher};
 use base64::Engine;
 use base64::engine::general_purpose;
+use bytes::Bytes;
 use colored::Colorize;
 use log::info;
 use serde::Serialize;
@@ -17,7 +18,7 @@ mod storage;
 
 use matrix_api::authentication;
 
-use tauri_plugin_http::reqwest;
+use tauri_plugin_http::reqwest::{self, Response};
 
 type Aes256Ctr = ctr::Ctr64BE<Aes256>;
 
@@ -47,6 +48,27 @@ where
     }
 
     return Url::parse(&url_str).map_err(|e| format!("Invalid URL: {}", e).into());
+}
+
+/// Helper function to convert a reqwest::Response into an http::Response<Bytes>.
+///
+/// This is necessary because ruma's API expects http::Response types, but reqwest returns its own Response type. This function reads the body of the reqwest response and constructs a new http::Response with the same status, headers, and body content.
+async fn create_http_response(res: Response) -> Result<http::Response<Bytes>, TauriError> {
+    let status = res.status();
+    let headers = res.headers().clone();
+    let body_bytes = res
+        .bytes()
+        .await
+        .map_err(|e| format!("Failed to read body: {}", e))?;
+
+    let mut http_res_builder = http::Response::builder().status(status);
+    for (name, value) in headers.iter() {
+        http_res_builder = http_res_builder.header(name, value);
+    }
+
+    http_res_builder
+        .body(body_bytes)
+        .map_err(|e| format!("Failed to build response: {}", e).into())
 }
 
 #[derive(serde::Serialize)]
@@ -96,6 +118,14 @@ impl std::fmt::Debug for TauriError {
         }
     }
 }
+
+// impl std::fmt::Display for TauriError {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         match &self {
+//             TauriError::Wrap(val) => write!(f, "{}", val),
+//         }
+//     }
+// }
 
 impl<T> From<T> for TauriError
 where
@@ -161,24 +191,23 @@ async fn login(
     // Ensure no sync iteration is still running with an old crypto machine/token pair, fixes an error only occuring on Android?
     state.stop_sync().await?;
 
-    let matrix_url = state
-        .matrix_url
+    let server_info = state
+        .home_server_info
         .read()
         .await
-        .clone()
-        .expect("Has to be a valid home server url at this point");
+        .as_ref()
+        .ok_or("Home server not set")?
+        .clone();
 
     let (client_info, token) =
-        authentication::matrix_login(username, password, matrix_url.clone()).await?;
+        authentication::matrix_login(server_info, username, password).await?;
 
     {
         let mut client_guard = state.client.write().await;
         let mut token_guard = state.token.write().await;
-        let mut url_guard = state.matrix_url.write().await;
 
         *token_guard = Some(token.clone());
         *client_guard = Some(client_info.clone());
-        *url_guard = Some(matrix_url.clone());
     }
 
     state.save_session().await?;
@@ -361,13 +390,10 @@ pub fn run() {
                         }
                     }
 
-                    let matrix_url = {
-                        let url_guard = state.matrix_url.read().await;
-                        url_guard
-                            .as_ref()
-                            .ok_or("Not logged in")
-                            .unwrap_or(&"https://matrix-client.matrix.org".to_string())
-                            .clone()
+                    let matrix_url = if let Some(server) = state.home_server_info.read().await.as_ref() {
+                        server.base_url.clone()
+                    } else {
+                        "https://matrix-client.matrix.org".to_string()
                     };
 
                     let fetch_url = if enc_key.is_some() {

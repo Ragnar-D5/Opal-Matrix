@@ -33,7 +33,7 @@ version-compare = "0.2.1"
 matrix-sdk-crypto = { version = "0.16.0", features = ["js"] }
 matrix-sdk-sqlite = { version = "0.16.0", features = ["crypto-store", "bundled"] }
 keyring = { version = "3.6.3", default-features = false, features = ["async-secret-service", "async-io", "crypto-rust"] }
-ruma = "0.14.1"
+ruma = { version = "0.14.1", features = ["api"] }
 hex = "0.4.3"
 http = "1.4.0"
 bytes = "1.11.1"
