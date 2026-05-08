@@ -360,7 +360,6 @@ impl TryInto<UiMessage> for MessageRow {
 
                         let encryption_info = if let Some(file_obj) = content.get("file") {
                             Some(EncryptedFileInfo {
-                                // The actual AES key is hidden inside the JWK 'key' object under 'k'
                                 key: file_obj
                                     .get("key")
                                     .and_then(|k| k.get("k"))
