@@ -650,6 +650,7 @@ use {
     sha2::Sha256,
 };
 
+/// Decrypts ssss
 pub fn decrypt_ssss_aes_hmac_sha2(
     recovery_key_base58: &str,
     event_type: &str, // e.g. "m.megolm_backup.v1"
