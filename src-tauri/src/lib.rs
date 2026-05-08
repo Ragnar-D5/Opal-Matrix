@@ -1,6 +1,4 @@
-use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use aes::Aes256;
 use aes::cipher::{KeyIvInit, StreamCipher};
@@ -8,24 +6,18 @@ use base64::Engine;
 use base64::engine::general_purpose;
 use colored::Colorize;
 use log::info;
-use ruma::UserId;
 use serde::Serialize;
-use tauri::async_runtime::{JoinHandle, Mutex, RwLock};
 use tauri::{AppHandle, Url, command};
 use tauri::{Manager, State};
-use tokio_util::sync::CancellationToken;
-
-use matrix_sdk_crypto::{CrossSigningKeyExport, OlmMachine};
 
 mod frontend;
 mod matrix_api;
+mod state;
 mod storage;
 
 use matrix_api::authentication;
-use matrix_api::crypto;
-use matrix_api::discovery::{choose_home_server, try_home_server};
 
-use tauri_plugin_http::reqwest::{self, Client};
+use tauri_plugin_http::reqwest;
 
 type Aes256Ctr = ctr::Ctr64BE<Aes256>;
 
@@ -34,9 +26,7 @@ pub const APP_NAME: &str = "opal-matrix";
 use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
 
 use crate::frontend::send_sidebar_update;
-use crate::matrix_api::authentication::get_account_data;
-use crate::matrix_api::crypto::decrypt_ssss_aes_hmac_sha2;
-use crate::matrix_api::discovery::Authentication;
+use crate::state::AppState;
 
 const MATRIX_ID_SET: &AsciiSet = &CONTROLS.add(b'!').add(b':');
 
@@ -57,361 +47,6 @@ where
     }
 
     return Url::parse(&url_str).map_err(|e| format!("Invalid URL: {}", e).into());
-}
-
-#[derive(Default, Clone)]
-struct RefreshToken {
-    token: String,
-    expires_at: u64,
-}
-
-#[derive(Default, Clone)]
-struct Token {
-    access_token: String,
-
-    refresh_token: Option<RefreshToken>,
-}
-
-impl Token {
-    fn is_stale(&self) -> bool {
-        let expires_at = if let Some(refresh) = &self.refresh_token {
-            refresh.expires_at
-        } else {
-            return false;
-        };
-
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("Failed to get time")
-            .as_secs();
-
-        now + 30 >= expires_at
-    }
-}
-
-#[derive(Default, Clone)]
-struct ClientInfo {
-    user_id: String,
-    device_id: String,
-}
-
-#[derive(Default)]
-struct AppState {
-    app_data_dir: PathBuf,
-
-    token: RwLock<Option<Token>>,
-    client: RwLock<Option<ClientInfo>>,
-
-    next_batch: RwLock<Option<String>>,
-
-    matrix_url: RwLock<Option<String>>,
-    auth_provider: RwLock<Option<Authentication>>,
-
-    refresh_lock: Mutex<()>,
-
-    crypto_machine: Mutex<Option<OlmMachine>>,
-    recovery_key: RwLock<Option<String>>,
-
-    sync_task: Mutex<Option<JoinHandle<()>>>,
-    sync_cancel_token: Mutex<Option<CancellationToken>>,
-
-    connection: Mutex<Option<rusqlite::Connection>>,
-    // call_members_by_room: Mutex<HashMap<String, HashSet<String>>>,
-}
-
-impl AppState {
-    async fn save_session(&self) -> Result<(), TauriError> {
-        let token = {
-            let token_guard = self.token.read().await;
-            token_guard.as_ref().ok_or("Not logged in")?.clone()
-        };
-
-        let client_info = {
-            let client_guard = self.client.read().await;
-            client_guard.as_ref().ok_or("Not logged in")?.clone()
-        };
-
-        let matrix_url = {
-            let url_guard = self.matrix_url.read().await;
-            url_guard.as_ref().ok_or("Not logged in")?.clone()
-        };
-
-        let session = crypto::StoredSession {
-            user_id: client_info.user_id.clone(),
-            device_id: client_info.device_id.clone(),
-            access_token: token.access_token.clone(),
-            refresh_token: token.refresh_token.clone().map(|r| r.token),
-            expires_at: token.refresh_token.clone().map(|r| r.expires_at),
-            next_batch: self.next_batch.read().await.clone(),
-            recovery_key: self.recovery_key.read().await.clone(),
-            homeserver_url: matrix_url.clone(),
-        };
-
-        crypto::save_session(&session).await?;
-
-        Ok(())
-    }
-
-    async fn refresh_token(&self) -> Result<(), TauriError> {
-        let refresh_token = {
-            let token_guard = self.token.read().await;
-            let token = token_guard.as_ref().ok_or("Not logged in")?.clone();
-
-            if let Some(refresh) = token.refresh_token {
-                refresh
-            } else {
-                return Err("No refresh token available".into());
-            }
-        };
-
-        let matrix_url = {
-            let url_guard = self.matrix_url.read().await;
-            url_guard.as_ref().ok_or("Not logged in")?.clone()
-        };
-
-        let res = authentication::refresh_token(refresh_token.token, matrix_url).await?;
-
-        {
-            let mut write_guard = self.token.write().await;
-            *write_guard = Some(res);
-        }
-
-        self.save_session().await?;
-
-        return Ok(());
-    }
-
-    async fn login_or_restore_session(&self) -> Result<bool, TauriError> {
-        let session = crypto::get_last_active_session().await?;
-
-        if let Some(session) = session {
-            let token = Token {
-                access_token: session.access_token,
-                refresh_token: session.refresh_token.map(|r| RefreshToken {
-                    token: r,
-                    expires_at: session.expires_at.unwrap_or(0),
-                }),
-            };
-
-            let client_info = ClientInfo {
-                user_id: session.user_id.clone(),
-                device_id: session.device_id.clone(),
-            };
-
-            {
-                let mut token_guard = self.token.write().await;
-                *token_guard = Some(token);
-
-                let mut client_guard = self.client.write().await;
-                *client_guard = Some(client_info);
-
-                let mut url_guard = self.matrix_url.write().await;
-                *url_guard = Some(session.homeserver_url);
-
-                let mut recovery_guard = self.recovery_key.write().await;
-                *recovery_guard = session.recovery_key;
-
-                let mut next_batch_guard = self.next_batch.write().await;
-                *next_batch_guard = session.next_batch;
-            }
-
-            return Ok(self.check_token().await.is_ok());
-        }
-
-        Ok(false)
-    }
-
-    async fn check_token(&self) -> Result<String, TauriError> {
-        let needs_refresh = {
-            let token_guard = self.token.read().await;
-            let t = token_guard.as_ref().ok_or("Not logged in")?;
-            t.is_stale()
-        };
-
-        if needs_refresh {
-            let _lock = self.refresh_lock.lock().await;
-
-            // Check if another thread already refreshed it
-            let still_needs_refresh = {
-                let token_guard = self.token.read().await;
-                token_guard.as_ref().map(|t| t.is_stale()).unwrap_or(false)
-            };
-
-            if still_needs_refresh {
-                self.refresh_token().await?;
-            }
-        }
-
-        let token_guard = self.token.read().await;
-        let token = token_guard.as_ref().ok_or("Not logged in")?;
-
-        Ok(token.access_token.clone())
-    }
-
-    async fn init_stuff(self: &Arc<Self>, handle: &AppHandle) -> Result<(), TauriError> {
-        let client_info = {
-            let client_guard = self.client.read().await;
-            client_guard.as_ref().ok_or("Not logged in")?.clone()
-        };
-
-        let db_passphrase = crypto::get_or_create_passphrase(client_info.user_id.clone()).await?;
-
-        let machine = crypto::init_crypto_machine(
-            self.app_data_dir.clone(),
-            client_info.user_id.clone(),
-            client_info.device_id.clone(),
-            db_passphrase.clone(),
-        )
-        .await?;
-
-        let mut machine_guard = self.crypto_machine.lock().await;
-        *machine_guard = Some(machine);
-
-        let (already_loaded, conn) = storage::init_storage(
-            self.app_data_dir.clone(),
-            &client_info.device_id.clone(),
-            &db_passphrase,
-        )
-        .await?;
-
-        {
-            let mut conn_guard = self.connection.lock().await;
-            *conn_guard = Some(conn);
-        }
-        self.start_sync(handle, !already_loaded).await?;
-
-        Ok(())
-    }
-
-    async fn set_recovery_key(&self, recovery_key: String) -> Result<(), TauriError> {
-        {
-            let mut key_guard = self.recovery_key.write().await;
-            *key_guard = Some(recovery_key.clone());
-        }
-
-        let matrix_url = {
-            let url_guard = self.matrix_url.read().await;
-            url_guard.as_ref().ok_or("Not logged in")?.clone()
-        };
-
-        let olm_machine = {
-            let lock_guard = self.crypto_machine.lock().await;
-            lock_guard
-                .as_ref()
-                .ok_or("Crypto machine not initialized")?
-                .clone()
-        };
-
-        let token = self.check_token().await?;
-
-        crypto::set_room_keys(&olm_machine, &matrix_url, &token, &recovery_key).await?;
-
-        let client_info = self.client.read().await.clone().ok_or("Not logged in")?;
-
-        let device = olm_machine
-            .get_device(
-                &UserId::parse(client_info.user_id.as_str()).expect("Failted to parse user id"),
-                client_info.device_id.as_str().into(),
-                Some(Duration::from_secs(10)),
-            )
-            .await?
-            .ok_or("No device for some reason")?;
-
-        info!("Device {:?}", device);
-
-        let res = get_account_data(
-            &token,
-            &matrix_url,
-            &olm_machine.user_id().to_string(),
-            &"m.secret_storage.default_key".to_string(),
-        )
-        .await?;
-
-        let default_key_id = res["key"]
-            .as_str()
-            .ok_or("Missing default_key in account data")?;
-        let res = get_account_data(
-            &token,
-            &matrix_url,
-            &olm_machine.user_id().to_string(),
-            &"m.cross_signing.self_signing".to_string(),
-        )
-        .await?;
-
-        let enc = &res["encrypted"][default_key_id];
-
-        let ciphertext = enc["ciphertext"]
-            .as_str()
-            .ok_or("Missing ciphertext in encrypted key data")?;
-        let mac = enc["mac"]
-            .as_str()
-            .ok_or("Missing mac in encrypted key data")?;
-        let iv = enc["iv"]
-            .as_str()
-            .ok_or("Missing ephemeral in encrypted key data")?;
-
-        let self_signing_key = decrypt_ssss_aes_hmac_sha2(
-            recovery_key.as_str(),
-            "m.cross_signing.self_signing",
-            ciphertext,
-            iv,
-            mac,
-        )?;
-
-        let import = CrossSigningKeyExport {
-            self_signing_key: Some(self_signing_key),
-            master_key: None,
-            user_signing_key: None,
-        };
-
-        olm_machine.import_cross_signing_keys(import).await?;
-
-        let upload_request = device.verify().await?;
-        let url = format!("{matrix_url}/_matrix/client/v3/keys/signatures/upload");
-
-        let client = Client::new();
-        client
-            .post(url)
-            .bearer_auth(token)
-            .json(&serde_json::to_value(upload_request.signed_keys).unwrap())
-            .send()
-            .await?;
-
-        Ok(())
-    }
-
-    pub async fn get_api(self: &Arc<Self>) -> Result<(String, String), TauriError> {
-        let token = self.check_token().await?;
-
-        let matrix_url = {
-            let url_guard = self.matrix_url.read().await;
-            url_guard.as_ref().ok_or("Not logged in")?.clone()
-        };
-
-        Ok((token, matrix_url))
-    }
-
-    pub async fn get_api_with_url<T>(
-        self: &Arc<Self>,
-        parts: Vec<T>,
-    ) -> Result<(String, Url), TauriError>
-    where
-        T: AsRef<str>,
-    {
-        let token = self.check_token().await?;
-        let matrix_url = {
-            let url_guard = self.matrix_url.read().await;
-            url_guard.as_ref().ok_or("Not logged in")?.clone()
-        };
-
-        let all_parts: Vec<String> = std::iter::once(matrix_url)
-            .chain(parts.into_iter().map(|s| s.as_ref().to_string()))
-            .collect();
-
-        let url = construct_url(all_parts)?;
-
-        Ok((token, url))
-    }
 }
 
 #[derive(serde::Serialize)]
@@ -557,6 +192,7 @@ async fn login(
     })
 }
 
+/// Sets the recovery key for the current user. The key is saved in the keyring.
 #[tauri::command(rename_all = "snake_case")]
 async fn set_recovery_key(
     state: State<'_, Arc<AppState>>,
@@ -658,17 +294,21 @@ pub fn run() {
             try_restore,
             set_recovery_key,
             send_frontend,
-            try_home_server,
-            choose_home_server,
+
+            // storage commands
             storage::get_members,
+            storage::members::get_members_for_room,
+            storage::receipts::get_receipt,
+
+            // matrix API commands
+            matrix_api::discovery::try_home_server,
+            matrix_api::discovery::choose_home_server,
             matrix_api::rooms::fetch_messages,
             matrix_api::rooms::send_read_marker,
             matrix_api::account_data::set_account_data,
             matrix_api::account_data::get_account_data,
             matrix_api::account_data::get_breadcrumbs,
             matrix_api::account_data::get_server_order,
-            storage::members::get_members_for_room,
-            storage::receipts::get_receipt,
         ])
         .register_asynchronous_uri_scheme_protocol(
             "mxc",

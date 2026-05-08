@@ -1,6 +1,7 @@
-use std::sync::Arc;
-
-use ruma::api::client::sync::sync_events::v3::State;
+use tauri::{
+    Runtime,
+    plugin::{Builder, TauriPlugin},
+};
 
 use crate::{
     AppState, TauriError,

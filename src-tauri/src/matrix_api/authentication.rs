@@ -1,9 +1,12 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::{ClientInfo, construct_url};
+use crate::{
+    construct_url,
+    state::{ClientInfo, RefreshToken, Token},
+};
 use serde_json::Value;
 
-use crate::{RefreshToken, TauriError, Token};
+use crate::TauriError;
 use serde::{Deserialize, Serialize};
 use tauri_plugin_http::reqwest::Client;
 
@@ -42,14 +45,7 @@ impl Into<(ClientInfo, Token)> for MatrixLoginResponse {
     fn into(self) -> (ClientInfo, Token) {
         let refresh_token =
             if let (Some(token), Some(ms)) = (self.refresh_token, self.expires_in_ms) {
-                Some(RefreshToken {
-                    token: token,
-                    expires_at: SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .expect("Failed to get time")
-                        .as_secs()
-                        + ms / 1000,
-                })
+                Some(RefreshToken::new(token, ms / 1000))
             } else {
                 None
             };
@@ -124,14 +120,7 @@ impl Into<Token> for MatrixRefreshResponse {
     fn into(self) -> Token {
         let refresh_token =
             if let (Some(token), Some(ms)) = (self.refresh_token, self.expires_in_ms) {
-                Some(RefreshToken {
-                    token: token,
-                    expires_at: SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .expect("Failed to get time")
-                        .as_secs()
-                        + ms / 1000,
-                })
+                Some(RefreshToken::new(token, ms / 1000))
             } else {
                 None
             };

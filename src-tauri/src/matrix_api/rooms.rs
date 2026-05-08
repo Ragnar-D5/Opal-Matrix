@@ -110,17 +110,7 @@ pub async fn fetch_messages(
         ));
     };
 
-    let access_token = {
-        let guard = state.token.read().await;
-        guard
-            .clone()
-            .ok_or("Access token not available")?
-            .access_token
-    };
-    let matrix_url = {
-        let guard = state.matrix_url.read().await;
-        guard.clone().ok_or("Matrix URL not available")?
-    };
+    let (access_token, matrix_url) = state.get_api().await?;
 
     let (api_messages, next_token) =
         get_messages_api(&room_id, &prev_token, &matrix_url, &access_token, limit).await?;

@@ -14,11 +14,12 @@ use tauri_plugin_http::reqwest::{self, Client};
 use crate::frontend::{send_member_update, send_sidebar_update};
 use crate::matrix_api::handle_sync_calls;
 use crate::matrix_api::rooms::backfill_gap;
+use crate::state::AppState;
 use crate::storage::members::MemberRow;
 use crate::storage::messages::MessageRow;
 use crate::storage::receipts::ReadReceiptRow;
 use crate::storage::rooms::{SpaceChildRow, SpaceParentRow};
-use crate::{AppState, TauriError, construct_url, matrix_api::crypto};
+use crate::{TauriError, construct_url, matrix_api::crypto};
 
 use ruma::OwnedRoomId;
 use ruma::api::{IncomingResponse, client::sync::sync_events::v3::Response as SyncResponse};

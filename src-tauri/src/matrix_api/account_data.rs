@@ -6,6 +6,7 @@ use shared::account_data::{AccountData, AccountDataPayload};
 use tauri::{State, command};
 use tauri_plugin_http::reqwest::Client;
 
+/// Generic function to set account data for a given type T that implements the `AccountData` trait.
 async fn set_account_data_api<T: Serialize + AccountData>(
     matrix_url: &String,
     user_id: &String,
@@ -36,6 +37,7 @@ async fn set_account_data_api<T: Serialize + AccountData>(
     Ok(())
 }
 
+/// Generic function to get account data for a given type T that implements the `AccountData` trait.
 async fn get_account_data_api<T: DeserializeOwned + Serialize + AccountData + Default>(
     matrix_url: &String,
     user_id: &String,
@@ -72,6 +74,19 @@ async fn get_account_data_api<T: DeserializeOwned + Serialize + AccountData + De
     }
 }
 
+/// Command to set account data, which can handle multiple types of account data based on the payload.
+///
+/// Example usage from a leptos frontend:
+/// ```rust
+/// use shared::account_data::{AccountDataPayload, Breadcrumbs};
+/// use leptos::prelude::*;
+///
+/// let payload = AccountDataPayload::Breadcrumbs(Breadcrumbs {
+///    room_ids: vec!["!roomid:example.com".to_string()],
+/// });
+///
+/// invoke("set_account_data", serde_wasm_bindgen::to_value(&payload)?).await?;
+/// ```
 #[command]
 pub async fn set_account_data(
     state: State<'_, Arc<AppState>>,

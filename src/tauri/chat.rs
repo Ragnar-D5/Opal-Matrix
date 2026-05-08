@@ -1,5 +1,6 @@
 use crate::state::{AppState, MemberProfileHandle, MemberStore, RoomHeader};
 use crate::tauri_functions::send_marker;
+use leptos::prelude::*;
 use std::collections::{HashMap, HashSet};
 
 use crate::app::{call_tauri, openUrl};
@@ -8,8 +9,8 @@ use crate::components::FloatingTile;
 use crate::hooks::use_tauri_event;
 use chrono::{DateTime, Local, NaiveDate, TimeZone};
 use leptos::html::Div;
+use leptos::leptos_dom::logging::console_error;
 use leptos::task::spawn_local;
-use leptos::{leptos_dom::logging::console_error, prelude::*};
 use leptos_use::{use_intersection_observer, UseIntersectionObserverReturn};
 use serde::Serialize;
 use shared::messages::{
@@ -55,7 +56,7 @@ fn render_span(span: RichTextSpan) -> impl IntoView {
     let state: AppState = expect_context();
     let store: MemberStore = expect_context();
 
-    let Some(room_id) = state.active_room_id.get() else {
+    let Some(room_id) = state.active_room_id.get_untracked() else {
         return view! {}.into_any();
     };
 
