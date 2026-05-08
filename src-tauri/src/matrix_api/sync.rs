@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use log::{info, trace, warn};
+use log::{trace, warn};
 use ruma::events::presence::PresenceEventContent;
 use ruma::presence::PresenceState;
 use ruma::serde::Raw;
@@ -191,7 +191,7 @@ async fn run_sync_loop(
     Ok(())
 }
 
-use crate::storage::{self, SyncChanges, apply_sync_changes, handle_safe_stuff};
+use crate::storage::{SyncChanges, apply_sync_changes, handle_safe_stuff};
 
 fn convert_presence(presence: PresenceEventContent) -> PresenceInfo {
     let status = match presence.presence {

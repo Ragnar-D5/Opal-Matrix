@@ -1,4 +1,5 @@
 use crate::state::{AppState, MemberProfileHandle, MemberStore, RoomHeader};
+use crate::tauri_functions::send_marker;
 use std::collections::{HashMap, HashSet};
 
 use crate::app::{call_tauri, openUrl};
@@ -223,7 +224,7 @@ fn ReplyPreview(replies_to: Option<RepliesTo>) -> impl IntoView {
     let state: AppState = expect_context();
     let store: MemberStore = expect_context();
 
-    let Some(room_id) = state.active_room_id.get() else {
+    let Some(room_id) = state.active_room_id.get_untracked() else {
         return view! {}.into_any();
     };
 
@@ -658,6 +659,46 @@ fn TimeLine() -> impl IntoView {
         room_has_notifications(&sidebar_state, &room_id)
     });
 
+    let (last_sent_event_id, set_last_sent_event_id) = signal::<Option<String>>(None);
+
+    Effect::new(move |_| {
+        if !state.is_focused.get() {
+            return;
+        }
+
+        let Some(rid) = state.active_room_id.get() else {
+            return;
+        };
+        let Some(newest) = messages
+            .get()
+            .iter()
+            .max_by_key(|m| m.timestamp)
+            .map(|m| m.event_id.clone())
+        else {
+            return;
+        };
+
+        if last_sent_event_id.get_untracked().as_deref() == Some(&newest) {
+            return;
+        }
+
+        set_last_sent_event_id.set(Some(newest.clone()));
+        send_marker(rid, newest);
+    });
+
+    let (show_unread_indicator, set_show_unread_indicator) = signal(false);
+
+    Effect::new(move |_| {
+        state.active_room_id.get();
+        set_show_unread_indicator.set(false);
+    });
+
+    Effect::new(move |_| {
+        if has_unread_notifications.get() {
+            set_show_unread_indicator.set(true);
+        }
+    });
+
     let flattened_items = Memo::new(move |_| {
         let mut msgs = messages.get();
         msgs.sort_by_key(|m| m.timestamp);
@@ -665,7 +706,7 @@ fn TimeLine() -> impl IntoView {
         let mut items: Vec<TimelineItem> = Vec::new();
         let mut last_day: Option<NaiveDate> = None;
         let marker_id = read_marker_id.get();
-        let has_unread = has_unread_notifications.get();
+        let has_unread = show_unread_indicator.get();
 
         let mut edits = HashMap::new();
         let mut redactions = HashSet::new();
@@ -951,38 +992,28 @@ fn TimeLine() -> impl IntoView {
 
     Effect::new(move |_| {
         let rid = state.active_room_id.get();
-        let has_unread = has_unread_notifications.get();
+        set_read_marker_id.set(None);
 
-        if let Some(room_id) = rid {
-            if !has_unread {
-                set_read_marker_id.set(None);
-                return;
-            }
+        let Some(room_id) = rid else {
+            return;
+        };
 
-            spawn_local(async move {
-                let args = match serde_wasm_bindgen::to_value(&ReceiptArgs {
-                    room_id: room_id.clone(),
-                }) {
-                    Ok(a) => a,
-                    Err(e) => {
-                        console_error(&format!("Failed to serialize receipt args: {:?}", e));
-                        return;
+        spawn_local(async move {
+            let args = serde_wasm_bindgen::to_value(&ReceiptArgs {
+                room_id: room_id.clone(),
+            })
+            .expect("Failed to serialize args");
+
+            match call_tauri("get_receipt", args).await {
+                Ok(marker) => match serde_wasm_bindgen::from_value::<Option<String>>(marker) {
+                    Ok(parsed_marker) => {
+                        set_read_marker_id.set(parsed_marker);
                     }
-                };
-
-                match call_tauri("get_receipt", args).await {
-                    Ok(marker) => match serde_wasm_bindgen::from_value::<Option<String>>(marker) {
-                        Ok(parsed_marker) => {
-                            set_read_marker_id.set(parsed_marker);
-                        }
-                        Err(e) => console_error(&format!("Failed to parse receipt: {:?}", e)),
-                    },
-                    Err(e) => console_error(&format!("Tauri get_receipt call failed: {:?}", e)),
-                }
-            });
-        } else {
-            set_read_marker_id.set(None);
-        }
+                    Err(e) => console_error(&format!("Failed to parse receipt: {:?}", e)),
+                },
+                Err(e) => console_error(&format!("Tauri get_receipt call failed: {:?}", e)),
+            }
+        });
     });
 
     view! {

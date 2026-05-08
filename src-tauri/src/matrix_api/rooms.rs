@@ -349,3 +349,34 @@ pub async fn get_members_api(
         .into());
     }
 }
+
+#[command(rename_all = "snake_case")]
+pub async fn send_read_marker(
+    state: State<'_, Arc<AppState>>,
+    room_id: String,
+    event_id: String,
+) -> Result<(), TauriError> {
+    let (token, url) = state
+        .get_api_with_url(vec![
+            "_matrix",
+            "client",
+            "v3",
+            "rooms",
+            &room_id,
+            "read_markers",
+        ])
+        .await?;
+
+    Client::new()
+        .post(url)
+        .bearer_auth(token)
+        .json(&serde_json::json!({
+            "m.fully_read": event_id,
+            "m.read": event_id,
+        }))
+        .send()
+        .await?
+        .error_for_status()?;
+
+    Ok(())
+}

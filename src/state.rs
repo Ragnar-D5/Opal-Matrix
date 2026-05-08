@@ -23,6 +23,8 @@ pub struct AppState {
     pub server_order: RwSignal<ServerOrder>,
 
     pub sidebar_state: RwSignal<SidebarState>,
+
+    pub is_focused: RwSignal<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -48,6 +50,7 @@ impl AppState {
             breadcrums: RwSignal::new(Breadcrumbs::default()),
             server_order: RwSignal::new(ServerOrder::default()),
             sidebar_state: RwSignal::new(SidebarState::default()),
+            is_focused: RwSignal::new(true),
         }
     }
 

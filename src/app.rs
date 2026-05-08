@@ -82,6 +82,26 @@ pub fn App() -> impl IntoView {
         }
     });
 
+    Effect::new(move |_| {
+        let window = match web_sys::window() {
+            Some(w) => w,
+            None => return,
+        };
+
+        let on_focus = Closure::<dyn FnMut()>::new(move || state.is_focused.set(true));
+        let on_blur = Closure::<dyn FnMut()>::new(move || state.is_focused.set(false));
+
+        window
+            .add_event_listener_with_callback("focus", on_focus.as_ref().unchecked_ref())
+            .ok();
+        window
+            .add_event_listener_with_callback("blur", on_blur.as_ref().unchecked_ref())
+            .ok();
+
+        on_focus.forget();
+        on_blur.forget();
+    });
+
     let presence_update = use_tauri_event::<HashMap<String, PresenceInfo>>("presence_update");
 
     Effect::new(move |_| {

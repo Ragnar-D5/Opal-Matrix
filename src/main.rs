@@ -3,6 +3,7 @@ mod components;
 mod hooks;
 mod state;
 mod tauri;
+mod tauri_functions;
 
 use app::*;
 use leptos::prelude::*;
