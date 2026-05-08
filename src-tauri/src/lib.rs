@@ -6,8 +6,9 @@ use aes::Aes256;
 use aes::cipher::{KeyIvInit, StreamCipher};
 use base64::Engine;
 use base64::engine::general_purpose;
+use chrono::MAX_DATE;
 use colored::Colorize;
-use log::info;
+use log::{debug, info};
 use ruma::UserId;
 use serde::Serialize;
 use tauri::async_runtime::{JoinHandle, Mutex, RwLock};
@@ -37,6 +38,7 @@ use crate::frontend::send_sidebar_update;
 use crate::matrix_api::authentication::get_account_data;
 use crate::matrix_api::crypto::decrypt_ssss_aes_hmac_sha2;
 use crate::matrix_api::discovery::Authentication;
+use crate::storage::media::add_faststart_to_video;
 
 const MATRIX_ID_SET: &AsciiSet = &CONTROLS.add(b'!').add(b':');
 
@@ -658,16 +660,20 @@ pub fn run() {
 
                     let server_name = parsed_url.host_str().unwrap_or("");
                     let media_id = parsed_url.path().trim_start_matches('/');
+                    let headers = request.headers();
+
 
                     let mut is_thumbnail = false;
                     let mut width = "800";
                     let mut height = "800";
                     let mut enc_key = None;
                     let mut enc_iv = None;
+                    let mut mimetype = None;
 
                     for (k, v) in parsed_url.query_pairs() {
                         match k.as_ref() {
                             "thumbnail" => is_thumbnail = v == "true",
+                            "mimetype" => mimetype = Some(v.into_owned().leak()),
                             "width" => width = v.into_owned().leak(),
                             "height" => height = v.into_owned().leak(),
                             "key" => enc_key = Some(v.into_owned()),
@@ -685,6 +691,7 @@ pub fn run() {
                             .clone()
                     };
 
+                    // I'll make the bold assumption that when we use the uri, we only fetch media, so we can cache any item we receive here
                     let fetch_url = if enc_key.is_some() {
                         format!("{}/_matrix/client/v1/media/download/{}/{}", matrix_url, server_name, media_id)
                     } else if is_thumbnail {
@@ -696,13 +703,49 @@ pub fn run() {
                         format!("{}/_matrix/client/v1/media/download/{}/{}", matrix_url, server_name, media_id)
                     };
 
+                    // ckeck if the media is already cached
+                    let cached_media = storage::media::get_cached_media_by_uri(uri.clone(), state.clone()).await.ok();
+                    if let Some(cached_media) = cached_media {
+                        debug!("This was cached before: {uri}");
+                        if let Some(range_str) = headers.get("Range") {
+                            // something like bytes=0-1445
+                            let max_len = &cached_media.content.len() - 1;
+                            let mut range_iter = range_str.to_str().expect("malformed header").strip_prefix("bytes=").expect("malformed range").split("-");
+                            let start = range_iter.next().expect("malformed range").parse::<usize>().unwrap();
+                            let end = range_iter.next().map(|n| n.parse::<usize>().unwrap()).unwrap_or(max_len); // this will fail at the end of the video right?
+
+                            responder.respond(tauri::http::Response::builder()
+                                // .status(206)
+                                // .header("Content-Range", format!("bytes {}-{}/{}", start, end, cached_media.content.len()))
+                                // .header("Content-Length", (end - start + 1).to_string())
+                                .header("Content-Length", max_len.to_string())
+                                .header("Accept-Ranges", "bytes")
+                                .header("Content-Type", "video/mp4")
+                                .header("Access-Control-Allow-Origin", "*")
+                                .header("Access-Control-Expose-Headers", "Content-Range, Content-Length, Accept-Ranges")
+                                // .body(cached_media.content[start..=end].to_vec())
+                                .body(cached_media.content.to_vec())
+                                .unwrap());
+                            return
+                        } else {
+                            responder.respond(tauri::http::Response::builder()
+                                .header("Access-Control-Allow-Origin", "*")
+                                .body(cached_media.content)
+                                .unwrap());
+                            return
+                        }
+                    }
+
+                    // we know the media is not cached, so we fetch it from the server and cache it
                     let response = match reqwest::Client::new()
                         .get(&fetch_url)
                         .bearer_auth(token)
+                        .headers(headers.to_owned())
                         .send()
                         .await
                     {
                         Ok(res) if res.status().is_success() => {
+                            let status = res.status();
                             let mut bytes = res.bytes().await.unwrap_or_default().to_vec();
 
                             if let (Some(k), Some(iv)) = (enc_key, enc_iv) {
@@ -727,10 +770,47 @@ pub fn run() {
                                 }
                             }
 
+                         if let Some(range_str) = headers.get("Range") {
+
+                            // cache the decrypted media, maybe this is a bad idea
+                            //
+                            // but first we gotta fix fast start for streaming this on the frontend
+                            bytes = add_faststart_to_video(&bytes).unwrap_or_else(|e| {info!("faststarting video failed and this should crash everything >:): {:?}", e); bytes});
+                            let cached_media = storage::media::Media {
+                                identifier: uri.clone(),
+                                content: bytes.clone()
+                            };
+                            storage::media::cache_media(cached_media, state.clone()).await.ok();
+
+                            // something like bytes=0-1445
+                            let max_len = &bytes.len() - 1;
+                            let mut range_iter = range_str.to_str().expect("malformed header").strip_prefix("bytes=").expect("malformed range").split("-");
+                            let start = range_iter.next().expect("malformed range").parse::<usize>().unwrap();
+                            let end = range_iter.next().map(|n| n.parse::<usize>().unwrap()).unwrap_or(max_len); // this will fail at the end of the video right?
+
+                            tauri::http::Response::builder()
+                                // .status(206)
+                                // .header("Content-Range", format!("bytes {}-{}/{}", start, end, bytes.len()))
+                                // .header("Content-Length", (end - start + 1).to_string())
+                                .header("Content-Length", max_len.to_string())
+                                .header("Accept-Ranges", "bytes")
+                                .header("Content-Type", "video/mp4")
+                                .header("Access-Control-Allow-Origin", "*")
+                                .header("Access-Control-Expose-Headers", "Content-Range, Content-Length, Accept-Ranges")
+                                // .body(bytes[start..=end].to_vec())
+                                .body(bytes.to_vec())
+                                .unwrap()
+                        } else {
+                            let cached_media = storage::media::Media {
+                                identifier: uri.clone(),
+                                content: bytes.clone()
+                            };
+                            storage::media::cache_media(cached_media, state.clone()).await.ok();
                             tauri::http::Response::builder()
                                 .header("Access-Control-Allow-Origin", "*")
                                 .body(bytes)
                                 .unwrap()
+                        }
                         }
                         Ok(res) => {
                             log::error!(

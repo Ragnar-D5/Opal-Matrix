@@ -6,6 +6,7 @@ use tauri::{State, command};
 
 use crate::AppState;
 use crate::TauriError;
+use crate::storage::media::Media;
 use members::MemberRow;
 use messages::MessageRow;
 use receipts::ReadReceiptRow;
@@ -15,6 +16,7 @@ use rusqlite::Connection;
 use rusqlite::params;
 use shared::sidebar::FlatRoom;
 
+pub(crate) mod media;
 pub(crate) mod members;
 pub(crate) mod messages;
 pub(crate) mod receipts;
@@ -42,6 +44,7 @@ pub async fn init_storage(
     SpaceChildRow::create_table(&conn)?;
     SpaceParentRow::create_table(&conn)?;
     ReadReceiptRow::create_table(&conn)?;
+    Media::create_table(&conn)?;
 
     Ok((db_exists, conn))
 }

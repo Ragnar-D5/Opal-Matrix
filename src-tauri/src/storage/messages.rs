@@ -259,6 +259,51 @@ impl TryInto<UiMessage> for MessageRow {
 
                         MessageKind::UserMessage(user_message)
                     }
+                    "m.video" => {
+                        let info = content
+                            .get("info")
+                            .ok_or(format!("Missing info: {:?}", value))?;
+                        let url = content
+                            .get("url")
+                            .and_then(|v| v.as_str())
+                            .or_else(|| {
+                                content
+                                    .get("file")
+                                    .and_then(|f| f.get("url"))
+                                    .and_then(|v| v.as_str())
+                            })
+                            .ok_or_else(|| format!("Missing url in image: {:?}", content))?;
+
+                        user_message.set_content(MessageContent::Video {
+                            url: url.to_string(),
+                            filename: content
+                                .get("filename")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string(),
+                            size: content.get("size").and_then(|v| v.as_u64()).unwrap_or(0),
+                            width: info
+                                .get("w")
+                                .and_then(|v| v.as_u64())
+                                .map(|n| n as u32)
+                                .unwrap_or(0),
+                            height: info
+                                .get("h")
+                                .and_then(|v| v.as_u64())
+                                .map(|n| n as u32)
+                                .unwrap_or(0),
+                            duration: info
+                                .get("duration")
+                                .and_then(|v| v.as_u64())
+                                .map(|n| n as u32)
+                                .unwrap_or(0),
+                            mimetype: info
+                                .get("mimetype")
+                                .map(|v| v.to_string())
+                                .ok_or("No mimetype")?,
+                        });
+                        MessageKind::UserMessage(user_message)
+                    }
                     _ => {
                         debug!("Unsupported msgtype: {}", msg_type);
 

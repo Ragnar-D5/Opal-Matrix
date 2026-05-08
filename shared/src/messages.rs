@@ -56,6 +56,15 @@ pub enum MessageContent {
 
         encryption_info: Option<EncryptedFileInfo>,
     },
+    Video {
+        url: String,
+        filename: String,
+        size: u64,
+        width: u32,
+        height: u32,
+        duration: u32,
+        mimetype: String,
+    },
     File {
         url: String,
         filename: String,

@@ -7,7 +7,9 @@ use crate::components::FloatingTile;
 use crate::hooks::use_tauri_event;
 use crate::state::{AppState, MemberStore};
 use chrono::{DateTime, Local, NaiveDate, TimeZone};
-use leptos::html::Div;
+use leptos::error;
+use leptos::html::{Div, Video};
+use leptos::tachys::html::node_ref;
 use leptos::task::spawn_local;
 use leptos::{leptos_dom::logging::console_error, prelude::*};
 use leptos_use::{use_intersection_observer, use_toggle, UseIntersectionObserverReturn};
@@ -16,6 +18,7 @@ use shared::messages::{
     MembershipAction, MessageContent, MessageKind, Reaction, SystemMessage, UiMessage, UserMessage,
 };
 use shared::sidebar::{RoomKind, RoomNode, SidebarState};
+use web_sys::HtmlVideoElement;
 
 use crate::components::user_profile::UserProfileExt;
 
@@ -159,7 +162,25 @@ impl TimelineItem {
                                             "This message was deleted"
                                         </div>
                                     }.into_any(),
+                                    MessageContent::Video { url, filename, size, width, height, duration, mimetype } => {
+                                        let new_url = format!("{url}");
+                                        let video_ref = NodeRef::<Video>::new();
+                                        view! {
+                                            <video src={new_url} controls
+                                                            node_ref=video_ref
+                                                            on:error=move |ev| {
+                                                                // Cast the event target to a Video Element
+                                                                let target = event_target::<web_sys::HtmlVideoElement>(&ev);
+                                                                if let Some(error) = target.error() {
+                                                                    // This will print a number 1-4 to your console
+                                                                    leptos::logging::log!("Media Error Code: {:?}", error.code());
+                                                                }
+                                                            }
+                                                            />}.into_any()
+                                        }
+
                                 };
+
 
                                 view! {
                                     <div class="group/msg relative flex gap-[var(--gap)] hover:bg-black/20 px-3 py-[2px] -mx-3 rounded-md">

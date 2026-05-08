@@ -23,7 +23,10 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'; connect-src 'self' ipc: http://ipc.localhost; img-src 'self' https: data: asset: mxc:; style-src 'self' 'unsafe-inline';"
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'; connect-src 'self' ipc: http://ipc.localhost mxc:; img-src 'self' https: data: asset: mxc:; style-src 'self' 'unsafe-inline'; media-src 'self' mxc:;", 
+      "assetProtocol": {
+        "enable": true
+      }
     }
   },
   "bundle": {
