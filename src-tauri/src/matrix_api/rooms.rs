@@ -1,22 +1,22 @@
 use log::debug;
-use ruma::UInt;
 use serde_json::Value;
 use shared::messages::UiMessage;
 use std::borrow::Cow;
 use std::{str::FromStr, sync::Arc};
 use tauri_plugin_http::reqwest::{self, Client};
 
-use ruma::api::client::message::get_message_events::v3::{
-    Request as MessageEventsRequest, Response as MessageEventsResponse,
-};
-use ruma::api::{IncomingResponse, OutgoingRequest};
-
 use ruma::{
-    OwnedRoomId,
+    OwnedRoomId, UInt,
     api::{
+        IncomingResponse, OutgoingRequest,
         auth_scheme::SendAccessToken,
-        client::membership::joined_members::v3::{
-            Request as JoinedMembersRequest, Response as JoinedMembersResponse,
+        client::{
+            membership::joined_members::v3::{
+                Request as JoinedMembersRequest, Response as JoinedMembersResponse,
+            },
+            message::get_message_events::v3::{
+                Request as MessageEventsRequest, Response as MessageEventsResponse,
+            },
         },
     },
 };
@@ -45,7 +45,9 @@ async fn get_messages_api(
     access_token: &String,
     limit: usize,
 ) -> Result<(Vec<Value>, Option<String>), TauriError> {
-    let mut req = MessageEventsRequest::backward(OwnedRoomId::from_str(room_id.as_str())?);
+    let backward = MessageEventsRequest::backward(OwnedRoomId::from_str(room_id.as_str())?);
+    let backward = backward;
+    let mut req = backward;
 
     req.limit = UInt::try_from(limit)?;
     req.from = Some(prev_batch.to_string());
@@ -66,7 +68,7 @@ async fn get_messages_api(
         messages_res
             .chunk
             .iter()
-            .map(|v| Value::from(v.json().get()))
+            .filter_map(|v| serde_json::from_str::<Value>(v.json().get()).ok())
             .collect(),
         messages_res.end,
     ))
@@ -122,9 +124,11 @@ pub async fn fetch_messages(
     let (api_messages, next_token) =
         get_messages_api(&room_id, &prev_token, &server_info, &access_token, limit).await?;
 
-    if let Some(next_token) = next_token {
+    if let Some(next_token) = next_token.clone() {
         save_prev_token(conn, &room_id, &next_token)?;
     }
+
+    let mut hit_room_create = false;
 
     for msg in api_messages {
         if msg
@@ -148,6 +152,10 @@ pub async fn fetch_messages(
         else {
             continue;
         };
+
+        if msg_type == "m.room.create" {
+            hit_room_create = true;
+        }
 
         let msg = if msg_type == "m.room.encrypted" {
             match process_message(&state, &room_id, msg).await {
@@ -183,14 +191,14 @@ pub async fn fetch_messages(
 
     save_messages(conn, local_messages.clone())?;
 
-    let has_moe = local_messages.len() >= limit;
+    let has_more = !hit_room_create && next_token.is_some() && next_token != Some(prev_token);
 
     Ok((
         local_messages
             .into_iter()
             .filter_map(|m| m.try_into().ok())
             .collect(),
-        has_moe,
+        has_more,
     ))
 }
 
