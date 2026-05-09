@@ -10,7 +10,7 @@ use crate::{
     tauri_functions::send_marker,
 };
 
-use phosphor_leptos::{Icon, IconWeight, HASH, INFO};
+use phosphor_leptos::{Icon, IconWeight, HASH, INFO, TRASH};
 
 use chrono::{DateTime, Local, NaiveDate, TimeZone};
 use leptos::{html::Div, leptos_dom::logging::console_error, prelude::*, task::spawn_local};
@@ -398,7 +398,8 @@ impl TimelineItem {
                                         }
                                         MessageContent::Deleted => {
                                             view! {
-                                                <div class="text-muted italic leading-relaxed break-words">
+                                                <div class="text-muted italic leading-relaxed break-words flex flex-row items-center gap-1">
+                                                    <Icon icon=TRASH size="20px" />
                                                     "This message was deleted"
                                                 </div>
                                             }

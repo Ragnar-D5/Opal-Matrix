@@ -275,6 +275,7 @@ pub fn Sidebar() -> impl IntoView {
 
     view! {
         <div class="flex h-full gap-[var(--gap)] select-none">
+            // Empty image used for drag ghost to avoid default semi-transparent preview
             <img
                 id="drag-ghost"
                 src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
