@@ -10,7 +10,7 @@ use crate::{
     tauri_functions::send_marker,
 };
 
-use phosphor_leptos::{Icon, IconWeight, HASH, INFO, TRASH};
+use phosphor_leptos::{Icon, IconWeight, HASH, INFO, PLUS, TRASH, UPLOAD_SIMPLE};
 
 use chrono::{DateTime, Local, NaiveDate, TimeZone};
 use leptos::{html::Div, leptos_dom::logging::console_error, prelude::*, task::spawn_local};
@@ -1083,7 +1083,11 @@ fn TimeLine() -> impl IntoView {
 }
 
 #[component]
-fn ChatHeader(header: Memo<RoomHeader>, set_chat_sidebar_open: WriteSignal<bool>) -> impl IntoView {
+fn ChatHeader(
+    header: Memo<RoomHeader>,
+    chat_sidebar_open: ReadSignal<bool>,
+    set_chat_sidebar_open: WriteSignal<bool>,
+) -> impl IntoView {
     let member_store: MemberStore = expect_context();
 
     let (info_hovered, set_info_hovered) = signal(false);
@@ -1094,7 +1098,7 @@ fn ChatHeader(header: Memo<RoomHeader>, set_chat_sidebar_open: WriteSignal<bool>
                 {move || match header.get() {
                     RoomHeader::Channel { .. } => {
                         view! {
-                            <div class="text-(--dim-text-color) w-full justify-center flex">
+                            <div class="text-(--ui-base-color) w-full justify-center flex">
                                 <Icon icon=HASH color="currentColor" size="70%" />
                             </div>
                         }
@@ -1150,7 +1154,9 @@ fn ChatHeader(header: Memo<RoomHeader>, set_chat_sidebar_open: WriteSignal<bool>
             </div>
             <div class="self-center h-full">
                 <button
-                    class="text-(--dim-text-color) hover:text-(--bright-text-color) transition-opacity h-full mr-1"
+                    class="transition-opacity h-full mr-1"
+                    class=("text-(--ui-hover-color)", move || info_hovered.get())
+                    class=("text-(--ui-base-color)", move || !info_hovered.get())
                     on:click=move |_| set_chat_sidebar_open.update(|v| *v = !*v)
                     on:mouseenter=move |_| set_info_hovered.set(true)
                     on:mouseleave=move |_| set_info_hovered.set(false)
@@ -1161,7 +1167,7 @@ fn ChatHeader(header: Memo<RoomHeader>, set_chat_sidebar_open: WriteSignal<bool>
                             size="80%"
                             color="currentColor"
                             weight=move || {
-                                if info_hovered.get() {
+                                if chat_sidebar_open.get() {
                                     IconWeight::Fill
                                 } else {
                                     IconWeight::Light
@@ -1179,29 +1185,34 @@ fn ChatHeader(header: Memo<RoomHeader>, set_chat_sidebar_open: WriteSignal<bool>
 fn ChatInput(header: Memo<RoomHeader>) -> impl IntoView {
     view! {
         <div class="p-2 w-full rounded-full">
-            <input
-                type="text"
-                placeholder=move || match header.get() {
-                    RoomHeader::Channel(node) => {
-                        format!("Message #{}", node.name.clone().unwrap_or(node.room_id.clone()))
+            <div class="w-full h-13 border-1 border-[var(--tile-border-color)] rounded-lg bg-[rgba(0, 0, 0, 0.6)] flex flex-row bg-black/15 items-center gap-3 px-3">
+                <Icon icon=UPLOAD_SIMPLE size="20px" color="var(--ui-base-color)" />
+                <input
+                    class="outline-none h-full text-(--bright-text-color) flex flex-grow"
+                    type="text"
+                    placeholder=move || match header.get() {
+                        RoomHeader::Channel(node) => {
+                            format!(
+                                "Message #{}",
+                                node.name.clone().unwrap_or(node.room_id.clone()),
+                            )
+                        }
+                        RoomHeader::DM(handle) => {
+                            format!(
+                                "Message @{}",
+                                handle
+                                    .profile
+                                    .get()
+                                    .unwrap_or_default()
+                                    .display_name
+                                    .unwrap_or(handle.user_id.clone()),
+                            )
+                        }
+                        RoomHeader::Unknown => "Message someone".to_string(),
                     }
-                    RoomHeader::DM(handle) => {
-                        format!(
-                            "Message @{}",
-                            handle
-                                .profile
-                                .get()
-                                .unwrap_or_default()
-                                .display_name
-                                .unwrap_or(handle.user_id.clone()),
-                        )
-                    }
-                    RoomHeader::Unknown => "Message someone".to_string(),
-                }
-                class="w-full h-13 border-1 border-[var(--tile-border-color)] outline-none text-[var(--text-color)] p-3 rounded-lg bg-[rgba(0, 0, 0, 0.6)]"
-                style="background-color: rgba(0, 0, 0, 0.2);"
-                autofocus
-            />
+                    autofocus
+                />
+            </div>
         </div>
     }
 }
@@ -1220,9 +1231,13 @@ pub fn Chat() -> impl IntoView {
 
     view! {
         <div class="flex-1 h-full flex gap-[var(--gap)] flex-col overflow-hidden">
-            <ChatHeader header=header set_chat_sidebar_open=set_chat_sidebar_open />
+            <ChatHeader
+                header=header
+                chat_sidebar_open=chat_sidebar_open
+                set_chat_sidebar_open=set_chat_sidebar_open
+            />
             <div class="flex flex-row h-full min-h-0">
-                <FloatingTile class="flex-1 min-h-0, overflow-hidden">
+                <FloatingTile class="flex-1 flex flex-col h-full min-h-0 overflow-hidden">
                     <TimeLine />
                     <ChatInput header=header />
                 </FloatingTile>

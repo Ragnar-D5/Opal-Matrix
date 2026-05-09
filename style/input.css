@@ -6,7 +6,6 @@
     --color-item-selected: rgba(255, 255, 255, 0.1);
     --bg-color: #1e1e2e;
     --floating-bg-color: rgba(0, 0, 0, 0.4);
-    --pill-border-color: rgba(255, 255, 255, 0.8);
     --dim-text-color: hsl(220, 15%, 40%);
     --text-color: hsl(220, 25%, 60%);
     --bright-text-color: hsl(220, 25%, 70%);
@@ -21,6 +20,8 @@
     --accent-color: #46aec5;
     --header-height: 46px;
     --floating-border-radius: 8px;
+    --ui-base-color: rgba(255, 255, 255, 0.5);
+    --ui-hover-color: rgba(255, 255, 255, 0.8);
 }
 
 @theme {
