@@ -1,28 +1,32 @@
-use crate::state::{AppState, MemberProfileHandle, MemberStore, RoomHeader};
-use crate::tauri_functions::send_marker;
-use leptos::prelude::*;
-use log::error;
-use shared::user_profile::PresenceStatus;
-use std::collections::{HashMap, HashSet};
-
-use crate::app::{call_tauri, openUrl};
-use crate::components::presence::PresenceBadge;
-use crate::components::FloatingTile;
-use crate::hooks::use_tauri_event;
-use chrono::{DateTime, Local, NaiveDate, TimeZone};
-use leptos::html::Div;
-use leptos::leptos_dom::logging::console_error;
-use leptos::task::spawn_local;
-use leptos_use::{use_intersection_observer, UseIntersectionObserverReturn};
-use serde::Serialize;
-use shared::messages::{
-    MembershipAction, MessageContent, MessageKind, Reaction, RepliesTo, RichTextSpan,
-    SystemMessage, UiMessage, UserMessage,
+use crate::{
+    app::{call_tauri, openUrl},
+    components::{
+        presence::PresenceBadge,
+        user_profile::{UserProfileExt, UserProfileMaybeExt},
+        FloatingTile,
+    },
+    hooks::use_tauri_event,
+    state::{AppState, MemberProfileHandle, MemberStore, RoomHeader},
+    tauri_functions::send_marker,
 };
-use shared::sidebar::{RoomKind, RoomNode, SidebarState};
-use web_sys::{DomParser, MouseEvent, SupportedType};
 
-use crate::components::user_profile::{UserProfileExt, UserProfileMaybeExt};
+use phosphor_leptos::{Icon, IconWeight, HASH, INFO};
+
+use chrono::{DateTime, Local, NaiveDate, TimeZone};
+use leptos::{html::Div, leptos_dom::logging::console_error, prelude::*, task::spawn_local};
+use leptos_use::{use_intersection_observer, UseIntersectionObserverReturn};
+use log::error;
+use serde::Serialize;
+use shared::{
+    messages::{
+        MembershipAction, MessageContent, MessageKind, Reaction, RepliesTo, RichTextSpan,
+        SystemMessage, UiMessage, UserMessage,
+    },
+    sidebar::{RoomKind, RoomNode, SidebarState},
+    user_profile::PresenceStatus,
+};
+use std::collections::{HashMap, HashSet};
+use web_sys::{DomParser, MouseEvent, SupportedType};
 
 #[derive(PartialEq, Clone)]
 struct TimelineMessageGroup {
@@ -438,7 +442,7 @@ impl TimelineItem {
                                             }}
 
                                             <div class="flex gap-[var(--gap)]">
-                                                <div class="shrink-0 mr-2 w-[40px] self-center">
+                                                <div class="shrink-0 mr-2 w-[40px] mt-[5px]">
                                                     {if is_first {
                                                         let profile_sig = profile_sig.clone();
                                                         view! {
@@ -1081,16 +1085,16 @@ fn TimeLine() -> impl IntoView {
 fn ChatHeader(header: Memo<RoomHeader>, set_chat_sidebar_open: WriteSignal<bool>) -> impl IntoView {
     let member_store: MemberStore = expect_context();
 
+    let (info_hovered, set_info_hovered) = signal(false);
+
     view! {
-        <FloatingTile class="h-12 items-start flex-row gap-1 pl-1">
-            <div class="w-10 self-center flex items-center justify-center">
+        <FloatingTile class="h-(--header-height) items-start flex-row gap-1 pl-[5px]">
+            <div class="w-8 self-center flex items-center justify-center">
                 {move || match header.get() {
                     RoomHeader::Channel { .. } => {
                         view! {
-                            <div class="w-8 text-end">
-                                <span class="text-lg text-bright self-center align-middle">
-                                    "#"
-                                </span>
+                            <div class="text-(--dim-text-color) w-full justify-center flex">
+                                <Icon icon=HASH color="currentColor" size="70%" />
                             </div>
                         }
                             .into_any()
@@ -1105,8 +1109,8 @@ fn ChatHeader(header: Memo<RoomHeader>, set_chat_sidebar_open: WriteSignal<bool>
                                     if let Some(profile) = profile_sig.get() {
                                         let presence = presence.clone();
                                         view! {
-                                            <PresenceBadge presence=presence>
-                                                {profile.render_icon(32)}
+                                            <PresenceBadge presence=presence size=14.0>
+                                                {profile.render_icon(30)}
                                             </PresenceBadge>
                                         }
                                             .into_any()
@@ -1143,12 +1147,27 @@ fn ChatHeader(header: Memo<RoomHeader>, set_chat_sidebar_open: WriteSignal<bool>
                     RoomHeader::Unknown => view! { <span>"Unknown Room"</span> }.into_any(),
                 }}
             </div>
-            <div class="self-center">
+            <div class="self-center h-full">
                 <button
-                    class="text-bright hover:text-white transition-opacity"
+                    class="text-(--dim-text-color) hover:text-(--bright-text-color) transition-opacity h-full mr-1"
                     on:click=move |_| set_chat_sidebar_open.update(|v| *v = !*v)
+                    on:mouseenter=move |_| set_info_hovered.set(true)
+                    on:mouseleave=move |_| set_info_hovered.set(false)
                 >
-                    "Toggle Sidebar"
+                    <div class="h-full justify-center items-center flex cursor-pointer">
+                        <Icon
+                            icon=INFO
+                            size="80%"
+                            color="currentColor"
+                            weight=move || {
+                                if info_hovered.get() {
+                                    IconWeight::Fill
+                                } else {
+                                    IconWeight::Light
+                                }
+                            }
+                        />
+                    </div>
                 </button>
             </div>
         </FloatingTile>

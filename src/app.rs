@@ -301,10 +301,7 @@ fn LoginPage() -> impl IntoView {
 
 #[component]
 fn HomePage() -> impl IntoView {
-    let state = expect_context::<AppState>();
-
     let (recovery_key, set_recovery_key) = signal(String::new());
-    let (messages, set_messages) = signal(Vec::<UiMessage>::new());
     let (bg_loaded, set_bg_loaded) = signal(false);
     let bg_url = "https://i.imgur.com/t9plvkd.png".to_string();
 

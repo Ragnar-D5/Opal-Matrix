@@ -1,13 +1,13 @@
 use log::info;
-use ruma::{UserId, api::SupportedVersions};
+use ruma::{api::SupportedVersions, UserId};
 use std::{
     path::PathBuf,
     sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tauri::{
-    AppHandle,
     async_runtime::{JoinHandle, Mutex, RwLock},
+    AppHandle,
 };
 use tauri_plugin_http::reqwest::Client;
 use url::Url;
@@ -16,14 +16,14 @@ use matrix_sdk_crypto::{CrossSigningKeyExport, OlmMachine};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    TauriError, construct_url,
+    construct_url,
     matrix_api::{
         authentication::{self, get_account_data},
         crypto::{self, decrypt_ssss_aes_hmac_sha2},
-        discovery::{Authentication, fetch_supported_versions},
+        discovery::{fetch_supported_versions, Authentication},
         sync::run_sync_loop,
     },
-    state, storage,
+    storage, TauriError,
 };
 
 #[derive(Default, Clone)]

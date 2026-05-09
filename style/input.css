@@ -19,6 +19,8 @@
     --presence-busy-color: rgb(255, 100, 100);
     --presence-offline-color: rgb(150, 150, 150);
     --accent-color: #46aec5;
+    --header-height: 46px;
+    --floating-border-radius: 8px;
 }
 
 @theme {

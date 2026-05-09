@@ -1,3 +1,4 @@
+use phosphor_leptos::{Icon, HASH, MATRIX_LOGO};
 use std::collections::HashMap;
 
 use crate::components::presence::PresenceBadge;
@@ -37,10 +38,10 @@ fn DmDiv(dm: RoomNode) -> impl IntoView {
     let presence = members.get_presence(&dm.dm_user_id.unwrap_or_default());
 
     view! {
-        <div class="group flex flex-row w-full cursor-pointer">
+        <div class="group flex flex-row w-full cursor-pointer px-3">
             <div class="transition-[width] duration-300 ease-out shrink-0 w-0 group-hover:w-3"></div>
             <div
-                class="flex flex-row flex-grow items-center p-1 pl-2 rounded-[10px] cursor-pointer text-dim hover:text-bright"
+                class="flex flex-row flex-grow items-center p-1 pl-2 rounded-[10px] cursor-pointer hover:text-bright"
                 class=("bg-[var(--color-item-selected)]", move || is_active.get())
                 class=("text-bright", move || is_active.get())
                 class=("hover:bg-[var(--color-item-hover)]", move || !is_active.get())
@@ -105,8 +106,8 @@ pub fn CutoutBadge(
             {if count > 0 {
                 view! {
                     <div class="absolute -bottom-0 -right-0 flex items-center justify-center
-                     bg-[var(--mention-color)] text-white text-[12px] font-extrabold
-                     w-4 h-4 rounded-full">{count}</div>
+                    bg-[var(--mention-color)] text-white text-[12px] font-extrabold
+                    w-4 h-4 rounded-full">{count}</div>
                 }
                     .into_any()
             } else {
@@ -150,9 +151,7 @@ pub fn ServerIcon(server_id: String) -> impl IntoView {
             {move || {
                 let server_id_for_click = server_id_for_click.clone();
                 let Some(server) = server.get() else {
-                    return 
-                    view! { <div class="relative w-10 h-10"></div> }
-                        .into_any();
+                    return view! { <div class="relative w-10 h-10"></div> }.into_any();
                 };
                 let name = server.name.clone().unwrap_or("?".to_string());
                 let initial = name.chars().next().unwrap_or('?').to_string();
@@ -292,12 +291,28 @@ pub fn Sidebar() -> impl IntoView {
                         />
 
                         <div
-                            class="server-btn flex items-center justify-center w-10 h-10 bg-gray-700 text-white rounded-[25%] cursor-pointer hover:bg-gray-600 transition-colors"
+                            class="server-btn flex items-center justify-center w-10 h-10 bg-gray-700 text-white rounded-[25%] cursor-pointer transition-colors"
+                            style:background-color=move || {
+                                if state.active_server_id.get().is_none() {
+                                    "var(--accent-color)".to_string()
+                                } else {
+                                    "var(--color-item-hover)".to_string()
+                                }
+                            }
                             on:click=move |_| state.set_active_server_id(None)
                         >
-                            <svg class="w-[60%] h-[60%] fill-current" viewBox="0 0 127.14 96.36">
-                                <path d="M107.7,8.07A105.15,105.15,0,0,0,81.47,0a72.06,72.06,0,0,0-3.36,6.83A97.68,97.68,0,0,0,49,6.83,72.37,72.37,0,0,0,45.64,0,105.89,105.89,0,0,0,19.39,8.09C2.79,32.65-1.71,56.6.54,80.21h0A105.73,105.73,0,0,0,32.71,96.36,77.7,77.7,0,0,0,39.6,85.25a68.42,68.42,0,0,1-10.85-5.18c.91-.66,1.8-1.34,2.66-2a75.57,75.57,0,0,0,64.32,0c.87.71,1.76,1.39,2.66,2a68.68,68.68,0,0,1-10.87,5.19,77,77,0,0,0,6.89,11.1,105.25,105.25,0,0,0,32.19-16.14c2.64-27.38-4.51-51.11-19.32-72.15ZM42.56,65.3c-5.36,0-9.8-4.83-9.8-10.79s4.38-10.79,9.8-10.79,9.85,4.83,9.8,10.79c0,5.96-4.45,10.79-9.8,10.79Zm42,0c-5.36,0-9.8-4.83-9.8-10.79s4.38-10.79,9.8-10.79,9.85,4.83,9.8,10.79c0,5.96-4.45,10.79-9.8,10.79Z" />
-                            </svg>
+                            <div
+                                class="transition-colors w-full h-full flex items-center justify-center"
+                                style:color=move || {
+                                    if state.active_server_id.get().is_none() {
+                                        "var(--color-item)".to_string()
+                                    } else {
+                                        "var(--accent-color)".to_string()
+                                    }
+                                }
+                            >
+                                <Icon icon=MATRIX_LOGO size="80%" color="currentColor" />
+                            </div>
                         </div>
                     </div>
 
@@ -345,7 +360,6 @@ pub fn Sidebar() -> impl IntoView {
                                             {match dm.avatar_url {
                                                 Some(url) => {
                                                     view! {
-                                                        // Note: Added 'object-cover' here to keep images from stretching!
                                                         <img
                                                             class="avatar-img w-full h-full object-cover"
                                                             src=url
@@ -448,22 +462,18 @@ pub fn Sidebar() -> impl IntoView {
                 </div>
             </FloatingTile>
 
-            <FloatingTile>
-                <div
-                    class="channels w-65"
-                    class=("p-2", move || state.active_server_id.get().is_none())
-                >
+            <div class="flex flex-col">
+                <FloatingTile class="mb-(--gap) h-(--header-height)">"Search stuff"</FloatingTile>
+                <FloatingTile class="w-65 flex-grow flex">
                     {move || {
                         let current_state = state.sidebar_state.get();
                         match state.active_server_id.get() {
                             None => {
-
                                 view! {
-                                    <div class="header border-b border-gray-300 p-3 font-bold">
-                                        "Direct Messages"
+                                    <div class="header border-b border-(--tile-border-color) font-bold text-normal p-3 flex flex-row w-full">
+                                        "Direct Messages" <div class="flex flex-grow"></div>
                                     </div>
-                                    <div class="list">
-                                        <span class="pl-1 text-normal">"Direct messages"</span>
+                                    <div class="py-1 gap-1 flex flex-col w-full">
                                         <For
                                             each=move || current_state.dms.clone()
                                             key=|dm| dm.room_id.to_string()
@@ -489,8 +499,7 @@ pub fn Sidebar() -> impl IntoView {
                                     .servers
                                     .into_iter()
                                     .find(|s| s.room_id == active_id) else {
-                                    return 
-                                    view! { <div class="item p-4">"Not found"</div> }
+                                    return view! { <div class="item p-4">"Not found"</div> }
                                         .into_any();
                                 };
                                 let name = active_server.name.clone();
@@ -498,10 +507,10 @@ pub fn Sidebar() -> impl IntoView {
                                     RoomKind::Space { children } => {
 
                                         view! {
-                                            <div class="header border-b border-gray-300 p-3 font-bold text-normal">
+                                            <div class="header border-b border-(--tile-border-color) p-3 font-bold text-normal w-full">
                                                 {name.unwrap_or_else(|| "Server".to_string())}
                                             </div>
-                                            <div class="list pr-2">
+                                            <div class="list pr-2 w-full">
                                                 <For
                                                     each=move || children.clone()
                                                     key=|child| child.room_id.to_string()
@@ -550,10 +559,9 @@ pub fn Sidebar() -> impl IntoView {
                                                                         state.set_active_room_id(Some(click_id.clone()))
                                                                     }
                                                                 >
-                                                                    "# "
+                                                                    <Icon icon=HASH size="20px" />
                                                                     {child.name}
-                                                                    {
-                                                                    if child.highlight_count > 0 {
+                                                                    {if child.highlight_count > 0 {
                                                                         view! {
                                                                             <div class="ml-auto bg-[var(--mention-color)] text-white text-xs font-bold px-1.5 py-0.5 rounded-full">
                                                                                 {child.highlight_count}
@@ -580,8 +588,9 @@ pub fn Sidebar() -> impl IntoView {
                             }
                         }
                     }}
-                </div>
-            </FloatingTile>
+                // </div>
+                </FloatingTile>
+            </div>
 
         </div>
     }.into_any()

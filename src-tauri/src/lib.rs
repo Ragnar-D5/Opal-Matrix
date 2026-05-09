@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use aes::cipher::{KeyIvInit, StreamCipher};
@@ -7,8 +6,7 @@ use base64::engine::general_purpose;
 use base64::Engine;
 use bytes::Bytes;
 use chrono::Local;
-use colored::Colorize;
-use log::{info, Metadata};
+use log::info;
 use serde::Serialize;
 use tauri::{command, AppHandle, Url};
 use tauri::{Manager, State};
@@ -79,7 +77,7 @@ pub enum TauriError {
     Wrap(String),
 }
 
-trait AsInfo {
+pub trait AsInfo {
     fn as_info(self) -> TauriError;
 }
 
@@ -121,14 +119,6 @@ impl std::fmt::Debug for TauriError {
         }
     }
 }
-
-// impl std::fmt::Display for TauriError {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         match &self {
-//             TauriError::Wrap(val) => write!(f, "{}", val),
-//         }
-//     }
-// }
 
 impl<T> From<T> for TauriError
 where
@@ -326,6 +316,10 @@ pub fn run() {
             });
 
             app.manage(state);
+
+            let main_window = app.get_webview_window("main").expect("Failed to get main window");
+
+            main_window.maximize().ok();
 
             Ok(())
         })
