@@ -20,6 +20,7 @@ use serde_json::Value;
 use crate::TauriError;
 use tauri_plugin_http::reqwest::{self, Client};
 
+/// Logs in to the Matrix server using the provided username and password, returning the access token and refresh token (if supported by the server).
 pub async fn matrix_login(
     server_info: HomeServerInfo,
     username: String,
@@ -66,6 +67,7 @@ pub async fn matrix_login(
     ));
 }
 
+/// Refreshes the access token using the provided refresh token, returning a new access token and refresh token (if supported by the server).
 pub async fn refresh_token(
     server_info: HomeServerInfo,
     refresh_token: String,

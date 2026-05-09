@@ -40,6 +40,7 @@ use crate::{
     matrix_api::{crypto, handle_sync_calls, rooms::backfill_gap},
     state::{AppState, HomeServerInfo},
     storage::{
+        SyncChanges, apply_sync_changes, handle_safe_stuff,
         members::MemberRow,
         messages::MessageRow,
         receipts::ReadReceiptRow,
@@ -47,8 +48,7 @@ use crate::{
     },
 };
 
-use tokio_util::sync::CancellationToken;
-
+/// Performs a /sync request to the Matrix server with the given access token and since parameter, returning the parsed SyncResponse.
 async fn matrix_sync(
     server_info: &HomeServerInfo,
     access_token: &String,
@@ -85,57 +85,10 @@ async fn matrix_sync(
     Ok(sync_response)
 }
 
-impl AppState {
-    pub(crate) async fn start_sync(
-        self: &std::sync::Arc<Self>,
-        app_handle: &AppHandle,
-        resync: bool,
-    ) -> Result<(), TauriError> {
-        let mut task_guard = self.sync_task.lock().await;
-        if task_guard.is_some() {
-            return Ok(());
-        }
-
-        let cancel = CancellationToken::new();
-        {
-            let mut cancel_guard = self.sync_cancel_token.lock().await;
-            *cancel_guard = Some(cancel.clone());
-        }
-
-        let state = self.clone();
-        let app_handle = app_handle.clone();
-        let handle = tauri::async_runtime::spawn(async move {
-            if let Err(e) = run_sync_loop(state, app_handle, resync).await {
-                log::error!("Sync loop error: {:?}", e);
-            }
-        });
-
-        *task_guard = Some(handle);
-        Ok(())
-    }
-
-    pub(crate) async fn stop_sync(&self) -> Result<(), TauriError> {
-        if let Some(cancel) = self.sync_cancel_token.lock().await.take() {
-            cancel.cancel();
-        }
-
-        if let Some(handle) = self.sync_task.lock().await.take() {
-            let _ = handle.await;
-        }
-
-        Ok(())
-    }
-
-    pub(crate) async fn restart_sync(
-        self: &std::sync::Arc<Self>,
-        handle: &AppHandle,
-    ) -> Result<(), TauriError> {
-        self.stop_sync().await?;
-        self.start_sync(handle, true).await
-    }
-}
-
-async fn run_sync_loop(
+/// Main loop that continuously performs /sync requests to the Matrix server, processes the responses, and updates the application state accordingly. The loop can be cancelled using a cancellation token stored in the AppState. If the `resync` parameter is true, the loop will start without a `since` parameter, effectively performing a full resync. Otherwise, it will use the `next_batch` token from the AppState to only fetch updates since the last sync.
+///
+/// The function returns when the loop is cancelled or if any error occurs during syncing or processing the responses.
+pub async fn run_sync_loop(
     state: std::sync::Arc<AppState>,
     handle: AppHandle,
     resync: bool,
@@ -191,8 +144,7 @@ async fn run_sync_loop(
     Ok(())
 }
 
-use crate::storage::{SyncChanges, apply_sync_changes, handle_safe_stuff};
-
+/// Helper function to convert a Matrix presence event into the internal PresenceInfo format used by the application. This function maps the Matrix presence states (Online, Offline, Unavailable) to the corresponding PresenceStatus used in the app, and also extracts the last active time and status message from the presence event content.
 fn convert_presence(presence: PresenceEventContent) -> PresenceInfo {
     let status = match presence.presence {
         PresenceState::Offline => PresenceStatus::Offline,
@@ -208,6 +160,9 @@ fn convert_presence(presence: PresenceEventContent) -> PresenceInfo {
     }
 }
 
+/// Processes a SyncResponse from the Matrix server, extracting relevant information and changes, updating the application state, and emitting events to the frontend as needed.
+///
+/// The function also determines if the sidebar needs to be updated based on the changes detected in the response. If any room timelines are limited, it initiates a backfill process to fetch the missing events.
 async fn handle_sync_response(
     state: &Arc<AppState>,
     handle: &AppHandle,
@@ -413,6 +368,9 @@ async fn handle_sync_response(
     Ok(())
 }
 
+/// Extracts relevant information from a room account data event and updates the SyncChanges accordingly.
+///
+/// Currently only handles "m.fully_read".
 fn extract_room_account_data(
     changes: &mut SyncChanges,
     room_id: &OwnedRoomId,
@@ -439,6 +397,9 @@ fn extract_room_account_data(
     Ok(())
 }
 
+/// Extracts relevant information from an ephemeral room event and updates the SyncChanges accordingly.
+///
+/// Currently only handles "m.receipt" events to extract read receipt information.
 fn extract_ephemeral(
     changes: &mut SyncChanges,
     room_id: &OwnedRoomId,
@@ -474,6 +435,9 @@ fn extract_ephemeral(
     Ok(())
 }
 
+/// Extracts relevant information from a global account data event and updates the SyncChanges accordingly.
+///
+/// Currently only handles "m.direct" to extract direct message room information, and ignores "org.opal-matrix.breadcrumbs" and "im.vector.setting.breadcrumbs" events.
 fn extract_account_data(
     changes: &mut SyncChanges,
     raw_event: Raw<AnyGlobalAccountDataEvent>,
@@ -507,6 +471,7 @@ fn extract_account_data(
     Ok(())
 }
 
+/// Extracts relevant information from a state event and updates the SyncChanges accordingly.
 fn extract_state(
     changes: &mut SyncChanges,
     room_id: &OwnedRoomId,
@@ -594,6 +559,7 @@ fn extract_state(
     Ok(())
 }
 
+/// Extracts relevant information from a timeline event and updates the SyncChanges accordingly.
 fn extract_timeline(
     changes: &mut SyncChanges,
     room_id: &OwnedRoomId,
@@ -618,6 +584,7 @@ fn extract_timeline(
     Ok(())
 }
 
+/// Extracts relevant information from a message-like event (room message, redaction, encrypted message, reaction) and updates the SyncChanges accordingly by creating a new MessageRow for each event.
 fn extract_message(
     changes: &mut SyncChanges,
     room_id: &OwnedRoomId,
@@ -674,6 +641,7 @@ fn extract_message(
     Ok(())
 }
 
+/// Creates a MessageRow for a state event, which can be used to display system messages in the timeline for certain state changes (e.g., membership changes). The function extracts relevant information from the state event and constructs a MessageRow with the appropriate fields. If the event cannot be converted into a system message, the function returns None.
 fn create_system_message(
     state_ev: AnySyncStateEvent,
     room_id: &OwnedRoomId,

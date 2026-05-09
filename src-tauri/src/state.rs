@@ -21,6 +21,7 @@ use crate::{
         authentication::{self, get_account_data},
         crypto::{self, decrypt_ssss_aes_hmac_sha2},
         discovery::{Authentication, fetch_supported_versions},
+        sync::run_sync_loop,
     },
     state, storage,
 };
@@ -409,5 +410,53 @@ impl AppState {
         let url = construct_url(all_parts)?;
 
         Ok((token, url))
+    }
+
+    pub async fn start_sync(
+        self: &std::sync::Arc<Self>,
+        app_handle: &AppHandle,
+        resync: bool,
+    ) -> Result<(), TauriError> {
+        let mut task_guard = self.sync_task.lock().await;
+        if task_guard.is_some() {
+            return Ok(());
+        }
+
+        let cancel = CancellationToken::new();
+        {
+            let mut cancel_guard = self.sync_cancel_token.lock().await;
+            *cancel_guard = Some(cancel.clone());
+        }
+
+        let state = self.clone();
+        let app_handle = app_handle.clone();
+        let handle = tauri::async_runtime::spawn(async move {
+            if let Err(e) = run_sync_loop(state, app_handle, resync).await {
+                log::error!("Sync loop error: {:?}", e);
+            }
+        });
+
+        *task_guard = Some(handle);
+        Ok(())
+    }
+
+    pub async fn stop_sync(&self) -> Result<(), TauriError> {
+        if let Some(cancel) = self.sync_cancel_token.lock().await.take() {
+            cancel.cancel();
+        }
+
+        if let Some(handle) = self.sync_task.lock().await.take() {
+            let _ = handle.await;
+        }
+
+        Ok(())
+    }
+
+    pub async fn restart_sync(
+        self: &std::sync::Arc<Self>,
+        handle: &AppHandle,
+    ) -> Result<(), TauriError> {
+        self.stop_sync().await?;
+        self.start_sync(handle, true).await
     }
 }

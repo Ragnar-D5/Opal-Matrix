@@ -1,39 +1,34 @@
-use log::warn;
-use ruma::RoomId;
-use ruma::api::client::backup::EncryptedSessionData;
-use std::collections::BTreeMap;
-use std::path::PathBuf;
-use std::str::FromStr;
-
-use crate::AppState;
-use crate::authentication::get_account_data;
 use bytes::Bytes;
+use log::warn;
+use matrix_sdk_crypto::types::events::room::encrypted::EncryptedEvent;
+use std::{collections::BTreeMap, path::PathBuf, str::FromStr};
 
-use crate::APP_NAME;
-use crate::TauriError;
-use crate::construct_url;
+use crate::{APP_NAME, AppState, TauriError, authentication::get_account_data, construct_url};
+
 use http::Response as HttpResponse;
-use matrix_sdk_crypto::olm::ExportedRoomKey;
-use matrix_sdk_crypto::store::types::BackupDecryptionKey;
 use matrix_sdk_crypto::{
-    DecryptionSettings, EncryptionSyncChanges, OlmMachine, types::requests::AnyOutgoingRequest,
+    DecryptionSettings, EncryptionSyncChanges, OlmMachine, olm::ExportedRoomKey,
+    store::types::BackupDecryptionKey, types::requests::AnyOutgoingRequest,
 };
 use matrix_sdk_sqlite::SqliteCryptoStore;
 use tauri_plugin_http::reqwest::{self, Client};
 
 use log::{error, info};
 
-use ruma::OwnedRoomId;
-use ruma::api::client::sync::sync_events::v3::Response as SyncResponse;
-use ruma::{OwnedDeviceId, UserId};
+use ruma::{
+    OwnedDeviceId, OwnedRoomId, RoomId, UserId,
+    api::client::{backup::EncryptedSessionData, sync::sync_events::v3::Response as SyncResponse},
+    serde::Raw,
+};
 
 use keyring::Entry;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use serde_json::json;
+use serde_json::{Value, json};
 
 const LAST_USER_KEY: &str = "__last_active_user__";
 
+/// Represents a stored session for a user, containing all necessary information to restore the session and initialize the crypto machine.
+/// This struct is serialized and stored securely in the system keyring.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StoredSession {
     pub user_id: String,
@@ -50,6 +45,7 @@ pub struct StoredSession {
     pub homeserver_url: String,
 }
 
+/// Retrieves the last active session from the keyring, if it exists, and returns it as a `StoredSession` struct.
 pub async fn get_last_active_session() -> Result<Option<StoredSession>, TauriError> {
     let entry = Entry::new(APP_NAME, LAST_USER_KEY)?;
 
@@ -60,6 +56,7 @@ pub async fn get_last_active_session() -> Result<Option<StoredSession>, TauriErr
     }
 }
 
+/// Retrieves the session for a specific user ID from the keyring, if it exists, and returns it as a `StoredSession` struct.
 pub async fn get_session(user_id: String) -> Result<Option<StoredSession>, TauriError> {
     let entry_key = format!("{}:session", user_id);
     let entry = Entry::new(APP_NAME, &entry_key)?;
@@ -77,6 +74,7 @@ pub async fn get_session(user_id: String) -> Result<Option<StoredSession>, Tauri
     }
 }
 
+/// Saves the provided `StoredSession` struct securely in the system keyring, associating it with the user ID and marking it as the last active session.
 pub async fn save_session(session: &StoredSession) -> Result<(), TauriError> {
     let entry_key = format!("{}:session", session.user_id);
     let entry = Entry::new(APP_NAME, &entry_key)?;
@@ -92,6 +90,7 @@ pub async fn save_session(session: &StoredSession) -> Result<(), TauriError> {
     Ok(())
 }
 
+/// Initializes the OlmMachine for the given user and device, using a secure passphrase to encrypt the local database. The machine is set up with a SqliteCryptoStore located at the specified path.
 pub async fn init_crypto_machine(
     path: PathBuf,
     user_id: String,
@@ -110,6 +109,7 @@ pub async fn init_crypto_machine(
     return Ok(machine);
 }
 
+/// Retrieves the existing passphrase for the given user ID from the keyring, or generates a new random passphrase using the `getrandom` crate if none exists.
 pub async fn get_or_create_passphrase(user_id: String) -> Result<String, TauriError> {
     let entry = Entry::new(APP_NAME, &format!("passphrase:{}", user_id))?;
 
@@ -137,6 +137,7 @@ pub async fn get_or_create_passphrase(user_id: String) -> Result<String, TauriEr
     }
 }
 
+/// Processes an incoming encrypted message by attempting to decrypt it using the OlmMachine. If decryption is successful, the decrypted content is returned; otherwise, the original message is returned as a fallback.
 pub async fn process_message(
     state: &AppState,
     room_id: &String,
@@ -204,9 +205,7 @@ pub async fn process_message(
     };
 }
 
-use matrix_sdk_crypto::types::events::room::encrypted::EncryptedEvent;
-use ruma::serde::Raw;
-
+/// Processes the sync response by first handling any outgoing requests from the OlmMachine, then attempting to decrypt any encrypted events in the joined rooms. If decryption of an event fails, the original encrypted event is returned as a fallback.
 pub async fn process_sync_response(
     olm_machine: &OlmMachine,
     mut sync_res: SyncResponse,
@@ -279,6 +278,7 @@ pub async fn process_sync_response(
     return Ok(sync_res);
 }
 
+/// Handles outgoing requests from the OlmMachine by sending the appropriate HTTP requests to the Matrix server and marking the requests as sent with the responses received from the server. This function is called before and after processing incoming messages and sync responses to ensure that any necessary key uploads, claims, or message sends are performed in a timely manner.
 async fn handle_outgoing_requests(
     olm_machine: &OlmMachine,
     token: &String,
@@ -399,6 +399,7 @@ async fn handle_outgoing_requests(
     Ok(())
 }
 
+/// Helper function to send a POST request with the given body and bearer token, and return the response as an HttpResponse containing the raw bytes. This is used for sending various key management requests to the Matrix server.
 async fn send_post(
     client: &reqwest::Client,
     url: String,
@@ -425,6 +426,7 @@ async fn send_post(
     builder.body(bytes).map_err(|e| e.to_string().into())
 }
 
+/// Helper function to send a PUT request with the given body and bearer token, and return the response as an HttpResponse containing the raw bytes. This is used for sending message events and to-device messages to the Matrix server.
 async fn send_put(
     client: &reqwest::Client,
     url: String,
@@ -451,35 +453,12 @@ async fn send_put(
     builder.body(bytes).map_err(|e| e.to_string().into())
 }
 
-// #[derive(Deserialize, Debug)]
-// enum Algorithm {
-//     #[serde(rename = "m.megolm_backup.v1.curve25519-aes-sha2")]
-//     MegolmV1AesSha2,
-// }
-
-// #[derive(Deserialize, Debug)]
-// struct AuthData {
-//     public_key: String,
-//     signatures: BTreeMap<String, BTreeMap<String, String>>,
-
-//     // To be sure
-//     #[serde(flatten)]
-//     extra: BTreeMap<String, Value>,
-// }
-
 #[derive(Deserialize, Debug)]
 struct BackupInfoResponse {
-    // algorithm: Algorithm,
-    // auth_data: AuthData,
-    // count: u64,
-    // etag: String,
     version: String,
 }
 #[derive(Deserialize, Debug)]
 struct KeyBackupData {
-    // first_message_index: u64,
-    // forwarded_count: u64,
-    // is_verified: bool,
     session_data: EncryptedSessionData,
 }
 
@@ -493,6 +472,7 @@ struct BackupKeysResponse {
     rooms: BTreeMap<String, RoomKeyBackup>,
 }
 
+/// Retrieves the room keys from the server backup, decrypts them using the provided recovery key, and imports them into the OlmMachine. This allows the client to restore access to encrypted messages in rooms after a reinstall or on a new device.
 pub async fn set_room_keys(
     olm_machine: &OlmMachine,
     matrix_url: &String,
@@ -641,8 +621,10 @@ pub async fn set_room_keys(
 }
 
 use {
-    aes::Aes256,
-    aes::cipher::{KeyInit, KeyIvInit, StreamCipher}, // KeyInit/KeyIvInit give us new_from_slice(s)
+    aes::{
+        Aes256,
+        cipher::{KeyInit, KeyIvInit, StreamCipher},
+    },
     base64::{Engine, engine::general_purpose::STANDARD as b64},
     ctr::Ctr64BE,
     hkdf::Hkdf,
@@ -650,7 +632,7 @@ use {
     sha2::Sha256,
 };
 
-/// Decrypts ssss
+/// Decrypts ssss-encrypted data using AES-CTR for encryption and HMAC-SHA256 for integrity verification. The recovery key is used to derive the AES and HMAC keys via HKDF, and the provided ciphertext, IV, and MAC are used to perform decryption and verify integrity. If successful, the decrypted plaintext is returned as a UTF-8 string. If any step fails (e.g. invalid key, failed MAC verification, decryption error), an appropriate error is returned.
 pub fn decrypt_ssss_aes_hmac_sha2(
     recovery_key_base58: &str,
     event_type: &str, // e.g. "m.megolm_backup.v1"

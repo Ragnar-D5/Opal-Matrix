@@ -37,6 +37,7 @@ use tauri::{State, command};
 
 use crate::{TauriError, create_http_response};
 
+/// Fetches messages from the Matrix server for a given room, starting from a specified pagination token. Returns the messages and the next pagination token (if available).
 async fn get_messages_api(
     room_id: &String,
     prev_batch: &String,
@@ -315,6 +316,20 @@ pub async fn get_members_api(
     return Ok(members);
 }
 
+/// Sends a read marker to the Matrix server for a specific room and event, indicating that the user has read up to that event.
+///
+/// Example usage in a leptos frontend:
+/// ```rust
+/// use crate::matrix_api::rooms::send_read_marker;
+/// use leptos::prelude::*;
+///
+/// let payload = SendMarkerPayload {
+///     room_id: "!roomid:example.com".to_string(),
+///     event_id: "$eventid:example.com".to_string(),
+/// };
+///
+/// invoke("send_read_marker", serde_wasm_bindgen::to_value(&payload)?).await?;
+/// ```
 #[command(rename_all = "snake_case")]
 pub async fn send_read_marker(
     state: State<'_, Arc<AppState>>,
