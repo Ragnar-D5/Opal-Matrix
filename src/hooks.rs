@@ -1,10 +1,11 @@
-use leptos::leptos_dom::logging::console_error;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use send_wrapper::SendWrapper;
 use serde::de::DeserializeOwned;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
+
+use log::error;
 
 #[wasm_bindgen]
 extern "C" {
@@ -29,10 +30,7 @@ where
                 {
                     Ok(v) => v,
                     Err(e) => {
-                        console_error(&format!(
-                            "Failed to read Tauri event payload field: {:?}",
-                            e
-                        ));
+                        error!("Failed to read Tauri event payload field: {:?}", e);
                         return;
                     }
                 };
@@ -40,10 +38,10 @@ where
                 match serde_wasm_bindgen::from_value::<T>(payload_js.clone()) {
                     Ok(payload) => set_payload_signal.set(Some(payload)),
                     Err(e) => {
-                        console_error(&format!(
+                        error!(
                             "Failed to deserialize Tauri event payload: {}; {:?}",
                             e, payload_js
-                        ));
+                        );
                     }
                 }
             }) as Box<dyn FnMut(JsValue)>);

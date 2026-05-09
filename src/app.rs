@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
-use leptos::leptos_dom::logging::console_error;
+use log::error;
+
 use leptos::task::spawn_local;
 use leptos::{ev::SubmitEvent, prelude::*};
 use serde::{Deserialize, Serialize};
@@ -131,7 +132,7 @@ pub fn App() -> impl IntoView {
                     }
                 }
                 Err(_) => {
-                    console_error("Error during restore, showing home server discovery");
+                    error!("Error during restore, showing home server discovery");
                 }
             }
 
@@ -161,7 +162,7 @@ pub fn App() -> impl IntoView {
                     state.breadcrums.set(breadcrumbs);
                 }
                 Err(err) => {
-                    console_error(&format!("Error fetching breadcrumbs: {:?}", err));
+                    error!("Error fetching breadcrumbs: {:?}", err);
                 }
             }
 
@@ -171,7 +172,7 @@ pub fn App() -> impl IntoView {
                     state.server_order.set(order);
                 }
                 Err(err) => {
-                    console_error(&format!("Error fetching server order: {:?}", err));
+                    error!("Error fetching server order: {:?}", err);
                 }
             };
 
@@ -327,7 +328,7 @@ fn HomePage() -> impl IntoView {
             match call_tauri("set_recovery_key", args).await {
                 Ok(_) => {}
                 Err(err) => {
-                    console_error(&format!("Error setting recovery key: {:?}", err));
+                    error!("Error setting recovery key: {:?}", err);
                 }
             }
         });

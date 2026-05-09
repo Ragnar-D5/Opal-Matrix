@@ -1,14 +1,16 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 
-use aes::Aes256;
 use aes::cipher::{KeyIvInit, StreamCipher};
-use base64::Engine;
+use aes::Aes256;
 use base64::engine::general_purpose;
+use base64::Engine;
 use bytes::Bytes;
+use chrono::Local;
 use colored::Colorize;
-use log::info;
+use log::{info, Metadata};
 use serde::Serialize;
-use tauri::{AppHandle, Url, command};
+use tauri::{command, AppHandle, Url};
 use tauri::{Manager, State};
 
 mod frontend;
@@ -24,7 +26,8 @@ type Aes256Ctr = ctr::Ctr64BE<Aes256>;
 
 pub const APP_NAME: &str = "opal-matrix";
 
-use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
+use percent_encoding::{utf8_percent_encode, AsciiSet, CONTROLS};
+use tauri_plugin_log::{Target, TargetKind};
 
 use crate::frontend::send_sidebar_update;
 use crate::state::AppState;
@@ -260,8 +263,51 @@ async fn fetch_raw_html(url: String) -> Result<String, TauriError> {
     res.text().await.map_err(|e| e.into())
 }
 
+#[command(rename_all = "snake_case")]
+async fn backend_log(
+    level: String,
+    timestamp: String,
+    path: String,
+    line: Option<u32>,
+    message: String,
+) {
+    let level = match level.as_str() {
+        "ERROR" => log::Level::Error,
+        "WARN" => log::Level::Warn,
+        "INFO" => log::Level::Info,
+        "DEBUG" => log::Level::Debug,
+        "TRACE" => log::Level::Trace,
+        _ => log::Level::Info,
+    };
+
+    let combined_message = format!("[FE Time: {}] {}", timestamp, message);
+
+    log::logger().log(
+        &log::Record::builder()
+            .args(format_args!("{}", combined_message))
+            .level(level)
+            .target(module_path!())
+            .file(Some(path.as_str()))
+            .line(line)
+            .build(),
+    );
+}
+
+use dirs;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let log_foldername = format!(
+        "{}/logs/{}",
+        dirs::data_dir()
+            .expect("Failed to get app data dir")
+            .join(APP_NAME)
+            .to_string_lossy(),
+        Local::now().format("%Y-%m-%d")
+    )
+    .into();
+    let log_filename = format!("{}.log", Local::now().format("%H-%M-%S")).into();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_http::init())
@@ -286,6 +332,7 @@ pub fn run() {
         .plugin(
             tauri_plugin_log::Builder::new()
                 .level(log::LevelFilter::Debug)
+                .targets([Target::new(tauri_plugin_log::TargetKind::Stdout), Target::new(TargetKind::Folder { path: log_foldername, file_name: log_filename })])
                 .level_for("reqwest", log::LevelFilter::Off)
                 .level_for("keyring", log::LevelFilter::Off)
                 .level_for("matrix_sdk_crypto", log::LevelFilter::Off)
@@ -293,25 +340,23 @@ pub fn run() {
                 .level_for("html5ever", log::LevelFilter::Off)
                 .format(|out, message, record| {
                     let level = match record.level() {
-                        log::Level::Error => "ERROR".red().bold(),
-                        log::Level::Warn => "WARN".yellow().bold(),
-                        log::Level::Info => "INFO".green().bold(),
-                        log::Level::Debug => "DEBUG".blue().bold(),
-                        log::Level::Trace => "TRACE".magenta().bold(),
+                        log::Level::Error => "ERROR",
+                        log::Level::Warn => "WARN",
+                        log::Level::Info => "INFO",
+                        log::Level::Debug => "DEBUG",
+                        log::Level::Trace => "TRACE",
                     };
 
                     let time = chrono::offset::Local::now()
-                        .format("%d.%m.%Y %H:%M.%3f")
-                        .to_string()
-                        .bright_black()
-                        .italic();
+                        .format("%Y-%m-%d %H:%M:%S.%3f")
+                        .to_string();
 
                     out.finish(format_args!(
-                        "{}|{}|{}|{}|{}",
+                        "{}|{}|{}:{}|{}",
                         level,
                         time,
-                        record.file().unwrap_or("Unknown").cyan(),
-                        record.line().unwrap_or(0).to_string().bright_black(),
+                        record.file().unwrap_or("Unknown"),
+                        record.line().unwrap_or(0).to_string(),
                         message
                     ));
                 })
@@ -323,6 +368,7 @@ pub fn run() {
             try_restore,
             set_recovery_key,
             send_frontend,
+            backend_log,
 
             // storage commands
             storage::get_members,

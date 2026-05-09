@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
-use leptos::{leptos_dom::logging::console_error, prelude::RwSignal, task::spawn_local};
+use leptos::task::spawn_local;
+use log::error;
 use serde::Serialize;
 use shared::{
     account_data::{AccountDataArgs, AccountDataPayload, Breadcrumbs, ServerOrder},
@@ -103,7 +104,7 @@ impl AppState {
             })
             .expect("Failed to serialize breadcrumbs");
             if let Err(err) = call_tauri("set_account_data", args).await {
-                console_error(&format!("Error saving breadcrumbs: {:?}", err));
+                error!("Error saving breadcrumbs: {:?}", err);
             }
         });
     }
@@ -121,7 +122,7 @@ impl AppState {
             })
             .expect("Failed to serialize server order");
             if let Err(err) = call_tauri("set_account_data", args).await {
-                console_error(&format!("Error saving server order: {:?}", err));
+                error!("Error saving server order: {:?}", err);
             }
         });
     }

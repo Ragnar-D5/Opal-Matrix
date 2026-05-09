@@ -53,3 +53,4 @@ tauri-plugin-http = { version = "2", features = ["json"] }
 scraper = "0.26.0"
 ego-tree = "0.11.0"
 linkify = "0.11.0"
+dirs = "6.0.0"

@@ -1,11 +1,12 @@
 use crate::state::{AppState, MemberProfileHandle, MemberStore, RoomHeader};
 use crate::tauri_functions::send_marker;
 use leptos::prelude::*;
+use log::error;
 use shared::user_profile::PresenceStatus;
 use std::collections::{HashMap, HashSet};
 
 use crate::app::{call_tauri, openUrl};
-use crate::components::presence::{self, PresenceBadge};
+use crate::components::presence::PresenceBadge;
 use crate::components::FloatingTile;
 use crate::hooks::use_tauri_event;
 use chrono::{DateTime, Local, NaiveDate, TimeZone};
@@ -62,8 +63,7 @@ fn render_span(span: RichTextSpan) -> impl IntoView {
     };
 
     match span {
-        RichTextSpan::Plain(text) => view! { <span class="cursor-text">{text}</span> }
-        .into_any(),
+        RichTextSpan::Plain(text) => view! { <span class="cursor-text">{text}</span> }.into_any(),
 
         RichTextSpan::UserMention {
             user_id,
@@ -99,7 +99,7 @@ fn render_span(span: RichTextSpan) -> impl IntoView {
         }
         .into_any(),
 
-        RichTextSpan::Link { url, text } => {
+        RichTextSpan::Link { url, .. } => {
             let clone = url.clone();
 
             let on_click = move |ev: MouseEvent| {
@@ -1336,11 +1336,11 @@ fn MemberList(room_id: RwSignal<Option<String>>) -> impl IntoView {
                         }
                     }),
                     Err(e) => {
-                        console_error(&format!("Failed to parse members response: {:?}", e));
+                        error!("Failed to parse members response: {:?}", e);
                     }
                 },
                 Err(e) => {
-                    console_error(&format!("Tauri get_members_for_room call failed: {:?}", e));
+                    error!("Tauri get_members_for_room call failed: {:?}", e);
                 }
             }
 
@@ -1354,49 +1354,47 @@ fn MemberList(room_id: RwSignal<Option<String>>) -> impl IntoView {
                 let (online, offline) = members.get().unwrap_or_default();
                 let online_i = online.len();
                 let offline_i = offline.len();
+                let header = view! { <div class="flex flex-row"></div> }.into_any();
                 let online_view = if online_i > 0 {
 
                     view! {
-                        <div class="mb-4">
-                            <h3 class="text-sm text-muted font-semibold">
-                                {move || {
-                                    format!(
-                                        "Online — {}",
-                                        members.get().unwrap_or_default().0.len(),
-                                    )
-                                }}
-                            </h3>
+                        <h3 class="text-sm text-muted font-semibold">
+                            {move || {
+                                format!("Online — {}", members.get().unwrap_or_default().0.len())
+                            }}
+                        </h3>
 
-                            <For
-                                each=move || members.get().unwrap_or_default().0
-                                key=|(member, _)| member.user_id.clone()
-                                children=move |(member, presence)| {
-                                    let profile_sig = member.profile;
-                                    let sig_clone = profile_sig.clone();
+                        <For
+                            each=move || members.get().unwrap_or_default().0
+                            key=|(member, _)| member.user_id.clone()
+                            children=move |(member, presence)| {
+                                let profile_sig = member.profile;
+                                let sig_clone = profile_sig.clone();
 
-                                    view! {
-                                        <div class="flex items-center gap-2">
-                                            {move || {
-                                                if let Some(profile) = profile_sig.get() {
-                                                    let presence = presence.clone();
-                                                    view! {
-                                                        <PresenceBadge presence=presence size=15.5>
-                                                            {profile.render_icon(32)}
-                                                        </PresenceBadge>
-                                                    }
-                                                        .into_any()
-                                                } else {
-                                                    view! {}.into_any()
+                                view! {
+                                    <div class="flex items-center gap-2">
+                                        {move || {
+                                            if let Some(profile) = profile_sig.get() {
+                                                let presence = presence.clone();
+                                                view! {
+                                                    <PresenceBadge presence=presence size=15.5>
+                                                        {profile.render_icon(32)}
+                                                    </PresenceBadge>
                                                 }
-                                            }}
-                                            <span class="text-bright">
-                                                {move || sig_clone.get().render_name(16)}
-                                            </span>
-                                        </div>
-                                    }
+                                                    .into_any()
+                                            } else {
+                                                view! {}.into_any()
+                                            }
+                                        }}
+                                        <span class="text-bright">
+                                            {move || sig_clone.get().render_name(16)}
+                                        </span>
+                                    </div>
                                 }
-                            />
-                        </div>
+                            }
+                        />
+
+                        <div class="h-3"></div>
                     }
                         .into_any()
                 } else {
@@ -1447,6 +1445,7 @@ fn MemberList(room_id: RwSignal<Option<String>>) -> impl IntoView {
                 };
 
                 view! {
+                    {header}
                     {online_view}
                     {offline_view}
                 }
