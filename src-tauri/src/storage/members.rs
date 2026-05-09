@@ -100,6 +100,16 @@ pub fn get_other_member_in_dm(
     }
 }
 
+/// Retrieves the list of user IDs for members in a specific room.
+///
+/// Example usage in a leptos frontend:
+/// ```rust
+/// use leptos::prelude::*;
+///
+/// let payload = GetMembersForRoomPayload {
+///     room_id: "room123".to_string(),
+/// };
+///```
 #[command(rename_all = "snake_case")]
 pub async fn get_members_for_room(
     state: State<'_, Arc<AppState>>,

@@ -20,25 +20,41 @@ pub fn PresenceBadge(
             xmlns="http://www.w3.org/2000/svg"
         >
             {move || match presence.get().status {
-                PresenceStatus::Online => view! {
-                    <circle cx="10" cy="10" r="10" fill="#23a55a" />
-                }.into_any(),
-                PresenceStatus::Unavailable => view! {
-                    <defs>
-                        <mask id="idle-mask">
-                            <circle cx="10" cy="10" r="10" fill="white" />
-                            <circle cx="6" cy="6" r="8" fill="black" />
-                        </mask>
-                    </defs>
-                    <circle cx="10" cy="10" r="10" fill="#f0b232" mask="url(#idle-mask)" />
-                }.into_any(),
-                PresenceStatus::Busy => view! {
-                    <circle cx="10" cy="10" r="10" fill="#f23f43" />
-                    <rect x="4" y="8" width="12" height="4" rx="2" fill="white" />
-                }.into_any(),
-                PresenceStatus::Offline => view! {
-                    <circle cx="10" cy="10" r="7.5" stroke="#80848e" stroke-width="5" fill="none" />
-                }.into_any(),
+                PresenceStatus::Online => {
+                    view! { <circle cx="10" cy="10" r="10" fill="#23a55a" /> }.into_any()
+                }
+                PresenceStatus::Unavailable => {
+                    view! {
+                        <defs>
+                            <mask id="idle-mask">
+                                <circle cx="10" cy="10" r="10" fill="white" />
+                                <circle cx="6" cy="6" r="8" fill="black" />
+                            </mask>
+                        </defs>
+                        <circle cx="10" cy="10" r="10" fill="#f0b232" mask="url(#idle-mask)" />
+                    }
+                        .into_any()
+                }
+                PresenceStatus::Busy => {
+                    view! {
+                        <circle cx="10" cy="10" r="10" fill="#f23f43" />
+                        <rect x="4" y="8" width="12" height="4" rx="2" fill="white" />
+                    }
+                        .into_any()
+                }
+                PresenceStatus::Offline => {
+                    view! {
+                        <circle
+                            cx="10"
+                            cy="10"
+                            r="7.5"
+                            stroke="#80848e"
+                            stroke-width="5"
+                            fill="none"
+                        />
+                    }
+                        .into_any()
+                }
             }}
         </svg>
     };
@@ -62,7 +78,9 @@ pub fn PresenceBadge(
             <div
                 class="absolute flex items-center justify-center text-white text-[12px] font-extrabold rounded-full"
                 style=format!(
-                    "width: {size_px}px; height: {size_px}px; bottom: -{}px; right: -{}px;", 3.0 * badge_shift, 3.0 * badge_shift
+                    "width: {size_px}px; height: {size_px}px; bottom: -{}px; right: -{}px;",
+                    3.0 * badge_shift,
+                    3.0 * badge_shift,
                 )
             >
                 {svg}

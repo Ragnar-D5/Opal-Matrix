@@ -181,22 +181,24 @@ pub fn App() -> impl IntoView {
 
     view! {
         {move || match state.current_window.get() {
-            CurrentWindow::HomeserverDiscoveryPage => view! {
-                <HomeserverDiscoveryPage/>
-            }.into_any(),
-            CurrentWindow::LoginPage => view! {
-                <LoginPage/>
-            }.into_any(),
+            CurrentWindow::HomeserverDiscoveryPage => {
+                view! { <HomeserverDiscoveryPage /> }.into_any()
+            }
+            CurrentWindow::LoginPage => view! { <LoginPage /> }.into_any(),
+            CurrentWindow::HomePage => {
 
-            CurrentWindow::HomePage => view! {
-                <HomePage/>
-            }.into_any(),
+                view! { <HomePage /> }
+                    .into_any()
+            }
+            CurrentWindow::LoadingPage => {
 
-            CurrentWindow::LoadingPage => view! {
-                <div class="loading">
-                    <p>"Loading..."</p>
-                </div>
-            }.into_any(),
+                view! {
+                    <div class="loading">
+                        <p>"Loading..."</p>
+                    </div>
+                }
+                    .into_any()
+            }
         }}
     }
 }
@@ -291,7 +293,7 @@ fn LoginPage() -> impl IntoView {
             </form>
 
             // Show errors if there are any
-            <p class="text-red-300">{ move || error_msg.get() }</p>
+            <p class="text-red-300">{move || error_msg.get()}</p>
         </div>
     }
 }
@@ -354,14 +356,17 @@ fn HomePage() -> impl IntoView {
     };
 
     view! {
-        <div class="bg-[var(--bg-color)] flex h-screen overflow-hidden p-[var(--gap)] gap-[var(--gap)] relative" style=root_css_vars>
-        // <h2>"Login Successful!"</h2>
-        // <p>"Welcome, " <strong>{user_id}</strong></p>
+        <div
+            class="bg-[var(--bg-color)] flex h-screen overflow-hidden p-[var(--gap)] gap-[var(--gap)] relative"
+            style=root_css_vars
+        >
+            // <h2>"Login Successful!"</h2>
+            // <p>"Welcome, " <strong>{user_id}</strong></p>
 
-        // <form on:submit=send_recovery_key>
-        //     <input placeholder="Recovery Key" on:input=move |ev| set_recovery_key.set(event_target_value(&ev)) />
-        //     <button type="submit">"Set Recovery Key"</button>
-        // </form>
+            // <form on:submit=send_recovery_key>
+            // <input placeholder="Recovery Key" on:input=move |ev| set_recovery_key.set(event_target_value(&ev)) />
+            // <button type="submit">"Set Recovery Key"</button>
+            // </form>
 
             <div data-tauri-drag-region class="absolute top-0 left-0 right-0 h-3 z-50"></div>
             <Sidebar />
@@ -434,17 +439,15 @@ pub fn HomeserverDiscoveryPage() -> impl IntoView {
             // The button only renders when is_valid is true
             <Show
                 when=move || is_valid.get()
-                fallback= || view! { <p class="text-gray-600 select-none">"Checking server..."</p> }
+                fallback=|| view! { <p class="text-gray-600 select-none">"Checking server..."</p> }
             >
                 <button
                     class="mt-5 px-5 py-2.5 bg-blue-500 text-white rounded-md border-none cursor-pointer select-none"
                     on:click=move |_| {
                         spawn_local(async move {
-
-                        choose_home_server().await;
-                        state.current_window.set(CurrentWindow::LoginPage);
-                        }
-                        )
+                            choose_home_server().await;
+                            state.current_window.set(CurrentWindow::LoginPage);
+                        })
                     }
                 >
                     "Login Page"

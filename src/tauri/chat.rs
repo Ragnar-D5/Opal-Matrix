@@ -1,10 +1,11 @@
 use crate::state::{AppState, MemberProfileHandle, MemberStore, RoomHeader};
 use crate::tauri_functions::send_marker;
 use leptos::prelude::*;
+use shared::user_profile::PresenceStatus;
 use std::collections::{HashMap, HashSet};
 
 use crate::app::{call_tauri, openUrl};
-use crate::components::presence::PresenceBadge;
+use crate::components::presence::{self, PresenceBadge};
 use crate::components::FloatingTile;
 use crate::hooks::use_tauri_event;
 use chrono::{DateTime, Local, NaiveDate, TimeZone};
@@ -61,9 +62,7 @@ fn render_span(span: RichTextSpan) -> impl IntoView {
     };
 
     match span {
-        RichTextSpan::Plain(text) => view! {
-            <span class="cursor-text">{text}</span>
-        }
+        RichTextSpan::Plain(text) => view! { <span class="cursor-text">{text}</span> }
         .into_any(),
 
         RichTextSpan::UserMention {
@@ -78,21 +77,18 @@ fn render_span(span: RichTextSpan) -> impl IntoView {
             });
 
             view! {
-                    <span class="relative p-[2px] group cursor-pointer">
-                        <span
-                            class="absolute inset-0 rounded -z-10 opacity-10 group-hover:opacity-40 transition-opacity duration-200"
-                            style:background-color=move || color.get()
-                        />
+                <span class="relative p-[2px] group cursor-pointer">
+                    <span
+                        class="absolute inset-0 rounded -z-10 opacity-10 group-hover:opacity-40 transition-opacity duration-200"
+                        style:background-color=move || color.get()
+                    />
 
-                        <span
-                            class="relative"
-                            style:color=move || color.get()
-                            title=user_id
-                        >
-                            "@" {display_name}
-                        </span>
+                    <span class="relative" style:color=move || color.get() title=user_id>
+                        "@"
+                        {display_name}
                     </span>
-                }
+                </span>
+            }
             .into_any()
         }
 
@@ -198,23 +194,33 @@ fn render_link(span: RichTextSpan) -> impl IntoView {
     });
 
     view! {
-        <Suspense fallback=move || view! {
-            <div class="animate-pulse bg-white/5 w-full max-w-sm h-24 rounded-md mt-2"></div>
+        <Suspense fallback=move || {
+            view! {
+                <div class="animate-pulse bg-white/5 w-full max-w-sm h-24 rounded-md mt-2"></div>
+            }
         }>
             {move || {
-                preview.get().and_then(|res| res.ok()).map(|data| {
-                    view! {
-                        <div class="flex flex-col max-w-sm rounded-md bg-white/5 border border-white/10 overflow-hidden mt-2 cursor-pointer hover:bg-white/10">
-                            {data.image.map(|img| view! {
-                                <img src=img class="w-full h-32 object-cover" />
-                            })}
-                            <div class="p-3">
-                                <span class="text-sm font-bold text-bright line-clamp-1">{data.title}</span>
-                                <span class="text-xs text-muted line-clamp-2 mt-1">{data.description}</span>
+                preview
+                    .get()
+                    .and_then(|res| res.ok())
+                    .map(|data| {
+                        view! {
+                            <div class="flex flex-col max-w-sm rounded-md bg-white/5 border border-white/10 overflow-hidden mt-2 cursor-pointer hover:bg-white/10">
+                                {data
+                                    .image
+                                    .map(|img| {
+                                        view! { <img src=img class="w-full h-32 object-cover" /> }
+                                    })} <div class="p-3">
+                                    <span class="text-sm font-bold text-bright line-clamp-1">
+                                        {data.title}
+                                    </span>
+                                    <span class="text-xs text-muted line-clamp-2 mt-1">
+                                        {data.description}
+                                    </span>
+                                </div>
                             </div>
-                        </div>
-                    }
-                })
+                        }
+                    })
             }}
         </Suspense>
     }.into_any()
@@ -240,9 +246,7 @@ fn ReplyPreview(replies_to: Option<RepliesTo>) -> impl IntoView {
                 <div class="flex items-center gap-1 ml-[52px] mb-1 cursor-pointer text-xs relative group/reply">
                     <div class="absolute -left-[32px] top-[calc(50%-1px)] w-[28px] h-4.5 border-l-2 border-t-2 border-white/20 rounded-tl-md"></div>
 
-                    <div class="shrink-0">
-                        {move || profile_sig.get().render_icon(16)}
-                    </div>
+                    <div class="shrink-0">{move || profile_sig.get().render_icon(16)}</div>
 
                     <span class="font-semibold text-bright hover:underline">
                         {move || sig_clone.get().render_name(12)}
@@ -292,169 +296,211 @@ impl TimelineItem {
                 view! {
                     <div class="flex flex-col gap-1 py-3 rounded-md">
                         <div class="flex flex-col w-full">
-                            {group.contents.iter().enumerate().map(|(idx, msg)| {
-                                let is_first = idx == 0;
-                                let message_mentions_user = msg
-                                    .mentions
-                                    .as_ref()
-                                    .map(|mentions| mentions.user_ids.contains(&own_user_id))
-                                    .unwrap_or(false);
+                            {group
+                                .contents
+                                .iter()
+                                .enumerate()
+                                .map(|(idx, msg)| {
+                                    let is_first = idx == 0;
+                                    let message_mentions_user = msg
+                                        .mentions
+                                        .as_ref()
+                                        .map(|mentions| mentions.user_ids.contains(&own_user_id))
+                                        .unwrap_or(false);
+                                    let reply_data = if is_first {
+                                        first_reply_data.clone()
+                                    } else {
+                                        None
+                                    };
+                                    let show_highlight = message_mentions_user
+                                        || (is_first && highlight_reply_preview);
+                                    let (hovered, set_hovered) = signal(false);
+                                    let mut reaction_counts: HashMap<String, usize> = HashMap::new();
+                                    for r in &msg.reactions {
+                                        *reaction_counts.entry(r.reaction.clone()).or_insert(0)
+                                            += 1;
+                                    }
+                                    let content = match &msg.content {
+                                        MessageContent::Text { spans, is_edited } => {
 
-                                let reply_data = if is_first {
-                                    first_reply_data.clone()
-                                } else {
-                                    None
-                                };
+                                            view! {
+                                                <div class="text-normal leading-relaxed break-words">
+                                                    {spans.clone().into_iter().map(render_span).collect_view()}
+                                                    {if *is_edited {
+                                                        view! {
+                                                            <span class="text-xs text-muted ml-2 italic">
+                                                                "(edited)"
+                                                            </span>
+                                                        }
+                                                            .into_any()
+                                                    } else {
+                                                        view! {}.into_any()
+                                                    }}
+                                                    {spans.clone().into_iter().map(render_link).collect_view()}
+                                                </div>
+                                            }
+                                                .into_any()
+                                        }
+                                        MessageContent::Image {
+                                            url,
+                                            name,
+                                            encryption_info,
+                                            ..
+                                        } => {
+                                            let final_url = if let Some(enc) = encryption_info {
+                                                let encoded_key = urlencoding::encode(&enc.key);
+                                                let encoded_iv = urlencoding::encode(&enc.iv);
+                                                format!("{}?key={}&iv={}", url, encoded_key, encoded_iv)
+                                            } else {
+                                                url.clone()
+                                            };
 
-                                let show_highlight = message_mentions_user || (is_first && highlight_reply_preview);
+                                            view! {
+                                                <div class="mt-1">
+                                                    <img
+                                                        src=final_url
+                                                        alt=name.clone()
+                                                        class="max-w-sm rounded-md border border-[var(--tile-border-color)]"
+                                                    />
+                                                </div>
+                                            }
+                                                .into_any()
+                                        }
+                                        MessageContent::File { url, filename, size } => {
+                                            view! {
+                                                <div class="flex items-center gap-2 mt-1 p-2 rounded-md bg-white/5 border border-[var(--tile-border-color)] inline-flex">
+                                                    <span class="text-xl">"📄"</span>
+                                                    <a
+                                                        href=url.clone()
+                                                        target="_blank"
+                                                        class="text-blue-400 hover:underline truncate max-w-xs"
+                                                    >
+                                                        {filename.clone()}
+                                                    </a>
+                                                    <span class="text-xs text-muted">
+                                                        {format!("{:.1} KB", *size as f64 / 1024.0)}
+                                                    </span>
+                                                </div>
+                                            }
+                                                .into_any()
+                                        }
+                                        MessageContent::Encrypted => {
+                                            view! {
+                                                <div class="text-red-300 bold leading-relaxed break-words text-muted">
+                                                    "Encrypted message"
+                                                </div>
+                                            }
+                                                .into_any()
+                                        }
+                                        MessageContent::Deleted => {
+                                            view! {
+                                                <div class="text-muted italic leading-relaxed break-words">
+                                                    "This message was deleted"
+                                                </div>
+                                            }
+                                                .into_any()
+                                        }
+                                    };
 
-                                let (hovered, set_hovered) = signal(false);
-
-                                let mut reaction_counts: HashMap<String, usize> = HashMap::new();
-                                for r in &msg.reactions {
-                                    *reaction_counts.entry(r.reaction.clone()).or_insert(0) += 1;
-                                }
-
-                                let content = match &msg.content {
-                                    MessageContent::Text { spans, is_edited } => view! {
-                                        <div class="text-normal leading-relaxed break-words">
-                                            {spans.clone().into_iter().map(render_span).collect_view()}
-                                            {if *is_edited {
-                                                view! { <span class="text-xs text-muted ml-2 italic">"(edited)"</span> }.into_any()
+                                    view! {
+                                        <div
+                                            class="group/msg relative flex flex-col gap-[var(--gap)] hover:bg-black/20 ml-1 pl-4 py-[2px] rounded-md"
+                                            style:background=move || {
+                                                let hovered = hovered.get();
+                                                if show_highlight {
+                                                    format!(
+                                                        "linear-gradient(in oklch to right, oklch(from var(--accent-color) l c h / {}) 20%, oklch(from var(--accent-color) l c h / 0) 100%)",
+                                                        if hovered { "0.05" } else { "0.15" },
+                                                    )
+                                                } else if hovered {
+                                                    "rgba(0, 0, 0, 0.2)".to_string()
+                                                } else {
+                                                    "transparent".to_string()
+                                                }
+                                            }
+                                            on:mouseenter=move |_| set_hovered.set(true)
+                                            on:mouseleave=move |_| set_hovered.set(false)
+                                        >
+                                            {if show_highlight {
+                                                view! {
+                                                    <div class="absolute left-1 top-1 bottom-1 w-1 rounded-full bg-[var(--accent-color)] pointer-events-none"></div>
+                                                }
+                                                    .into_any()
                                             } else {
                                                 view! {}.into_any()
                                             }}
-                                            {spans.clone().into_iter().map(render_link).collect_view()}
-                                        </div>
-                                    }.into_any(),
-                                    MessageContent::Image { url, name, encryption_info, .. } => {
-                                        let final_url = if let Some(enc) = encryption_info {
-                                            let encoded_key = urlencoding::encode(&enc.key);
-                                            let encoded_iv = urlencoding::encode(&enc.iv);
 
-                                            format!("{}?key={}&iv={}", url, encoded_key, encoded_iv)
-                                        } else {
-                                            url.clone()
-                                        };
-                                        view! {
-                                            <div class="mt-1">
-                                                <img src=final_url alt=name.clone() class="max-w-sm rounded-md border border-[var(--tile-border-color)]" />
-                                            </div>
-                                        }.into_any()
-                                    },
-                                    MessageContent::File { url, filename, size } => view! {
-                                        <div class="flex items-center gap-2 mt-1 p-2 rounded-md bg-white/5 border border-[var(--tile-border-color)] inline-flex">
-                                            <span class="text-xl">"📄"</span>
-                                            <a href=url.clone() target="_blank" class="text-blue-400 hover:underline truncate max-w-xs">
-                                                {filename.clone()}
-                                            </a>
-                                            <span class="text-xs text-muted">
-                                                {format!("{:.1} KB", *size as f64 / 1024.0)}
-                                            </span>
-                                        </div>
-                                    }.into_any(),
-                                    MessageContent::Encrypted => view! {
-                                        <div class="text-red-300 bold leading-relaxed break-words text-muted">
-                                            "Encrypted message"
-                                        </div>
-                                    }.into_any(),
-                                    MessageContent::Deleted => view! {
-                                        <div class="text-muted italic leading-relaxed break-words">
-                                            "This message was deleted"
-                                        </div>
-                                    }.into_any(),
-                                };
-
-                                view! {
-                                    <div
-                                        class="group/msg relative flex flex-col gap-[var(--gap)] hover:bg-black/20 ml-1 pl-4 py-[2px] rounded-md"
-                                        style:background=move || {
-                                            let hovered = hovered.get();
-                                            if show_highlight {
-                                                format!(
-                                                    "linear-gradient(in oklch to right, oklch(from var(--accent-color) l c h / {}) 20%, oklch(from var(--accent-color) l c h / 0) 100%)",
-                                                    if hovered { "0.05" } else { "0.15" }
-                                                )
-                                            } else if hovered {
-                                                "rgba(0, 0, 0, 0.2)".to_string()
+                                            {if is_first {
+                                                view! { <ReplyPreview replies_to=reply_data.clone() /> }
+                                                    .into_any()
                                             } else {
-                                                "transparent".to_string()
-                                            }
-                                        }
-                                        on:mouseenter=move |_| set_hovered.set(true)
-                                        on:mouseleave=move |_| set_hovered.set(false)
-                                    >
-                                        {if show_highlight {
-                                            view! {
-                                                <div class="absolute left-1 top-1 bottom-1 w-1 rounded-full bg-[var(--accent-color)] pointer-events-none"></div>
-                                            }.into_any()
-                                        } else {
-                                            view! {}.into_any()
-                                        }}
+                                                view! {}.into_any()
+                                            }}
 
-                                        {if is_first {
-                                            view! { <ReplyPreview replies_to=reply_data.clone() /> }.into_any()
-                                        } else {
-                                            view! {}.into_any()
-                                        }}
-
-                                        <div class="flex gap-[var(--gap)]">
-                                            <div class="shrink-0 mr-2 w-[40px] self-center">
-                                                {if is_first {
-                                                    let profile_sig = profile_sig.clone();
-                                                    view! {
-                                                        {move || {
-                                                            let profile = profile_sig.get();
-                                                            profile.render_icon(40)
-                                                        }}
-                                                    }.into_any()
-                                                } else {
-                                                    view! {}.into_any()
-                                                }}
-                                            </div>
-
-                                            <div class="flex flex-col min-w-0 flex-1">
-                                                {if is_first {
-                                                    let name_sig = name_sig.clone();
-                                                    view! {
-                                                        <div class="flex items-baseline gap-2">
-                                                            <span class="text-bright truncate cursor-pointer">
-                                                                {move || name_sig.get().render_name(16)}
-                                                            </span>
-                                                            <span class="text-muted text-xs">
-                                                                {format_date(self.date)}
-                                                            </span>
-                                                        </div>
-                                                    }.into_any()
-                                                } else {
-                                                    view! {}.into_any()
-                                                }}
-
-                                                <div>
-                                                    {content}
-
-                                                    {if !reaction_counts.is_empty() {
+                                            <div class="flex gap-[var(--gap)]">
+                                                <div class="shrink-0 mr-2 w-[40px] self-center">
+                                                    {if is_first {
+                                                        let profile_sig = profile_sig.clone();
                                                         view! {
-                                                            <div class="flex flex-wrap gap-1 mt-1 mb-2">
-                                                                {reaction_counts.into_iter().map(|(emoji, count)| {
-                                                                    view! {
-                                                                        <div class="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-white/10 border border-white/5 hover:bg-white/20 cursor-pointer">
-                                                                            <span class="text-sm leading-none">{emoji}</span>
-                                                                            <span class="text-[10px] font-medium text-muted">{count}</span>
-                                                                        </div>
-                                                                    }
-                                                                }).collect_view()}
-                                                            </div>
-                                                        }.into_any()
+                                                            {move || {
+                                                                let profile = profile_sig.get();
+                                                                profile.render_icon(40)
+                                                            }}
+                                                        }
+                                                            .into_any()
                                                     } else {
                                                         view! {}.into_any()
                                                     }}
                                                 </div>
+
+                                                <div class="flex flex-col min-w-0 flex-1">
+                                                    {if is_first {
+                                                        let name_sig = name_sig.clone();
+                                                        view! {
+                                                            <div class="flex items-baseline gap-2">
+                                                                <span class="text-bright truncate cursor-pointer">
+                                                                    {move || name_sig.get().render_name(16)}
+                                                                </span>
+                                                                <span class="text-muted text-xs">
+                                                                    {format_date(self.date)}
+                                                                </span>
+                                                            </div>
+                                                        }
+                                                            .into_any()
+                                                    } else {
+                                                        view! {}.into_any()
+                                                    }}
+                                                    <div>
+                                                        {content}
+                                                        {if !reaction_counts.is_empty() {
+                                                            view! {
+                                                                <div class="flex flex-wrap gap-1 mt-1 mb-2">
+                                                                    {reaction_counts
+                                                                        .into_iter()
+                                                                        .map(|(emoji, count)| {
+                                                                            view! {
+                                                                                <div class="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-white/10 border border-white/5 hover:bg-white/20 cursor-pointer">
+                                                                                    <span class="text-sm leading-none">{emoji}</span>
+                                                                                    <span class="text-[10px] font-medium text-muted">
+                                                                                        {count}
+                                                                                    </span>
+                                                                                </div>
+                                                                            }
+                                                                        })
+                                                                        .collect_view()}
+                                                                </div>
+                                                            }
+                                                                .into_any()
+                                                        } else {
+                                                            view! {}.into_any()
+                                                        }}
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
-                                }
-                            }).collect_view()}
+                                    }
+                                })
+                                .collect_view()}
                         </div>
                     </div>
                 }
@@ -476,9 +522,7 @@ impl TimelineItem {
                 view! {
                     <div class="flex items-center gap-2 my-4">
                         <div class="flex-1 border-t-1 border-[var(--muted-text-color)]"></div>
-                        <span class="text-muted text-sm">
-                            {label}
-                        </span>
+                        <span class="text-muted text-sm">{label}</span>
                         <div class="flex-1 border-t-1 border-[var(--muted-text-color)]"></div>
                     </div>
                 }
@@ -561,9 +605,7 @@ impl TimelineItem {
 
                 view! {
                     <div class="flex items-center justify-center my-2">
-                        <span class="text-muted text-xxl">
-                            {text}
-                        </span>
+                        <span class="text-muted text-xxl">{text}</span>
                     </div>
                 }
                 .into_any()
@@ -1043,53 +1085,62 @@ fn ChatHeader(header: Memo<RoomHeader>, set_chat_sidebar_open: WriteSignal<bool>
         <FloatingTile class="h-12 items-start flex-row gap-1 pl-1">
             <div class="w-10 self-center flex items-center justify-center">
                 {move || match header.get() {
-                    RoomHeader::Channel { .. } => view! {
-                        <div class="w-8 text-end">
-                            <span class="text-lg text-bright self-center align-middle">"#"</span>
-                        </div>
-                    }.into_any(),
-                    RoomHeader::DM(handle) => {
-                        let presence = member_store.get_presence(&handle.user_id);
-                        let profile_sig = handle.profile;
-
+                    RoomHeader::Channel { .. } => {
                         view! {
-                            {move || {
-                                if let Some(profile) = profile_sig.get() {
-                                    let presence = presence.clone();
-                                    view! {
-                                        <PresenceBadge presence=presence>
-                                            {profile.render_icon(32)}
-                                        </PresenceBadge>
-                                    }.into_any()
-                                } else {
-                                    view! {}.into_any()
-                                }
-                            }}
+                            <div class="w-8 text-end">
+                                <span class="text-lg text-bright self-center align-middle">
+                                    "#"
+                                </span>
+                            </div>
                         }
-                    }.into_any(),
-                    RoomHeader::Unknown => view! {
-                        <div class="w-8 text-end">
-                            <span class="text-lg text-bright self-center align-middle">"?"</span>
-                        </div>
-                    }.into_any()
+                            .into_any()
+                    }
+                    RoomHeader::DM(handle) => {
+                        {
+                            let presence = member_store.get_presence(&handle.user_id);
+                            let profile_sig = handle.profile;
+
+                            view! {
+                                {move || {
+                                    if let Some(profile) = profile_sig.get() {
+                                        let presence = presence.clone();
+                                        view! {
+                                            <PresenceBadge presence=presence>
+                                                {profile.render_icon(32)}
+                                            </PresenceBadge>
+                                        }
+                                            .into_any()
+                                    } else {
+                                        view! {}.into_any()
+                                    }
+                                }}
+                            }
+                        }
+                            .into_any()
+                    }
+                    RoomHeader::Unknown => {
+                        view! {
+                            <div class="w-8 text-end">
+                                <span class="text-lg text-bright self-center align-middle">
+                                    "?"
+                                </span>
+                            </div>
+                        }
+                            .into_any()
+                    }
                 }}
             </div>
             <div class="flex-1 flex flex-col self-center text-bright text-m font-semibold">
                 {move || match header.get() {
-                    RoomHeader::Channel(node) => view! {
-                        <span>
-                            {node.name}
-                        </span>
-                    }.into_any(),
+                    RoomHeader::Channel(node) => view! { <span>{node.name}</span> }.into_any(),
                     RoomHeader::DM(handle) => {
-                        let profile_sig = handle.profile;
-                        view! { {move || profile_sig.get().render_name(16)} }.into_any()
-                    }.into_any(),
-                    RoomHeader::Unknown => view! {
-                        <span>
-                            "Unknown Room"
-                        </span>
-                    }.into_any()
+                        {
+                            let profile_sig = handle.profile;
+                            view! { {move || profile_sig.get().render_name(16)} }.into_any()
+                        }
+                            .into_any()
+                    }
+                    RoomHeader::Unknown => view! { <span>"Unknown Room"</span> }.into_any(),
                 }}
             </div>
             <div class="self-center">
@@ -1110,19 +1161,23 @@ fn ChatInput(header: Memo<RoomHeader>) -> impl IntoView {
         <div class="p-2 w-full rounded-full">
             <input
                 type="text"
-                placeholder={move || match header.get() {
-                    RoomHeader::Channel(node) => format!("Message #{}", node.name.clone().unwrap_or(node.room_id.clone())),
-                    RoomHeader::DM(handle) => format!(
-                        "Message @{}",
-                        handle
-                            .profile
-                            .get()
-                            .unwrap_or_default()
-                            .display_name
-                            .unwrap_or(handle.user_id.clone())
-                    ),
+                placeholder=move || match header.get() {
+                    RoomHeader::Channel(node) => {
+                        format!("Message #{}", node.name.clone().unwrap_or(node.room_id.clone()))
+                    }
+                    RoomHeader::DM(handle) => {
+                        format!(
+                            "Message @{}",
+                            handle
+                                .profile
+                                .get()
+                                .unwrap_or_default()
+                                .display_name
+                                .unwrap_or(handle.user_id.clone()),
+                        )
+                    }
                     RoomHeader::Unknown => "Message someone".to_string(),
-                }}
+                }
                 class="w-full h-13 border-1 border-[var(--tile-border-color)] outline-none text-[var(--text-color)] p-3 rounded-lg bg-[rgba(0, 0, 0, 0.6)]"
                 style="background-color: rgba(0, 0, 0, 0.2);"
                 autofocus
@@ -1148,7 +1203,7 @@ pub fn Chat() -> impl IntoView {
             <ChatHeader header=header set_chat_sidebar_open=set_chat_sidebar_open />
             <div class="flex flex-row h-full min-h-0">
                 <FloatingTile class="flex-1 min-h-0, overflow-hidden">
-                    <TimeLine/>
+                    <TimeLine />
                     <ChatInput header=header />
                 </FloatingTile>
                 <Show when=move || chat_sidebar_open.get()>
@@ -1178,26 +1233,21 @@ fn ChatInfo(header: Memo<RoomHeader>) -> impl IntoView {
                         .get()
                         .map(|profile| profile.get_user_color().to_css_string())
                         .unwrap_or_else(|| "transparent".to_string());
-
                     let banner_height = 108.0;
                     let icon_size = 70.0;
                     let icon_radius = icon_size / 2.0;
                     let ring_width = 6.0;
                     let left_offset = 16.0;
-
                     let cutout_radius = icon_radius + ring_width;
                     let smooth_cutout_radius = cutout_radius + 0.5;
-
                     let cx = left_offset + icon_radius;
                     let cy = banner_height;
-
                     let banner_mask = format!(
                         "-webkit-mask-image: radial-gradient(circle at {cx}px {cy}px, transparent {cutout_radius}px, black {smooth_cutout_radius}px); \
                          mask-image: radial-gradient(circle at {cx}px {cy}px, transparent {cutout_radius}px, black {smooth_cutout_radius}px); \
                          -webkit-mask-composite: destination-out; \
-                         mask-composite: exclude;"
+                         mask-composite: exclude;",
                     );
-
                     let profile_sig_icon = profile_sig.clone();
                     let profile_sig_name = profile_sig.clone();
 
@@ -1216,7 +1266,8 @@ fn ChatInfo(header: Memo<RoomHeader>) -> impl IntoView {
                                             <PresenceBadge presence=presence size=25.0>
                                                 {profile.render_icon(icon_size as usize)}
                                             </PresenceBadge>
-                                        }.into_any()
+                                        }
+                                            .into_any()
                                     } else {
                                         view! {}.into_any()
                                     }
@@ -1230,12 +1281,13 @@ fn ChatInfo(header: Memo<RoomHeader>) -> impl IntoView {
                                 <p class="text-sm text-muted">"Direct Message"</p>
                             </div>
                         </div>
-                    }.into_any()
-                },
-                RoomHeader::Channel(..) => view! {
-                    <MemberList room_id=state.active_room_id />
-                }.into_any(),
-                _ => view! { <div class="px-4 py-4">"..."</div> }.into_any()
+                    }
+                        .into_any()
+                }
+                RoomHeader::Channel(..) => {
+                    view! { <MemberList room_id=state.active_room_id /> }.into_any()
+                }
+                _ => view! { <div class="px-4 py-4">"..."</div> }.into_any(),
             }}
         </div>
     }
@@ -1256,6 +1308,9 @@ fn MemberList(room_id: RwSignal<Option<String>>) -> impl IntoView {
         let store = store_clone.clone();
 
         async move {
+            let mut online = Vec::new();
+            let mut offline = Vec::new();
+
             let args = serde_wasm_bindgen::to_value(&MembersForRoom {
                 room_id: room_id.clone(),
             })
@@ -1263,57 +1318,141 @@ fn MemberList(room_id: RwSignal<Option<String>>) -> impl IntoView {
 
             match call_tauri("get_members_for_room", args).await {
                 Ok(js_val) => match serde_wasm_bindgen::from_value::<Vec<String>>(js_val) {
-                    Ok(members) => members
-                        .iter()
-                        .map(|user_id| MemberProfileHandle {
-                            user_id: user_id.clone(),
-                            profile: store.get_profile(&room_id, user_id),
-                        })
-                        .collect(),
+                    Ok(members) => members.iter().for_each(|user_id| {
+                        let presence = store.get_presence(user_id);
+
+                        let el = (
+                            MemberProfileHandle {
+                                user_id: user_id.clone(),
+                                profile: store.get_profile(&room_id, user_id),
+                            },
+                            presence.clone(),
+                        );
+
+                        if presence.get().status == PresenceStatus::Offline {
+                            offline.push(el);
+                        } else {
+                            online.push(el);
+                        }
+                    }),
                     Err(e) => {
                         console_error(&format!("Failed to parse members response: {:?}", e));
-                        Vec::new()
                     }
                 },
                 Err(e) => {
                     console_error(&format!("Tauri get_members_for_room call failed: {:?}", e));
-                    Vec::new()
                 }
             }
+
+            (online, offline)
         }
     });
 
     view! {
         <div class="flex flex-col gap-2 p-3">
-            <For
-                each=move || members.get().unwrap_or_default()
-                key=|member| member.user_id.clone()
-                children=move |member| {
-                    let presence = member_store.get_presence(&member.user_id);
-                    let profile_sig = member.profile;
-                    let sig_clone = profile_sig.clone();
+            {move || {
+                let (online, offline) = members.get().unwrap_or_default();
+                let online_i = online.len();
+                let offline_i = offline.len();
+                let online_view = if online_i > 0 {
 
                     view! {
-                        <div class="flex items-center gap-2">
-                            {move || {
-                                if let Some(profile) = profile_sig.get() {
-                                    let presence = presence.clone();
+                        <div class="mb-4">
+                            <h3 class="text-sm text-muted font-semibold">
+                                {move || {
+                                    format!(
+                                        "Online — {}",
+                                        members.get().unwrap_or_default().0.len(),
+                                    )
+                                }}
+                            </h3>
+
+                            <For
+                                each=move || members.get().unwrap_or_default().0
+                                key=|(member, _)| member.user_id.clone()
+                                children=move |(member, presence)| {
+                                    let profile_sig = member.profile;
+                                    let sig_clone = profile_sig.clone();
+
                                     view! {
-                                        <PresenceBadge presence=presence size=15.5>
-                                            {profile.render_icon(32)}
-                                        </PresenceBadge>
-                                    }.into_any()
-                                } else {
-                                    view! {}.into_any()
+                                        <div class="flex items-center gap-2">
+                                            {move || {
+                                                if let Some(profile) = profile_sig.get() {
+                                                    let presence = presence.clone();
+                                                    view! {
+                                                        <PresenceBadge presence=presence size=15.5>
+                                                            {profile.render_icon(32)}
+                                                        </PresenceBadge>
+                                                    }
+                                                        .into_any()
+                                                } else {
+                                                    view! {}.into_any()
+                                                }
+                                            }}
+                                            <span class="text-bright">
+                                                {move || sig_clone.get().render_name(16)}
+                                            </span>
+                                        </div>
+                                    }
                                 }
-                            }}
-                            <span class="text-bright">
-                                {move || sig_clone.get().render_name(16)}
-                            </span>
+                            />
                         </div>
                     }
+                        .into_any()
+                } else {
+                    view! {}.into_any()
+                };
+                let offline_view = if offline_i > 0 {
+
+                    view! {
+                        <h3 class="text-sm text-muted font-semibold">
+                            {move || {
+                                format!("Offline — {}", members.get().unwrap_or_default().1.len())
+                            }}
+                        </h3>
+
+                        <For
+                            each=move || members.get().unwrap_or_default().1
+                            key=|(member, _)| member.user_id.clone()
+                            children=move |(member, presence)| {
+                                let profile_sig = member.profile;
+                                let sig_clone = profile_sig.clone();
+
+                                view! {
+                                    <div class="flex items-center gap-2 opacity-30">
+                                        {move || {
+                                            if let Some(profile) = profile_sig.get() {
+                                                let presence = presence.clone();
+                                                view! {
+                                                    <PresenceBadge presence=presence size=15.5>
+                                                        {profile.render_icon(32)}
+                                                    </PresenceBadge>
+                                                }
+                                                    .into_any()
+                                            } else {
+                                                view! {}.into_any()
+                                            }
+                                        }}
+                                        <span class="text-bright">
+                                            {move || sig_clone.get().render_name(16)}
+                                        </span>
+                                    </div>
+                                }
+                            }
+                        />
+                    }
+                        .into_any()
+                } else {
+                    view! {}.into_any()
+                };
+
+                view! {
+                    {online_view}
+                    {offline_view}
                 }
-            />
+                    .into_any()
+            }}
+
         </div>
     }
 }

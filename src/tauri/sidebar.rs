@@ -23,11 +23,13 @@ fn DmDiv(dm: RoomNode) -> impl IntoView {
     let is_active = Memo::new(move |_| state.active_room_id.get() == Some(id.clone()));
 
     let avatar_content = match avatar_url {
-        Some(url) => view! {
-            <img class="avatar-img w-8 h-8 rounded-full object-cover" src=url alt=name.clone() />
-        }.into_any(),
+        Some(url) => view! { <img class="avatar-img w-8 h-8 rounded-full object-cover" src=url alt=name.clone() /> }.into_any(),
         None => view! {
-            <TextCircle text=initial color_string=dm.topic.clone().unwrap_or_else(|| "Unnamed".to_string()) class="rounded-full w-8 h-8" />
+            <TextCircle
+                text=initial
+                color_string=dm.topic.clone().unwrap_or_else(|| "Unnamed".to_string())
+                class="rounded-full w-8 h-8"
+            />
         }.into_any(),
     };
 
@@ -44,21 +46,18 @@ fn DmDiv(dm: RoomNode) -> impl IntoView {
                 class=("hover:bg-[var(--color-item-hover)]", move || !is_active.get())
                 class=("text-dim", move || !is_active.get())
             >
-                <PresenceBadge presence=presence>
-                    {avatar_content}
-                </PresenceBadge>
+                <PresenceBadge presence=presence>{avatar_content}</PresenceBadge>
                 <span class="inline-block align-center pl-2">{name}</span>
-                {
-                    if dm.notification_count > 0 {
-                        view! {
-                            <div class="ml-auto bg-[var(--mention-color)] text-white text-xs font-bold px-1.5 py-0.5 rounded-full">
-                                {dm.notification_count}
-                            </div>
-                        }.into_any()
-                    } else {
-                        view! { <div></div> }.into_any()
+                {if dm.notification_count > 0 {
+                    view! {
+                        <div class="ml-auto bg-[var(--mention-color)] text-white text-xs font-bold px-1.5 py-0.5 rounded-full">
+                            {dm.notification_count}
+                        </div>
                     }
-                }
+                        .into_any()
+                } else {
+                    view! { <div></div> }.into_any()
+                }}
             </div>
         </div>
     }
@@ -106,12 +105,10 @@ pub fn CutoutBadge(
             {if count > 0 {
                 view! {
                     <div class="absolute -bottom-0 -right-0 flex items-center justify-center
-                                bg-[var(--mention-color)] text-white text-[12px] font-extrabold
-                                w-4 h-4 rounded-full"
-                    >
-                        {count}
-                    </div>
-                }.into_any()
+                     bg-[var(--mention-color)] text-white text-[12px] font-extrabold
+                     w-4 h-4 rounded-full">{count}</div>
+                }
+                    .into_any()
             } else {
                 view! { <span class="hidden"></span> }.into_any()
             }}
@@ -148,15 +145,15 @@ pub fn ServerIcon(server_id: String) -> impl IntoView {
 
     view! {
         <div class="relative flex items-center justify-center group w-full">
-            <IndicatorPill is_active=is_active has_notifications=has_notifications/>
+            <IndicatorPill is_active=is_active has_notifications=has_notifications />
 
             {move || {
                 let server_id_for_click = server_id_for_click.clone();
-
                 let Some(server) = server.get() else {
-                    return view! { <div class="relative w-10 h-10"></div> }.into_any();
+                    return 
+                    view! { <div class="relative w-10 h-10"></div> }
+                        .into_any();
                 };
-
                 let name = server.name.clone().unwrap_or("?".to_string());
                 let initial = name.chars().next().unwrap_or('?').to_string();
                 let color_string = server.name.clone().unwrap_or_else(|| "Unnamed".to_string());
@@ -168,23 +165,44 @@ pub fn ServerIcon(server_id: String) -> impl IntoView {
                                 class="server-btn flex items-center justify-center w-10 h-10 text-gray-800 font-semibold rounded-[25%] cursor-pointer transition-colors"
                                 class=("bg-[var(--color-icon-selected)]", move || is_active.get())
                                 class=("bg-[var(--color-icon-bg)]", move || !is_active.get())
-                                class=("hover:bg-[var(--color-icon-hover)]", move || !is_active.get())
-                                on:click=move |_| state.set_active_server_id(Some(server_id_for_click.clone()))
+                                class=(
+                                    "hover:bg-[var(--color-icon-hover)]",
+                                    move || !is_active.get(),
+                                )
+                                on:click=move |_| {
+                                    state.set_active_server_id(Some(server_id_for_click.clone()))
+                                }
                             >
                                 <div class="avatar-circle w-full h-full rounded-[25%] overflow-hidden">
                                     {match server.avatar_url {
-                                        Some(url) => view! {
-                                            <img draggable="false" class="avatar-img object-cover w-full h-full" src=url alt=name.clone() />
-                                        }.into_any(),
-                                        None => view! {
-                                            <TextCircle text=initial color_string=color_string class="rounded-[25%] w-full h-full" />
-                                        }.into_any(),
+                                        Some(url) => {
+                                            view! {
+                                                <img
+                                                    draggable="false"
+                                                    class="avatar-img object-cover w-full h-full"
+                                                    src=url
+                                                    alt=name.clone()
+                                                />
+                                            }
+                                                .into_any()
+                                        }
+                                        None => {
+                                            view! {
+                                                <TextCircle
+                                                    text=initial
+                                                    color_string=color_string
+                                                    class="rounded-[25%] w-full h-full"
+                                                />
+                                            }
+                                                .into_any()
+                                        }
                                     }}
                                 </div>
                             </div>
                         </CutoutBadge>
                     </div>
-                }.into_any()
+                }
+                    .into_any()
             }}
         </div>
     }
@@ -268,14 +286,17 @@ pub fn Sidebar() -> impl IntoView {
                 <div class="servers w-16 flex flex-col items-center pt-3 pb-3 overflow-y-auto">
 
                     <div class="relative flex items-center justify-center group w-full">
-                        <IndicatorPill is_active=Memo::new(move |_| state.active_server_id.get().is_none()) has_notifications=Memo::new(move |_| false) />
+                        <IndicatorPill
+                            is_active=Memo::new(move |_| state.active_server_id.get().is_none())
+                            has_notifications=Memo::new(move |_| false)
+                        />
 
                         <div
                             class="server-btn flex items-center justify-center w-10 h-10 bg-gray-700 text-white rounded-[25%] cursor-pointer hover:bg-gray-600 transition-colors"
                             on:click=move |_| state.set_active_server_id(None)
                         >
                             <svg class="w-[60%] h-[60%] fill-current" viewBox="0 0 127.14 96.36">
-                                <path d="M107.7,8.07A105.15,105.15,0,0,0,81.47,0a72.06,72.06,0,0,0-3.36,6.83A97.68,97.68,0,0,0,49,6.83,72.37,72.37,0,0,0,45.64,0,105.89,105.89,0,0,0,19.39,8.09C2.79,32.65-1.71,56.6.54,80.21h0A105.73,105.73,0,0,0,32.71,96.36,77.7,77.7,0,0,0,39.6,85.25a68.42,68.42,0,0,1-10.85-5.18c.91-.66,1.8-1.34,2.66-2a75.57,75.57,0,0,0,64.32,0c.87.71,1.76,1.39,2.66,2a68.68,68.68,0,0,1-10.87,5.19,77,77,0,0,0,6.89,11.1,105.25,105.25,0,0,0,32.19-16.14c2.64-27.38-4.51-51.11-19.32-72.15ZM42.56,65.3c-5.36,0-9.8-4.83-9.8-10.79s4.38-10.79,9.8-10.79,9.85,4.83,9.8,10.79c0,5.96-4.45,10.79-9.8,10.79Zm42,0c-5.36,0-9.8-4.83-9.8-10.79s4.38-10.79,9.8-10.79,9.85,4.83,9.8,10.79c0,5.96-4.45,10.79-9.8,10.79Z"/>
+                                <path d="M107.7,8.07A105.15,105.15,0,0,0,81.47,0a72.06,72.06,0,0,0-3.36,6.83A97.68,97.68,0,0,0,49,6.83,72.37,72.37,0,0,0,45.64,0,105.89,105.89,0,0,0,19.39,8.09C2.79,32.65-1.71,56.6.54,80.21h0A105.73,105.73,0,0,0,32.71,96.36,77.7,77.7,0,0,0,39.6,85.25a68.42,68.42,0,0,1-10.85-5.18c.91-.66,1.8-1.34,2.66-2a75.57,75.57,0,0,0,64.32,0c.87.71,1.76,1.39,2.66,2a68.68,68.68,0,0,1-10.87,5.19,77,77,0,0,0,6.89,11.1,105.25,105.25,0,0,0,32.19-16.14c2.64-27.38-4.51-51.11-19.32-72.15ZM42.56,65.3c-5.36,0-9.8-4.83-9.8-10.79s4.38-10.79,9.8-10.79,9.85,4.83,9.8,10.79c0,5.96-4.45,10.79-9.8,10.79Zm42,0c-5.36,0-9.8-4.83-9.8-10.79s4.38-10.79,9.8-10.79,9.85,4.83,9.8,10.79c0,5.96-4.45,10.79-9.8,10.79Z" />
                             </svg>
                         </div>
                     </div>
@@ -286,9 +307,17 @@ pub fn Sidebar() -> impl IntoView {
                         children=move |dm| {
                             let click_id = dm.room_id.to_string();
                             let clone = click_id.clone();
-                            let initial = dm.name.clone().unwrap_or_else(|| "Unnamed".to_string()).chars().next().unwrap_or_default().to_string();
-
-                            let is_active = Memo::new(move |_| state.active_room_id.get() == Some(click_id.clone()));
+                            let initial = dm
+                                .name
+                                .clone()
+                                .unwrap_or_else(|| "Unnamed".to_string())
+                                .chars()
+                                .next()
+                                .unwrap_or_default()
+                                .to_string();
+                            let is_active = Memo::new(move |_| {
+                                state.active_room_id.get() == Some(click_id.clone())
+                            });
                             let has_notifications = Memo::new(move |_| dm.notification_count > 0);
 
                             view! {
@@ -300,20 +329,44 @@ pub fn Sidebar() -> impl IntoView {
                                         state.set_active_room_id(Some(clone.clone()));
                                     }
                                 >
-                                    <IndicatorPill is_active=is_active has_notifications=has_notifications />
+                                    <IndicatorPill
+                                        is_active=is_active
+                                        has_notifications=has_notifications
+                                    />
 
-                                    <CutoutBadge count=dm.notification_count class="justify-center flex">
-                                        <div class="avatar-circle w-10 h-10 rounded-full"
-                                            style:justify-content="center">
+                                    <CutoutBadge
+                                        count=dm.notification_count
+                                        class="justify-center flex"
+                                    >
+                                        <div
+                                            class="avatar-circle w-10 h-10 rounded-full"
+                                            style:justify-content="center"
+                                        >
                                             {match dm.avatar_url {
-                                                Some(url) => view! {
-                                                    // Note: Added 'object-cover' here to keep images from stretching!
-                                                    <img class="avatar-img w-full h-full object-cover"
-                                                    src=url alt=dm.name.clone() />
-                                                }.into_any(),
-                                                None => view! {
-                                                    <TextCircle text=initial color_string=dm.topic.clone().unwrap_or_else(|| "Unnamed".to_string()) class="rounded-full w-10 h-10" />
-                                                }.into_any(),
+                                                Some(url) => {
+                                                    view! {
+                                                        // Note: Added 'object-cover' here to keep images from stretching!
+                                                        <img
+                                                            class="avatar-img w-full h-full object-cover"
+                                                            src=url
+                                                            alt=dm.name.clone()
+                                                        />
+                                                    }
+                                                        .into_any()
+                                                }
+                                                None => {
+                                                    view! {
+                                                        <TextCircle
+                                                            text=initial
+                                                            color_string=dm
+                                                                .topic
+                                                                .clone()
+                                                                .unwrap_or_else(|| "Unnamed".to_string())
+                                                            class="rounded-full w-10 h-10"
+                                                        />
+                                                    }
+                                                        .into_any()
+                                                }
                                             }}
                                         </div>
                                     </CutoutBadge>
@@ -321,7 +374,6 @@ pub fn Sidebar() -> impl IntoView {
                             }
                         }
                     />
-
 
                     <div class="w-8 h-[1px] bg-red-500 rounded-full my-2 gap-[1px]"></div>
                     <For
@@ -337,14 +389,11 @@ pub fn Sidebar() -> impl IntoView {
                                     class="w-full flex flex-col items-center cursor-grab active:cursor-grabbing"
                                     on:dragstart={
                                         let img = img.clone();
-
                                         move |e| {
                                             if let Some(data_transfer) = e.data_transfer() {
                                                 let _ = data_transfer.set_data("text/plain", &drag_id);
-
                                                 let _ = data_transfer.set_drag_image(&img, 0, 0);
                                             }
-
                                             set_dragged_server_id.set(Some(drag_id.clone()));
                                         }
                                     }
@@ -353,27 +402,39 @@ pub fn Sidebar() -> impl IntoView {
                                     }
                                     on:dragenter=move |e| {
                                         e.prevent_default();
-                                        let Some(source_id) = dragged_server_id.get() else { return };
-
+                                        let Some(source_id) = dragged_server_id.get() else {
+                                            return
+                                        };
                                         if source_id != drop_id {
-                                            state.sidebar_state.update(|state| {
-                                                let src_opt = state.servers.iter().position(|s| s.room_id == source_id);
-                                                let dst_opt = state.servers.iter().position(|s| s.room_id == drop_id);
-
-                                                if let (Some(src_idx), Some(dst_idx)) = (src_opt, dst_opt) {
-                                                    let item = state.servers.remove(src_idx);
-                                                    state.servers.insert(dst_idx, item);
-                                                }
-                                            });
+                                            state
+                                                .sidebar_state
+                                                .update(|state| {
+                                                    let src_opt = state
+                                                        .servers
+                                                        .iter()
+                                                        .position(|s| s.room_id == source_id);
+                                                    let dst_opt = state
+                                                        .servers
+                                                        .iter()
+                                                        .position(|s| s.room_id == drop_id);
+                                                    if let (Some(src_idx), Some(dst_idx)) = (src_opt, dst_opt) {
+                                                        let item = state.servers.remove(src_idx);
+                                                        state.servers.insert(dst_idx, item);
+                                                    }
+                                                });
                                         }
                                     }
                                     on:dragend=move |_| {
                                         set_dragged_server_id.set(None);
-
                                         spawn_local(async move {
-                                            let current_servers = state.sidebar_state.get_untracked().servers;
-                                            let new_order: Vec<String> = current_servers.into_iter().map(|s| s.room_id).collect();
-
+                                            let current_servers = state
+                                                .sidebar_state
+                                                .get_untracked()
+                                                .servers;
+                                            let new_order: Vec<String> = current_servers
+                                                .into_iter()
+                                                .map(|s| s.room_id)
+                                                .collect();
                                             state.set_server_order(new_order);
                                         });
                                     }
@@ -388,90 +449,133 @@ pub fn Sidebar() -> impl IntoView {
             </FloatingTile>
 
             <FloatingTile>
-                <div class="channels w-65"
-                     class=("p-2", move || state.active_server_id.get().is_none())>
+                <div
+                    class="channels w-65"
+                    class=("p-2", move || state.active_server_id.get().is_none())
+                >
                     {move || {
                         let current_state = state.sidebar_state.get();
-
                         match state.active_server_id.get() {
-                            None => view! {
-                                <div class="header border-b border-gray-300 p-3 font-bold">"Direct Messages"</div>
-                                <div class="list">
-                                    <span class="pl-1 text-normal">"Direct messages"</span>
-                                    <For
-                                        each=move || current_state.dms.clone()
-                                        key=|dm| dm.room_id.to_string()
-                                        children=move |dm| {
-                                            let click_id = dm.room_id.to_string();
+                            None => {
 
-                                            view! {
-                                                <DmDiv dm=dm.clone()
-                                                    on:click=move |_| state.set_active_room_id(Some(click_id.clone())) />
+                                view! {
+                                    <div class="header border-b border-gray-300 p-3 font-bold">
+                                        "Direct Messages"
+                                    </div>
+                                    <div class="list">
+                                        <span class="pl-1 text-normal">"Direct messages"</span>
+                                        <For
+                                            each=move || current_state.dms.clone()
+                                            key=|dm| dm.room_id.to_string()
+                                            children=move |dm| {
+                                                let click_id = dm.room_id.to_string();
+
+                                                view! {
+                                                    <DmDiv
+                                                        dm=dm.clone()
+                                                        on:click=move |_| {
+                                                            state.set_active_room_id(Some(click_id.clone()))
+                                                        }
+                                                    />
+                                                }
                                             }
-                                        }
-                                    />
-                                </div>
-                            }.into_any(),
-
+                                        />
+                                    </div>
+                                }
+                                    .into_any()
+                            }
                             Some(active_id) => {
-                                let Some(active_server) = current_state.servers.into_iter().find(|s| s.room_id == active_id) else {
-                                    return view! { <div class="item p-4">"Not found"</div> }.into_any();
+                                let Some(active_server) = current_state
+                                    .servers
+                                    .into_iter()
+                                    .find(|s| s.room_id == active_id) else {
+                                    return 
+                                    view! { <div class="item p-4">"Not found"</div> }
+                                        .into_any();
                                 };
                                 let name = active_server.name.clone();
-
                                 match active_server.kind {
-                                    RoomKind::Space { children } => view! {
-                                        <div class="header border-b border-gray-300 p-3 font-bold text-normal">{name.unwrap_or_else(|| "Server".to_string())}</div>
-                                        <div class="list pr-2">
-                                            <For
-                                                each=move || children.clone()
-                                                key=|child| child.room_id.to_string()
-                                                children=move |child| {
-                                                    let click_id = child.room_id.to_string();
-                                                    let check_id = child.room_id.to_string();
-                                                    let is_active = Memo::new(move |_| state.active_room_id.get() == Some(check_id.clone()));
+                                    RoomKind::Space { children } => {
 
-                                                    let has_notifications = child.notification_count > 0;
+                                        view! {
+                                            <div class="header border-b border-gray-300 p-3 font-bold text-normal">
+                                                {name.unwrap_or_else(|| "Server".to_string())}
+                                            </div>
+                                            <div class="list pr-2">
+                                                <For
+                                                    each=move || children.clone()
+                                                    key=|child| child.room_id.to_string()
+                                                    children=move |child| {
+                                                        let click_id = child.room_id.to_string();
+                                                        let check_id = child.room_id.to_string();
+                                                        let is_active = Memo::new(move |_| {
+                                                            state.active_room_id.get() == Some(check_id.clone())
+                                                        });
+                                                        let has_notifications = child.notification_count > 0;
 
-                                                    view! {
-                                                        <div class="group relative flex flex-row w-full cursor-pointer">
+                                                        view! {
+                                                            <div class="group relative flex flex-row w-full cursor-pointer">
 
-                                                            {move || has_notifications.then(|| view! {
-                                                                <div class="absolute top-1/2 -translate-y-1/2 -left-1 group-hover:left-1.5 transition-[left] duration-300 ease-out w-2 h-2 bg-[var(--bright-text-color)] rounded-full z-10 pointer-events-none"></div>
-                                                            })}
+                                                                {move || {
+                                                                    has_notifications
+                                                                        .then(|| {
+                                                                            view! {
+                                                                                <div class="absolute top-1/2 -translate-y-1/2 -left-1 group-hover:left-1.5 transition-[left] duration-300 ease-out w-2 h-2 bg-[var(--bright-text-color)] rounded-full z-10 pointer-events-none"></div>
+                                                                            }
+                                                                        })
+                                                                }}
+                                                                <div class="transition-[width] duration-300 ease-out shrink-0 w-2 group-hover:w-5"></div>
 
-                                                            <div class="transition-[width] duration-300 ease-out shrink-0 w-2 group-hover:w-5"></div>
-
-                                                            <div
-                                                                class="flex flex-row flex-grow items-center p-1 rounded-[10px] cursor-pointer transition-colors hover:text-bright"
-                                                                class=("hover:bg-[color:var(--color-item-hover)]", move || !is_active.get())
-                                                                class=("text-dim", move || !is_active.get() && !has_notifications)
-                                                                class=("text-bright", move || !is_active.get() && has_notifications || is_active.get())
-                                                                class=("bg-[color:var(--color-item-selected)]", move || is_active.get())
-                                                                on:click=move |_| state.set_active_room_id(Some(click_id.clone()))
-                                                            >
-                                                                "# " {child.name}
-                                                                {
-
+                                                                <div
+                                                                    class="flex flex-row flex-grow items-center p-1 rounded-[10px] cursor-pointer transition-colors hover:text-bright"
+                                                                    class=(
+                                                                        "hover:bg-[color:var(--color-item-hover)]",
+                                                                        move || !is_active.get(),
+                                                                    )
+                                                                    class=(
+                                                                        "text-dim",
+                                                                        move || !is_active.get() && !has_notifications,
+                                                                    )
+                                                                    class=(
+                                                                        "text-bright",
+                                                                        move || {
+                                                                            !is_active.get() && has_notifications || is_active.get()
+                                                                        },
+                                                                    )
+                                                                    class=(
+                                                                        "bg-[color:var(--color-item-selected)]",
+                                                                        move || is_active.get(),
+                                                                    )
+                                                                    on:click=move |_| {
+                                                                        state.set_active_room_id(Some(click_id.clone()))
+                                                                    }
+                                                                >
+                                                                    "# "
+                                                                    {child.name}
+                                                                    {
                                                                     if child.highlight_count > 0 {
                                                                         view! {
                                                                             <div class="ml-auto bg-[var(--mention-color)] text-white text-xs font-bold px-1.5 py-0.5 rounded-full">
                                                                                 {child.highlight_count}
                                                                             </div>
-                                                                        }.into_any()
+                                                                        }
+                                                                            .into_any()
                                                                     } else {
                                                                         view! { <div></div> }.into_any()
-                                                                    }
-                                                                }
+                                                                    }}
+                                                                </div>
                                                             </div>
-                                                        </div>
-                                                        <div class="h-[1px]"></div>
+                                                            <div class="h-[1px]"></div>
+                                                        }
                                                     }
-                                                }
-                                            />
-                                        </div>
-                                    }.into_any(),
-                                    _ => view! { <div class="item p-4">"Not found"</div> }.into_any()
+                                                />
+                                            </div>
+                                        }
+                                            .into_any()
+                                    }
+                                    _ => {
+                                        view! { <div class="item p-4">"Not found"</div> }.into_any()
+                                    }
                                 }
                             }
                         }
