@@ -277,9 +277,6 @@
   .mx-\(--gap\) {
     margin-inline: var(--gap);
   }
-  .mx-0\.5 {
-    margin-inline: calc(var(--spacing) * 0.5);
-  }
   .my-2 {
     margin-block: calc(var(--spacing) * 2);
   }
@@ -399,9 +396,6 @@
   .h-10 {
     height: calc(var(--spacing) * 10);
   }
-  .h-13 {
-    height: calc(var(--spacing) * 13);
-  }
   .h-24 {
     height: calc(var(--spacing) * 24);
   }
@@ -429,8 +423,14 @@
   .h-screen {
     height: 100vh;
   }
+  .max-h-100 {
+    max-height: calc(var(--spacing) * 100);
+  }
   .min-h-0 {
     min-height: calc(var(--spacing) * 0);
+  }
+  .min-h-13 {
+    min-height: calc(var(--spacing) * 13);
   }
   .w-0 {
     width: calc(var(--spacing) * 0);
@@ -497,10 +497,6 @@
   }
   .-translate-y-1\/2 {
     --tw-translate-y: calc(calc(1 / 2 * 100%) * -1);
-    translate: var(--tw-translate-x) var(--tw-translate-y);
-  }
-  .translate-y-\[0\.1em\] {
-    --tw-translate-y: 0.1em;
     translate: var(--tw-translate-x) var(--tw-translate-y);
   }
   .transform {
@@ -697,9 +693,6 @@
   .bg-\[\#00ffff\] {
     background-color: #00ffff;
   }
-  .bg-\[\#FEE75C\]\/30 {
-    background-color: color-mix(in oklab, #FEE75C 30%, transparent);
-  }
   .bg-\[color\:var\(--color-item-selected\)\] {
     background-color: var(--color-item-selected);
   }
@@ -783,9 +776,6 @@
   }
   .px-\(--gap\) {
     padding-inline: var(--gap);
-  }
-  .px-1 {
-    padding-inline: calc(var(--spacing) * 1);
   }
   .px-1\.5 {
     padding-inline: calc(var(--spacing) * 1.5);
@@ -933,9 +923,6 @@
   .text-\[\#00A8FC\] {
     color: #00A8FC;
   }
-  .text-\[\#FEE75C\] {
-    color: #FEE75C;
-  }
   .text-\[var\(--bg-color\)\] {
     color: var(--bg-color);
   }
@@ -978,11 +965,11 @@
   .opacity-0 {
     opacity: 0%;
   }
-  .opacity-10 {
-    opacity: 10%;
-  }
   .opacity-30 {
     opacity: 30%;
+  }
+  .opacity-35 {
+    opacity: 35%;
   }
   .opacity-100 {
     opacity: 100%;
@@ -1077,13 +1064,6 @@
     &:is(:where(.group):hover *) {
       @media (hover: hover) {
         width: calc(var(--spacing) * 5);
-      }
-    }
-  }
-  .group-hover\:opacity-40 {
-    &:is(:where(.group):hover *) {
-      @media (hover: hover) {
-        opacity: 40%;
       }
     }
   }

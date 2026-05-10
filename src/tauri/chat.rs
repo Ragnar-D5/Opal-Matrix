@@ -2,12 +2,13 @@ use crate::{
     app::call_tauri,
     components::{
         input::{
-            input_arrow_left, input_arrow_right, input_backspace, input_char,
+            get_carat_index, input_arrow_left, input_arrow_right, input_backspace, input_char,
+            input_newline,
             menu::{MenuType, SelectionMenu},
         },
         presence::PresenceBadge,
         user_profile::{UserProfileExt, UserProfileMaybeExt},
-        FloatingTile, RenderRichText,
+        FloatingTile, RichTextExt,
     },
     hooks::use_tauri_event,
     state::{AppState, MemberProfileHandle, MemberStore, RoomHeader},
@@ -17,7 +18,12 @@ use crate::{
 use phosphor_leptos::{Icon, IconWeight, HASH, INFO, TRASH, UPLOAD_SIMPLE};
 
 use chrono::{DateTime, Local, NaiveDate, TimeZone};
-use leptos::{html::Div, leptos_dom::logging::console_error, prelude::*, task::spawn_local};
+use leptos::{
+    html::{Div, Span},
+    leptos_dom::logging::console_error,
+    prelude::*,
+    task::spawn_local,
+};
 use leptos_use::{use_intersection_observer, UseIntersectionObserverReturn};
 use log::{error, info, warn};
 use serde::Serialize;
@@ -1120,6 +1126,8 @@ fn ChatHeader(
 
 #[component]
 fn ChatInput() -> impl IntoView {
+    let state: AppState = expect_context();
+
     let (input_tokens, set_input_tokens) = signal(Vec::<RichTextSpan>::new());
     let (caret_position, set_caret_position) = signal((0, 0));
 
@@ -1127,26 +1135,54 @@ fn ChatInput() -> impl IntoView {
     let (selected_index, set_selected_index) = signal(0);
     let (matches, set_matches) = signal(Vec::<MemberShip>::new());
 
-    let enter_selection = move || {
+    let enter_selection = Callback::new(move |_| {
         let matches = matches.get_untracked();
         let index = selected_index.get_untracked();
+        let (t_idx, c_idx) = caret_position.get_untracked();
 
         if let Some(selected_member) = matches.get(index) {
             set_input_tokens.update(|tokens| {
-                if let Some(RichTextSpan::Plain(ref mut text)) = tokens.last_mut() {
+                let mut new_token = None;
+
+                if let Some(RichTextSpan::Plain(ref mut text)) = tokens.get_mut(t_idx) {
+                    // Get text between cursor and last @ and remove the text there
                     if let Some(at_pos) = text.rfind('@') {
+                        let safe_c_idx = c_idx.min(text.len());
+                        let suffix = text[safe_c_idx..].to_string();
+
                         text.truncate(at_pos);
+
+                        new_token = Some(RichTextSpan::Plain(format!(" {}", suffix)));
                     }
                 }
 
-                tokens.push(RichTextSpan::UserMention {
-                    user_id: selected_member.user_id.clone(),
-                    display_name: selected_member.get_name(),
-                });
-                set_caret_position.set((tokens.len(), 0));
+                if selected_member.user_id == state.active_room_id.get().unwrap_or_default() {
+                    tokens.push(RichTextSpan::RoomMention);
+                } else {
+                    tokens.push(RichTextSpan::UserMention {
+                        user_id: selected_member.user_id.clone(),
+                        display_name: selected_member.get_name(),
+                    });
+                };
+
+                let trailing_space = " ".to_string();
+                if let Some(token) = new_token {
+                    tokens.push(token);
+                } else {
+                    tokens.push(RichTextSpan::Plain(trailing_space.clone()));
+                }
+
+                let last_token_idx = tokens.len() - 1;
+                let end_of_token = trailing_space.len(); // which is 1
+
+                set_caret_position.set((last_token_idx, end_of_token));
             })
         };
-    };
+
+        set_menu_type.set(MenuType::None);
+    });
+
+    let caret_ref = NodeRef::<Span>::new();
 
     let handle_keydown = move |ev: KeyboardEvent| {
         ev.prevent_default();
@@ -1182,6 +1218,7 @@ fn ChatInput() -> impl IntoView {
                     '/' => set_menu_type.set(MenuType::Commands {
                         filter: "".to_string(),
                     }),
+                    ' ' => set_menu_type.set(MenuType::None),
                     _ => (),
                 };
 
@@ -1219,37 +1256,61 @@ fn ChatInput() -> impl IntoView {
             }
             "ArrowRight" => input_arrow_right(set_caret_position.clone(), &tokens),
             "ArrowLeft" => input_arrow_left(set_caret_position.clone(), &tokens),
-            "ArrowDown" if menu_type.get_untracked() != MenuType::None => {
-                set_selected_index.update(|i| {
-                    let max = matches.get().len();
+            "ArrowDown" => {
+                if menu_type.get_untracked() != MenuType::None {
+                    set_selected_index.update(|i| {
+                        let max = matches.get().len();
 
-                    if *i >= max - 1 {
-                        *i = 0;
-                    } else {
-                        *i += 1;
-                    };
-                });
+                        if *i >= max - 1 {
+                            *i = 0;
+                        } else {
+                            *i += 1;
+                        };
+                    });
+                } else {
+                    if let Some(caret_el) = caret_ref.get() {
+                        let rect = caret_el.get_bounding_client_rect();
+                        let x = rect.x() as f32;
+                        let target_y = (rect.y() + 20.0) as f32;
+
+                        if let Some((t_idx, c_idx)) = get_carat_index(x, target_y) {
+                            set_caret_position.set((t_idx, c_idx));
+                        }
+                    }
+                }
             }
-            "ArrowUp" if menu_type.get_untracked() != MenuType::None => {
-                set_selected_index.update(|i| {
-                    let max = matches.get().len();
+            "ArrowUp" => {
+                if menu_type.get_untracked() != MenuType::None {
+                    set_selected_index.update(|i| {
+                        let max = matches.get().len();
 
-                    if *i == 0 {
-                        *i = max - 1;
-                    } else {
-                        *i -= 1;
-                    };
-                });
+                        if *i == 0 {
+                            *i = max - 1;
+                        } else {
+                            *i -= 1;
+                        };
+                    });
+                } else {
+                    if let Some(caret_el) = caret_ref.get() {
+                        let rect = caret_el.get_bounding_client_rect();
+                        let x = rect.x() as f32;
+                        let target_y = (rect.y() - 20.0) as f32;
+
+                        if let Some((t_idx, c_idx)) = get_carat_index(x, target_y) {
+                            set_caret_position.set((t_idx, c_idx));
+                        }
+                    }
+                }
             }
             "Escape" if menu_type.get_untracked() != MenuType::None => {
                 set_menu_type.set(MenuType::None)
             }
             "Enter" if ev.shift_key() => {
-                tokens.push(RichTextSpan::Newline);
-                set_caret_position.set((tokens.len() - 1, 0));
+                input_newline(caret_position.get(), set_caret_position, &mut tokens)
             }
+
             "Enter" if menu_type.get_untracked() != MenuType::None => {
-                enter_selection();
+                enter_selection.run(());
                 set_menu_type.set(MenuType::None);
                 tokens = input_tokens.get();
             }
@@ -1268,12 +1329,13 @@ fn ChatInput() -> impl IntoView {
                 set_index=set_selected_index
                 matches=matches
                 set_matches=set_matches
+                enter_selection=enter_selection
             />
-            <div class="w-full h-13 border-1 border-[var(--tile-border-color)] rounded-(--ui-border-radius) bg-[rgba(0, 0, 0, 0.6)] flex flex-row bg-(--ui-floating-bg) items-center gap-3 px-3">
+            <div class="w-full min-h-13 border-1 border-[var(--tile-border-color)] rounded-(--ui-border-radius) bg-[rgba(0, 0, 0, 0.6)] flex flex-row bg-(--ui-floating-bg) items-center gap-3 px-3">
                 <Icon icon=UPLOAD_SIMPLE size="20px" color="var(--ui-base-color)" />
                 <div
                     tabindex="0"
-                    class="text-(--bright-text-color) outline-none flex-grow caret-transparent whitespace-pre-wrap break-words py-3"
+                    class="text-(--bright-text-color) outline-none w-full caret-transparent whitespace-pre-wrap break-words py-3 max-h-100 overflow-y-auto"
                     on:keydown=handle_keydown
                 >
                     {move || {
@@ -1284,12 +1346,14 @@ fn ChatInput() -> impl IntoView {
                             .into_iter()
                             .enumerate()
                             .map(|(idx, span)| {
-                                span.renhder_caret(
+                                span.render_caret(
                                     if idx == caret_position.0 {
                                         Some(caret_position.1)
                                     } else {
                                         None
                                     },
+                                    caret_ref,
+                                    idx,
                                 )
                             })
                             .collect_view()

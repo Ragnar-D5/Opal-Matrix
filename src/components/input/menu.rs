@@ -90,6 +90,7 @@ pub fn SelectionMenu(
     set_index: WriteSignal<usize>,
     matches: ReadSignal<Vec<MemberShip>>,
     set_matches: WriteSignal<Vec<MemberShip>>,
+    enter_selection: Callback<()>,
 ) -> impl IntoView {
     let state: AppState = expect_context();
     let store: MemberStore = expect_context();
@@ -161,6 +162,7 @@ pub fn SelectionMenu(
                                             class="flex flex-row items-center gap-2 mx-(--gap) px-(--gap) py-1 rounded-(--ui-border-radius) cursor-pointer"
                                             class=("bg-(--ui-hover-bg)", move || idx == index.get())
                                             on:mouseenter=move |_| set_index.set(idx)
+                                            on:click=move |_| enter_selection.run(())
                                         >
                                             {move || {
                                                 let profile = profile.clone();

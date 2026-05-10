@@ -1,5 +1,5 @@
-use leptos::{prelude::*, task::spawn_local};
-use log::info;
+use colorsys::ColorAlpha;
+use leptos::{html::Span, prelude::*, task::spawn_local};
 use shared::{messages::RichTextSpan, user_profile::UserProfile};
 use user_profile::UserProfileExt;
 use web_sys::MouseEvent;
@@ -64,26 +64,71 @@ pub fn TextCircle(
 }
 
 #[component]
-pub fn Caret() -> impl IntoView {
+pub fn Caret(caret_ref: NodeRef<Span>) -> impl IntoView {
     view! {
-        <span class="inline-block relative w-0 h-[1.2em] translate-y-[0.1em] pointer-events-none">
-            "\u{200B}"
+        <span
+            node_ref=caret_ref
+            class="inline-block relative w-0 h-[1.2em] pointer-events-none"
+            style="vertical-align: text-bottom;"
+        >
             <div class="absolute left-0 w-[1.5px] h-full bg-current transition-opacity" />
         </span>
     }
 }
 
-pub trait RenderRichText {
-    fn render(self) -> impl IntoView;
-    fn renhder_caret(self, caret_pos: Option<usize>) -> impl IntoView;
+#[component]
+fn WordMention(
+    text: String,
+    color: String,
+    bg_color: String,
+    #[prop(into, optional)] class: String,
+    data_t_idx: usize,
+) -> impl IntoView {
+    view! {
+        <span data-t-idx=data_t_idx class=format!("relative p-[2px] group cursor-pointer {class}")>
+            <span
+                class="absolute inset-0 rounded -z-10 opacity-35 group-hover:opacity-100 transition-opacity duration-200"
+                style=format!("background-color: {bg_color};")
+            />
+            <span class="relative" style=format!("color: {color};")>
+                {text}
+            </span>
+        </span>
+    }
 }
 
-impl RenderRichText for RichTextSpan {
-    fn render(self) -> impl IntoView {
-        self.renhder_caret(None)
+pub trait RichTextExt {
+    fn render(self) -> impl IntoView;
+    fn render_caret(
+        self,
+        caret_pos: Option<usize>,
+        caret_ref: NodeRef<Span>,
+        idx: usize,
+    ) -> impl IntoView;
+    fn len(&self) -> usize;
+}
+
+impl RichTextExt for RichTextSpan {
+    fn len(&self) -> usize {
+        match self {
+            RichTextSpan::Plain(text) => text.len(),
+            RichTextSpan::Link { url, .. } => url.len(),
+            RichTextSpan::Newline
+            | RichTextSpan::RoomMention
+            | RichTextSpan::UserMention { .. } => 1,
+        }
     }
 
-    fn renhder_caret(self, caret_pos: Option<usize>) -> impl IntoView {
+    fn render(self) -> impl IntoView {
+        self.render_caret(None, NodeRef::default(), 0)
+    }
+
+    fn render_caret(
+        self,
+        caret_pos: Option<usize>,
+        caret_ref: NodeRef<Span>,
+        idx: usize,
+    ) -> impl IntoView {
         let state: AppState = expect_context();
         let store: MemberStore = expect_context();
 
@@ -91,19 +136,30 @@ impl RenderRichText for RichTextSpan {
             return view! {}.into_any();
         };
 
+        let caret = view! { <Caret caret_ref=caret_ref /> }.into_any();
+
         match self {
             RichTextSpan::Plain(text) => {
                 if let Some(caret_pos) = caret_pos {
                     let split = text.split_at(caret_pos);
 
                     view! {
-                        <span class="text-token">{split.0}</span>
-                        <Caret />
-                        <span class="text-token">{split.1}</span>
+                        <span data-t-idx=idx class="text-token">
+                            {split.0}
+                        </span>
+                        {caret}
+                        <span data-t-idx=idx + 1 class="text-token">
+                            {split.1}
+                        </span>
                     }
                     .into_any()
                 } else {
-                    view! { <span class="text-token">{text}</span> }.into_any()
+                    view! {
+                        <span data-t-idx=idx class="text-token">
+                            {text}
+                        </span>
+                    }
+                    .into_any()
                 }
             }
 
@@ -113,45 +169,64 @@ impl RenderRichText for RichTextSpan {
             } => {
                 let profile_sig = store.get_profile(&room_id, &user_id);
 
-                let color = Memo::new(move |_| {
+                let colors = Memo::new(move |_| {
                     let profile = profile_sig.get().unwrap_or_default();
-                    profile.get_user_color().to_css_string()
+                    let mut color = profile.get_user_color();
+                    let primary = color.to_css_string();
+
+                    color.set_alpha(0.4);
+                    let background = color.to_css_string();
+
+                    (primary, background)
                 });
 
-                let mut caret_before = view! {}.into_any();
-                let mut caret_after = view! {}.into_any();
-                if let Some(caret_pos) = caret_pos {
-                    if caret_pos == 0 {
-                        caret_before = view! { <Caret /> }.into_any();
-                    } else {
-                        caret_after = view! { <Caret /> }.into_any();
-                    }
-                }
+                let (caret_before, caret_after) = match caret_pos {
+                    Some(0) => (Some(caret), None),
+                    Some(_) => (None, Some(caret)),
+                    None => (None, None),
+                };
 
                 view! {
                     {caret_before}
-                    <span class="relative p-[2px] group cursor-pointer">
-                        <span
-                            class="absolute inset-0 rounded -z-10 opacity-10 group-hover:opacity-40 transition-opacity duration-200"
-                            style:background-color=move || color.get()
-                        />
+                    {move || {
+                        let (color, bg_color) = colors.get();
 
-                        <span class="relative" style:color=move || color.get() title=user_id>
-                            "@"
-                            {display_name}
-                        </span>
-                    </span>
+                        view! {
+                            <WordMention
+                                text=format!("@{}", display_name)
+                                color=color
+                                bg_color=bg_color
+                                data_t_idx=idx
+                            />
+                        }
+                    }}
                     {caret_after}
                 }
-            .into_any()
+                .into_any()
             }
 
-            RichTextSpan::RoomMention => view! {
-                <span class="bg-[#FEE75C]/30 text-[#FEE75C] px-1 mx-0.5 rounded font-medium">
-                    "@room"
-                </span>
+            RichTextSpan::RoomMention => {
+                let (caret_before, caret_after) = match caret_pos {
+                    Some(0) => (Some(caret), None),
+                    Some(_) => (None, Some(caret)),
+                    None => (None, None),
+                };
+
+                let color = "white".to_string();
+                let bg_color = "lightgray".to_string();
+
+                view! {
+                    {caret_before}
+                    <WordMention
+                        text="@room".to_string()
+                        color=color
+                        bg_color=bg_color
+                        data_t_idx=idx
+                    />
+                    {caret_after}
+                }
+                .into_any()
             }
-            .into_any(),
 
             RichTextSpan::Link { url, .. } => {
                 let clone = url.clone();
@@ -177,14 +252,22 @@ impl RenderRichText for RichTextSpan {
                 .into_any()
             }
             RichTextSpan::Newline => {
-                if caret_pos.is_some() {
-                    view! {
-                        <Caret />
-                        <br />
+                if let Some(caret_pos) = caret_pos {
+                    if caret_pos == 0 {
+                        view! {
+                            {caret}
+                            <br data-t-idx=idx />
+                        }
+                        .into_any()
+                    } else {
+                        view! {
+                            <br data-t-idx=idx />
+                            {caret}
+                        }
+                        .into_any()
                     }
-                    .into_any()
                 } else {
-                    view! { <br /> }.into_any()
+                    view! { <br data-t-idx=idx /> }.into_any()
                 }
             }
         }

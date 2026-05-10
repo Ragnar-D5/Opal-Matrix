@@ -11,6 +11,7 @@ web-sys = { version = "0.3.95", features = [
   "Document",
   "Element",
   "Node",
+  "CaretPosition",
 ] }
 leptos = { version = "0.8", features = ["csr"] }
 wasm-bindgen = "0.2"
