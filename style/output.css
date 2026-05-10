@@ -42,6 +42,8 @@
     --default-transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
     --default-font-family: var(--font-sans);
     --default-mono-font-family: var(--font-mono);
+    --animate-soft-blink: soft-blink 1.5s ease-in-out 1s infinite;
+    --animate-soft-blink-clone: soft-blink-clone 1.5s ease-in-out 1s infinite;
   }
 }
 @layer base {
@@ -459,8 +461,8 @@
   .w-65 {
     width: calc(var(--spacing) * 65);
   }
-  .w-\[1\.5px\] {
-    width: 1.5px;
+  .w-\[1px\] {
+    width: 1px;
   }
   .w-\[20rem\] {
     width: 20rem;
@@ -507,6 +509,17 @@
   }
   .animate-pulse {
     animation: var(--animate-pulse);
+  }
+  .animate-soft-blink {
+    animation: var(--animate-soft-blink);
+  }
+  .animate-soft-blink-clone {
+    animation: var(--animate-soft-blink-clone);
+  }
+  .text-token {
+    white-space: pre-wrap;
+    cursor: text;
+    line-height: 1;
   }
   .cursor-grab {
     cursor: grab;
@@ -1145,6 +1158,22 @@
     }
   }
 }
+@keyframes soft-blink {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+@keyframes soft-blink-clone {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
 :root {
   --color-item-hover: rgba(200, 200, 255, 0.05);
   --color-item-selected: rgba(255, 255, 255, 0.1);
@@ -1170,11 +1199,6 @@
   --ui-border-radius: 6px;
   --ui-hover-bg: rgba(255, 255, 255, 0.075);
   --link-color: #5865f2;
-}
-.text-token {
-  white-space: pre-wrap;
-  cursor: text;
-  line-height: 1;
 }
 @property --tw-translate-x {
   syntax: "*";

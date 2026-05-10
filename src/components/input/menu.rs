@@ -1,10 +1,12 @@
 use crate::{
-    components::presence::PresenceBadge,
+    components::{input::InputState, presence::PresenceBadge},
     state::{AppState, MemberStore},
     tauri_functions::{get_members, MemberShip},
 };
 use leptos::prelude::*;
+use log::info;
 use nucleo_matcher::{Config, Matcher, Utf32Str};
+use shared::messages::RichTextSpan;
 
 use crate::components::user_profile::UserProfileMaybeExt;
 
@@ -19,6 +21,59 @@ impl MenuType {
     fn is_none(&self) -> bool {
         matches!(self, MenuType::None)
     }
+}
+
+pub fn enter_selection(input: InputState) {
+    let matches = input.matches.get_untracked();
+    let index = input.selected_index.get_untracked();
+    let (t_idx, c_idx) = input.caret_position.get_untracked();
+
+    info!(
+        "Selected index: {}, Matches: {:?}",
+        index,
+        matches.get(index),
+    );
+
+    if let Some(selected_member) = matches.get(index) {
+        input.tokens.update(|tokens| {
+            let mut new_token = None;
+
+            if let Some(RichTextSpan::Plain(ref mut text)) = tokens.get_mut(t_idx) {
+                if let Some(at_pos) = text.rfind('@') {
+                    let safe_c_idx = c_idx.min(text.len());
+                    let suffix = text[safe_c_idx..].to_string();
+
+                    text.truncate(at_pos);
+
+                    new_token = Some(RichTextSpan::Plain(suffix));
+                }
+            }
+
+            if selected_member.user_id
+                == expect_context::<AppState>()
+                    .active_room_id
+                    .get()
+                    .unwrap_or_default()
+            {
+                tokens.insert(t_idx + 1, RichTextSpan::RoomMention);
+            } else {
+                tokens.insert(
+                    t_idx + 1,
+                    RichTextSpan::UserMention {
+                        user_id: selected_member.user_id.clone(),
+                        display_name: selected_member.get_name(),
+                    },
+                );
+            };
+
+            if let Some(token) = new_token {
+                tokens.insert(t_idx + 2, token);
+            }
+        });
+
+        input.caret_position.set((t_idx + 1, 1));
+    };
+    input.menu_type.set(MenuType::None);
 }
 
 fn filter_mentions(
@@ -84,16 +139,13 @@ fn filter_mentions(
 }
 
 #[component]
-pub fn SelectionMenu(
-    menu: ReadSignal<MenuType>,
-    index: ReadSignal<usize>,
-    set_index: WriteSignal<usize>,
-    matches: ReadSignal<Vec<MemberShip>>,
-    set_matches: WriteSignal<Vec<MemberShip>>,
-    enter_selection: Callback<()>,
-) -> impl IntoView {
+pub fn SelectionMenu(input: InputState) -> impl IntoView {
     let state: AppState = expect_context();
     let store: MemberStore = expect_context();
+
+    let menu = input.menu_type;
+    let matches = input.matches;
+    let index = input.selected_index;
 
     let matcher = StoredValue::new(Matcher::new(Config::DEFAULT));
 
@@ -114,7 +166,7 @@ pub fn SelectionMenu(
 
     Effect::new(move |_| {
         if let MenuType::Mentions { filter, .. } = menu.get() {
-            set_matches.set(filter_mentions(
+            matches.set(filter_mentions(
                 filter,
                 members_resource.get().unwrap_or_default(),
                 matcher,
@@ -132,7 +184,6 @@ pub fn SelectionMenu(
                 let room_id = state.active_room_id.get().unwrap_or_default();
                 match menu.get() {
                     MenuType::Mentions { filter, .. } => {
-
                         view! {
                             <span class="text-(--ui-base-color) bold text-xs p-2 bb-4">
                                 {
@@ -161,8 +212,8 @@ pub fn SelectionMenu(
                                         <button
                                             class="flex flex-row items-center gap-2 mx-(--gap) px-(--gap) py-1 rounded-(--ui-border-radius) cursor-pointer"
                                             class=("bg-(--ui-hover-bg)", move || idx == index.get())
-                                            on:mouseenter=move |_| set_index.set(idx)
-                                            on:click=move |_| enter_selection.run(())
+                                            on:mouseenter=move |_| index.set(idx)
+                                            on:click=move |_| enter_selection(input)
                                         >
                                             {move || {
                                                 let profile = profile.clone();

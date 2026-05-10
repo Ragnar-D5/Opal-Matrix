@@ -1,14 +1,10 @@
 use colorsys::ColorAlpha;
-use leptos::{html::Span, prelude::*, task::spawn_local};
+use leptos::{html::Span, prelude::*};
 use linkify::LinkFinder;
 use shared::{messages::RichTextSpan, user_profile::UserProfile};
 use user_profile::UserProfileExt;
-use web_sys::MouseEvent;
 
-use crate::{
-    app::openUrl,
-    state::{AppState, MemberStore},
-};
+use crate::state::{AppState, MemberStore};
 
 pub(crate) mod input;
 pub(crate) mod presence;
@@ -64,15 +60,34 @@ pub fn TextCircle(
     }
 }
 
+#[derive(Clone, Copy)]
+pub struct CaretContext {
+    pub is_focused: ReadSignal<bool>,
+    pub anim_toggle: ReadSignal<bool>,
+}
+
 #[component]
 pub fn Caret(caret_ref: NodeRef<Span>) -> impl IntoView {
+    let ctx: Option<CaretContext> = use_context();
+
     view! {
         <span
             node_ref=caret_ref
             class="inline-block relative w-0 h-[1.2em] pointer-events-none"
             style="vertical-align: text-bottom;"
         >
-            <div class="absolute left-0 w-[1.5px] h-full bg-current transition-opacity" />
+            <div
+                class="absolute left-0 w-[1px] h-full bg-current transition-opacity"
+                class=("opacity-0", move || !ctx.map(|s| s.is_focused.get()).unwrap_or(true))
+                class=(
+                    "animate-soft-blink",
+                    move || ctx.map(|s| s.anim_toggle.get()).unwrap_or(false),
+                )
+                class=(
+                    "animate-soft-blink-clone",
+                    move || ctx.map(|s| !s.anim_toggle.get()).unwrap_or(false),
+                )
+            />
         </span>
     }
 }
