@@ -33,6 +33,7 @@ phosphor-leptos = "0.8.0"
 serde_json = "1.0.149"
 serde = "1.0.228"
 nucleo-matcher = "0.3.1"
+linkify = "0.11.0"
 
 [workspace]
 members = ["shared", "src-tauri"]

@@ -25,6 +25,7 @@
     --ui-floating-bg: rgba(0, 0, 0, 0.2);
     --ui-border-radius: 6px;
     --ui-hover-bg: rgba(255, 255, 255, 0.075);
+    --link-color: #5865f2;
 }
 
 .text-token {

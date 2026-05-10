@@ -3,9 +3,10 @@ use crate::{
     components::{
         input::{
             get_carat_index, input_arrow_left, input_arrow_right, input_backspace, input_char,
-            input_newline,
+            input_delete, input_newline,
             menu::{MenuType, SelectionMenu},
         },
+        normalize_tokens,
         presence::PresenceBadge,
         user_profile::{UserProfileExt, UserProfileMaybeExt},
         FloatingTile, RichTextExt,
@@ -25,7 +26,7 @@ use leptos::{
     task::spawn_local,
 };
 use leptos_use::{use_intersection_observer, UseIntersectionObserverReturn};
-use log::{error, info, warn};
+use log::{info, warn};
 use serde::Serialize;
 use shared::{
     messages::{
@@ -36,7 +37,7 @@ use shared::{
     user_profile::PresenceStatus,
 };
 use std::collections::{HashMap, HashSet};
-use web_sys::{DomParser, KeyboardEvent, MouseEvent, SupportedType};
+use web_sys::{DomParser, KeyboardEvent, SupportedType};
 
 #[derive(PartialEq, Clone)]
 struct TimelineMessageGroup {
@@ -1152,30 +1153,27 @@ fn ChatInput() -> impl IntoView {
 
                         text.truncate(at_pos);
 
-                        new_token = Some(RichTextSpan::Plain(format!(" {}", suffix)));
+                        new_token = Some(RichTextSpan::Plain(suffix));
                     }
                 }
 
                 if selected_member.user_id == state.active_room_id.get().unwrap_or_default() {
-                    tokens.push(RichTextSpan::RoomMention);
+                    tokens.insert(t_idx + 1, RichTextSpan::RoomMention);
                 } else {
-                    tokens.push(RichTextSpan::UserMention {
-                        user_id: selected_member.user_id.clone(),
-                        display_name: selected_member.get_name(),
-                    });
+                    tokens.insert(
+                        t_idx + 1,
+                        RichTextSpan::UserMention {
+                            user_id: selected_member.user_id.clone(),
+                            display_name: selected_member.get_name(),
+                        },
+                    );
                 };
 
-                let trailing_space = " ".to_string();
                 if let Some(token) = new_token {
-                    tokens.push(token);
-                } else {
-                    tokens.push(RichTextSpan::Plain(trailing_space.clone()));
+                    tokens.insert(t_idx + 2, token);
                 }
 
-                let last_token_idx = tokens.len() - 1;
-                let end_of_token = trailing_space.len(); // which is 1
-
-                set_caret_position.set((last_token_idx, end_of_token));
+                set_caret_position.set((t_idx + 2, 0));
             })
         };
 
@@ -1234,25 +1232,13 @@ fn ChatInput() -> impl IntoView {
                     &mut tokens,
                 );
             }
-            "Backspace" => {
-                if menu_type.get_untracked() != MenuType::None {
-                    set_menu_type.update(|menu| match menu {
-                        MenuType::Mentions { ref mut filter, .. }
-                        | MenuType::Commands { ref mut filter, .. } => {
-                            if !filter.is_empty() {
-                                filter.pop();
-                            } else {
-                                *menu = MenuType::None;
-                            }
-                        }
-                        MenuType::None => (),
-                    });
-                }
-                input_backspace(
-                    caret_position.get(),
-                    set_caret_position.clone(),
-                    &mut tokens,
-                )
+            "Backspace" => input_backspace(
+                caret_position.get(),
+                set_caret_position.clone(),
+                &mut tokens,
+            ),
+            "Delete" => {
+                input_delete(caret_position.get(), &mut tokens);
             }
             "ArrowRight" => input_arrow_right(set_caret_position.clone(), &tokens),
             "ArrowLeft" => input_arrow_left(set_caret_position.clone(), &tokens),
@@ -1314,11 +1300,17 @@ fn ChatInput() -> impl IntoView {
                 set_menu_type.set(MenuType::None);
                 tokens = input_tokens.get();
             }
+            "Enter" => {
+                // TODO: Actually send the message
+                info!("Sending message with tokens: {:?}", tokens)
+            }
             "Shift" | "Control" | "Alt" | "AltGraph" => (),
             _ => warn!("Unhandled key: {:?}", key),
         };
 
-        set_input_tokens.set(tokens);
+        let (new_tokens, new_pos) = normalize_tokens(tokens, caret_position.get_untracked());
+        set_input_tokens.set(new_tokens);
+        set_caret_position.set(new_pos);
     };
 
     view! {
@@ -1340,7 +1332,6 @@ fn ChatInput() -> impl IntoView {
                 >
                     {move || {
                         let caret_position = caret_position.get();
-                        info!("Rendering input: {:?}", input_tokens.get());
                         input_tokens
                             .get()
                             .into_iter()

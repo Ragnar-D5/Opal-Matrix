@@ -1,5 +1,6 @@
 use colorsys::ColorAlpha;
 use leptos::{html::Span, prelude::*, task::spawn_local};
+use linkify::LinkFinder;
 use shared::{messages::RichTextSpan, user_profile::UserProfile};
 use user_profile::UserProfileExt;
 use web_sys::MouseEvent;
@@ -163,6 +164,33 @@ impl RichTextExt for RichTextSpan {
                 }
             }
 
+            RichTextSpan::Link { url, .. } => {
+                let style =
+                    "color: var(--link-color); text-decoration: underline; cursor: pointer;";
+
+                if let Some(caret_pos) = caret_pos {
+                    let split = url.split_at(caret_pos);
+
+                    view! {
+                        <span data-t-idx=idx style=style class="text-token">
+                            {split.0}
+                        </span>
+                        {caret}
+                        <span data-t-idx=idx + 1 style=style class="text-token">
+                            {split.1}
+                        </span>
+                    }
+                    .into_any()
+                } else {
+                    view! {
+                        <span data-t-idx=idx style=style class="text-token">
+                            {url}
+                        </span>
+                    }
+                    .into_any()
+                }
+            }
+
             RichTextSpan::UserMention {
                 user_id,
                 display_name,
@@ -227,30 +255,6 @@ impl RichTextExt for RichTextSpan {
                 }
                 .into_any()
             }
-
-            RichTextSpan::Link { url, .. } => {
-                let clone = url.clone();
-
-                let on_click = move |ev: MouseEvent| {
-                    ev.prevent_default(); // Stop the webview from navigating
-                    let u = clone.clone();
-                    spawn_local(async move {
-                        let _ = openUrl(&u);
-                    });
-                };
-
-                view! {
-                    <a
-                        href=url.clone()
-                        target="_blank"
-                        class="text-[#00A8FC] hover:underline"
-                        on:click=on_click
-                    >
-                        {url.clone()}
-                    </a>
-                }
-                .into_any()
-            }
             RichTextSpan::Newline => {
                 if let Some(caret_pos) = caret_pos {
                     if caret_pos == 0 {
@@ -272,4 +276,95 @@ impl RichTextExt for RichTextSpan {
             }
         }
     }
+}
+
+/// Merges adjacent plain text tokens into a single token and extracts links into seperate tokens.
+///
+/// Also updates the positions of tokens based on the old position, which is used for caret positioning after normalization.
+pub fn normalize_tokens(
+    tokens: Vec<RichTextSpan>,
+    old_pos: (usize, usize),
+) -> (Vec<RichTextSpan>, (usize, usize)) {
+    let finder = LinkFinder::new();
+    let abs_offset = tokens
+        .iter()
+        .take(old_pos.0)
+        .map(|t| t.len())
+        .sum::<usize>()
+        + old_pos.1;
+
+    let mut normalized = Vec::new();
+
+    for token in tokens {
+        match token {
+            RichTextSpan::Plain(text) => {
+                if let Some(RichTextSpan::Plain(last)) = normalized.last_mut() {
+                    last.push_str(&text);
+                } else {
+                    normalized.push(RichTextSpan::Plain(text));
+                }
+            }
+            other => normalized.push(other),
+        }
+    }
+
+    let mut expanded = Vec::new();
+    for token in normalized {
+        match token {
+            RichTextSpan::Plain(text) => {
+                let mut last_end = 0;
+                for link in finder.links(&text) {
+                    // Add text before the link
+                    if link.start() > last_end {
+                        expanded.push(RichTextSpan::Plain(
+                            text[last_end..link.start()].to_string(),
+                        ));
+                    }
+                    // Add the link itself
+                    expanded.push(RichTextSpan::Link {
+                        url: link.as_str().to_string(),
+                        text: None,
+                    });
+                    last_end = link.end();
+                }
+                // Add remaining text after the last link
+                if last_end < text.len() {
+                    expanded.push(RichTextSpan::Plain(text[last_end..].to_string()));
+                }
+            }
+            _ => expanded.push(token),
+        }
+    }
+
+    let mut new_token_idx = 0;
+    let mut new_char_idx = 0;
+    let mut current_sum = 0;
+
+    for (idx, token) in expanded.iter().enumerate() {
+        let length = token.len();
+        let end = current_sum + length;
+
+        if abs_offset < end {
+            new_token_idx = idx;
+            new_char_idx = abs_offset - current_sum;
+            break;
+        }
+
+        if abs_offset == end {
+            if old_pos.1 == 0 && idx + 1 < expanded.len() {
+                new_token_idx = idx + 1;
+                new_char_idx = 0;
+            } else {
+                new_token_idx = idx;
+                new_char_idx = length;
+            }
+            break;
+        }
+
+        current_sum = end;
+        new_token_idx = idx;
+        new_char_idx = length;
+    }
+
+    (expanded, (new_token_idx, new_char_idx))
 }

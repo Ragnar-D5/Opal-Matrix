@@ -17,7 +17,6 @@ pub fn input_backspace(
         return;
     }
 
-    // Case 1: Deleting characters normally inside a token
     if c_idx > 0 {
         if let Some(token) = tokens.get_mut(t_idx) {
             match token {
@@ -31,15 +30,32 @@ pub fn input_backspace(
                     set_caret_position.update(|(_, c)| *c -= 1);
                     return;
                 }
+                RichTextSpan::UserMention { .. } | RichTextSpan::RoomMention => {
+                    tokens.remove(t_idx);
+
+                    let (new_t_idx, new_c_idx) = if t_idx == 0 {
+                        (0, 0)
+                    } else {
+                        let target_t_idx = t_idx - 1;
+                        let new_c_idx = match tokens.get(target_t_idx) {
+                            Some(RichTextSpan::Plain(text)) => text.len(),
+                            Some(RichTextSpan::Link { url, .. }) => url.len(),
+                            Some(_) => 1,
+                            None => 0,
+                        };
+
+                        (target_t_idx, new_c_idx)
+                    };
+
+                    set_caret_position.set((new_t_idx, new_c_idx));
+                    return;
+                }
                 _ => {}
             }
         }
     }
 
-    // Case 2: Boundary Deletion (c_idx == 0)
-    // We are at the start of a token, so we need to delete the PRECEDING token.
     if t_idx > 0 {
-        // First, if we are sitting on a useless empty string, clean it up
         let is_empty_plain = match tokens.get(t_idx) {
             Some(RichTextSpan::Plain(text)) => text.is_empty(),
             _ => false,
@@ -49,20 +65,60 @@ pub fn input_backspace(
             tokens.remove(t_idx);
         }
 
-        // Delete the block token before it (e.g., the Newline or a Mention)
         tokens.remove(t_idx - 1);
 
-        // Calculate where the cursor should land on the token before the deleted one
         let target_t_idx = (t_idx - 1).saturating_sub(1);
 
         let new_c_idx = match tokens.get(target_t_idx) {
             Some(RichTextSpan::Plain(text)) => text.len(),
             Some(RichTextSpan::Link { url, .. }) => url.len(),
-            Some(_) => 1, // Treat other block tokens as length 1
+            Some(_) => 1,
             None => 0,
         };
 
         set_caret_position.set((target_t_idx, new_c_idx));
+    }
+}
+
+pub fn input_delete(caret_position: (usize, usize), tokens: &mut Vec<RichTextSpan>) -> () {
+    let (t_idx, c_idx) = caret_position;
+
+    if tokens.is_empty() || (t_idx >= tokens.len() && c_idx == 0) {
+        return;
+    }
+
+    if t_idx < tokens.len() {
+        if let Some(token) = tokens.get_mut(t_idx) {
+            match token {
+                RichTextSpan::Plain(text) => {
+                    if c_idx < text.len() {
+                        text.remove(c_idx);
+                    } else if t_idx < tokens.len() - 1 {
+                        tokens.remove(t_idx + 1);
+                    }
+                    return;
+                }
+                RichTextSpan::Link { url, .. } => {
+                    if c_idx < url.len() {
+                        url.remove(c_idx);
+                    } else if t_idx < tokens.len() - 1 {
+                        tokens.remove(t_idx + 1);
+                    }
+                    return;
+                }
+                RichTextSpan::UserMention { .. } | RichTextSpan::RoomMention => {
+                    if c_idx == 0 {
+                        tokens.remove(t_idx);
+                        return;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    if t_idx < tokens.len() - 1 {
+        tokens.remove(t_idx + 1);
     }
 }
 
@@ -81,6 +137,17 @@ pub fn input_char(
                 text.insert(c_idx, c);
                 set_caret_position.set((t_idx, c_idx + 1));
             }
+            RichTextSpan::Link { url, .. } if c != ' ' => {
+                url.insert(c_idx, c);
+                set_caret_position.set((t_idx, c_idx + 1));
+            }
+            RichTextSpan::UserMention { .. }
+            | RichTextSpan::RoomMention
+            | RichTextSpan::Newline => {
+                let insert_idx = if c_idx == 0 { t_idx } else { t_idx + 1 };
+                tokens.insert(insert_idx, RichTextSpan::Plain(c.to_string()));
+                set_caret_position.set((insert_idx, 1));
+            }
             _ => {
                 tokens.insert(t_idx + 1, RichTextSpan::Plain(c.to_string()));
                 set_caret_position.set((t_idx + 1, 1));
@@ -89,6 +156,37 @@ pub fn input_char(
     } else {
         tokens.push(RichTextSpan::Plain(c.to_string()));
         set_caret_position.set((tokens.len().saturating_sub(1), 1));
+    }
+}
+
+fn caret_abs_offset(tokens: &Vec<RichTextSpan>, t_idx: usize, c_idx: usize) -> usize {
+    tokens.iter().take(t_idx).map(|t| t.len()).sum::<usize>() + c_idx
+}
+
+fn caret_from_abs_offset(tokens: &Vec<RichTextSpan>, abs_offset: usize) -> (usize, usize) {
+    let mut current_sum = 0;
+
+    for (idx, token) in tokens.iter().enumerate() {
+        let length = token.len();
+        let end = current_sum + length;
+
+        if abs_offset <= end {
+            let new_c_idx = if abs_offset < end {
+                abs_offset - current_sum
+            } else {
+                length
+            };
+
+            return (idx, new_c_idx);
+        }
+
+        current_sum = end;
+    }
+
+    if let Some(last) = tokens.last() {
+        (tokens.len().saturating_sub(1), last.len())
+    } else {
+        (0, 0)
     }
 }
 
@@ -101,16 +199,17 @@ pub fn input_arrow_left(
             return;
         }
 
-        if *c_idx > 0 {
-            *c_idx -= 1;
-        } else if *t_idx > 0 {
-            *t_idx -= 1;
-            *c_idx = tokens[*t_idx].len();
+        let mut abs_offset = caret_abs_offset(tokens, *t_idx, *c_idx);
 
-            if *c_idx > 0 {
-                *c_idx -= 1;
-            }
+        if abs_offset == 0 {
+            return;
         }
+
+        abs_offset -= 1;
+
+        let (new_t_idx, new_c_idx) = caret_from_abs_offset(tokens, abs_offset);
+        *t_idx = new_t_idx;
+        *c_idx = new_c_idx;
 
         if let Some(RichTextSpan::Newline) = tokens.get(*t_idx) {
             if *t_idx > 0 {
@@ -126,22 +225,22 @@ pub fn input_arrow_right(
     tokens: &Vec<RichTextSpan>,
 ) -> () {
     set_caret_position.update(|(t_idx, c_idx)| {
-        if tokens.is_empty() || *t_idx >= tokens.len() {
+        if tokens.is_empty() {
             return;
         }
 
-        let len = tokens[*t_idx].len();
+        let total_len = tokens.iter().map(|t| t.len()).sum::<usize>();
+        let mut abs_offset = caret_abs_offset(tokens, *t_idx, *c_idx);
 
-        if *c_idx < len {
-            *c_idx += 1;
-            if *c_idx == len && *t_idx < tokens.len() - 1 {
-                *t_idx += 1;
-                *c_idx = 0;
-            }
-        } else if *t_idx < tokens.len() - 1 {
-            *t_idx += 1;
-            *c_idx = 0;
+        if abs_offset >= total_len {
+            return;
         }
+
+        abs_offset += 1;
+
+        let (new_t_idx, new_c_idx) = caret_from_abs_offset(tokens, abs_offset);
+        *t_idx = new_t_idx;
+        *c_idx = new_c_idx;
 
         if let Some(RichTextSpan::Newline) = tokens.get(*t_idx) {
             if *t_idx < tokens.len() - 1 {
