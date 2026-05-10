@@ -76,6 +76,7 @@ pub enum RichTextSpan {
         url: String,
         text: Option<String>,
     },
+    Newline,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]

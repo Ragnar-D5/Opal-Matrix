@@ -6,7 +6,6 @@ use leptos::task::spawn_local;
 use leptos::{ev::SubmitEvent, prelude::*};
 use serde::{Deserialize, Serialize};
 use shared::account_data::{Breadcrumbs, ServerOrder};
-use shared::messages::UiMessage;
 use shared::user_profile::{PresenceInfo, UserProfile};
 use wasm_bindgen::prelude::*;
 use web_sys::HtmlImageElement;

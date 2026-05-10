@@ -1,21 +1,25 @@
 use crate::{
-    app::{call_tauri, openUrl},
+    app::call_tauri,
     components::{
+        input::{
+            input_arrow_left, input_arrow_right, input_backspace, input_char,
+            menu::{MenuType, SelectionMenu},
+        },
         presence::PresenceBadge,
         user_profile::{UserProfileExt, UserProfileMaybeExt},
-        FloatingTile,
+        FloatingTile, RenderRichText,
     },
     hooks::use_tauri_event,
     state::{AppState, MemberProfileHandle, MemberStore, RoomHeader},
-    tauri_functions::send_marker,
+    tauri_functions::{get_members, send_marker, MemberShip},
 };
 
-use phosphor_leptos::{Icon, IconWeight, HASH, INFO, PLUS, TRASH, UPLOAD_SIMPLE};
+use phosphor_leptos::{Icon, IconWeight, HASH, INFO, TRASH, UPLOAD_SIMPLE};
 
 use chrono::{DateTime, Local, NaiveDate, TimeZone};
 use leptos::{html::Div, leptos_dom::logging::console_error, prelude::*, task::spawn_local};
 use leptos_use::{use_intersection_observer, UseIntersectionObserverReturn};
-use log::error;
+use log::{error, info, warn};
 use serde::Serialize;
 use shared::{
     messages::{
@@ -26,7 +30,7 @@ use shared::{
     user_profile::PresenceStatus,
 };
 use std::collections::{HashMap, HashSet};
-use web_sys::{DomParser, MouseEvent, SupportedType};
+use web_sys::{DomParser, KeyboardEvent, MouseEvent, SupportedType};
 
 #[derive(PartialEq, Clone)]
 struct TimelineMessageGroup {
@@ -55,77 +59,6 @@ fn format_date(date: DateTime<Local>) -> String {
         0 => date.format("Today, %H:%M").to_string(),
         -1 => date.format("Yesterday, %H:%M").to_string(),
         _ => date.format("%d/%m/%Y, %H:%M").to_string(),
-    }
-}
-
-fn render_span(span: RichTextSpan) -> impl IntoView {
-    let state: AppState = expect_context();
-    let store: MemberStore = expect_context();
-
-    let Some(room_id) = state.active_room_id.get_untracked() else {
-        return view! {}.into_any();
-    };
-
-    match span {
-        RichTextSpan::Plain(text) => view! { <span class="cursor-text">{text}</span> }.into_any(),
-
-        RichTextSpan::UserMention {
-            user_id,
-            display_name,
-        } => {
-            let profile_sig = store.get_profile(&room_id, &user_id);
-
-            let color = Memo::new(move |_| {
-                let profile = profile_sig.get().unwrap_or_default();
-                profile.get_user_color().to_css_string()
-            });
-
-            view! {
-                <span class="relative p-[2px] group cursor-pointer">
-                    <span
-                        class="absolute inset-0 rounded -z-10 opacity-10 group-hover:opacity-40 transition-opacity duration-200"
-                        style:background-color=move || color.get()
-                    />
-
-                    <span class="relative" style:color=move || color.get() title=user_id>
-                        "@"
-                        {display_name}
-                    </span>
-                </span>
-            }
-            .into_any()
-        }
-
-        RichTextSpan::RoomMention => view! {
-            <span class="bg-[#FEE75C]/30 text-[#FEE75C] px-1 mx-0.5 rounded font-medium">
-                "@room"
-            </span>
-        }
-        .into_any(),
-
-        RichTextSpan::Link { url, .. } => {
-            let clone = url.clone();
-
-            let on_click = move |ev: MouseEvent| {
-                ev.prevent_default(); // Stop the webview from navigating
-                let u = clone.clone();
-                spawn_local(async move {
-                    let _ = openUrl(&u);
-                });
-            };
-
-            view! {
-                <a
-                    href=url.clone()
-                    target="_blank"
-                    class="text-[#00A8FC] hover:underline"
-                    on:click=on_click
-                >
-                    {url.clone()}
-                </a>
-            }
-            .into_any()
-        }
     }
 }
 
@@ -257,7 +190,7 @@ fn ReplyPreview(replies_to: Option<RepliesTo>) -> impl IntoView {
                     </span>
 
                     <span class="truncate text-bright line-clamp-1">
-                        {text.into_iter().map(render_span).collect_view()}
+                        {text.into_iter().map(|v| v.render()).collect_view()}
                     </span>
                 </div>
             }
@@ -329,7 +262,11 @@ impl TimelineItem {
 
                                             view! {
                                                 <div class="text-normal leading-relaxed break-words">
-                                                    {spans.clone().into_iter().map(render_span).collect_view()}
+                                                    {spans
+                                                        .clone()
+                                                        .into_iter()
+                                                        .map(|v| v.render())
+                                                        .collect_view()}
                                                     {if *is_edited {
                                                         view! {
                                                             <span class="text-xs text-muted ml-2 italic">
@@ -1182,36 +1119,182 @@ fn ChatHeader(
 }
 
 #[component]
-fn ChatInput(header: Memo<RoomHeader>) -> impl IntoView {
-    view! {
-        <div class="p-2 w-full rounded-full">
-            <div class="w-full h-13 border-1 border-[var(--tile-border-color)] rounded-lg bg-[rgba(0, 0, 0, 0.6)] flex flex-row bg-black/15 items-center gap-3 px-3">
-                <Icon icon=UPLOAD_SIMPLE size="20px" color="var(--ui-base-color)" />
-                <input
-                    class="outline-none h-full text-(--bright-text-color) flex flex-grow"
-                    type="text"
-                    placeholder=move || match header.get() {
-                        RoomHeader::Channel(node) => {
-                            format!(
-                                "Message #{}",
-                                node.name.clone().unwrap_or(node.room_id.clone()),
-                            )
-                        }
-                        RoomHeader::DM(handle) => {
-                            format!(
-                                "Message @{}",
-                                handle
-                                    .profile
-                                    .get()
-                                    .unwrap_or_default()
-                                    .display_name
-                                    .unwrap_or(handle.user_id.clone()),
-                            )
-                        }
-                        RoomHeader::Unknown => "Message someone".to_string(),
+fn ChatInput() -> impl IntoView {
+    let (input_tokens, set_input_tokens) = signal(Vec::<RichTextSpan>::new());
+    let (caret_position, set_caret_position) = signal((0, 0));
+
+    let (menu_type, set_menu_type) = signal(MenuType::None);
+    let (selected_index, set_selected_index) = signal(0);
+    let (matches, set_matches) = signal(Vec::<MemberShip>::new());
+
+    let enter_selection = move || {
+        let matches = matches.get_untracked();
+        let index = selected_index.get_untracked();
+
+        if let Some(selected_member) = matches.get(index) {
+            set_input_tokens.update(|tokens| {
+                if let Some(RichTextSpan::Plain(ref mut text)) = tokens.last_mut() {
+                    if let Some(at_pos) = text.rfind('@') {
+                        text.truncate(at_pos);
                     }
-                    autofocus
-                />
+                }
+
+                tokens.push(RichTextSpan::UserMention {
+                    user_id: selected_member.user_id.clone(),
+                    display_name: selected_member.get_name(),
+                });
+                set_caret_position.set((tokens.len(), 0));
+            })
+        };
+    };
+
+    let handle_keydown = move |ev: KeyboardEvent| {
+        ev.prevent_default();
+
+        let key = ev.key();
+        let mut tokens = input_tokens.get_untracked();
+
+        match key.as_str() {
+            string if string.len() == 1 => {
+                let Some(char) = string.chars().next() else {
+                    warn!("No character found in key: {key}");
+                    return;
+                };
+
+                if ev.ctrl_key() || ev.alt_key() || ev.meta_key() {
+                    return;
+                }
+
+                if menu_type.get_untracked() != MenuType::None {
+                    set_menu_type.update(|menu| match menu {
+                        MenuType::Mentions { ref mut filter, .. }
+                        | MenuType::Commands { ref mut filter, .. } => {
+                            filter.push(char);
+                        }
+                        MenuType::None => (),
+                    });
+                }
+
+                match char {
+                    '@' => set_menu_type.set(MenuType::Mentions {
+                        filter: "".to_string(),
+                    }),
+                    '/' => set_menu_type.set(MenuType::Commands {
+                        filter: "".to_string(),
+                    }),
+                    _ => (),
+                };
+
+                match char {
+                    '@' | '/' => set_selected_index.set(0),
+                    _ => (),
+                }
+
+                input_char(
+                    char,
+                    caret_position.get(),
+                    set_caret_position.clone(),
+                    &mut tokens,
+                );
+            }
+            "Backspace" => {
+                if menu_type.get_untracked() != MenuType::None {
+                    set_menu_type.update(|menu| match menu {
+                        MenuType::Mentions { ref mut filter, .. }
+                        | MenuType::Commands { ref mut filter, .. } => {
+                            if !filter.is_empty() {
+                                filter.pop();
+                            } else {
+                                *menu = MenuType::None;
+                            }
+                        }
+                        MenuType::None => (),
+                    });
+                }
+                input_backspace(
+                    caret_position.get(),
+                    set_caret_position.clone(),
+                    &mut tokens,
+                )
+            }
+            "ArrowRight" => input_arrow_right(set_caret_position.clone(), &tokens),
+            "ArrowLeft" => input_arrow_left(set_caret_position.clone(), &tokens),
+            "ArrowDown" if menu_type.get_untracked() != MenuType::None => {
+                set_selected_index.update(|i| {
+                    let max = matches.get().len();
+
+                    if *i >= max - 1 {
+                        *i = 0;
+                    } else {
+                        *i += 1;
+                    };
+                });
+            }
+            "ArrowUp" if menu_type.get_untracked() != MenuType::None => {
+                set_selected_index.update(|i| {
+                    let max = matches.get().len();
+
+                    if *i == 0 {
+                        *i = max - 1;
+                    } else {
+                        *i -= 1;
+                    };
+                });
+            }
+            "Escape" if menu_type.get_untracked() != MenuType::None => {
+                set_menu_type.set(MenuType::None)
+            }
+            "Enter" if ev.shift_key() => {
+                tokens.push(RichTextSpan::Newline);
+                set_caret_position.set((tokens.len() - 1, 0));
+            }
+            "Enter" if menu_type.get_untracked() != MenuType::None => {
+                enter_selection();
+                set_menu_type.set(MenuType::None);
+                tokens = input_tokens.get();
+            }
+            "Shift" | "Control" | "Alt" | "AltGraph" => (),
+            _ => warn!("Unhandled key: {:?}", key),
+        };
+
+        set_input_tokens.set(tokens);
+    };
+
+    view! {
+        <div class="p-2 w-full rounded-full relative">
+            <SelectionMenu
+                menu=menu_type
+                index=selected_index
+                set_index=set_selected_index
+                matches=matches
+                set_matches=set_matches
+            />
+            <div class="w-full h-13 border-1 border-[var(--tile-border-color)] rounded-(--ui-border-radius) bg-[rgba(0, 0, 0, 0.6)] flex flex-row bg-(--ui-floating-bg) items-center gap-3 px-3">
+                <Icon icon=UPLOAD_SIMPLE size="20px" color="var(--ui-base-color)" />
+                <div
+                    tabindex="0"
+                    class="text-(--bright-text-color) outline-none flex-grow caret-transparent whitespace-pre-wrap break-words py-3"
+                    on:keydown=handle_keydown
+                >
+                    {move || {
+                        let caret_position = caret_position.get();
+                        info!("Rendering input: {:?}", input_tokens.get());
+                        input_tokens
+                            .get()
+                            .into_iter()
+                            .enumerate()
+                            .map(|(idx, span)| {
+                                span.renhder_caret(
+                                    if idx == caret_position.0 {
+                                        Some(caret_position.1)
+                                    } else {
+                                        None
+                                    },
+                                )
+                            })
+                            .collect_view()
+                    }}
+                </div>
             </div>
         </div>
     }
@@ -1239,7 +1322,7 @@ pub fn Chat() -> impl IntoView {
             <div class="flex flex-row h-full min-h-0">
                 <FloatingTile class="flex-1 flex flex-col h-full min-h-0 overflow-hidden">
                     <TimeLine />
-                    <ChatInput header=header />
+                    <ChatInput />
                 </FloatingTile>
                 <Show when=move || chat_sidebar_open.get()>
                     <div class="flex-shrink-0 h-full w-[20rem] ml-[var(--gap)]">
@@ -1328,11 +1411,6 @@ fn ChatInfo(header: Memo<RoomHeader>) -> impl IntoView {
     }
 }
 
-#[derive(Serialize)]
-struct MembersForRoom {
-    room_id: String,
-}
-
 #[component]
 fn MemberList(room_id: RwSignal<Option<String>>) -> impl IntoView {
     let member_store: MemberStore = expect_context();
@@ -1346,38 +1424,28 @@ fn MemberList(room_id: RwSignal<Option<String>>) -> impl IntoView {
             let mut online = Vec::new();
             let mut offline = Vec::new();
 
-            let args = serde_wasm_bindgen::to_value(&MembersForRoom {
-                room_id: room_id.clone(),
-            })
-            .expect("Failed to serialize members request");
+            let Ok(members) = get_members(room_id.clone()).await else {
+                return (Vec::new(), Vec::new());
+            };
 
-            match call_tauri("get_members_for_room", args).await {
-                Ok(js_val) => match serde_wasm_bindgen::from_value::<Vec<String>>(js_val) {
-                    Ok(members) => members.iter().for_each(|user_id| {
-                        let presence = store.get_presence(user_id);
+            members.iter().for_each(|member| {
+                let user_id = &member.user_id;
+                let presence = store.get_presence(user_id);
 
-                        let el = (
-                            MemberProfileHandle {
-                                user_id: user_id.clone(),
-                                profile: store.get_profile(&room_id, user_id),
-                            },
-                            presence.clone(),
-                        );
+                let el = (
+                    MemberProfileHandle {
+                        user_id: user_id.clone(),
+                        profile: store.get_profile(&room_id, user_id),
+                    },
+                    presence.clone(),
+                );
 
-                        if presence.get().status == PresenceStatus::Offline {
-                            offline.push(el);
-                        } else {
-                            online.push(el);
-                        }
-                    }),
-                    Err(e) => {
-                        error!("Failed to parse members response: {:?}", e);
-                    }
-                },
-                Err(e) => {
-                    error!("Tauri get_members_for_room call failed: {:?}", e);
+                if presence.get().status == PresenceStatus::Offline {
+                    offline.push(el);
+                } else {
+                    online.push(el);
                 }
-            }
+            });
 
             (online, offline)
         }

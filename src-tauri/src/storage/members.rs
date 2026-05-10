@@ -4,8 +4,8 @@ use crate::{AppState, TauriError};
 
 use super::DataBaseModel;
 use ruma::events::room::member::MembershipState as RumaMembershipState;
-use rusqlite::{Connection, ToSql, types::FromSql};
-use tauri::{State, command};
+use rusqlite::{types::FromSql, Connection, ToSql};
+use tauri::{command, State};
 
 #[derive(Debug, Clone)]
 pub enum MembershipState {
@@ -114,15 +114,18 @@ pub fn get_other_member_in_dm(
 pub async fn get_members_for_room(
     state: State<'_, Arc<AppState>>,
     room_id: String,
-) -> Result<Vec<String>, TauriError> {
+) -> Result<Vec<(String, Option<String>, Option<String>)>, TauriError> {
     let mut conn_guard = state.connection.lock().await;
     let conn = conn_guard
         .as_mut()
         .ok_or("Database connection not available")?;
 
-    let mut stmt = conn.prepare("SELECT user_id FROM members WHERE room_id = ?")?;
+    let mut stmt =
+        conn.prepare("SELECT user_id, display_name, avatar_url FROM members WHERE room_id = ?")?;
 
-    let member_iter = stmt.query_map(rusqlite::params![room_id], |row| Ok(row.get(0)?))?;
+    let member_iter = stmt.query_map(rusqlite::params![room_id], |row| {
+        Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+    })?;
 
     let members = member_iter.filter_map(Result::ok).collect();
     Ok(members)

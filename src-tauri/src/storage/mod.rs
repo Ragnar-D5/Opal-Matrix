@@ -2,7 +2,7 @@ use shared::user_profile::UserProfile;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
-use tauri::{State, command};
+use tauri::{command, State};
 
 use crate::AppState;
 use crate::TauriError;
@@ -11,8 +11,8 @@ use messages::MessageRow;
 use receipts::ReadReceiptRow;
 use rooms::{RoomRow, SpaceChildRow, SpaceParentRow};
 use ruma::OwnedRoomId;
-use rusqlite::Connection;
 use rusqlite::params;
+use rusqlite::Connection;
 use shared::sidebar::FlatRoom;
 
 pub(crate) mod members;
@@ -414,18 +414,23 @@ pub async fn get_members(
     let mut stmt = conn.prepare(
         "SELECT room_id, user_id, display_name, avatar_url, membership
         FROM members
-        WHERE room_id = ?",
+        WHERE room_id = ?
+        UNION ALL
+        SELECT ?, ?, 'room', NULL, 'join'",
     )?;
 
-    let member_iter = stmt.query_map(params![room_id], |row| {
-        Ok(MemberRow {
-            room_id: row.get(0)?,
-            user_id: row.get(1)?,
-            display_name: row.get(2)?,
-            avatar_url: row.get(3)?,
-            membership: row.get(4)?,
-        })
-    })?;
+    let member_iter = stmt.query_map(
+        params![room_id.as_str(), room_id.as_str(), room_id.as_str()],
+        |row| {
+            Ok(MemberRow {
+                room_id: row.get(0)?,
+                user_id: row.get(1)?,
+                display_name: row.get(2)?,
+                avatar_url: row.get(3)?,
+                membership: row.get(4)?,
+            })
+        },
+    )?;
 
     let mut members = HashMap::new();
     for member in member_iter {
