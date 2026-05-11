@@ -54,7 +54,9 @@ where
 /// Helper function to convert a reqwest::Response into an http::Response<Bytes>.
 ///
 /// This is necessary because ruma's API expects http::Response types, but reqwest returns its own Response type. This function reads the body of the reqwest response and constructs a new http::Response with the same status, headers, and body content.
-async fn create_http_response(res: Response) -> Result<http::Response<Bytes>, TauriError> {
+async fn reqwest_response_to_http_response(
+    res: Response,
+) -> Result<http::Response<Bytes>, TauriError> {
     let status = res.status();
     let headers = res.headers().clone();
     let body_bytes = res
@@ -370,7 +372,6 @@ pub fn run() {
             storage::receipts::get_receipt,
 
             // matrix API commands
-            matrix_api::discovery::try_home_server,
             matrix_api::discovery::choose_home_server,
             matrix_api::rooms::fetch_messages,
             matrix_api::rooms::send_read_marker,

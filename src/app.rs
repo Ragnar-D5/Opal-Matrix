@@ -390,7 +390,7 @@ pub fn HomeserverDiscoveryPage() -> impl IntoView {
             let args =
                 serde_wasm_bindgen::to_value(&HomeServerArgs { url: current_value }).unwrap();
 
-            match call_tauri("try_home_server", args).await {
+            match call_tauri("choose_home_server", args).await {
                 Ok(url) => {
                     if url == *text.read_untracked() {
                         set_is_valid.set(true);
@@ -400,10 +400,10 @@ pub fn HomeserverDiscoveryPage() -> impl IntoView {
                     //if a server can be found here
                 }
                 Err(e) => {
-                    let arr: js_sys::Array = e.into();
-                    if arr.get(0) == *text.read_untracked() {
-                        set_is_valid.set(false)
-                    }
+                    // let arr: js_sys::Array = e.into();
+                    // if arr.get(0) == *text.read_untracked() {
+                    //     set_is_valid.set(false)
+                    // }
                     // if no server can be found here
                 }
             }
@@ -428,6 +428,7 @@ pub fn HomeserverDiscoveryPage() -> impl IntoView {
                 autofocus
                 on:input=move |ev| {
                     set_text.set(event_target_value(&ev));
+                    set_is_valid.set(false);
                     try_home_server();
                 }
                 prop:value=text

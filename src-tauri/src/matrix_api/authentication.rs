@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
 use crate::{
-    construct_url, create_http_response,
+    construct_url, reqwest_response_to_http_response,
     state::{ClientInfo, HomeServerInfo, RefreshToken, Token},
 };
 use ruma::api::{
@@ -45,7 +45,7 @@ pub async fn matrix_login(
 
     let http_req = reqwest::Request::try_from(req)?;
 
-    let res = create_http_response(client.execute(http_req).await?)
+    let res = reqwest_response_to_http_response(client.execute(http_req).await?)
         .await
         .map_err(|e| format!("Failed to create HTTP response: {:?}", e))?;
 
@@ -88,8 +88,9 @@ pub async fn refresh_token(
         .await
         .map_err(|e| format!("Network error: {e}"))?;
 
-    let refresh_res = RefreshResponse::try_from_http_response(create_http_response(res).await?)
-        .map_err(|e| format!("Failed to parse response: {e}"))?;
+    let refresh_res =
+        RefreshResponse::try_from_http_response(reqwest_response_to_http_response(res).await?)
+            .map_err(|e| format!("Failed to parse response: {e}"))?;
 
     Ok(Token {
         access_token: refresh_res.access_token,

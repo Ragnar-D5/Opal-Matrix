@@ -1,13 +1,13 @@
 use log::info;
-use ruma::{api::SupportedVersions, UserId};
+use ruma::{UserId, api::SupportedVersions};
 use std::{
     path::PathBuf,
     sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tauri::{
-    async_runtime::{JoinHandle, Mutex, RwLock},
     AppHandle,
+    async_runtime::{JoinHandle, Mutex, RwLock},
 };
 use tauri_plugin_http::reqwest::Client;
 use url::Url;
@@ -16,14 +16,14 @@ use matrix_sdk_crypto::{CrossSigningKeyExport, OlmMachine};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    construct_url,
+    TauriError, construct_url,
     matrix_api::{
         authentication::{self, get_account_data},
         crypto::{self, decrypt_ssss_aes_hmac_sha2},
-        discovery::{fetch_supported_versions, Authentication},
+        discovery::{Authentication, fetch_supported_versions},
         sync::run_sync_loop,
     },
-    storage, TauriError,
+    storage,
 };
 
 #[derive(Default, Clone)]
@@ -85,7 +85,7 @@ impl HomeServerInfo {
     pub async fn try_new(base_url: String) -> Result<Self, TauriError> {
         Ok(HomeServerInfo {
             base_url: base_url.clone(),
-            supported_versions: fetch_supported_versions(base_url.clone()).await?,
+            supported_versions: fetch_supported_versions(&base_url).await?,
         })
     }
 }
@@ -379,6 +379,7 @@ impl AppState {
         Ok(())
     }
 
+    /// Returns the active authentication token and server info
     pub async fn get_api(self: &Arc<Self>) -> Result<(String, HomeServerInfo), TauriError> {
         let token = self.check_token().await?;
 

@@ -35,7 +35,7 @@ use log::warn;
 use rusqlite::{OptionalExtension, params};
 use tauri::{State, command};
 
-use crate::{TauriError, create_http_response};
+use crate::{TauriError, reqwest_response_to_http_response};
 
 /// Fetches messages from the Matrix server for a given room, starting from a specified pagination token. Returns the messages and the next pagination token (if available).
 async fn get_messages_api(
@@ -45,9 +45,7 @@ async fn get_messages_api(
     access_token: &String,
     limit: usize,
 ) -> Result<(Vec<Value>, Option<String>), TauriError> {
-    let backward = MessageEventsRequest::backward(OwnedRoomId::from_str(room_id.as_str())?);
-    let backward = backward;
-    let mut req = backward;
+    let mut req = MessageEventsRequest::backward(OwnedRoomId::from_str(room_id.as_str())?);
 
     req.limit = UInt::try_from(limit)?;
     req.from = Some(prev_batch.to_string());
@@ -60,7 +58,7 @@ async fn get_messages_api(
 
     let http_req = reqwest::Request::try_from(req)?;
 
-    let res = create_http_response(Client::new().execute(http_req).await?).await?;
+    let res = reqwest_response_to_http_response(Client::new().execute(http_req).await?).await?;
 
     let messages_res = MessageEventsResponse::try_from_http_response(res)?;
 
@@ -306,7 +304,7 @@ pub async fn get_members_api(
 
     let http_req = reqwest::Request::try_from(req)?;
 
-    let res = create_http_response(Client::new().execute(http_req).await?).await?;
+    let res = reqwest_response_to_http_response(Client::new().execute(http_req).await?).await?;
 
     let mut members = Vec::new();
     let joined_members = JoinedMembersResponse::try_from_http_response(res)?.joined;

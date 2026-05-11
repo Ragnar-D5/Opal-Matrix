@@ -35,9 +35,10 @@ use tauri::{AppHandle, Emitter};
 use tauri_plugin_http::reqwest::{self, Client};
 
 use crate::{
-    TauriError, create_http_response,
+    TauriError,
     frontend::{send_member_update, send_sidebar_update},
     matrix_api::{crypto, handle_sync_calls, rooms::backfill_gap},
+    reqwest_response_to_http_response,
     state::{AppState, HomeServerInfo},
     storage::{
         SyncChanges, apply_sync_changes, handle_safe_stuff,
@@ -78,7 +79,7 @@ async fn matrix_sync(
 
     let http_req = reqwest::Request::try_from(req)?;
 
-    let res = create_http_response(Client::new().execute(http_req).await?).await?;
+    let res = reqwest_response_to_http_response(Client::new().execute(http_req).await?).await?;
 
     let sync_response = SyncResponse::try_from_http_response(res)?;
 
