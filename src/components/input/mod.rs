@@ -417,7 +417,6 @@ pub fn input_ctrl_backspace(input: InputState) -> Vec<RichTextSpan> {
 
                 set_caret_position.set((new_t_idx, new_c_idx));
             }
-            _ => {}
         }
     }
 
@@ -452,7 +451,6 @@ pub fn input_ctrl_delete(input: InputState) -> Vec<RichTextSpan> {
                 let safe_t_idx = t_idx.min(tokens.len());
                 set_caret_position.set((safe_t_idx, 0));
             }
-            _ => {}
         }
     }
 

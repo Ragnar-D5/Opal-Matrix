@@ -2,12 +2,10 @@ use crate::{
     app::call_tauri,
     components::{
         input::{
-            get_carat_index, handle_keydown, input_arrow_left, input_arrow_right, input_backspace,
-            input_char, input_delete, input_newline,
+            get_carat_index, handle_keydown,
             menu::{MenuType, SelectionMenu},
             InputState,
         },
-        normalize_tokens,
         presence::PresenceBadge,
         user_profile::{UserProfileExt, UserProfileMaybeExt},
         Caret, CaretContext, FloatingTile, RichTextExt,
@@ -27,7 +25,6 @@ use leptos::{
     task::spawn_local,
 };
 use leptos_use::{use_intersection_observer, UseIntersectionObserverReturn};
-use log::{info, warn};
 use serde::Serialize;
 use shared::{
     messages::{

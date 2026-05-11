@@ -35,11 +35,6 @@ struct LoginArgs {
     recovery_key: String,
 }
 
-#[derive(Serialize, Deserialize)]
-struct RecoveryKeyArgs {
-    recovery_key: String,
-}
-
 pub async fn call_tauri(cmd: &str, args: JsValue) -> Result<JsValue, JsValue> {
     wasm_bindgen_futures::JsFuture::from(invoke(cmd, args)).await
 }
@@ -300,7 +295,6 @@ fn LoginPage() -> impl IntoView {
 
 #[component]
 fn HomePage() -> impl IntoView {
-    let (recovery_key, set_recovery_key) = signal(String::new());
     let (bg_loaded, set_bg_loaded) = signal(false);
     let bg_url = "https://i.imgur.com/t9plvkd.png".to_string();
 
@@ -312,23 +306,6 @@ fn HomePage() -> impl IntoView {
         onload.forget();
         img.set_src(&bg_url_clone);
     });
-
-    let send_recovery_key = move |ev: SubmitEvent| {
-        ev.prevent_default();
-
-        spawn_local(async move {
-            let key = recovery_key.get_untracked();
-
-            let args =
-                serde_wasm_bindgen::to_value(&RecoveryKeyArgs { recovery_key: key }).unwrap();
-            match call_tauri("set_recovery_key", args).await {
-                Ok(_) => {}
-                Err(err) => {
-                    error!("Error setting recovery key: {:?}", err);
-                }
-            }
-        });
-    };
 
     let root_css_vars = move || {
         let base = format!(
@@ -399,13 +376,7 @@ pub fn HomeserverDiscoveryPage() -> impl IntoView {
                     }
                     //if a server can be found here
                 }
-                Err(e) => {
-                    // let arr: js_sys::Array = e.into();
-                    // if arr.get(0) == *text.read_untracked() {
-                    //     set_is_valid.set(false)
-                    // }
-                    // if no server can be found here
-                }
+                Err(_) => {}
             }
         });
     };
