@@ -87,3 +87,14 @@ pub async fn get_members(room_id: String) -> Result<Vec<MemberShip>, String> {
         })
         .collect())
 }
+
+pub async fn commit_message(message: String, room_id: String) -> Result<(), String> {
+    let args = serde_wasm_bindgen::to_value(&json!({ "html": message, "room_id": room_id }))
+        .map_err(|e| format!("Failed to construct args: {e}"))?;
+
+    call_tauri("commit_message", args)
+        .await
+        .map_err(|e| format!("Failed to commit message: {:?}", e))?;
+
+    Ok(())
+}

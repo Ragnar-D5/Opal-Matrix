@@ -102,7 +102,7 @@ pub enum MessageContent {
     Deleted,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
 pub struct Mentions {
     #[serde(default)]
     pub room: bool,
@@ -125,7 +125,7 @@ pub struct RepliesTo {
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct UserMessage {
-    pub mentions: Option<Mentions>,
+    pub mentions: Mentions,
     pub reactions: Vec<Reaction>,
     pub replies_to: Option<RepliesTo>,
 
@@ -135,7 +135,7 @@ pub struct UserMessage {
 impl UserMessage {
     pub fn new() -> Self {
         Self {
-            mentions: None,
+            mentions: Mentions::default(),
             reactions: Vec::new(),
             replies_to: None,
             content: MessageContent::Deleted,
@@ -154,7 +154,7 @@ impl UserMessage {
         });
     }
 
-    pub fn set_mentions(&mut self, mentions: Option<Mentions>) {
+    pub fn set_mentions(&mut self, mentions: Mentions) {
         self.mentions = mentions;
     }
 
@@ -180,7 +180,7 @@ pub enum MessageKind {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct UiMessage {
     pub event_id: String,
-    pub timestamp: i64,
+    pub timestamp: u64,
     pub sender_id: String,
 
     pub kind: MessageKind,
@@ -190,7 +190,7 @@ impl UiMessage {
     pub fn delete(&mut self) {
         if let MessageKind::UserMessage(user_message) = &mut self.kind {
             user_message.content = MessageContent::Deleted;
-            user_message.mentions = None;
+            user_message.mentions = Mentions::default();
             user_message.reactions.clear();
         }
     }
@@ -208,5 +208,10 @@ impl UiMessage {
         if let MessageKind::UserMessage(user_message) = &mut self.kind {
             user_message.reactions.push(reaction);
         }
+    }
+
+    /// Detect if the message is pending by checking if it's event_id is a uuid v4
+    pub fn is_pending(&self) -> bool {
+        uuid::Uuid::parse_str(&self.event_id).map_or(false, |uuid| uuid.get_version_num() == 4)
     }
 }

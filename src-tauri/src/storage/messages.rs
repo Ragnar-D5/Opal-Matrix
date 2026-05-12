@@ -5,8 +5,7 @@ use rusqlite::Connection;
 use scraper::{Html, Node};
 use serde_json::Value;
 use shared::messages::{
-    EncryptedFileInfo, MembershipAction, MessageContent, MessageKind, RichTextSpan, SystemMessage,
-    UiMessage, UserMessage,
+    EncryptedFileInfo, MembershipAction, Mentions, MessageContent, MessageKind, RichTextSpan, SystemMessage, UiMessage, UserMessage
 };
 
 use crate::TauriError;
@@ -20,7 +19,7 @@ pub struct MessageRow {
     pub sender: String,
     pub msg_type: String,
     pub raw_json: String,
-    pub timestamp: i64,
+    pub timestamp: u64,
 }
 
 impl DataBaseModel for MessageRow {
@@ -311,7 +310,7 @@ impl TryInto<UiMessage> for MessageRow {
                     .ok_or(format!("Missing msgtype: {:?}", value))?;
                 let mentions = content
                     .get("m.mentions")
-                    .and_then(|v| serde_json::from_value(v.clone()).ok());
+                    .and_then(|v| serde_json::from_value(v.clone()).ok()).unwrap_or_default();
                 user_message.set_mentions(mentions);
 
                 match msg_type {
@@ -501,7 +500,7 @@ impl TryInto<UiMessage> for MessageRow {
                     .to_string(),
             }),
             "m.room.encrypted" => MessageKind::UserMessage(UserMessage {
-                mentions: None,
+                mentions: Mentions::default(),
                 reactions: Vec::new(),
                 replies_to: None,
 

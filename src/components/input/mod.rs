@@ -1,3 +1,4 @@
+use leptos::task::spawn_local;
 use leptos::{html::Div, prelude::*, tachys::dom::document};
 use log::warn;
 use regex::Regex;
@@ -7,6 +8,7 @@ use web_sys::{HtmlDivElement, HtmlElement, KeyboardEvent};
 
 use crate::components::input::menu::commit_mention;
 use crate::state::{AppState, MemberStore};
+use crate::tauri_functions::commit_message;
 use crate::{components::input::menu::MenuType, tauri_functions::MemberShip};
 
 pub mod menu;
@@ -201,17 +203,29 @@ pub fn handle_keydown(
             }
             ev.prevent_default();
 
-            let matches = matches.get_untracked();
-            let Some(matching) = matches.get(selected_index.get_untracked()) else {
-                return;
-            };
-
             if current_menu != MenuType::None {
+                let matches = matches.get_untracked();
+                let Some(matching) = matches.get(selected_index.get_untracked()) else {
+                    return;
+                };
+
                 commit_mention(&el, matching, state, store);
                 menu.set(MenuType::None);
             } else {
                 // TODO: Send the message!
                 warn!("Send the message!");
+
+                let message = el.inner_html();
+                let Some(room_id) = state.active_room_id.get_untracked() else {
+                    warn!("No active room to send message to");
+                    return;
+                };
+
+                spawn_local(async move {
+                    if let Err(e) = commit_message(message, room_id).await {
+                        warn!("Failed to commit message: {e}");
+                    };
+                });
             }
         }
         "ArrowUp" | "ArrowDown" if current_menu != MenuType::None => {

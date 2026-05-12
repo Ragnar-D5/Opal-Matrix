@@ -6,9 +6,7 @@ use std::{
 
 use log::{trace, warn};
 use ruma::{
-    OwnedRoomId, UInt,
     api::{
-        IncomingResponse, OutgoingRequest,
         auth_scheme::SendAccessToken,
         client::{
             filter::FilterDefinition,
@@ -16,14 +14,16 @@ use ruma::{
                 Filter, Request as SyncRequest, Response as SyncResponse, State as SyncState,
             },
         },
+        IncomingResponse, OutgoingRequest,
     },
     events::{
-        AnyGlobalAccountDataEvent, AnyRoomAccountDataEvent, AnyStateEventContent,
-        AnySyncEphemeralRoomEvent, AnySyncMessageLikeEvent, AnySyncStateEvent,
-        AnySyncTimelineEvent, presence::PresenceEventContent,
+        presence::PresenceEventContent, AnyGlobalAccountDataEvent, AnyRoomAccountDataEvent,
+        AnyStateEventContent, AnySyncEphemeralRoomEvent, AnySyncMessageLikeEvent,
+        AnySyncStateEvent, AnySyncTimelineEvent,
     },
     presence::PresenceState,
     serde::Raw,
+    OwnedRoomId, UInt,
 };
 
 use serde_json::value::RawValue;
@@ -35,18 +35,19 @@ use tauri::{AppHandle, Emitter};
 use tauri_plugin_http::reqwest::{self, Client};
 
 use crate::{
-    TauriError,
     frontend::{send_member_update, send_sidebar_update},
     matrix_api::{crypto, handle_sync_calls, rooms::backfill_gap},
     reqwest_response_to_http_response,
     state::{AppState, HomeServerInfo},
     storage::{
-        SyncChanges, apply_sync_changes, handle_safe_stuff,
+        apply_sync_changes, handle_safe_stuff,
         members::MemberRow,
         messages::MessageRow,
         receipts::ReadReceiptRow,
         rooms::{SpaceChildRow, SpaceParentRow},
+        SyncChanges,
     },
+    TauriError,
 };
 
 /// Performs a /sync request to the Matrix server with the given access token and since parameter, returning the parsed SyncResponse.

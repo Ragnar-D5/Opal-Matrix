@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
-use aes::Aes256;
 use aes::cipher::{KeyIvInit, StreamCipher};
-use base64::Engine;
+use aes::Aes256;
 use base64::engine::general_purpose;
+use base64::Engine;
 use bytes::Bytes;
 use chrono::Local;
 use log::info;
 use serde::Serialize;
-use tauri::{AppHandle, Url, command};
+use tauri::{command, AppHandle, Url};
 use tauri::{Manager, State};
 
 mod frontend;
@@ -24,7 +24,7 @@ type Aes256Ctr = ctr::Ctr64BE<Aes256>;
 
 pub const APP_NAME: &str = "opal-matrix";
 
-use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
+use percent_encoding::{utf8_percent_encode, AsciiSet, CONTROLS};
 use tauri_plugin_log::{Target, TargetKind};
 
 use crate::frontend::send_sidebar_update;
@@ -365,6 +365,9 @@ pub fn run() {
             set_recovery_key,
             send_frontend,
             backend_log,
+
+            // frontend commands
+            frontend::messages::commit_message,
 
             // storage commands
             storage::get_members,

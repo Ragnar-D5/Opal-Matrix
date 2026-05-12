@@ -1,13 +1,14 @@
 use log::info;
-use ruma::{UserId, api::SupportedVersions};
+use ruma::{api::SupportedVersions, UserId};
+use rusqlite::Connection;
 use std::{
     path::PathBuf,
     sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tauri::{
-    AppHandle,
     async_runtime::{JoinHandle, Mutex, RwLock},
+    AppHandle,
 };
 use tauri_plugin_http::reqwest::Client;
 use url::Url;
@@ -16,14 +17,14 @@ use matrix_sdk_crypto::{CrossSigningKeyExport, OlmMachine};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    TauriError, construct_url,
+    construct_url,
     matrix_api::{
         authentication::{self, get_account_data},
         crypto::{self, decrypt_ssss_aes_hmac_sha2},
-        discovery::{Authentication, fetch_supported_versions},
+        discovery::{fetch_supported_versions, Authentication},
         sync::run_sync_loop,
     },
-    storage,
+    storage, TauriError,
 };
 
 #[derive(Default, Clone)]
@@ -453,11 +454,35 @@ impl AppState {
         Ok(())
     }
 
-    pub async fn restart_sync(
-        self: &std::sync::Arc<Self>,
-        handle: &AppHandle,
-    ) -> Result<(), TauriError> {
+    pub async fn restart_sync(self: &Arc<Self>, handle: &AppHandle) -> Result<(), TauriError> {
         self.stop_sync().await?;
         self.start_sync(handle, true).await
+    }
+
+    pub async fn user_id(self: &Arc<Self>) -> Result<String, TauriError> {
+        let client_info = {
+            let client_guard = self.client.read().await;
+            client_guard.as_ref().ok_or("Not logged in")?.clone()
+        };
+
+        Ok(client_info.user_id)
+    }
+
+    pub async fn with_connection_mut<F, R>(self: &Arc<Self>, f: F) -> Result<R, TauriError>
+    where
+        F: FnOnce(&mut Connection) -> Result<R, TauriError>,
+    {
+        let mut conn_guard = self.connection.lock().await;
+        let conn = conn_guard.as_mut().ok_or("Storage not initialized")?;
+        f(conn)
+    }
+
+    pub async fn with_connection<F, R>(self: &Arc<Self>, f: F) -> Result<R, TauriError>
+    where
+        F: FnOnce(&Connection) -> Result<R, TauriError>,
+    {
+        let conn_guard = self.connection.lock().await;
+        let conn = conn_guard.as_ref().ok_or("Storage not initialized")?;
+        f(conn)
     }
 }

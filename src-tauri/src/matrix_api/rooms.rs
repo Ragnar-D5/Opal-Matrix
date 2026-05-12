@@ -6,9 +6,7 @@ use std::{str::FromStr, sync::Arc};
 use tauri_plugin_http::reqwest::{self, Client};
 
 use ruma::{
-    OwnedRoomId, UInt,
     api::{
-        IncomingResponse, OutgoingRequest,
         auth_scheme::SendAccessToken,
         client::{
             membership::joined_members::v3::{
@@ -18,24 +16,26 @@ use ruma::{
                 Request as MessageEventsRequest, Response as MessageEventsResponse,
             },
         },
+        IncomingResponse, OutgoingRequest,
     },
+    OwnedRoomId, UInt,
 };
 
 use crate::{
-    AppState,
     matrix_api::crypto::process_message,
     state::HomeServerInfo,
     storage::{
         members::{MemberRow, MembershipState},
-        messages::{MessageRow, get_messages, save_messages},
+        messages::{get_messages, save_messages, MessageRow},
         rooms::save_prev_token,
     },
+    AppState,
 };
 use log::warn;
-use rusqlite::{OptionalExtension, params};
-use tauri::{State, command};
+use rusqlite::{params, OptionalExtension};
+use tauri::{command, State};
 
-use crate::{TauriError, reqwest_response_to_http_response};
+use crate::{reqwest_response_to_http_response, TauriError};
 
 /// Fetches messages from the Matrix server for a given room, starting from a specified pagination token. Returns the messages and the next pagination token (if available).
 async fn get_messages_api(
@@ -183,7 +183,7 @@ pub async fn fetch_messages(
             sender: sender.to_string(),
             msg_type: msg_type.to_string(),
             raw_json: msg.to_string(),
-            timestamp: timestamp / 1000,
+            timestamp: timestamp as u64 / 1000,
         });
     }
 
@@ -267,7 +267,7 @@ pub async fn backfill_gap(
                     sender: sender.to_string(),
                     msg_type: final_type.to_string(),
                     raw_json: processed_msg.to_string(),
-                    timestamp: timestamp / 1000,
+                    timestamp: timestamp as u64 / 1000,
                 });
             }
 

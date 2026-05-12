@@ -277,9 +277,6 @@
   .mx-\(--gap\) {
     margin-inline: var(--gap);
   }
-  .mx-\[1px\] {
-    margin-inline: 1px;
-  }
   .my-2 {
     margin-block: calc(var(--spacing) * 2);
   }
@@ -766,6 +763,9 @@
   }
   .p-4 {
     padding: calc(var(--spacing) * 4);
+  }
+  .p-\[2px\] {
+    padding: 2px;
   }
   .p-\[var\(--gap\)\] {
     padding: var(--gap);

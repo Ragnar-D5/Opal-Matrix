@@ -76,12 +76,18 @@ fn WordMention(
     text: String,
     color: String,
     bg_color: String,
+    data_type: String,
+    data_id: String,
     #[prop(into, optional)] class: String,
 ) -> impl IntoView {
     view! {
         <span
             contenteditable="false"
-            class=format!("inline-block relative mx-[1px] group cursor-pointer select-none {class}")
+            data-type=data_type
+            data-id=data_id
+            class=format!(
+                "inline-flex items-center leading-none relative p-[2px] group cursor-pointer select-none {class}",
+            )
         >
             <span
                 class="absolute inset-0 rounded opacity-35 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none"
@@ -143,6 +149,8 @@ impl RichTextExt for RichTextSpan {
                                 text=format!("@{}", display_name)
                                 color=color
                                 bg_color=bg_color
+                                data_type="user_mention".to_string()
+                                data_id=user_id.clone()
                             />
                         }
                     }}
@@ -154,8 +162,16 @@ impl RichTextExt for RichTextSpan {
                 let color = "white".to_string();
                 let bg_color = "lightgray".to_string();
 
-                view! { <WordMention text="@room".to_string() color=color bg_color=bg_color /> }
-                    .into_any()
+                view! {
+                    <WordMention
+                        text="@room".to_string()
+                        color=color
+                        bg_color=bg_color
+                        data_type="room_mention".to_string()
+                        data_id=room_id
+                    />
+                }
+                .into_any()
             }
             RichTextSpan::Newline => view! { <br /> }.into_any(),
         }

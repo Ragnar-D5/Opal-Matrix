@@ -14,6 +14,7 @@ use crate::{
     tauri_functions::{get_members, send_marker, MemberShip},
 };
 
+use log::info;
 use phosphor_leptos::{Icon, IconWeight, HASH, INFO, TRASH, UPLOAD_SIMPLE};
 
 use chrono::{DateTime, Local, NaiveDate, TimeZone};
@@ -225,9 +226,7 @@ impl TimelineItem {
             TimelineItemKind::MessageGroup(group) => {
                 let first_msg = group.contents.first();
                 let first_message_mentions_user = first_msg
-                    .and_then(|msg| msg.mentions.as_ref())
-                    .map(|mentions| mentions.user_ids.contains(&own_user_id))
-                    .unwrap_or(false);
+                    .map(|msg| msg.mentions.user_ids.contains(&own_user_id)).unwrap_or(false);
 
                 let first_reply_data = first_msg.and_then(|m| m.replies_to.clone());
                 let highlight_reply_preview = first_message_mentions_user && first_reply_data.is_some();
@@ -243,9 +242,8 @@ impl TimelineItem {
                                     let is_first = idx == 0;
                                     let message_mentions_user = msg
                                         .mentions
-                                        .as_ref()
-                                        .map(|mentions| mentions.user_ids.contains(&own_user_id))
-                                        .unwrap_or(false);
+                                        .user_ids
+                                        .contains(&own_user_id);
                                     let reply_data = if is_first {
                                         first_reply_data.clone()
                                     } else {
@@ -659,8 +657,15 @@ fn TimeLine() -> impl IntoView {
         let Some(newest) = messages
             .get()
             .iter()
-            .max_by_key(|m| m.timestamp)
-            .map(|m| m.event_id.clone())
+            .filter_map(|m| {
+                if m.is_pending() {
+                    None
+                } else {
+                    Some((m.timestamp, m.event_id.clone()))
+                }
+            })
+            .max_by_key(|m| m.0)
+            .map(|m| m.1)
         else {
             return;
         };
@@ -765,7 +770,7 @@ fn TimeLine() -> impl IntoView {
                 msg.add_reaction(reaction.clone());
             }
 
-            let current_date = get_date_from_ts(msg.timestamp);
+            let current_date = get_date_from_ts(msg.timestamp as i64);
             let current_day = current_date.date_naive();
 
             if Some(current_day) != last_day {
@@ -937,6 +942,8 @@ fn TimeLine() -> impl IntoView {
                         unique_new.append(existing);
                         *existing = unique_new;
                     });
+
+                    info!("Messages so far: {:?}", messages.get_untracked());
 
                     set_initial_loaded.set(true);
                 }

@@ -14,7 +14,7 @@ use web_sys::HtmlElement;
 
 use crate::components::user_profile::UserProfileMaybeExt;
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum MenuType {
     None,
     Mentions { filter: String },
