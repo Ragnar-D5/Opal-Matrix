@@ -28,6 +28,18 @@ impl RoomNode {
             RoomKind::Channel { last_ts, .. } => last_ts,
         }
     }
+
+    pub fn get_name(&self) -> String {
+        if let Some(name) = &self.name {
+            return name.clone();
+        }
+
+        if let Some(dm_user_id) = &self.dm_user_id {
+            return format!("DM with {}", dm_user_id);
+        }
+
+        self.room_id.clone()
+    }
 }
 
 #[derive(Debug, Serialize, Clone, Default, Deserialize, PartialEq)]

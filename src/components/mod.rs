@@ -1,13 +1,25 @@
 use colorsys::ColorAlpha;
+use colorsys::Hsl;
 use leptos::prelude::*;
-use shared::{messages::RichTextSpan, user_profile::UserProfile};
+use shared::messages::RichTextSpan;
 use user_profile::UserProfileExt;
 
-use crate::state::{AppState, MemberStore};
+use crate::state::MemberStore;
 
 pub(crate) mod input;
 pub(crate) mod presence;
 pub(crate) mod user_profile;
+
+pub fn get_color(string: String) -> Hsl {
+    let mut hash: u32 = 0;
+    for c in string.chars() {
+        hash = (c as u32).wrapping_add(hash.wrapping_shl(5).wrapping_sub(hash));
+    }
+
+    let hue = hash % 360;
+
+    Hsl::new(hue as f64, 90.0, 70.0, None)
+}
 
 #[component]
 pub fn FloatingTile(#[prop(into, optional)] class: String, children: Children) -> impl IntoView {
@@ -23,14 +35,14 @@ pub fn FloatingTile(#[prop(into, optional)] class: String, children: Children) -
     }
 }
 
+/// A circular avatar with a single letter, colored based on the provided color.
 #[component]
 pub fn TextCircle(
     #[prop(into, optional)] class: String,
     #[prop(into, optional)] style: String,
     text: String,
-    color_string: String,
+    mut color: Hsl,
 ) -> impl IntoView {
-    let mut color = UserProfile::get_color(color_string);
     let letter_color = color.clone().to_css_string();
 
     color.set_lightness(10.0);
@@ -67,13 +79,15 @@ fn WordMention(
     #[prop(into, optional)] class: String,
 ) -> impl IntoView {
     view! {
-        <span class=format!("relative p-[2px] group cursor-pointer {class}")>
+        <span
+            contenteditable="false"
+            class=format!("inline-block relative mx-[1px] group cursor-pointer select-none {class}")
+        >
             <span
-                contenteditable=false
-                class="absolute inset-0 rounded -z-10 opacity-35 group-hover:opacity-100 transition-opacity duration-200"
+                class="absolute inset-0 rounded opacity-35 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none"
                 style=format!("background-color: {bg_color};")
             />
-            <span class="relative" style=format!("color: {color};")>
+            <span class="relative pointer-events-none" style=format!("color: {color};")>
                 {text}
             </span>
         </span>
@@ -81,18 +95,11 @@ fn WordMention(
 }
 
 pub trait RichTextExt {
-    fn render(self) -> impl IntoView;
+    fn render(self, store: MemberStore, room_id: String) -> impl IntoView;
 }
 
 impl RichTextExt for RichTextSpan {
-    fn render(self) -> impl IntoView {
-        let state: AppState = expect_context();
-        let store: MemberStore = expect_context();
-
-        let Some(room_id) = state.active_room_id.get_untracked() else {
-            return view! {}.into_any();
-        };
-
+    fn render(self, store: MemberStore, room_id: String) -> impl IntoView {
         match self {
             RichTextSpan::Plain(text) => {
                 view! { <span class="text-token">{text}</span> }.into_any()
@@ -118,7 +125,7 @@ impl RichTextExt for RichTextSpan {
 
                 let colors = Memo::new(move |_| {
                     let profile = profile_sig.get().unwrap_or_default();
-                    let mut color = profile.get_user_color();
+                    let mut color = profile.get_color();
                     let primary = color.to_css_string();
 
                     color.set_alpha(0.4);

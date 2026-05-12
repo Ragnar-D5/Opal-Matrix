@@ -210,6 +210,14 @@ impl MemberStore {
         room_id: &String,
         user_id: &String,
     ) -> ArcRwSignal<Option<UserProfile>> {
+        if room_id == user_id {
+            return ArcRwSignal::new(Some(UserProfile {
+                display_name: Some("room".into()),
+                user_id: room_id.clone(),
+                avatar_url: None,
+            }));
+        }
+
         let existing_signal = self.rooms.with_untracked(|rooms| {
             rooms
                 .get(room_id)

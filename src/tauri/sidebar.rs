@@ -2,7 +2,7 @@ use phosphor_leptos::{Icon, HASH, MATRIX_LOGO};
 use std::collections::HashMap;
 
 use crate::components::presence::PresenceBadge;
-use crate::components::FloatingTile;
+use crate::components::{get_color, FloatingTile};
 use crate::state::{AppState, MemberStore};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -22,16 +22,11 @@ fn DmDiv(dm: RoomNode) -> impl IntoView {
     let initial = name.chars().take(2).collect::<String>();
 
     let is_active = Memo::new(move |_| state.active_room_id.get() == Some(id.clone()));
+    let color = get_color(dm.dm_user_id.clone().unwrap_or_default());
 
     let avatar_content = match avatar_url {
         Some(url) => view! { <img class="avatar-img w-8 h-8 rounded-full object-cover" src=url alt=name.clone() /> }.into_any(),
-        None => view! {
-            <TextCircle
-                text=initial
-                color_string=dm.topic.clone().unwrap_or_else(|| "Unnamed".to_string())
-                class="rounded-full w-8 h-8"
-            />
-        }.into_any(),
+        None => view! { <TextCircle text=initial color=color class="rounded-full w-8 h-8" /> }.into_any(),
     };
 
     let members = members.clone();
@@ -155,7 +150,7 @@ pub fn ServerIcon(server_id: String) -> impl IntoView {
                 };
                 let name = server.name.clone().unwrap_or("?".to_string());
                 let initial = name.chars().next().unwrap_or('?').to_string();
-                let color_string = server.name.clone().unwrap_or_else(|| "Unnamed".to_string());
+                let color = get_color(server.get_name());
 
                 view! {
                     <div class="relative w-10 h-10">
@@ -189,7 +184,7 @@ pub fn ServerIcon(server_id: String) -> impl IntoView {
                                             view! {
                                                 <TextCircle
                                                     text=initial
-                                                    color_string=color_string
+                                                    color=color
                                                     class="rounded-[25%] w-full h-full"
                                                 />
                                             }
@@ -370,13 +365,13 @@ pub fn Sidebar() -> impl IntoView {
                                                         .into_any()
                                                 }
                                                 None => {
+                                                    let color = get_color(
+                                                        dm.topic.clone().unwrap_or_else(|| "Unnamed".to_string()),
+                                                    );
                                                     view! {
                                                         <TextCircle
                                                             text=initial
-                                                            color_string=dm
-                                                                .topic
-                                                                .clone()
-                                                                .unwrap_or_else(|| "Unnamed".to_string())
+                                                            color=color
                                                             class="rounded-full w-10 h-10"
                                                         />
                                                     }
@@ -503,13 +498,13 @@ pub fn Sidebar() -> impl IntoView {
                                     return view! { <div class="item p-4">"Not found"</div> }
                                         .into_any();
                                 };
-                                let name = active_server.name.clone();
+                                let name = active_server.get_name();
                                 match active_server.kind {
                                     RoomKind::Space { children } => {
 
                                         view! {
                                             <div class="header border-b border-(--tile-border-color) p-3 font-bold text-normal w-full">
-                                                {name.unwrap_or_else(|| "Server".to_string())}
+                                                {name}
                                             </div>
                                             <div class="list pr-2 w-full">
                                                 <For

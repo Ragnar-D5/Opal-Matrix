@@ -2,17 +2,24 @@ use colorsys::Hsl;
 use leptos::prelude::*;
 use shared::user_profile::UserProfile;
 
+use crate::components::get_color;
+
 use super::TextCircle;
 
 pub trait UserProfileExt {
     fn render_icon(self, size: usize) -> impl IntoView;
     fn render_name(self, font_size: usize) -> impl IntoView;
-    fn get_user_color(&self) -> Hsl;
 
-    fn get_color(string: String) -> Hsl;
+    fn get_color(&self) -> Hsl;
+
+    fn is_room(&self) -> bool;
 }
 
 impl UserProfileExt for UserProfile {
+    fn is_room(&self) -> bool {
+        self.user_id.starts_with("!")
+    }
+
     fn render_icon(self, size: usize) -> impl IntoView {
         let size_str = format!("{}px", size);
 
@@ -32,7 +39,7 @@ impl UserProfileExt for UserProfile {
             None => view! {
                 <TextCircle
                     text=name
-                    color_string=self.user_id.clone()
+                    color=self.get_color()
                     class="rounded-full select-none"
                     style=format!("height: {}; width: {};", size_str, size_str)
                 />
@@ -44,7 +51,7 @@ impl UserProfileExt for UserProfile {
     fn render_name(self, font_size: usize) -> impl IntoView {
         let name = self.display_name.as_ref().unwrap_or(&self.user_id);
         let font_size_str = format!("{}px", font_size);
-        let color = self.get_user_color().to_css_string();
+        let color = self.get_color().to_css_string();
 
         view! {
             <span
@@ -57,19 +64,12 @@ impl UserProfileExt for UserProfile {
         }
     }
 
-    fn get_user_color(&self) -> Hsl {
-        Self::get_color(self.user_id.clone())
-    }
-
-    fn get_color(string: String) -> Hsl {
-        let mut hash: u32 = 0;
-        for c in string.chars() {
-            hash = (c as u32).wrapping_add(hash.wrapping_shl(5).wrapping_sub(hash));
+    fn get_color(&self) -> Hsl {
+        if self.is_room() {
+            return Hsl::new(0.0, 0.0, 70.0, None);
         }
 
-        let hue = hash % 360;
-
-        Hsl::new(hue as f64, 90.0, 70.0, None)
+        get_color(self.user_id.clone())
     }
 }
 

@@ -5,8 +5,8 @@ use shared::{messages::UiMessage, user_profile::UserProfile};
 use tauri::{AppHandle, Emitter};
 
 use crate::{
-    TauriError,
     storage::{fetch_sidebar, members::MemberRow},
+    TauriError,
 };
 
 pub(crate) mod sidebar;

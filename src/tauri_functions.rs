@@ -1,8 +1,9 @@
-use leptos::task::spawn_local;
+use leptos::{prelude::Get, task::spawn_local};
 use serde::Serialize;
 use serde_json::json;
+use shared::messages::RichTextSpan;
 
-use crate::app::call_tauri;
+use crate::{app::call_tauri, state::AppState};
 
 #[derive(Serialize)]
 struct ReadMarkerArgs {
@@ -28,7 +29,6 @@ pub struct MemberShip {
 }
 
 impl MemberShip {
-    /// Creates a `room` instance for matching
     pub fn room(room_id: String) -> Self {
         Self {
             user_id: room_id,
@@ -37,10 +37,28 @@ impl MemberShip {
         }
     }
 
+    fn is_room(&self, state: AppState) -> bool {
+        let Some(rid) = state.active_room_id.get() else {
+            return false;
+        };
+        &rid == &self.user_id
+    }
+
     pub fn get_name(&self) -> String {
         self.display_name
             .clone()
             .unwrap_or_else(|| self.user_id.clone())
+    }
+
+    pub fn to_span(&self, state: AppState) -> RichTextSpan {
+        if self.is_room(state) {
+            return RichTextSpan::RoomMention;
+        }
+
+        RichTextSpan::UserMention {
+            user_id: self.user_id.clone(),
+            display_name: self.get_name(),
+        }
     }
 }
 

@@ -6,7 +6,7 @@ use web_sys::{window, Node};
 use web_sys::{HtmlDivElement, HtmlElement, KeyboardEvent};
 
 use crate::components::input::menu::commit_mention;
-use crate::state::AppState;
+use crate::state::{AppState, MemberStore};
 use crate::{components::input::menu::MenuType, tauri_functions::MemberShip};
 
 pub mod menu;
@@ -186,6 +186,8 @@ pub fn handle_keydown(
     menu: RwSignal<MenuType>,
     selected_index: RwSignal<usize>,
     matches: RwSignal<Vec<MemberShip>>,
+    state: AppState,
+    store: MemberStore,
 ) {
     let Some(el) = input_ref.get() else { return };
 
@@ -205,7 +207,7 @@ pub fn handle_keydown(
             };
 
             if current_menu != MenuType::None {
-                commit_mention(&el, matching);
+                commit_mention(&el, matching, state, store);
                 menu.set(MenuType::None);
             } else {
                 // TODO: Send the message!

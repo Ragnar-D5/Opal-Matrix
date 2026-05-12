@@ -1,25 +1,5 @@
 @import "tailwindcss";
 
-@keyframes soft-blink {
-    0%,
-    100% {
-        opacity: 1;
-    }
-    50% {
-        opacity: 0;
-    }
-}
-
-@keyframes soft-blink-clone {
-    0%,
-    100% {
-        opacity: 1;
-    }
-    50% {
-        opacity: 0;
-    }
-}
-
 :root {
     --color-item-hover: rgba(200, 200, 255, 0.05);
     --color-item-selected: rgba(255, 255, 255, 0.1);
@@ -55,9 +35,6 @@
 
 @theme {
     --font-sans: "AppFont", ui-sans-serif, system-ui, sans-serif;
-
-    --animate-soft-blink: soft-blink 1.5s ease-in-out 1s infinite;
-    --animate-soft-blink-clone: soft-blink-clone 1.5s ease-in-out 1s infinite;
 }
 
 @utility bg {

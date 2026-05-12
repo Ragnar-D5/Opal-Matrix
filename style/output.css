@@ -268,9 +268,6 @@
   .left-4 {
     left: calc(var(--spacing) * 4);
   }
-  .-z-10 {
-    z-index: calc(10 * -1);
-  }
   .z-10 {
     z-index: 10;
   }
@@ -279,6 +276,9 @@
   }
   .mx-\(--gap\) {
     margin-inline: var(--gap);
+  }
+  .mx-\[1px\] {
+    margin-inline: 1px;
   }
   .my-2 {
     margin-block: calc(var(--spacing) * 2);
@@ -767,9 +767,6 @@
   .p-4 {
     padding: calc(var(--spacing) * 4);
   }
-  .p-\[2px\] {
-    padding: 2px;
-  }
   .p-\[var\(--gap\)\] {
     padding: var(--gap);
   }
@@ -1142,22 +1139,6 @@
     &:active {
       cursor: grabbing;
     }
-  }
-}
-@keyframes soft-blink {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0;
-  }
-}
-@keyframes soft-blink-clone {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0;
   }
 }
 :root {

@@ -189,7 +189,10 @@ fn ReplyPreview(replies_to: Option<RepliesTo>) -> impl IntoView {
                     </span>
 
                     <span class="truncate text-bright line-clamp-1">
-                        {text.into_iter().map(|v| v.render()).collect_view()}
+                        {text
+                            .into_iter()
+                            .map(|v| v.render(store.clone(), room_id.clone()))
+                            .collect_view()}
                     </span>
                 </div>
             }
@@ -264,7 +267,7 @@ impl TimelineItem {
                                                     {spans
                                                         .clone()
                                                         .into_iter()
-                                                        .map(|v| v.render())
+                                                        .map(|v| v.render(store.clone(), room_id.clone()))
                                                         .collect_view()}
                                                     {if *is_edited {
                                                         view! {
@@ -1120,6 +1123,7 @@ fn ChatHeader(
 #[component]
 fn ChatInput() -> impl IntoView {
     let state: AppState = expect_context();
+    let store: MemberStore = expect_context();
 
     let menu = RwSignal::new(MenuType::None);
     let selected_indx = RwSignal::new(0);
@@ -1219,6 +1223,8 @@ fn ChatInput() -> impl IntoView {
                             menu,
                             selected_indx,
                             matches,
+                            state,
+                            store.clone(),
                         )
                     ></div>
                 </div>
@@ -1276,7 +1282,7 @@ fn ChatInfo(header: Memo<RoomHeader>) -> impl IntoView {
                     let profile_sig = handle.profile;
                     let banner_color = profile_sig
                         .get()
-                        .map(|profile| profile.get_user_color().to_css_string())
+                        .map(|profile| profile.get_color().to_css_string())
                         .unwrap_or_else(|| "transparent".to_string());
                     let banner_height = 108.0;
                     let icon_size = 70.0;
