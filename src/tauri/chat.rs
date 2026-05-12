@@ -2,29 +2,30 @@ use crate::{
     app::call_tauri,
     components::{
         input::{
-            get_carat_index, handle_keydown,
+            get_active_mention_filter, get_caret_position, handle_input, handle_keydown,
             menu::{MenuType, SelectionMenu},
-            InputState,
         },
         presence::PresenceBadge,
         user_profile::{UserProfileExt, UserProfileMaybeExt},
-        Caret, CaretContext, FloatingTile, RichTextExt,
+        FloatingTile, RichTextExt,
     },
     hooks::use_tauri_event,
     state::{AppState, MemberProfileHandle, MemberStore, RoomHeader},
     tauri_functions::{get_members, send_marker, MemberShip},
 };
 
+use log::info;
 use phosphor_leptos::{Icon, IconWeight, HASH, INFO, TRASH, UPLOAD_SIMPLE};
 
 use chrono::{DateTime, Local, NaiveDate, TimeZone};
 use leptos::{
+    ev,
     html::{Div, Span},
     leptos_dom::logging::console_error,
     prelude::*,
     task::spawn_local,
 };
-use leptos_use::{use_intersection_observer, UseIntersectionObserverReturn};
+use leptos_use::{use_event_listener, use_intersection_observer, UseIntersectionObserverReturn};
 use serde::Serialize;
 use shared::{
     messages::{
@@ -1127,26 +1128,47 @@ fn ChatHeader(
 fn ChatInput() -> impl IntoView {
     let state: AppState = expect_context();
 
-    let input: InputState = InputState {
-        tokens: RwSignal::new(Vec::<RichTextSpan>::new()),
-        caret_position: RwSignal::new((0, 0)),
-        menu_type: RwSignal::new(MenuType::None),
-        selected_index: RwSignal::new(0),
-        matches: RwSignal::new(Vec::<MemberShip>::new()),
-    };
+    // let input: InputState = InputState {
+    //     tokens: RwSignal::new(Vec::<RichTextSpan>::new()),
+    //     caret_position: RwSignal::new((0, 0)),
+    //     menu_type: RwSignal::new(MenuType::None),
+    //     selected_index: RwSignal::new(0),
+    //     matches: RwSignal::new(Vec::<MemberShip>::new()),
+    // };
 
-    let caret_position = input.caret_position;
-    let tokens = input.tokens;
+    // let caret_position = input.caret_position;
+    // let tokens = input.tokens;
 
-    let (is_focused, set_is_focused) = signal(false);
-    let (anim_toggle, set_anim_toggle) = signal(false);
-    provide_context(CaretContext {
-        is_focused,
-        anim_toggle,
-    });
+    let menu = RwSignal::new(MenuType::None);
+    let selected_indx = RwSignal::new(0);
+    let matches = RwSignal::new(Vec::<MemberShip>::new());
 
-    let caret_ref = NodeRef::<Span>::new();
     let input_ref = NodeRef::<Div>::new();
+
+    let _ = use_event_listener(document(), ev::selectionchange, move |_| {
+        let Some(el) = input_ref.get() else {
+            return;
+        };
+
+        let win = window();
+        if let Ok(Some(sel)) = win.get_selection() {
+            if let Some(focus_node) = sel.focus_node() {
+                if el.contains(Some(&focus_node)) {
+                    let caret_pos = get_caret_position(&el);
+
+                    if let Some(filter) = get_active_mention_filter(&el, caret_pos) {
+                        menu.set(MenuType::Mentions { filter });
+                    } else {
+                        menu.set(MenuType::None);
+                    }
+                } else {
+                    if menu.get_untracked() != MenuType::None {
+                        menu.set(MenuType::None);
+                    }
+                }
+            }
+        }
+    });
 
     // Focus the input when the component mounts or when the active room changes
     Effect::new(move |_| {
@@ -1156,87 +1178,81 @@ fn ChatInput() -> impl IntoView {
             let _ = el.focus();
         }
     });
-    Effect::new(move |_| {
-        caret_position.get();
+    // Effect::new(move |_| {
+    //     caret_position.get();
 
-        set_anim_toggle.update(|v| *v = !*v);
-    });
+    //     set_anim_toggle.update(|v| *v = !*v);
+    // });
 
     // Save on every keystroke
-    Effect::new(move |_| {
-        let tokens = tokens.get();
-        if let Some(room_id) = state.active_room_id.get_untracked() {
-            state.drafts.update(|d| {
-                d.insert(room_id, tokens);
-            });
-        }
-    });
+    // Effect::new(move |_| {
+    //     let tokens = input_ref.get();
+    //     if let Some(room_id) = state.active_room_id.get_untracked() {
+    //         state.drafts.update(|d| {
+    //             d.insert(room_id, tokens);
+    //         });
+    //     }
+    // });
+    let is_empty = RwSignal::new(true);
 
     // Load on room change
     Effect::new(move |_| {
         let room_id = state.active_room_id.get();
-        let draft = room_id
-            .and_then(|rid| state.drafts.with_untracked(|d| d.get(&rid).cloned()))
-            .unwrap_or_default();
+        let draft = room_id.and_then(|rid| state.drafts.with_untracked(|d| d.get(&rid).cloned()));
 
-        let end_pos = draft
-            .last()
-            .map(|t| (draft.len() - 1, t.len()))
-            .unwrap_or((0, 0));
+        let Some(el) = input_ref.get() else {
+            return;
+        };
+        el.set_inner_html(draft.clone().unwrap_or("<br>".into()).as_str());
 
-        tokens.set(draft);
-        caret_position.set(end_pos);
-    });
+        is_empty.set(draft.is_none() || draft.as_deref() == Some("<br>"));
 
-    let handle_click = move |ev: MouseEvent| {
-        if let Some(new_pos) = get_carat_index(ev.client_x() as f32, ev.client_y() as f32) {
-            caret_position.set(new_pos);
+        let win = window();
+        let doc = document();
+
+        if let Ok(Some(sel)) = win.get_selection() {
+            if let Ok(range) = doc.create_range() {
+                let _ = range.select_node_contents(&el);
+                // collapse_with_to_start(false) collapses the selection to the END
+                range.collapse_with_to_start(false);
+
+                let _ = sel.remove_all_ranges();
+                let _ = sel.add_range(&range);
+            }
         }
-    };
+
+        let _ = el.focus();
+    });
 
     view! {
         <div class="p-2 w-full rounded-full relative">
-            <SelectionMenu input=input />
+            <SelectionMenu
+                menu=menu
+                selected_index=selected_indx
+                matches=matches
+                input_ref=input_ref
+            />
             <div class="w-full min-h-13 border-1 border-[var(--tile-border-color)] rounded-(--ui-border-radius) bg-[rgba(0, 0, 0, 0.6)] flex flex-row bg-(--ui-floating-bg) items-center gap-3 px-3">
                 <Icon icon=UPLOAD_SIMPLE size="20px" color="var(--ui-base-color)" />
-                <div
-                    node_ref=input_ref
-                    tabindex="0"
-                    class="text-(--bright-text-color) outline-none w-full caret-transparent whitespace-pre-wrap break-words py-3 max-h-100 overflow-y-auto"
-                    on:keydown=move |ev: KeyboardEvent| {
-                        handle_keydown(ev, input, caret_ref);
-                    }
-                    on:focus=move |_| set_is_focused.set(true)
-                    on:blur=move |_| set_is_focused.set(false)
-                    on:click=handle_click
-                >
-                    {move || {
-                        let caret_position = caret_position.get();
-                        let tokens = tokens.get();
-                        if tokens.is_empty() {
-                            return view! {
-                                <Caret caret_ref=caret_ref />
-                                <span class="text-muted">"Type a message..."</span>
-                            }
-                                .into_any();
-                        }
-                        tokens
-                            .into_iter()
-                            .enumerate()
-                            .map(|(idx, span)| {
-                                span.render_caret(
-                                    if idx == caret_position.0 {
-                                        Some(caret_position.1)
-                                    } else {
-                                        None
-                                    },
-                                    caret_ref,
-                                    idx,
-                                )
-                            })
-                            .collect_view()
-                            .into_any()
-                    }}
+                <div class="relative flex-1 min-w-0 flex items-center">
+                    <Show when=move || is_empty.get()>
+                        <div class="text-muted absolute left-0 top-0 pointer-events-none select-none py-3">
+                            "Type a message..."
+                        </div>
+                    </Show>
+                    <div
+                        node_ref=input_ref
+                        contenteditable="true"
+                        class="text-(--bright-text-color) outline-none w-full whitespace-pre-wrap break-words py-3 max-h-100 overflow-y-auto"
+                        on:input=move |_| handle_input(input_ref, is_empty, state)
+                        on:keydown=move |ev| handle_keydown(
+                            ev,
+                            input_ref,
+                            menu,
+                            selected_indx,
+                            matches,
+                        )
+                    ></div>
                 </div>
             </div>
         </div>

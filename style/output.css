@@ -942,6 +942,9 @@
   .text-blue-400 {
     color: var(--color-blue-400);
   }
+  .text-blue-500 {
+    color: var(--color-blue-500);
+  }
   .text-bright {
     color: var(--bright-text-color, #ffffff);
   }
@@ -972,8 +975,8 @@
   .italic {
     font-style: italic;
   }
-  .caret-transparent {
-    caret-color: transparent;
+  .underline {
+    text-decoration-line: underline;
   }
   .opacity-0 {
     opacity: 0%;

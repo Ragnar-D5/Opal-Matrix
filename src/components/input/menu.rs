@@ -1,12 +1,19 @@
 use crate::{
-    components::{input::InputState, presence::PresenceBadge},
+    components::{
+        input::{get_caret_position, get_node_and_offset},
+        presence::PresenceBadge,
+        user_profile::UserProfileExt,
+    },
     state::{AppState, MemberStore},
     tauri_functions::{get_members, MemberShip},
 };
+use colorsys::ColorAlpha;
+use leptos::html::Div;
 use leptos::prelude::*;
 use log::info;
 use nucleo_matcher::{Config, Matcher, Utf32Str};
-use shared::messages::RichTextSpan;
+use shared::user_profile::UserProfile;
+use web_sys::HtmlElement;
 
 use crate::components::user_profile::UserProfileMaybeExt;
 
@@ -23,57 +30,133 @@ impl MenuType {
     }
 }
 
-pub fn enter_selection(input: InputState) {
-    let matches = input.matches.get_untracked();
-    let index = input.selected_index.get_untracked();
-    let (t_idx, c_idx) = input.caret_position.get_untracked();
+// pub fn enter_selection(input: InputState) {
+//     let matches = input.matches.get_untracked();
+//     let index = input.selected_index.get_untracked();
+//     let (t_idx, c_idx) = input.caret_position.get_untracked();
 
-    info!(
-        "Selected index: {}, Matches: {:?}",
-        index,
-        matches.get(index),
-    );
+//     info!(
+//         "Selected index: {}, Matches: {:?}",
+//         index,
+//         matches.get(index),
+//     );
 
-    if let Some(selected_member) = matches.get(index) {
-        input.tokens.update(|tokens| {
-            let mut new_token = None;
+//     if let Some(selected_member) = matches.get(index) {
+//         input.tokens.update(|tokens| {
+//             let mut new_token = None;
 
-            if let Some(RichTextSpan::Plain(ref mut text)) = tokens.get_mut(t_idx) {
-                if let Some(at_pos) = text.rfind('@') {
-                    let safe_c_idx = c_idx.min(text.len());
-                    let suffix = text[safe_c_idx..].to_string();
+//             if let Some(RichTextSpan::Plain(ref mut text)) = tokens.get_mut(t_idx) {
+//                 if let Some(at_pos) = text.rfind('@') {
+//                     let safe_c_idx = c_idx.min(text.len());
+//                     let suffix = text[safe_c_idx..].to_string();
 
-                    text.truncate(at_pos);
+//                     text.truncate(at_pos);
 
-                    new_token = Some(RichTextSpan::Plain(suffix));
-                }
-            }
+//                     new_token = Some(RichTextSpan::Plain(suffix));
+//                 }
+//             }
 
-            if selected_member.user_id
-                == expect_context::<AppState>()
-                    .active_room_id
-                    .get()
-                    .unwrap_or_default()
-            {
-                tokens.insert(t_idx + 1, RichTextSpan::RoomMention);
-            } else {
-                tokens.insert(
-                    t_idx + 1,
-                    RichTextSpan::UserMention {
-                        user_id: selected_member.user_id.clone(),
-                        display_name: selected_member.get_name(),
-                    },
-                );
-            };
+//             if selected_member.user_id
+//                 == expect_context::<AppState>()
+//                     .active_room_id
+//                     .get()
+//                     .unwrap_or_default()
+//             {
+//                 tokens.insert(t_idx + 1, RichTextSpan::RoomMention);
+//             } else {
+//                 tokens.insert(
+//                     t_idx + 1,
+//                     RichTextSpan::UserMention {
+//                         user_id: selected_member.user_id.clone(),
+//                         display_name: selected_member.get_name(),
+//                     },
+//                 );
+//             };
 
-            if let Some(token) = new_token {
-                tokens.insert(t_idx + 2, token);
-            }
-        });
+//             if let Some(token) = new_token {
+//                 tokens.insert(t_idx + 2, token);
+//             }
+//         });
 
-        input.caret_position.set((t_idx + 1, 1));
-    };
-    input.menu_type.set(MenuType::None);
+//         input.caret_position.set((t_idx + 1, 1));
+//     };
+//     input.menu_type.set(MenuType::None);
+// }
+//
+pub fn commit_mention(el: &HtmlElement, membership: &MemberShip) {
+    let doc = document();
+    let caret_pos = get_caret_position(el);
+
+    // Find the true boundaries of the word (mirroring the filter logic)
+    let text = el.text_content().unwrap_or_default();
+    let utf16: Vec<u16> = text.encode_utf16().collect();
+    let offset = caret_pos as usize;
+
+    // Scan backwards to find the start of the word (the '@')
+    let mut start_idx = offset;
+    while start_idx > 0 {
+        let prev = utf16[start_idx - 1];
+        if prev == 32 || prev == 160 || prev == 10 {
+            break;
+        }
+        start_idx -= 1;
+    }
+
+    // Scan forwards to find the end of the word
+    let mut end_idx = offset;
+    while end_idx < utf16.len() {
+        let next = utf16[end_idx];
+        if next == 32 || next == 160 || next == 10 {
+            break;
+        }
+        end_idx += 1;
+    }
+
+    let start_pos = start_idx as u32;
+    let end_pos = end_idx as u32;
+
+    let start_loc = get_node_and_offset(el, start_pos);
+    let end_loc = get_node_and_offset(el, end_pos);
+
+    if let (Some((start_node, start_off)), Some((end_node, end_off))) = (start_loc, end_loc) {
+        let range = doc.create_range().unwrap();
+        range.set_start(&start_node, start_off).unwrap();
+        range.set_end(&end_node, end_off).unwrap();
+
+        // Delete the ENTIRE "@filter" text, regardless of where the cursor was
+        range.delete_contents().unwrap();
+
+        let mut color = UserProfile::get_color(membership.user_id.clone());
+        let primary_color = color.to_css_string();
+        color.set_alpha(0.4);
+        let bg_color = color.to_css_string();
+
+        let mention_html = format!(
+            r#"<span class="relative p-[2px] group cursor-pointer" contenteditable="false" data-id="{}"><span class="absolute inset-0 rounded -z-10 opacity-35 group-hover:opacity-100 transition-opacity duration-200" style="background-color: {};"></span><span class="relative" style="color: {};">@{}</span></span>"#,
+            membership.user_id,
+            bg_color,
+            primary_color,
+            membership.get_name()
+        );
+
+        let temp_div = doc.create_element("div").unwrap();
+        temp_div.set_inner_html(&mention_html);
+
+        let mention_node = temp_div.first_child().expect("Failed to create mention");
+        let space_node = doc.create_text_node("\u{00A0}");
+
+        range.insert_node(&space_node).unwrap();
+        range.insert_node(&mention_node).unwrap();
+
+        let new_range = doc.create_range().unwrap();
+        new_range.set_start(&space_node, 1).unwrap();
+        new_range.collapse_with_to_start(true);
+
+        let win = window();
+        let sel = win.get_selection().unwrap().unwrap();
+        sel.remove_all_ranges().unwrap();
+        sel.add_range(&new_range).unwrap();
+    }
 }
 
 fn filter_mentions(
@@ -139,13 +222,14 @@ fn filter_mentions(
 }
 
 #[component]
-pub fn SelectionMenu(input: InputState) -> impl IntoView {
+pub fn SelectionMenu(
+    menu: RwSignal<MenuType>,
+    selected_index: RwSignal<usize>,
+    matches: RwSignal<Vec<MemberShip>>,
+    input_ref: NodeRef<Div>,
+) -> impl IntoView {
     let state: AppState = expect_context();
     let store: MemberStore = expect_context();
-
-    let menu = input.menu_type;
-    let matches = input.matches;
-    let index = input.selected_index;
 
     let matcher = StoredValue::new(Matcher::new(Config::DEFAULT));
 
@@ -180,6 +264,9 @@ pub fn SelectionMenu(input: InputState) -> impl IntoView {
             class:hidden=move || menu.get().is_none()
         >
             {move || {
+                let Some(el) = input_ref.get() else {
+                    return view! {}.into_any();
+                };
                 let store = store.clone();
                 let room_id = state.active_room_id.get().unwrap_or_default();
                 match menu.get() {
@@ -208,12 +295,17 @@ pub fn SelectionMenu(input: InputState) -> impl IntoView {
                                         .get();
                                     let p_clone = profile.clone();
                                     let m_clone = member.clone();
+                                    let el = el.clone();
+
                                     view! {
                                         <button
                                             class="flex flex-row items-center gap-2 mx-(--gap) px-(--gap) py-1 rounded-(--ui-border-radius) cursor-pointer"
-                                            class=("bg-(--ui-hover-bg)", move || idx == index.get())
-                                            on:mouseenter=move |_| index.set(idx)
-                                            on:click=move |_| enter_selection(input)
+                                            class=(
+                                                "bg-(--ui-hover-bg)",
+                                                move || idx == selected_index.get(),
+                                            )
+                                            on:mouseenter=move |_| selected_index.set(idx)
+                                            on:click=move |_| { commit_mention(&el.clone(), &member) }
                                         >
                                             {move || {
                                                 let profile = profile.clone();
@@ -236,9 +328,12 @@ pub fn SelectionMenu(input: InputState) -> impl IntoView {
                                             <span
                                                 class=(
                                                     "text-(--ui-hover-color)",
-                                                    move || idx == index.get(),
+                                                    move || idx == selected_index.get(),
                                                 )
-                                                class=("text-(--ui-base-color)", move || idx != index.get())
+                                                class=(
+                                                    "text-(--ui-base-color)",
+                                                    move || idx != selected_index.get(),
+                                                )
                                             >
                                                 {member.user_id.clone()}
                                             </span>
@@ -253,5 +348,5 @@ pub fn SelectionMenu(input: InputState) -> impl IntoView {
                 }
             }}
         </div>
-    }
+    }.into_any()
 }

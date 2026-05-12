@@ -5,7 +5,6 @@ use log::error;
 use serde::Serialize;
 use shared::{
     account_data::{AccountDataArgs, AccountDataPayload, Breadcrumbs, ServerOrder},
-    messages::RichTextSpan,
     sidebar::{RoomKind, RoomNode, SidebarState},
     user_profile::{PresenceInfo, UserProfile},
 };
@@ -28,7 +27,7 @@ pub struct AppState {
 
     pub is_focused: RwSignal<bool>,
 
-    pub drafts: RwSignal<HashMap<String, Vec<RichTextSpan>>>,
+    pub drafts: RwSignal<HashMap<String, String>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
