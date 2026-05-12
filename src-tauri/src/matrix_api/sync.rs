@@ -36,7 +36,7 @@ use tauri_plugin_http::reqwest::{self, Client};
 
 use crate::{
     frontend::{send_member_update, send_sidebar_update},
-    matrix_api::{crypto, handle_sync_calls, rooms::backfill_gap},
+    matrix_api::{crypto, handle_sync_calls, messages::backfill_gap},
     reqwest_response_to_http_response,
     state::{AppState, HomeServerInfo},
     storage::{

@@ -1012,6 +1012,7 @@ fn TimeLine() -> impl IntoView {
 
     view! {
         <div class="flex-1 w-full w-full overflow-y-auto flex flex-col-reverse py-2 overflow-anchor-auto">
+            <div class="mb-5"></div>
             <For
                 each=move || flattened_items.get()
                 key=|item| item.id.clone()
@@ -1204,7 +1205,7 @@ fn ChatInput() -> impl IntoView {
     });
 
     view! {
-        <div class="p-2 w-full rounded-full relative">
+        <div class="p-2 pt-0 w-full rounded-full relative">
             <SelectionMenu
                 menu=menu
                 selected_index=selected_indx

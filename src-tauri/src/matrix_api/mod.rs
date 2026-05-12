@@ -1,14 +1,15 @@
 use crate::{
-    TauriError,
     matrix_api::rooms::get_members_api,
     state::HomeServerInfo,
     storage::{SafeStuff, SyncCallsToExecute},
+    TauriError,
 };
 
 pub(crate) mod account_data;
 pub(crate) mod authentication;
 pub(crate) mod crypto;
 pub(crate) mod discovery;
+pub(crate) mod messages;
 pub(crate) mod rooms;
 pub(crate) mod sync;
 

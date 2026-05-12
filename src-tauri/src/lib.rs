@@ -376,7 +376,7 @@ pub fn run() {
 
             // matrix API commands
             matrix_api::discovery::choose_home_server,
-            matrix_api::rooms::fetch_messages,
+            matrix_api::messages::fetch_messages,
             matrix_api::rooms::send_read_marker,
             matrix_api::account_data::set_account_data,
             matrix_api::account_data::get_account_data,
