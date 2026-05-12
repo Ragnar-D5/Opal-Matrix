@@ -14,17 +14,10 @@ use crate::{
     tauri_functions::{get_members, send_marker, MemberShip},
 };
 
-use log::info;
 use phosphor_leptos::{Icon, IconWeight, HASH, INFO, TRASH, UPLOAD_SIMPLE};
 
 use chrono::{DateTime, Local, NaiveDate, TimeZone};
-use leptos::{
-    ev,
-    html::{Div, Span},
-    leptos_dom::logging::console_error,
-    prelude::*,
-    task::spawn_local,
-};
+use leptos::{ev, html::Div, leptos_dom::logging::console_error, prelude::*, task::spawn_local};
 use leptos_use::{use_event_listener, use_intersection_observer, UseIntersectionObserverReturn};
 use serde::Serialize;
 use shared::{
@@ -36,7 +29,7 @@ use shared::{
     user_profile::PresenceStatus,
 };
 use std::collections::{HashMap, HashSet};
-use web_sys::{DomParser, KeyboardEvent, MouseEvent, SupportedType};
+use web_sys::{DomParser, SupportedType};
 
 #[derive(PartialEq, Clone)]
 struct TimelineMessageGroup {
@@ -1128,17 +1121,6 @@ fn ChatHeader(
 fn ChatInput() -> impl IntoView {
     let state: AppState = expect_context();
 
-    // let input: InputState = InputState {
-    //     tokens: RwSignal::new(Vec::<RichTextSpan>::new()),
-    //     caret_position: RwSignal::new((0, 0)),
-    //     menu_type: RwSignal::new(MenuType::None),
-    //     selected_index: RwSignal::new(0),
-    //     matches: RwSignal::new(Vec::<MemberShip>::new()),
-    // };
-
-    // let caret_position = input.caret_position;
-    // let tokens = input.tokens;
-
     let menu = RwSignal::new(MenuType::None);
     let selected_indx = RwSignal::new(0);
     let matches = RwSignal::new(Vec::<MemberShip>::new());
@@ -1178,21 +1160,7 @@ fn ChatInput() -> impl IntoView {
             let _ = el.focus();
         }
     });
-    // Effect::new(move |_| {
-    //     caret_position.get();
 
-    //     set_anim_toggle.update(|v| *v = !*v);
-    // });
-
-    // Save on every keystroke
-    // Effect::new(move |_| {
-    //     let tokens = input_ref.get();
-    //     if let Some(room_id) = state.active_room_id.get_untracked() {
-    //         state.drafts.update(|d| {
-    //             d.insert(room_id, tokens);
-    //         });
-    //     }
-    // });
     let is_empty = RwSignal::new(true);
 
     // Load on room change

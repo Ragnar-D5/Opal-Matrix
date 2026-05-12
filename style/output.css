@@ -42,8 +42,6 @@
     --default-transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
     --default-font-family: var(--font-sans);
     --default-mono-font-family: var(--font-mono);
-    --animate-soft-blink: soft-blink 1.5s ease-in-out 1s infinite;
-    --animate-soft-blink-clone: soft-blink-clone 1.5s ease-in-out 1s infinite;
   }
 }
 @layer base {
@@ -410,9 +408,6 @@
   .h-32 {
     height: calc(var(--spacing) * 32);
   }
-  .h-\[1\.2em\] {
-    height: 1.2em;
-  }
   .h-\[1px\] {
     height: 1px;
   }
@@ -461,9 +456,6 @@
   .w-65 {
     width: calc(var(--spacing) * 65);
   }
-  .w-\[1px\] {
-    width: 1px;
-  }
   .w-\[20rem\] {
     width: 20rem;
   }
@@ -509,12 +501,6 @@
   }
   .animate-pulse {
     animation: var(--animate-pulse);
-  }
-  .animate-soft-blink {
-    animation: var(--animate-soft-blink);
-  }
-  .animate-soft-blink-clone {
-    animation: var(--animate-soft-blink-clone);
   }
   .text-token {
     white-space: pre-wrap;
@@ -738,9 +724,6 @@
   }
   .bg-blue-500 {
     background-color: var(--color-blue-500);
-  }
-  .bg-current {
-    background-color: currentcolor;
   }
   .bg-gray-700 {
     background-color: var(--color-gray-700);

@@ -10,7 +10,6 @@ use crate::{
 use colorsys::ColorAlpha;
 use leptos::html::Div;
 use leptos::prelude::*;
-use log::info;
 use nucleo_matcher::{Config, Matcher, Utf32Str};
 use shared::user_profile::UserProfile;
 use web_sys::HtmlElement;
@@ -21,7 +20,7 @@ use crate::components::user_profile::UserProfileMaybeExt;
 pub enum MenuType {
     None,
     Mentions { filter: String },
-    Commands { filter: String },
+    // Commands { filter: String },
 }
 
 impl MenuType {
@@ -30,59 +29,6 @@ impl MenuType {
     }
 }
 
-// pub fn enter_selection(input: InputState) {
-//     let matches = input.matches.get_untracked();
-//     let index = input.selected_index.get_untracked();
-//     let (t_idx, c_idx) = input.caret_position.get_untracked();
-
-//     info!(
-//         "Selected index: {}, Matches: {:?}",
-//         index,
-//         matches.get(index),
-//     );
-
-//     if let Some(selected_member) = matches.get(index) {
-//         input.tokens.update(|tokens| {
-//             let mut new_token = None;
-
-//             if let Some(RichTextSpan::Plain(ref mut text)) = tokens.get_mut(t_idx) {
-//                 if let Some(at_pos) = text.rfind('@') {
-//                     let safe_c_idx = c_idx.min(text.len());
-//                     let suffix = text[safe_c_idx..].to_string();
-
-//                     text.truncate(at_pos);
-
-//                     new_token = Some(RichTextSpan::Plain(suffix));
-//                 }
-//             }
-
-//             if selected_member.user_id
-//                 == expect_context::<AppState>()
-//                     .active_room_id
-//                     .get()
-//                     .unwrap_or_default()
-//             {
-//                 tokens.insert(t_idx + 1, RichTextSpan::RoomMention);
-//             } else {
-//                 tokens.insert(
-//                     t_idx + 1,
-//                     RichTextSpan::UserMention {
-//                         user_id: selected_member.user_id.clone(),
-//                         display_name: selected_member.get_name(),
-//                     },
-//                 );
-//             };
-
-//             if let Some(token) = new_token {
-//                 tokens.insert(t_idx + 2, token);
-//             }
-//         });
-
-//         input.caret_position.set((t_idx + 1, 1));
-//     };
-//     input.menu_type.set(MenuType::None);
-// }
-//
 pub fn commit_mention(el: &HtmlElement, membership: &MemberShip) {
     let doc = document();
     let caret_pos = get_caret_position(el);
