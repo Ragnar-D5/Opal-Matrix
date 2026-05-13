@@ -1,7 +1,5 @@
-A matrix frontend (hopefully for all major platforms) written in Rust 
+A matrix frontend (hopefully for all major platforms) written in Rust using [tauri](https://v2.tauri.app/) and [leptos](https://leptos.dev/)
 
-TODO:
-- [x] Server discovery flow
-- Login flow
-- [ ] discover available login methods
-- [ ] use anything beside legacy login
+How to get started: [get started]()
+
+Technical docs: [some link]()
