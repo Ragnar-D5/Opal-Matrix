@@ -10,9 +10,9 @@ use shared::user_profile::{PresenceInfo, UserProfile};
 use wasm_bindgen::prelude::*;
 use web_sys::HtmlImageElement;
 
+use crate::components::{chat::Chat, sidebar::Sidebar};
 use crate::hooks::use_tauri_event;
 use crate::state::{AppState, MemberStore};
-use crate::tauri::{chat::Chat, sidebar::Sidebar};
 
 #[wasm_bindgen]
 extern "C" {

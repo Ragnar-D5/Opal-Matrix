@@ -3,7 +3,6 @@ mod components;
 mod hooks;
 mod logger;
 mod state;
-mod tauri;
 mod tauri_functions;
 
 pub use crate::logger::{debug, error, info, trace, warn};

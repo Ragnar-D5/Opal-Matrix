@@ -25,6 +25,7 @@ pub async fn commit_message(state: State<'_, Arc<AppState>>, handle: AppHandle, 
     let message = UiMessage {
         event_id: txn_id.clone(),
         timestamp: timestamp,
+        is_pending: true,
         kind: MessageKind::UserMessage(UserMessage {
             mentions: mentions.clone(),
             reactions: Vec::new(),

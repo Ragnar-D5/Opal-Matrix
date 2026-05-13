@@ -183,6 +183,7 @@ pub struct UiMessage {
     pub timestamp: u64,
     pub sender_id: String,
 
+    pub is_pending: bool,
     pub kind: MessageKind,
 }
 
@@ -208,10 +209,5 @@ impl UiMessage {
         if let MessageKind::UserMessage(user_message) = &mut self.kind {
             user_message.reactions.push(reaction);
         }
-    }
-
-    /// Detect if the message is pending by checking if it's event_id is a uuid v4
-    pub fn is_pending(&self) -> bool {
-        uuid::Uuid::parse_str(&self.event_id).map_or(false, |uuid| uuid.get_version_num() == 4)
     }
 }

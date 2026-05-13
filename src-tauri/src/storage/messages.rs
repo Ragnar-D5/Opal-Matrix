@@ -266,6 +266,11 @@ impl TryInto<UiMessage> for MessageRow {
             .get("content")
             .ok_or(format!("Missing content: {:?}", value))?;
 
+        // Check if it is pending by checking if the event_id is a uuid v4
+        let is_pending = uuid::Uuid::parse_str(&self.event_id)
+            .map(|uuid| uuid.get_version_num() == 4)
+            .unwrap_or(false);
+
         let message_kind = match self.msg_type.as_str() {
             "m.room.message" => {
                 let mut user_message = UserMessage::new();
@@ -287,6 +292,7 @@ impl TryInto<UiMessage> for MessageRow {
 
                         return Ok(UiMessage {
                             event_id: self.event_id,
+                            is_pending,
                             timestamp: self.timestamp,
                             sender_id: self.sender,
                             kind: MessageKind::SystemMessage(SystemMessage::MessageEdited {
@@ -559,6 +565,7 @@ impl TryInto<UiMessage> for MessageRow {
 
         let msg = UiMessage {
             event_id: self.event_id,
+            is_pending,
             timestamp: self.timestamp,
             sender_id: self.sender,
             kind: message_kind,

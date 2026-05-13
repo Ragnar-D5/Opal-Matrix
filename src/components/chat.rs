@@ -33,13 +33,15 @@ use std::collections::{HashMap, HashSet};
 use web_sys::{DomParser, SupportedType};
 
 #[derive(PartialEq, Clone)]
-struct TimelineMessageGroup {
-    contents: Vec<UserMessage>,
+struct GroupedMessage {
+    message: UserMessage,
+    is_pending: bool,
+    event_id: String,
 }
 
 #[derive(PartialEq, Clone)]
 enum TimelineItemKind {
-    MessageGroup(TimelineMessageGroup),
+    MessageGroup(Vec<GroupedMessage>),
     DateSeparator,
     SystemMessage(SystemMessage),
     NewMessageIndicator,
@@ -206,6 +208,108 @@ fn ReplyPreview(replies_to: Option<RepliesTo>) -> impl IntoView {
     }
 }
 
+fn render_user_message(
+    message: &UserMessage,
+    store: MemberStore,
+    room_id: String,
+    is_pending: bool,
+) -> impl IntoView {
+    match &message.content {
+        MessageContent::Text { spans, is_edited } => {
+
+            view! {
+                <div
+                    class="text-normal leading-relaxed break-words"
+                    class=("opacity-50", is_pending)
+                >
+                    {spans
+                        .clone()
+                        .into_iter()
+                        .map(|v| v.render(store.clone(), room_id.clone()))
+                        .collect_view()}
+                    {if *is_edited {
+                        view! { <span class="text-xs text-muted ml-2 italic">"(edited)"</span> }
+                            .into_any()
+                    } else {
+                        view! {}.into_any()
+                    }}
+                    {spans.clone().into_iter().map(render_link).collect_view()}
+                </div>
+            }
+                .into_any()
+        }
+        MessageContent::Image {
+            url,
+            name,
+            encryption_info,
+            ..
+        } => {
+            let final_url = if let Some(enc) = encryption_info {
+                let encoded_key = urlencoding::encode(&enc.key);
+                let encoded_iv = urlencoding::encode(&enc.iv);
+                format!("{}?key={}&iv={}", url, encoded_key, encoded_iv)
+            } else {
+                url.clone()
+            };
+
+            view! {
+                <div class="mt-1" class=("opacity-50", is_pending)>
+                    <img
+                        src=final_url
+                        alt=name.clone()
+                        class="max-w-sm rounded-md border border-[var(--tile-border-color)]"
+                    />
+                </div>
+            }
+                .into_any()
+        }
+        MessageContent::File { url, filename, size } => {
+            view! {
+                <div
+                    class="flex items-center gap-2 mt-1 p-2 rounded-md bg-white/5 border border-[var(--tile-border-color)] inline-flex"
+                    class=("opacity-50", is_pending)
+                >
+                    <span class="text-xl">"📄"</span>
+                    <a
+                        href=url.clone()
+                        target="_blank"
+                        class="text-blue-400 hover:underline truncate max-w-xs"
+                    >
+                        {filename.clone()}
+                    </a>
+                    <span class="text-xs text-muted">
+                        {format!("{:.1} KB", *size as f64 / 1024.0)}
+                    </span>
+                </div>
+            }
+                .into_any()
+        }
+        MessageContent::Encrypted => {
+            view! {
+                <div
+                    class="text-red-300 bold leading-relaxed break-words text-muted"
+                    class=("opacity-50", is_pending)
+                >
+                    "Encrypted message"
+                </div>
+            }
+                .into_any()
+        }
+        MessageContent::Deleted => {
+            view! {
+                <div
+                    class="text-muted italic leading-relaxed break-words flex flex-row items-center gap-1"
+                    class=("opacity-50", is_pending)
+                >
+                    <Icon icon=TRASH size="20px" />
+                    "This message was deleted"
+                </div>
+            }
+                .into_any()
+        }
+    }
+}
+
 impl TimelineItem {
     fn render(&self) -> impl IntoView {
         let state: AppState = expect_context();
@@ -224,21 +328,23 @@ impl TimelineItem {
 
         match &self.kind {
             TimelineItemKind::MessageGroup(group) => {
-                let first_msg = group.contents.first();
+                let first_msg = group.first();
                 let first_message_mentions_user = first_msg
-                    .map(|msg| msg.mentions.user_ids.contains(&own_user_id)).unwrap_or(false);
+                    .map(|msg| msg.message.mentions.user_ids.contains(&own_user_id))
+                    .unwrap_or(false);
 
-                let first_reply_data = first_msg.and_then(|m| m.replies_to.clone());
+                let first_reply_data = first_msg.and_then(|m| m.message.replies_to.clone());
                 let highlight_reply_preview = first_message_mentions_user && first_reply_data.is_some();
 
                 view! {
                     <div class="flex flex-col gap-1 py-3 rounded-md">
                         <div class="flex flex-col w-full">
                             {group
-                                .contents
                                 .iter()
                                 .enumerate()
-                                .map(|(idx, msg)| {
+                                .map(|(idx, grouped_msg)| {
+                                    let msg = &grouped_msg.message;
+                                    let is_pending = grouped_msg.is_pending;
                                     let is_first = idx == 0;
                                     let message_mentions_user = msg
                                         .mentions
@@ -257,92 +363,13 @@ impl TimelineItem {
                                         *reaction_counts.entry(r.reaction.clone()).or_insert(0)
                                             += 1;
                                     }
-                                    let content = match &msg.content {
-                                        MessageContent::Text { spans, is_edited } => {
-
-                                            view! {
-                                                <div class="text-normal leading-relaxed break-words">
-                                                    {spans
-                                                        .clone()
-                                                        .into_iter()
-                                                        .map(|v| v.render(store.clone(), room_id.clone()))
-                                                        .collect_view()}
-                                                    {if *is_edited {
-                                                        view! {
-                                                            <span class="text-xs text-muted ml-2 italic">
-                                                                "(edited)"
-                                                            </span>
-                                                        }
-                                                            .into_any()
-                                                    } else {
-                                                        view! {}.into_any()
-                                                    }}
-                                                    {spans.clone().into_iter().map(render_link).collect_view()}
-                                                </div>
-                                            }
-                                                .into_any()
-                                        }
-                                        MessageContent::Image {
-                                            url,
-                                            name,
-                                            encryption_info,
-                                            ..
-                                        } => {
-                                            let final_url = if let Some(enc) = encryption_info {
-                                                let encoded_key = urlencoding::encode(&enc.key);
-                                                let encoded_iv = urlencoding::encode(&enc.iv);
-                                                format!("{}?key={}&iv={}", url, encoded_key, encoded_iv)
-                                            } else {
-                                                url.clone()
-                                            };
-
-                                            view! {
-                                                <div class="mt-1">
-                                                    <img
-                                                        src=final_url
-                                                        alt=name.clone()
-                                                        class="max-w-sm rounded-md border border-[var(--tile-border-color)]"
-                                                    />
-                                                </div>
-                                            }
-                                                .into_any()
-                                        }
-                                        MessageContent::File { url, filename, size } => {
-                                            view! {
-                                                <div class="flex items-center gap-2 mt-1 p-2 rounded-md bg-white/5 border border-[var(--tile-border-color)] inline-flex">
-                                                    <span class="text-xl">"📄"</span>
-                                                    <a
-                                                        href=url.clone()
-                                                        target="_blank"
-                                                        class="text-blue-400 hover:underline truncate max-w-xs"
-                                                    >
-                                                        {filename.clone()}
-                                                    </a>
-                                                    <span class="text-xs text-muted">
-                                                        {format!("{:.1} KB", *size as f64 / 1024.0)}
-                                                    </span>
-                                                </div>
-                                            }
-                                                .into_any()
-                                        }
-                                        MessageContent::Encrypted => {
-                                            view! {
-                                                <div class="text-red-300 bold leading-relaxed break-words text-muted">
-                                                    "Encrypted message"
-                                                </div>
-                                            }
-                                                .into_any()
-                                        }
-                                        MessageContent::Deleted => {
-                                            view! {
-                                                <div class="text-muted italic leading-relaxed break-words flex flex-row items-center gap-1">
-                                                    <Icon icon=TRASH size="20px" />
-                                                    "This message was deleted"
-                                                </div>
-                                            }
-                                                .into_any()
-                                        }
-                                    };
+                                    let content = render_user_message(
+                                        msg,
+                                        store.clone(),
+                                        room_id.clone(),
+                                        is_pending,
+                                    );
+                                    let date = self.date;
 
                                     view! {
                                         <div
@@ -370,6 +397,19 @@ impl TimelineItem {
                                                     .into_any()
                                             } else {
                                                 view! {}.into_any()
+                                            }}
+
+                                            {move || {
+                                                if hovered.get() && !is_first {
+                                                    view! {
+                                                        <div class="absolute text-xs text-muted mt-[5px] ml-[5px]">
+                                                            {date.format("%H:%M").to_string()}
+                                                        </div>
+                                                    }
+                                                        .into_any()
+                                                } else {
+                                                    view! {}.into_any()
+                                                }
                                             }}
 
                                             {if is_first {
@@ -658,7 +698,7 @@ fn TimeLine() -> impl IntoView {
             .get()
             .iter()
             .filter_map(|m| {
-                if m.is_pending() {
+                if m.is_pending {
                     None
                 } else {
                     Some((m.timestamp, m.event_id.clone()))
@@ -835,13 +875,16 @@ fn TimeLine() -> impl IntoView {
 
                             let current_is_reply = user_msg.replies_to.is_some();
                             let last_is_reply = group
-                                .contents
                                 .last()
-                                .map(|m| m.replies_to.is_some())
+                                .map(|m| m.message.replies_to.is_some())
                                 .unwrap_or(false);
 
                             if same_sender && same_minute && !current_is_reply && !last_is_reply {
-                                group.contents.push(user_msg.clone());
+                                group.push(GroupedMessage {
+                                    message: user_msg.clone(),
+                                    is_pending: msg.is_pending,
+                                    event_id: msg.event_id.clone(),
+                                });
                                 last_item.id = format!("{}_{}", last_item.id, msg.event_id);
                                 grouped = true;
                             }
@@ -853,9 +896,11 @@ fn TimeLine() -> impl IntoView {
                             date: current_date,
                             sender: msg.sender_id.clone(),
                             id: msg.event_id.clone(),
-                            kind: TimelineItemKind::MessageGroup(TimelineMessageGroup {
-                                contents: vec![user_msg.clone()],
-                            }),
+                            kind: TimelineItemKind::MessageGroup(vec![GroupedMessage {
+                                message: user_msg.clone(),
+                                is_pending: msg.is_pending,
+                                event_id: msg.event_id.clone(),
+                            }]),
                         })
                     } else {
                         None
@@ -942,8 +987,6 @@ fn TimeLine() -> impl IntoView {
                         unique_new.append(existing);
                         *existing = unique_new;
                     });
-
-                    info!("Messages so far: {:?}", messages.get_untracked());
 
                     set_initial_loaded.set(true);
                 }
