@@ -243,7 +243,7 @@ impl TimelineItem {
                                     let message_mentions_user = msg
                                         .mentions
                                         .user_ids
-                                        .contains(&own_user_id);
+                                        .contains(&own_user_id) || msg.mentions.room;
                                     let reply_data = if is_first {
                                         first_reply_data.clone()
                                     } else {
