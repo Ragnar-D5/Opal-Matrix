@@ -1,23 +1,22 @@
-use ruma::api::{OutgoingRequest, auth_scheme::SendAccessToken};
-use std::{borrow::Cow, collections::HashMap, sync::Arc};
-use tauri_plugin_http::reqwest;
+use std::{collections::HashMap, sync::Arc};
 
 use chrono::Local;
 use ego_tree::NodeRef;
-use log::{info, warn};
+use log::{error, info, warn};
 use scraper::{Html, Node};
 use serde_json::json;
 use shared::messages::{
-    Mentions, MessageContent, MessageKind, RichTextSpan, UiMessage, UserMessage,
+    Mentions, MessageContent, MessageKind, RichTextSpan, SystemMessage, UiMessage, UserMessage
 };
-use tauri::{AppHandle, State, command};
+use tauri::{AppHandle, State, async_runtime::spawn, command};
 use uuid::Uuid;
 
 use crate::{
+    frontend::emit_messages_update,
+    matrix_api::messages::send_message_to_matrix,
+    state::{AppState, HomeServerInfo},
+    storage::messages::{delete_message, save_messages, MessageRow},
     TauriError,
-    frontend::send_messages_update,
-    state::AppState,
-    storage::messages::{MessageRow, save_messages},
 };
 
 #[command(rename_all = "snake_case")]
@@ -52,10 +51,6 @@ pub async fn commit_message(
         sender_id: user_id.clone(),
     };
 
-    let dict = HashMap::from([(room_id.clone(), vec![message.clone()])]);
-
-    send_messages_update(&handle, dict)?;
-
     let message_json = json!({
         "type": "m.room.message",
         "sender": user_id,
@@ -70,7 +65,7 @@ pub async fn commit_message(
             }
         },
         "origin_server_ts": timestamp,
-        "event_id": txn_id.clone(),
+        "event_id": txn_id,
         "room_id": room_id,
     });
 
@@ -87,48 +82,44 @@ pub async fn commit_message(
         .with_connection_mut(move |conn| save_messages(conn, vec![db_message]))
         .await?;
 
-    let message_content =
-        ruma::events::room::message::RoomMessageEventContent::text_html(body, formatted_body);
+    let (access_token, HomeServerInfo {base_url, supported_versions}) = state.get_api().await?;
+    let txn_id_clone = txn_id.clone();
+    let room_id_clone = room_id.clone();
+    let state_clone = state.inner().clone();
 
-    let ruma_request = ruma::api::client::message::send_message_event::v3::Request::new(
-        room_id.clone().try_into()?,
-        txn_id.clone().into(),
-        &message_content,
-    )?;
+    spawn(async move {
+        let event_id = match send_message_to_matrix(
+            base_url,
+            &supported_versions,
+            access_token,
+            &room_id_clone,
+            txn_id,
+            body,
+            formatted_body,
+            mentions,
+        ).await {
+            Ok(res) => res,
+            Err(error) => {
+                error!("Failed to send message: {:?}", error);
+                return;
+            }
+        };
 
-    let info = state.get_api().await?;
+        state_clone.messages_to_delete.write().await.insert(event_id, txn_id_clone.clone());
 
-    let http_request = ruma_request.try_into_http_request::<Vec<u8>>(
-        &info.1.base_url,
-        SendAccessToken::IfRequired(&info.0),
-        Cow::Borrowed(&info.1.supported_versions),
-    )?;
+        let mut conn_guard = state_clone.connection.lock().await;
+        let Some(conn) = conn_guard.as_mut() else {
+            warn!("Connection not initialized, cannot delete message");
+            return;
+        };
 
-    warn!("{:?}", http_request.body());
-
-    let reqwest_request = reqwest::Request::try_from(http_request.clone())?;
-
-    let client = reqwest::Client::new();
-
-    let mut response = client.execute(reqwest_request).await?;
-    let mut timeout = 1;
-
-    while !response.status().is_success() {
-        if timeout >= 120 {
-            return Err("Failed to send message after timeout was reached".into());
+        if let Err(error) = delete_message(conn, &txn_id_clone) {
+            error!("Failed to delete message {}: {:?}", txn_id_clone, error);
         }
+    });
 
-        timeout *= 2;
-        tokio::time::sleep(std::time::Duration::from_secs(timeout)).await;
-
-        response = client
-            .execute(reqwest::Request::try_from(http_request.clone())?)
-            .await?;
-    }
-
-    info!("{:?}", response.status());
-    info!("Successfully sent message");
-    // TODO: Change message in db?
+    let dict = HashMap::from([(room_id.clone(), vec![message.clone()])]);
+    emit_messages_update(&handle, &dict)?;
 
     Ok(())
 }

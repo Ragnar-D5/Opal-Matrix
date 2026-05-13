@@ -1,35 +1,38 @@
 use log::debug;
+use ruma::api::SupportedVersions;
+use ruma::events::Mentions as RumaMentions;
+use ruma::OwnedUserId;
 use serde_json::Value;
-use shared::messages::UiMessage;
+use shared::messages::{Mentions, UiMessage};
 use std::borrow::Cow;
 use std::{str::FromStr, sync::Arc};
 use tauri_plugin_http::reqwest::{self, Client};
 
 use ruma::{
-    OwnedRoomId, UInt,
     api::{
-        IncomingResponse, OutgoingRequest,
         auth_scheme::SendAccessToken,
         client::message::get_message_events::v3::{
             Request as MessageEventsRequest, Response as MessageEventsResponse,
         },
+        IncomingResponse, OutgoingRequest,
     },
+    OwnedRoomId, UInt,
 };
 
 use crate::{
-    AppState,
     matrix_api::crypto::process_message,
     state::HomeServerInfo,
     storage::{
-        messages::{MessageRow, get_messages, save_messages},
+        messages::{get_messages, save_messages, MessageRow},
         rooms::save_prev_token,
     },
+    AppState,
 };
 use log::warn;
-use rusqlite::{OptionalExtension, params};
-use tauri::{State, command};
+use rusqlite::{params, OptionalExtension};
+use tauri::{command, State};
 
-use crate::{TauriError, reqwest_response_to_http_response};
+use crate::{reqwest_response_to_http_response, TauriError};
 
 /// Fetches messages from the Matrix server for a given room, starting from a specified pagination token. Returns the messages and the next pagination token (if available).
 async fn get_messages_api(
@@ -282,4 +285,81 @@ pub async fn backfill_gap(
     }
 
     Ok(())
+}
+
+trait AsRumaMentions {
+    fn as_ruma_mentions(&self) -> RumaMentions;
+}
+
+impl AsRumaMentions for Mentions {
+    fn as_ruma_mentions(&self) -> RumaMentions {
+        let mut m = RumaMentions::with_user_ids(
+            self.user_ids
+                .iter()
+                .filter_map(|v| OwnedUserId::from_str(v.as_str()).ok()),
+        );
+        m.room = self.room;
+        m
+    }
+}
+
+use ruma::api::client::message::send_message_event::v3::{
+    Request as SendMessageRequest, Response as SendMessageResponse,
+};
+
+/// This function is called to send the contents of the input field
+/// as m.room.message
+pub async fn send_message_to_matrix(
+    base_url: String,
+    supported_versions: &SupportedVersions,
+    access_token: String,
+    room_id: &String,
+    txn_id: String,
+    body: String,
+    formatted_body: String,
+    mentions: Mentions,
+) -> Result<String, TauriError> {
+    let mentions = mentions.as_ruma_mentions();
+
+    let message_content =
+        ruma::events::room::message::RoomMessageEventContent::text_html(body, formatted_body)
+            .add_mentions(mentions);
+
+    let ruma_request = SendMessageRequest::new(
+        room_id.clone().try_into()?,
+        txn_id.clone().into(),
+        &message_content,
+    )?;
+
+    let http_request = ruma_request.try_into_http_request::<Vec<u8>>(
+        base_url.as_str(),
+        SendAccessToken::IfRequired(access_token.as_str()),
+        Cow::Borrowed(&supported_versions),
+    )?;
+
+    let reqwest_request = reqwest::Request::try_from(http_request.clone())?;
+
+    let client = reqwest::Client::new();
+
+    let mut response = client.execute(reqwest_request).await?;
+    let mut timeout = 1;
+
+    while !response.status().is_success() {
+        if timeout >= 120 {
+            return Err("Failed to send message after timeout was reached".into());
+        }
+
+        timeout *= 2;
+        tokio::time::sleep(std::time::Duration::from_secs(timeout)).await;
+
+        response = client
+            .execute(reqwest::Request::try_from(http_request.clone())?)
+            .await?;
+    }
+
+    let http_res = reqwest_response_to_http_response(response).await?;
+
+    let res = SendMessageResponse::try_from_http_response(http_res)?;
+
+    Ok(res.event_id.to_string())
 }

@@ -28,7 +28,7 @@ use ruma::{
 
 use serde_json::value::RawValue;
 use shared::{
-    messages::UiMessage,
+    messages::{MessageKind, SystemMessage, UiMessage},
     user_profile::{PresenceInfo, PresenceStatus},
 };
 use tauri::{AppHandle, Emitter};
@@ -353,15 +353,36 @@ async fn handle_sync_response(
             send_sidebar_update(conn, handle, &user_id)?;
         }
         if !changes.new_messages.is_empty() {
+            let messages_to_delete = state.messages_to_delete.write().await.to_owned();
+
             let messages: HashMap<String, Vec<UiMessage>> = changes
                 .new_messages
                 .into_iter()
-                .filter_map(|msg_row| {
+                .flat_map(|msg_row| -> Option<Vec<(String, UiMessage)>> {
                     let room_id = msg_row.room_id.clone();
+                    let mut result = Vec::new();
 
-                    let converted = msg_row.try_into().ok()?;
-                    Some((room_id, converted))
+                    let converted: UiMessage = msg_row.clone().try_into().ok()?;
+                    result.push((room_id.clone(), converted));
+
+                    if let Some(other_id) = messages_to_delete.get(&msg_row.event_id) {
+                        result.push((
+                            room_id.clone(),
+                            UiMessage {
+                                event_id: room_id.clone(),
+                                sender_id: msg_row.sender,
+                                is_pending: false,
+                                timestamp: msg_row.timestamp,
+                                kind: MessageKind::SystemMessage(SystemMessage::RemoveMessage {
+                                    event_id: other_id.clone(),
+                                }),
+                            },
+                        ));
+                    }
+
+                    Some(result)
                 })
+                .flatten()
                 .fold(HashMap::new(), |mut acc, (room_id, ui_msg)| {
                     acc.entry(room_id).or_default().push(ui_msg);
                     acc
@@ -624,7 +645,10 @@ fn extract_message(
     match ev {
         AnySyncMessageLikeEvent::Message(ev) => {
             if let Some(or) = ev.as_original() {
-                warn!("Unimplemented message type in room {}: {:?}", room_id, or);
+                warn!(
+                    "Unimplemented message type in room {}: {:?}",
+                    room_id, raw_json
+                );
             }
         }
         AnySyncMessageLikeEvent::RoomMessage(ev) => {

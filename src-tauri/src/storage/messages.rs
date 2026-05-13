@@ -576,3 +576,8 @@ impl TryInto<UiMessage> for MessageRow {
         return Ok(msg);
     }
 }
+
+pub fn delete_message(conn: &Connection, event_id: &str) -> Result<(), TauriError> {
+    conn.execute("DELETE FROM messages WHERE event_id = ?", rusqlite::params![event_id])?;
+    Ok(())
+}

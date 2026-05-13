@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use log::{info};
 use rusqlite::Connection;
@@ -6,9 +6,7 @@ use shared::{messages::{MessageKind, UiMessage}, user_profile::UserProfile};
 use tauri::{AppHandle, Emitter};
 
 use crate::{
-    send_notification,
-    storage::{fetch_sidebar, members::MemberRow, rooms::get_room_name},
-    TauriError,
+    TauriError, send_notification, state::AppState, storage::{fetch_sidebar, members::MemberRow, rooms::get_room_name}
 };
 
 pub(crate) mod messages;
@@ -59,6 +57,7 @@ pub fn send_sidebar_update(
     Ok(())
 }
 
+/// Emits message to the frontend in the `messages_update` event.
 pub fn emit_messages_update(
     handle: &AppHandle,
     messages: &HashMap<String, Vec<UiMessage>>,
@@ -77,7 +76,6 @@ pub fn send_messages_update(
 ) -> Result<(), TauriError> {
     emit_messages_update(handle, &messages)?;
 
-    info!("Checking for notifications to send...");
     if !send_notifications {
         return Ok(());
     }

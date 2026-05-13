@@ -2,6 +2,7 @@ use log::info;
 use ruma::{api::SupportedVersions, UserId};
 use rusqlite::Connection;
 use std::{
+    collections::HashMap,
     path::PathBuf,
     sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -114,6 +115,8 @@ pub struct AppState {
     pub connection: Mutex<Option<rusqlite::Connection>>,
 
     pub frontend_current_room_id: RwLock<Option<String>>,
+
+    pub messages_to_delete: RwLock<HashMap<String, String>>,
 }
 
 impl AppState {
