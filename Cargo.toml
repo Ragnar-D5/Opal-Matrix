@@ -36,4 +36,4 @@ linkify = "0.11.0"
 regex = "1.12.3"
 
 [workspace]
-members = ["shared", "src-tauri"]
+members = [".", "shared", "src-tauri"]

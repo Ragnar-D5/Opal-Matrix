@@ -1,25 +1,22 @@
+use ruma::OwnedRoomId;
+use ruma::api::{IncomingResponse, OutgoingRequest};
 use std::borrow::Cow;
 use std::{str::FromStr, sync::Arc};
 use tauri_plugin_http::reqwest::{self, Client};
 
-use ruma::{
-    api::{
-        auth_scheme::SendAccessToken,
-        client::membership::joined_members::v3::{
-            Request as JoinedMembersRequest, Response as JoinedMembersResponse,
-        },
-        IncomingResponse, OutgoingRequest,
+use ruma::api::{
+    auth_scheme::SendAccessToken,
+    client::membership::joined_members::v3::{
+        Request as JoinedMembersRequest, Response as JoinedMembersResponse,
     },
-    OwnedRoomId,
 };
 
 use crate::{
-    reqwest_response_to_http_response,
+    AppState, TauriError, reqwest_response_to_http_response,
     state::HomeServerInfo,
     storage::members::{MemberRow, MembershipState},
-    AppState, TauriError,
 };
-use tauri::{command, State};
+use tauri::{State, command};
 
 pub async fn get_members_api(
     server_info: &HomeServerInfo,

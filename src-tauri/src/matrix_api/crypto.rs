@@ -205,7 +205,9 @@ pub async fn process_message(
     };
 }
 
-/// Processes the sync response by first handling any outgoing requests from the OlmMachine, then attempting to decrypt any encrypted events in the joined rooms. If decryption of an event fails, the original encrypted event is returned as a fallback.
+/// Processes the sync response by first handling any outgoing requests from the OlmMachine, then attempting to decrypt any encrypted events in the joined rooms. If decrypt
+///
+/// ion of an event fails, the original encrypted event is returned as a fallback.
 pub async fn process_sync_response(
     olm_machine: &OlmMachine,
     mut sync_res: SyncResponse,
@@ -278,7 +280,9 @@ pub async fn process_sync_response(
     return Ok(sync_res);
 }
 
-/// Handles outgoing requests from the OlmMachine by sending the appropriate HTTP requests to the Matrix server and marking the requests as sent with the responses received from the server. This function is called before and after processing incoming messages and sync responses to ensure that any necessary key uploads, claims, or message sends are performed in a timely manner.
+/// Handles outgoing requests from the OlmMachine by sending the appropriate HTTP requests to the Matrix server and marking the requests as sent with the responses received from the server.
+///
+/// This function is called before and after processing incoming messages and sync responses to ensure that any necessary key uploads, claims, or message sends are performed in a timely manner.
 async fn handle_outgoing_requests(
     olm_machine: &OlmMachine,
     token: &String,
