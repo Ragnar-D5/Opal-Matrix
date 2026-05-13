@@ -112,6 +112,8 @@ pub struct AppState {
     pub sync_cancel_token: Mutex<Option<CancellationToken>>,
 
     pub connection: Mutex<Option<rusqlite::Connection>>,
+
+    pub frontend_current_room_id: RwLock<Option<String>>,
 }
 
 impl AppState {
@@ -484,5 +486,20 @@ impl AppState {
         let conn_guard = self.connection.lock().await;
         let conn = conn_guard.as_ref().ok_or("Storage not initialized")?;
         f(conn)
+    }
+
+    pub async fn with_connection_async<F, Fut, R>(self: &Arc<Self>, f: F) -> Result<R, TauriError>
+    where
+        F: FnOnce(&Connection) -> Fut,
+        Fut: std::future::Future<Output = Result<R, TauriError>>,
+    {
+        let conn_guard = self.connection.lock().await;
+        let conn = conn_guard.as_ref().ok_or("Storage not initialized")?;
+        f(conn).await
+    }
+
+    pub async fn room_id(self: &Arc<Self>) -> Result<Option<String>, TauriError> {
+        let room_id_guard = self.frontend_current_room_id.read().await;
+        Ok(room_id_guard.clone())
     }
 }

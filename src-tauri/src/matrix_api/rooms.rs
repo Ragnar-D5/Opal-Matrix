@@ -4,10 +4,14 @@ use std::borrow::Cow;
 use std::{str::FromStr, sync::Arc};
 use tauri_plugin_http::reqwest::{self, Client};
 
-use ruma::api::{
-    auth_scheme::SendAccessToken,
-    client::membership::joined_members::v3::{
-        Request as JoinedMembersRequest, Response as JoinedMembersResponse,
+use ruma::{
+    OwnedRoomId,
+    api::{
+        IncomingResponse, OutgoingRequest,
+        auth_scheme::SendAccessToken,
+        client::membership::joined_members::v3::{
+            Request as JoinedMembersRequest, Response as JoinedMembersResponse,
+        },
     },
 };
 

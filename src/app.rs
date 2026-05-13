@@ -10,9 +10,10 @@ use shared::user_profile::{PresenceInfo, UserProfile};
 use wasm_bindgen::prelude::*;
 use web_sys::HtmlImageElement;
 
+use crate::components::{chat::Chat, sidebar::Sidebar};
 use crate::hooks::use_tauri_event;
 use crate::state::{AppState, MemberStore};
-use crate::tauri::{chat::Chat, sidebar::Sidebar};
+use crate::tauri_functions::set_backend_room_id;
 
 #[wasm_bindgen]
 extern "C" {
@@ -64,6 +65,16 @@ pub fn App() -> impl IntoView {
 
     let profile_update =
         use_tauri_event::<HashMap<String, HashMap<String, UserProfile>>>("member_update");
+
+    Effect::new(move |_| {
+        let room_id = state.active_room_id.get();
+
+        spawn_local(async move {
+            if let Err(e) = set_backend_room_id(room_id).await {
+                error!("Error setting backend room id: {:?}", e);
+            };
+        });
+    });
 
     Effect::new(move |_| {
         if let Some(updates) = profile_update.get() {

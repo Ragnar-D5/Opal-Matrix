@@ -8,21 +8,23 @@ pub struct Macro {
 }
 
 impl Macro {
-    pub fn new(name: String, replacment: String) -> Self {
+    pub fn new(name: impl Into<String>, replacement: impl Into<String>) -> Self {
+        let replacement: String = replacement.into();
+
         Macro {
-            name,
-            description: format!("Inserts '{}'", replacment),
-            replacement: replacment,
+            name: name.into(),
+            description: format!("Inserts '{}'", replacement.clone()),
+            replacement: replacement,
         }
     }
 }
 
 pub fn default_macros() -> Vec<Macro> {
     vec![
-        Macro::new("shrug".to_string(), "¯\\_(ツ)_/¯".to_string()),
-        Macro::new("tableflip".to_string(), "(╯°□°）╯︵ ┻━┻".to_string()),
-        Macro::new("unflip".to_string(), "┬─┬ ノ(^_^ノ)".to_string()),
-        Macro::new("lenny".to_string(), "( ͡° ͜ʖ ͡°)".to_string()),
-        Macro::new("disapprove".to_string(), "ಠ_ಠ".to_string()),
+        Macro::new("shrug", "¯\\_(ツ)_/¯"),
+        Macro::new("tableflip", "(╯°□°）╯︵ ┻━┻"),
+        Macro::new("unflip", "┬─┬ ノ(^_^ノ)"),
+        Macro::new("lenny", "( ͡° ͜ʖ ͡°)"),
+        Macro::new("disapprove", "ಠ_ಠ"),
     ]
 }

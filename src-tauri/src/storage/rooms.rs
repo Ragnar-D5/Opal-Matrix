@@ -110,3 +110,37 @@ pub fn save_prev_token(
     )?;
     Ok(())
 }
+
+/// Fetches the room name for a given room ID from the database.
+///
+/// Returns the id if the room doesn't have a name and the name of the other participant if it's a direct chat. Returns None if the room doesn't exist in the database.
+pub fn get_room_name(
+    conn: &rusqlite::Connection,
+    own_user_id: &String,
+    room_id: &String,
+) -> Result<Option<String>, TauriError> {
+    let mut stmt = conn.prepare("SELECT name, is_direct FROM rooms WHERE room_id = ?")?;
+    let mut rows = stmt.query(rusqlite::params![room_id])?;
+
+    if let Some(row) = rows.next()? {
+        let name: Option<String> = row.get(0)?;
+        let is_direct: bool = row.get(1)?;
+
+        if is_direct {
+            let mut stmt = conn
+                .prepare("SELECT display_name FROM members WHERE room_id = ? AND user_id != ?")?;
+            let mut rows = stmt.query(rusqlite::params![room_id, own_user_id])?;
+
+            if let Some(row) = rows.next()? {
+                let display_name: Option<String> = row.get(0)?;
+                return Ok(display_name.or_else(|| Some(room_id.clone())));
+            } else {
+                return Ok(Some(room_id.clone()));
+            }
+        } else {
+            return Ok(name);
+        }
+    }
+
+    Ok(None)
+}

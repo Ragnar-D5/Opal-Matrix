@@ -38,12 +38,10 @@ pub enum SystemMessage {
     GuestAccessChange {
         new_access: String,
     },
-
     CallJoined {
         intent: String,
     },
     CallLeft,
-
     MessageEdited {
         event_id: String,
         new_spans: Vec<RichTextSpan>,
@@ -53,6 +51,10 @@ pub enum SystemMessage {
         reaction: String,
     },
     MessageRedacted {
+        event_id: String,
+    },
+    /// Used to delete messages only in the ui (for example pending messages)
+    RemoveMessage {
         event_id: String,
     },
 }
@@ -169,6 +171,42 @@ impl UserMessage {
             replies_to.sender_id = Some(sender_id);
         }
     }
+
+    pub fn display_string(&self) -> String {
+        match &self.content {
+            MessageContent::Text { spans, .. } => spans
+                .iter()
+                .filter_map(|span| match span {
+                    RichTextSpan::Plain(text) => Some(text.clone()),
+                    RichTextSpan::Link { url, text } => {
+                        Some(text.clone().unwrap_or_else(|| url.clone()))
+                    }
+                    RichTextSpan::RoomMention => Some("@room".to_string()),
+                    RichTextSpan::UserMention { display_name, .. } => {
+                        Some(format!("@{}", display_name.clone()))
+                    }
+                    RichTextSpan::Newline => Some("\n".to_string()),
+                })
+                .collect(),
+            MessageContent::File { filename, size, .. } => {
+                format!("File: {} ({} bytes)", filename, size)
+            }
+            MessageContent::Image {
+                name,
+                width,
+                height,
+                ..
+            } => {
+                let dimensions = match (width, height) {
+                    (Some(w), Some(h)) => format!("{}x{}", w, h),
+                    _ => "unknown dimensions".to_string(),
+                };
+                format!("Image: {} ({})", name, dimensions)
+            }
+            MessageContent::Encrypted => "Encrypted message".to_string(),
+            MessageContent::Deleted => "Message deleted".to_string(),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -183,6 +221,7 @@ pub struct UiMessage {
     pub timestamp: u64,
     pub sender_id: String,
 
+    pub is_pending: bool,
     pub kind: MessageKind,
 }
 
@@ -210,8 +249,7 @@ impl UiMessage {
         }
     }
 
-    /// Detect if the message is pending by checking if it's event_id is a uuid v4
-    pub fn is_pending(&self) -> bool {
-        uuid::Uuid::parse_str(&self.event_id).map_or(false, |uuid| uuid.get_version_num() == 4)
+    pub fn is_user_message(&self) -> bool {
+        matches!(self.kind, MessageKind::UserMessage(_))
     }
 }

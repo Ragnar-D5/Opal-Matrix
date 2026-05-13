@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "opal-matrix",
+  "productName": "Opal",
   "version": "0.1.0",
-  "identifier": "com.user.opal-matrix",
+  "identifier": "com.app.opal-matrix",
   "build": {
     "beforeDevCommand": "trunk serve",
     "devUrl": "http://localhost:1420",
@@ -13,7 +13,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "opal-matrix",
+        "title": "Opal",
         "width": 1600,
         "height": 1000,
         "decorations": false,

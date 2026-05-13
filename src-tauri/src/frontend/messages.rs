@@ -39,6 +39,7 @@ pub async fn commit_message(
     let message = UiMessage {
         event_id: txn_id.clone(),
         timestamp: timestamp,
+        is_pending: true,
         kind: MessageKind::UserMessage(UserMessage {
             mentions: mentions.clone(),
             reactions: Vec::new(),

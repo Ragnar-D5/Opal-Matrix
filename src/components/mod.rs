@@ -6,8 +6,10 @@ use user_profile::UserProfileExt;
 
 use crate::state::MemberStore;
 
+pub(crate) mod chat;
 pub(crate) mod input;
 pub(crate) mod presence;
+pub(crate) mod sidebar;
 pub(crate) mod user_profile;
 
 pub fn get_color(string: String) -> Hsl {
