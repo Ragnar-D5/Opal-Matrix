@@ -1,11 +1,13 @@
 use std::collections::HashMap;
 
+use log::{info};
 use rusqlite::Connection;
-use shared::{messages::UiMessage, user_profile::UserProfile};
+use shared::{messages::{MessageKind, UiMessage}, user_profile::UserProfile};
 use tauri::{AppHandle, Emitter};
 
 use crate::{
-    storage::{fetch_sidebar, members::MemberRow},
+    send_notification,
+    storage::{fetch_sidebar, members::MemberRow, rooms::get_room_name},
     TauriError,
 };
 
@@ -57,11 +59,46 @@ pub fn send_sidebar_update(
     Ok(())
 }
 
-pub fn send_messages_update(
+pub fn emit_messages_update(
     handle: &AppHandle,
-    messages: HashMap<String, Vec<UiMessage>>,
+    messages: &HashMap<String, Vec<UiMessage>>,
 ) -> Result<(), TauriError> {
     handle.emit("messages_update", messages)?;
+    Ok(())
+}
+
+pub fn send_messages_update(
+    handle: &AppHandle,
+    conn: &Connection,
+    user_id: &String,
+    messages: HashMap<String, Vec<UiMessage>>,
+    send_notifications: bool,
+) -> Result<(), TauriError> {
+    emit_messages_update(handle, &messages)?;
+
+    info!("Checking for notifications to send...");
+    if !send_notifications {
+        return Ok(());
+    }
+
+
+    for (room_id, messages) in messages {
+        if messages.is_empty() {
+            continue;
+        }
+        let room_name = get_room_name(conn, user_id, &room_id)?.unwrap_or(room_id.clone());
+
+        for message in messages {
+            if message.sender_id != *user_id
+                && let MessageKind::UserMessage(user_message) = &message.kind
+            {
+                let title = room_name.clone();
+                let body = user_message.display_string();
+
+                send_notification(handle, title, body)?;
+            }
+        }
+    }
 
     Ok(())
 }

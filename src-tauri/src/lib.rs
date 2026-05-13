@@ -1,3 +1,5 @@
+use dirs;
+use log::trace;
 use std::sync::Arc;
 
 use aes::cipher::{KeyIvInit, StreamCipher};
@@ -11,10 +13,10 @@ use serde::Serialize;
 use tauri::{command, AppHandle, Url};
 use tauri::{Manager, State};
 
-mod frontend;
-mod matrix_api;
-mod state;
-mod storage;
+pub mod frontend;
+pub mod matrix_api;
+pub mod state;
+pub mod storage;
 
 use matrix_api::authentication;
 
@@ -26,6 +28,7 @@ pub const APP_NAME: &str = "opal-matrix";
 
 use percent_encoding::{utf8_percent_encode, AsciiSet, CONTROLS};
 use tauri_plugin_log::{Target, TargetKind};
+use tauri_plugin_notification::{NotificationExt, PermissionState};
 
 use crate::frontend::send_sidebar_update;
 use crate::state::AppState;
@@ -72,6 +75,20 @@ async fn reqwest_response_to_http_response(
     http_res_builder
         .body(body_bytes)
         .map_err(|e| format!("Failed to build response: {}", e).into())
+}
+
+/// Sends a notification with the apphandle if the user has granted permission.
+fn send_notification(handle: &AppHandle, title: String, body: String) -> Result<(), TauriError> {
+    if handle.notification().permission_state()? != PermissionState::Granted {
+        trace!("Notification permission not granted, skipping notification");
+        return Ok(());
+    }
+
+    let notification = handle.notification().builder().title(title).body(body);
+
+    notification
+        .show()
+        .map_err(|e| format!("Failed to show notification: {}", e).into())
 }
 
 #[derive(serde::Serialize)]
@@ -285,8 +302,6 @@ async fn backend_log(
     );
 }
 
-use dirs;
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let log_foldername = format!(
@@ -301,6 +316,7 @@ pub fn run() {
     let log_filename = format!("{}.log", Local::now().format("%H-%M-%S")).into();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_http::init())
         .setup(|app| {

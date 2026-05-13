@@ -5,7 +5,8 @@ use rusqlite::Connection;
 use scraper::{Html, Node};
 use serde_json::Value;
 use shared::messages::{
-    EncryptedFileInfo, MembershipAction, Mentions, MessageContent, MessageKind, RichTextSpan, SystemMessage, UiMessage, UserMessage
+    EncryptedFileInfo, MembershipAction, Mentions, MessageContent, MessageKind, RichTextSpan,
+    SystemMessage, UiMessage, UserMessage,
 };
 
 use crate::TauriError;
@@ -316,7 +317,8 @@ impl TryInto<UiMessage> for MessageRow {
                     .ok_or(format!("Missing msgtype: {:?}", value))?;
                 let mentions = content
                     .get("m.mentions")
-                    .and_then(|v| serde_json::from_value(v.clone()).ok()).unwrap_or_default();
+                    .and_then(|v| serde_json::from_value(v.clone()).ok())
+                    .unwrap_or_default();
                 user_message.set_mentions(mentions);
 
                 match msg_type {

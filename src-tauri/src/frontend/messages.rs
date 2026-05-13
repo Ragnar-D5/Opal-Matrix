@@ -2,17 +2,29 @@ use std::{collections::HashMap, sync::Arc};
 
 use chrono::Local;
 use ego_tree::NodeRef;
-use log::warn;
+use log::{error, warn};
 use scraper::{Html, Node};
 use serde_json::json;
-use shared::messages::{Mentions, MessageContent, MessageKind, RichTextSpan, UiMessage, UserMessage,};
-use tauri::{ AppHandle, State, command};
+use shared::messages::{
+    Mentions, MessageContent, MessageKind, RichTextSpan, SystemMessage, UiMessage, UserMessage,
+};
+use tauri::{AppHandle, State, async_runtime::spawn, command};
 use uuid::Uuid;
 
-use crate::{TauriError, frontend::send_messages_update, state::AppState, storage::messages::{MessageRow, save_messages}};
+use crate::{
+    TauriError,
+    frontend::emit_messages_update,
+    state::AppState,
+    storage::messages::{MessageRow, save_messages},
+};
 
 #[command(rename_all = "snake_case")]
-pub async fn commit_message(state: State<'_, Arc<AppState>>, handle: AppHandle, html: String, room_id: String) -> Result<(), TauriError> {
+pub async fn commit_message(
+    state: State<'_, Arc<AppState>>,
+    handle: AppHandle,
+    html: String,
+    room_id: String,
+) -> Result<(), TauriError> {
     let mut mentions = Mentions::default();
     let mut spans = Vec::new();
 
@@ -30,14 +42,13 @@ pub async fn commit_message(state: State<'_, Arc<AppState>>, handle: AppHandle, 
             mentions: mentions.clone(),
             reactions: Vec::new(),
             replies_to: None,
-            content: MessageContent::Text { spans: spans.clone(), is_edited: false }
+            content: MessageContent::Text {
+                spans: spans.clone(),
+                is_edited: false,
+            },
         }),
         sender_id: user_id.clone(),
     };
-
-    let dict = HashMap::from([(room_id.clone(),vec![message.clone()])]);
-
-    send_messages_update(&handle, dict)?;
 
     let message_json = json!({
         "type": "m.room.message",
@@ -58,7 +69,7 @@ pub async fn commit_message(state: State<'_, Arc<AppState>>, handle: AppHandle, 
     });
 
     let db_message = MessageRow {
-        event_id: txn_id,
+        event_id: txn_id.clone(),
         room_id: room_id.clone(),
         sender: user_id,
         msg_type: "m.room.message".to_string(),
@@ -66,11 +77,37 @@ pub async fn commit_message(state: State<'_, Arc<AppState>>, handle: AppHandle, 
         raw_json: message_json.to_string(),
     };
 
-    state.with_connection_mut(move |conn| {
-        save_messages(conn, vec![db_message])
-    }).await?;
+    state
+        .with_connection_mut(move |conn| save_messages(conn, vec![db_message]))
+        .await?;
 
-    println!("Committing message: {body}\n\n{formatted_body}\n\n{:?}\n\n with mentions {:?}", spans, mentions);
+    println!(
+        "Committing message: {body}\n\n{formatted_body}\n\n{:?}\n\n with mentions {:?}",
+        spans, mentions
+    );
+
+    let message_clone = message.clone();
+    let room_id_clone = room_id.clone();
+    let handle_clone = handle.clone();
+    let txn_id = txn_id.clone();
+
+    spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+        let mut message = message_clone;
+        message.event_id = Uuid::new_v4().to_string();
+        message.kind =
+            MessageKind::SystemMessage(SystemMessage::RemoveMessage { event_id: txn_id });
+
+        let dict = HashMap::from([(room_id_clone, vec![message.clone()])]);
+
+        if let Err(error) = emit_messages_update(&handle_clone, &dict) {
+            error!("Failed to emit message removal update: {:?}", error);
+        }
+    });
+
+    let dict = HashMap::from([(room_id.clone(), vec![message.clone()])]);
+    emit_messages_update(&handle, &dict)?;
 
     Ok(())
 }
@@ -108,7 +145,9 @@ fn walk_node(
         }
         Node::Element(elem) => {
             // Priority: Check for data attributes first
-            if let Some(data_type) = elem.attr("data-type") && let Some(id) = elem.attr("data-id"){
+            if let Some(data_type) = elem.attr("data-type")
+                && let Some(id) = elem.attr("data-id")
+            {
                 let display_text = extract_text(node);
 
                 if data_type == "room_mention" {
@@ -143,9 +182,8 @@ fn walk_node(
                     formatted.push_str("<br>");
                     spans.push(RichTextSpan::Newline);
                 }
-                other => warn!("Unknown element: {other}")
+                other => warn!("Unknown element: {other}"),
             }
-
         }
         _ => {}
     }

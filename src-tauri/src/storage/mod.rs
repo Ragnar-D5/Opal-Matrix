@@ -77,7 +77,7 @@ pub struct SafeStuff {
     pub memberships: Vec<MemberRow>,
 }
 
-pub async fn apply_sync_changes(
+pub fn apply_sync_changes(
     conn: &mut Connection,
     changes: SyncChanges,
 ) -> Result<SyncCallsToExecute, TauriError> {
@@ -448,7 +448,7 @@ pub async fn get_members(
     Ok(members)
 }
 
-pub async fn handle_safe_stuff(conn: &mut Connection, stuff: SafeStuff) -> Result<(), TauriError> {
+pub fn handle_safe_stuff(conn: &mut Connection, stuff: SafeStuff) -> Result<(), TauriError> {
     let tx = conn.transaction()?;
 
     let mut stmt_members = tx.prepare(

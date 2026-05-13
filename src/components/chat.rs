@@ -658,13 +658,20 @@ fn TimeLine() -> impl IntoView {
                         let mut seen_ids: HashSet<String> =
                             existing.iter().map(|m| m.event_id.clone()).collect();
 
-                        let unique_new: Vec<UiMessage> = new_msgs
-                            .iter()
-                            .filter(|m| seen_ids.insert(m.event_id.clone()))
-                            .cloned()
-                            .collect();
-
-                        existing.extend(unique_new);
+                        for msg in new_msgs {
+                            match &msg.kind {
+                                MessageKind::SystemMessage(SystemMessage::RemoveMessage {
+                                    event_id,
+                                }) => {
+                                    existing.retain(|m| &m.event_id != event_id);
+                                }
+                                _ => {
+                                    if seen_ids.insert(msg.event_id.clone()) {
+                                        existing.push(msg.clone());
+                                    }
+                                }
+                            }
+                        }
                     });
                 }
             }
@@ -742,7 +749,6 @@ fn TimeLine() -> impl IntoView {
         let mut edits = HashMap::new();
         let mut redactions = HashSet::new();
         let mut reactions_map = HashMap::new();
-        let mut pending_removals = HashSet::new();
 
         let mut processed_messages = HashMap::new();
 
@@ -779,10 +785,6 @@ fn TimeLine() -> impl IntoView {
                         );
                         false
                     }
-                    MessageKind::SystemMessage(SystemMessage::RemovePending { pending_id }) => {
-                        pending_removals.insert(pending_id.clone());
-                        false
-                    }
                     _ => true,
                 };
 
@@ -801,10 +803,6 @@ fn TimeLine() -> impl IntoView {
                 | SystemMessage::MessageReacted { .. },
             ) = &msg.kind
             {
-                continue;
-            }
-
-            if pending_removals.contains(&msg.event_id) {
                 continue;
             }
 

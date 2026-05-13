@@ -6,30 +6,30 @@ use std::{str::FromStr, sync::Arc};
 use tauri_plugin_http::reqwest::{self, Client};
 
 use ruma::{
+    OwnedRoomId, UInt,
     api::{
+        IncomingResponse, OutgoingRequest,
         auth_scheme::SendAccessToken,
         client::message::get_message_events::v3::{
             Request as MessageEventsRequest, Response as MessageEventsResponse,
         },
-        IncomingResponse, OutgoingRequest,
     },
-    OwnedRoomId, UInt,
 };
 
 use crate::{
+    AppState,
     matrix_api::crypto::process_message,
     state::HomeServerInfo,
     storage::{
-        messages::{get_messages, save_messages, MessageRow},
+        messages::{MessageRow, get_messages, save_messages},
         rooms::save_prev_token,
     },
-    AppState,
 };
 use log::warn;
-use rusqlite::{params, OptionalExtension};
-use tauri::{command, State};
+use rusqlite::{OptionalExtension, params};
+use tauri::{State, command};
 
-use crate::{reqwest_response_to_http_response, TauriError};
+use crate::{TauriError, reqwest_response_to_http_response};
 
 /// Fetches messages from the Matrix server for a given room, starting from a specified pagination token. Returns the messages and the next pagination token (if available).
 async fn get_messages_api(

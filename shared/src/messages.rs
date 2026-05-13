@@ -53,9 +53,9 @@ pub enum SystemMessage {
     MessageRedacted {
         event_id: String,
     },
-    /// Only used to delete pending message from the ui
-    RemovePending {
-        pending_id: String,
+    /// Used to delete messages only in the ui (for example pending messages)
+    RemoveMessage {
+        event_id: String,
     },
 }
 
@@ -171,6 +171,42 @@ impl UserMessage {
             replies_to.sender_id = Some(sender_id);
         }
     }
+
+    pub fn display_string(&self) -> String {
+        match &self.content {
+            MessageContent::Text { spans, .. } => spans
+                .iter()
+                .filter_map(|span| match span {
+                    RichTextSpan::Plain(text) => Some(text.clone()),
+                    RichTextSpan::Link { url, text } => {
+                        Some(text.clone().unwrap_or_else(|| url.clone()))
+                    }
+                    RichTextSpan::RoomMention => Some("@room".to_string()),
+                    RichTextSpan::UserMention { display_name, .. } => {
+                        Some(format!("@{}", display_name.clone()))
+                    }
+                    RichTextSpan::Newline => Some("\n".to_string()),
+                })
+                .collect(),
+            MessageContent::File { filename, size, .. } => {
+                format!("File: {} ({} bytes)", filename, size)
+            }
+            MessageContent::Image {
+                name,
+                width,
+                height,
+                ..
+            } => {
+                let dimensions = match (width, height) {
+                    (Some(w), Some(h)) => format!("{}x{}", w, h),
+                    _ => "unknown dimensions".to_string(),
+                };
+                format!("Image: {} ({})", name, dimensions)
+            }
+            MessageContent::Encrypted => "Encrypted message".to_string(),
+            MessageContent::Deleted => "Message deleted".to_string(),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -211,5 +247,9 @@ impl UiMessage {
         if let MessageKind::UserMessage(user_message) = &mut self.kind {
             user_message.reactions.push(reaction);
         }
+    }
+
+    pub fn is_user_message(&self) -> bool {
+        matches!(self.kind, MessageKind::UserMessage(_))
     }
 }

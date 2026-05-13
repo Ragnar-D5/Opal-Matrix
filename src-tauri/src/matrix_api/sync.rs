@@ -35,7 +35,7 @@ use tauri::{AppHandle, Emitter};
 use tauri_plugin_http::reqwest::{self, Client};
 
 use crate::{
-    frontend::{send_member_update, send_sidebar_update},
+    frontend::{send_member_update, send_messages_update, send_sidebar_update},
     matrix_api::{crypto, handle_sync_calls, messages::backfill_gap},
     reqwest_response_to_http_response,
     state::{AppState, HomeServerInfo},
@@ -91,7 +91,7 @@ async fn matrix_sync(
 ///
 /// The function returns when the loop is cancelled or if any error occurs during syncing or processing the responses.
 pub async fn run_sync_loop(
-    state: std::sync::Arc<AppState>,
+    state: Arc<AppState>,
     handle: AppHandle,
     resync: bool,
 ) -> Result<(), TauriError> {
@@ -111,39 +111,52 @@ pub async fn run_sync_loop(
         }
     };
 
+    let next_batch = sync_once(&state, &handle, since, true).await?;
+    since = Some(next_batch);
+
     while !cancel.is_cancelled() {
-        let (access_token, server_info) = state.get_api().await?;
-
-        let sync_res = matrix_sync(&server_info, &access_token, since.clone()).await?;
-        since = Some(sync_res.next_batch.clone());
-
-        {
-            let mut since_guard = state.next_batch.write().await;
-            *since_guard = since.clone();
-        }
-
-        let olm_machine = {
-            let guard = state.crypto_machine.lock().await;
-            guard
-                .as_ref()
-                .cloned()
-                .ok_or("Crypto machine not initialized")?
-        };
-
-        let res = crypto::process_sync_response(
-            &olm_machine,
-            sync_res,
-            &access_token,
-            &server_info.base_url,
-        )
-        .await?;
-
-        handle_sync_response(&state, &handle, res).await?;
-
-        state.save_session().await?;
+        let next_batch = sync_once(&state, &handle, since, false).await?;
+        since = Some(next_batch);
     }
 
     Ok(())
+}
+
+/// Performs a single sync
+async fn sync_once(
+    state: &Arc<AppState>,
+    handle: &AppHandle,
+    since: Option<String>,
+    first_sync: bool,
+) -> Result<String, TauriError> {
+    let (access_token, server_info) = state.get_api().await?;
+    let sync_res = matrix_sync(&server_info, &access_token, since).await?;
+
+    {
+        let mut since_guard = state.next_batch.write().await;
+        *since_guard = Some(sync_res.next_batch.clone());
+    }
+
+    let olm_machine = {
+        let guard = state.crypto_machine.lock().await;
+        guard
+            .as_ref()
+            .cloned()
+            .ok_or("Crypto machine not initialized")?
+    };
+
+    let res = crypto::process_sync_response(
+        &olm_machine,
+        sync_res.clone(),
+        &access_token,
+        &server_info.base_url,
+    )
+    .await?;
+
+    handle_sync_response(state, handle, res, first_sync).await?;
+    state.save_session().await?;
+
+    Ok(sync_res.next_batch)
 }
 
 /// Helper function to convert a Matrix presence event into the internal PresenceInfo format used by the application. This function maps the Matrix presence states (Online, Offline, Unavailable) to the corresponding PresenceStatus used in the app, and also extracts the last active time and status message from the presence event content.
@@ -169,6 +182,7 @@ async fn handle_sync_response(
     state: &Arc<AppState>,
     handle: &AppHandle,
     response: SyncResponse,
+    first_sync: bool,
 ) -> Result<(), TauriError> {
     let mut changes = SyncChanges::default();
 
@@ -310,27 +324,33 @@ async fn handle_sync_response(
                 || update.notification_count.is_some()
         });
 
+    let server_info = {
+        let guard = state.home_server_info.read().await;
+        guard.as_ref().cloned().ok_or("Matrix URL not set")?
+    };
+    let access_token = state.check_token().await?;
+    let user_id = state.user_id().await?;
+
+    let res = {
+        let mut conn_guard = state.connection.lock().await;
+        let conn = conn_guard
+            .as_mut()
+            .ok_or("Database connection not initialized")?;
+        apply_sync_changes(conn, changes.clone())?
+    };
+
+    let stuff = handle_sync_calls(server_info, access_token, res).await?;
+
     {
         let mut conn_guard = state.connection.lock().await;
         let conn = conn_guard
             .as_mut()
             .ok_or("Database connection not initialized")?;
 
-        let server_info = {
-            let guard = state.home_server_info.read().await;
-            guard.as_ref().cloned().ok_or("Matrix URL not set")?
-        };
-        let access_token = state.check_token().await?;
-
-        let res = apply_sync_changes(conn, changes.clone()).await?;
-        let stuff = handle_sync_calls(server_info, access_token, res).await?;
-        handle_safe_stuff(conn, stuff).await?;
-
-        let client_guard = state.client.read().await;
-        let client = client_guard.as_ref().ok_or("Client info not initialized")?;
+        handle_safe_stuff(conn, stuff)?;
 
         if sidebar_needs_update {
-            send_sidebar_update(conn, handle, &client.user_id)?;
+            send_sidebar_update(conn, handle, &user_id)?;
         }
         if !changes.new_messages.is_empty() {
             let messages: HashMap<String, Vec<UiMessage>> = changes
@@ -347,7 +367,7 @@ async fn handle_sync_response(
                     acc
                 });
 
-            crate::frontend::send_messages_update(handle, messages)?;
+            send_messages_update(handle, conn, &user_id, messages, !first_sync)?;
         }
     }
 

@@ -3,23 +3,22 @@ use std::{str::FromStr, sync::Arc};
 use tauri_plugin_http::reqwest::{self, Client};
 
 use ruma::{
+    OwnedRoomId,
     api::{
+        IncomingResponse, OutgoingRequest,
         auth_scheme::SendAccessToken,
         client::membership::joined_members::v3::{
             Request as JoinedMembersRequest, Response as JoinedMembersResponse,
         },
-        IncomingResponse, OutgoingRequest,
     },
-    OwnedRoomId,
 };
 
 use crate::{
-    reqwest_response_to_http_response,
+    AppState, TauriError, reqwest_response_to_http_response,
     state::HomeServerInfo,
     storage::members::{MemberRow, MembershipState},
-    AppState, TauriError,
 };
-use tauri::{command, State};
+use tauri::{State, command};
 
 pub async fn get_members_api(
     server_info: &HomeServerInfo,
