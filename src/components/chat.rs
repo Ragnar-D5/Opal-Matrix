@@ -14,7 +14,6 @@ use crate::{
     tauri_functions::{get_members, send_marker, MemberShip},
 };
 
-use log::info;
 use phosphor_leptos::{Icon, IconWeight, HASH, INFO, TRASH, UPLOAD_SIMPLE};
 
 use chrono::{DateTime, Local, NaiveDate, TimeZone};
@@ -743,6 +742,7 @@ fn TimeLine() -> impl IntoView {
         let mut edits = HashMap::new();
         let mut redactions = HashSet::new();
         let mut reactions_map = HashMap::new();
+        let mut pending_removals = HashSet::new();
 
         let mut processed_messages = HashMap::new();
 
@@ -779,6 +779,10 @@ fn TimeLine() -> impl IntoView {
                         );
                         false
                     }
+                    MessageKind::SystemMessage(SystemMessage::RemovePending { pending_id }) => {
+                        pending_removals.insert(pending_id.clone());
+                        false
+                    }
                     _ => true,
                 };
 
@@ -797,6 +801,10 @@ fn TimeLine() -> impl IntoView {
                 | SystemMessage::MessageReacted { .. },
             ) = &msg.kind
             {
+                continue;
+            }
+
+            if pending_removals.contains(&msg.event_id) {
                 continue;
             }
 

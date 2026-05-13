@@ -38,12 +38,10 @@ pub enum SystemMessage {
     GuestAccessChange {
         new_access: String,
     },
-
     CallJoined {
         intent: String,
     },
     CallLeft,
-
     MessageEdited {
         event_id: String,
         new_spans: Vec<RichTextSpan>,
@@ -54,6 +52,10 @@ pub enum SystemMessage {
     },
     MessageRedacted {
         event_id: String,
+    },
+    /// Only used to delete pending message from the ui
+    RemovePending {
+        pending_id: String,
     },
 }
 
