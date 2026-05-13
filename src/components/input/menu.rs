@@ -17,7 +17,7 @@ use crate::components::user_profile::UserProfileMaybeExt;
 #[derive(Clone, PartialEq, Debug)]
 pub enum MenuType {
     None,
-    Mentions { filter: String },
+    UserAutocomplete { filter: String },
     // Commands { filter: String },
 }
 
@@ -192,7 +192,7 @@ pub fn SelectionMenu(
     });
 
     Effect::new(move |_| {
-        if let MenuType::Mentions { filter, .. } = menu.get() {
+        if let MenuType::UserAutocomplete { filter, .. } = menu.get() {
             matches.set(filter_mentions(
                 filter,
                 members_resource.get().unwrap_or_default(),
@@ -213,7 +213,7 @@ pub fn SelectionMenu(
                 let store = store.clone();
                 let room_id = state.active_room_id.get().unwrap_or_default();
                 match menu.get() {
-                    MenuType::Mentions { filter, .. } => {
+                    MenuType::UserAutocomplete { filter, .. } => {
                         view! {
                             <span class="text-(--ui-base-color) bold text-xs p-2 bb-4">
                                 {

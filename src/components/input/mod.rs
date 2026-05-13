@@ -11,7 +11,7 @@ use crate::state::{AppState, MemberStore};
 use crate::tauri_functions::commit_message;
 use crate::{components::input::menu::MenuType, tauri_functions::MemberShip};
 
-pub mod menu;
+pub(crate) mod menu;
 
 pub fn handle_input(input_ref: NodeRef<Div>, is_empty: RwSignal<bool>, state: AppState) {
     let Some(el) = input_ref.get() else { return };

@@ -1151,7 +1151,7 @@ fn ChatInput() -> impl IntoView {
                     let caret_pos = get_caret_position(&el);
 
                     if let Some(filter) = get_active_mention_filter(&el, caret_pos) {
-                        menu.set(MenuType::Mentions { filter });
+                        menu.set(MenuType::UserAutocomplete { filter });
                     } else {
                         menu.set(MenuType::None);
                     }
