@@ -71,6 +71,7 @@ pub fn send_messages_update(
     handle: &AppHandle,
     conn: &Connection,
     user_id: &String,
+    current_room_id: Option<String>,
     messages: HashMap<String, Vec<UiMessage>>,
     send_notifications: bool,
 ) -> Result<(), TauriError> {
@@ -82,8 +83,9 @@ pub fn send_messages_update(
     }
 
 
+    // TODO: Also check if the app is focused and only send notifications if it's not or the room_id of the message isn't currently open
     for (room_id, messages) in messages {
-        if messages.is_empty() {
+        if messages.is_empty() || current_room_id == Some(room_id.clone()) {
             continue;
         }
         let room_name = get_room_name(conn, user_id, &room_id)?.unwrap_or(room_id.clone());

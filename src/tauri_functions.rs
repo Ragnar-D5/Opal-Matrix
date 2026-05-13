@@ -98,3 +98,14 @@ pub async fn commit_message(message: String, room_id: String) -> Result<(), Stri
 
     Ok(())
 }
+
+pub async fn set_backend_room_id(room_id: Option<String>) -> Result<(), String> {
+    let args = serde_wasm_bindgen::to_value(&json!({ "room_id": room_id }))
+        .map_err(|e| format!("Failed to construct args: {e}"))?;
+
+    call_tauri("set_room_id", args)
+        .await
+        .map_err(|e| format!("Failed to set active room: {:?}", e))?;
+
+    Ok(())
+}

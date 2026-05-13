@@ -367,7 +367,15 @@ async fn handle_sync_response(
                     acc
                 });
 
-            send_messages_update(handle, conn, &user_id, messages, !first_sync)?;
+            let current_room_id = state.room_id().await?;
+            send_messages_update(
+                handle,
+                conn,
+                &user_id,
+                current_room_id,
+                messages,
+                !first_sync,
+            )?;
         }
     }
 

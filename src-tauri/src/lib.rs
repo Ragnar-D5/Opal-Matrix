@@ -273,6 +273,17 @@ async fn fetch_raw_html(url: String) -> Result<String, TauriError> {
 }
 
 #[command(rename_all = "snake_case")]
+async fn set_room_id(
+    state: State<'_, Arc<AppState>>,
+    room_id: Option<String>,
+) -> Result<(), TauriError> {
+    let mut room_id_guard = state.frontend_current_room_id.write().await;
+    *room_id_guard = room_id;
+
+    Ok(())
+}
+
+#[command(rename_all = "snake_case")]
 async fn backend_log(
     level: String,
     timestamp: String,
@@ -381,6 +392,7 @@ pub fn run() {
             set_recovery_key,
             send_frontend,
             backend_log,
+            set_room_id,
 
             // frontend commands
             frontend::messages::commit_message,
