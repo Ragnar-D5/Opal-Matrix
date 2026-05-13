@@ -644,7 +644,7 @@ fn extract_message(
 ) -> Result<(), TauriError> {
     match ev {
         AnySyncMessageLikeEvent::Message(ev) => {
-            if let Some(or) = ev.as_original() {
+            if let Some(_) = ev.as_original() {
                 warn!(
                     "Unimplemented message type in room {}: {:?}",
                     room_id, raw_json

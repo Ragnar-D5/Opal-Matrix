@@ -13,6 +13,33 @@ use crate::{components::input::menu::MenuType, tauri_functions::MemberShip};
 
 pub(crate) mod menu;
 
+fn check_if_empty(el: &HtmlElement, is_empty: RwSignal<bool>) -> bool {
+    let raw_html = el.inner_html().to_lowercase();
+
+    let clean_html = raw_html
+        .replace("<!---->", "")
+        .replace("\n", "")
+        .replace("\r", "")
+        .trim()
+        .to_string();
+
+    let text = el.text_content().unwrap_or_default().trim().to_string();
+
+    let empty = text.is_empty()
+        && (clean_html.is_empty()
+            || clean_html == "<br>"
+            || clean_html == "<br><br>"
+            || clean_html == "<br type=\"_moz\">");
+
+    if empty && !raw_html.is_empty() && raw_html != "<br>" {
+        el.set_inner_html("");
+    }
+
+    is_empty.set(empty);
+
+    empty
+}
+
 pub fn handle_input(input_ref: NodeRef<Div>, is_empty: RwSignal<bool>, state: AppState) {
     let Some(el) = input_ref.get() else { return };
     let doc = document();
@@ -75,28 +102,7 @@ pub fn handle_input(input_ref: NodeRef<Div>, is_empty: RwSignal<bool>, state: Ap
 
     restore_caret_position(&el, caret_pos);
 
-    let raw_html = el.inner_html().to_lowercase();
-
-    let clean_html = raw_html
-        .replace("<!---->", "")
-        .replace("\n", "")
-        .replace("\r", "")
-        .trim()
-        .to_string();
-
-    let text = el.text_content().unwrap_or_default().trim().to_string();
-
-    let empty = text.is_empty()
-        && (clean_html.is_empty()
-            || clean_html == "<br>"
-            || clean_html == "<br><br>"
-            || clean_html == "<br type=\"_moz\">");
-
-    if empty && !raw_html.is_empty() && raw_html != "<br>" {
-        el.set_inner_html("");
-    }
-
-    is_empty.set(empty);
+    let empty = check_if_empty(&el, is_empty);
 
     if let Some(room_id) = state.active_room_id.get_untracked() {
         state.drafts.update(|drafts| {
@@ -190,6 +196,7 @@ pub fn handle_keydown(
     matches: RwSignal<Vec<MemberShip>>,
     state: AppState,
     store: MemberStore,
+    is_empty: RwSignal<bool>,
 ) {
     let Some(el) = input_ref.get() else { return };
 
@@ -212,14 +219,13 @@ pub fn handle_keydown(
                 commit_mention(&el, matching, state, store);
                 menu.set(MenuType::None);
             } else {
-                // TODO: Send the message!
-                warn!("Send the message!");
-
                 let message = el.inner_html();
                 let Some(room_id) = state.active_room_id.get_untracked() else {
                     warn!("No active room to send message to");
                     return;
                 };
+
+                el.set_inner_html("<br>");
 
                 spawn_local(async move {
                     if let Err(e) = commit_message(message, room_id).await {
@@ -251,6 +257,8 @@ pub fn handle_keydown(
         }
         _ => {}
     }
+
+    let _ = check_if_empty(&el, is_empty);
 }
 
 pub fn get_caret_position(el: &HtmlElement) -> u32 {

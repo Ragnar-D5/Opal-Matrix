@@ -1261,7 +1261,7 @@ fn ChatInput() -> impl IntoView {
                 matches=matches
                 input_ref=input_ref
             />
-            <div class="w-full min-h-13 border-1 border-[var(--tile-border-color)] rounded-(--ui-border-radius) bg-[rgba(0, 0, 0, 0.6)] flex flex-row bg-(--ui-floating-bg) items-center gap-3 px-3">
+            <div class="text-(--bright-text-color) w-full min-h-13 border-1 border-[var(--tile-border-color)] rounded-(--ui-border-radius) bg-[rgba(0, 0, 0, 0.6)] flex flex-row bg-(--ui-floating-bg) items-center gap-3 px-3">
                 <Icon icon=UPLOAD_SIMPLE size="20px" color="var(--ui-base-color)" />
                 <div class="relative flex-1 min-w-0 flex items-center">
                     <Show when=move || is_empty.get()>
@@ -1282,6 +1282,7 @@ fn ChatInput() -> impl IntoView {
                             matches,
                             state,
                             store.clone(),
+                            is_empty,
                         )
                     ></div>
                 </div>

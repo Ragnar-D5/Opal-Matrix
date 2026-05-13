@@ -2,11 +2,11 @@ use std::{collections::HashMap, sync::Arc};
 
 use chrono::Local;
 use ego_tree::NodeRef;
-use log::{error, info, warn};
+use log::{error,  warn};
 use scraper::{Html, Node};
 use serde_json::json;
 use shared::messages::{
-    Mentions, MessageContent, MessageKind, RichTextSpan, SystemMessage, UiMessage, UserMessage
+    Mentions, MessageContent, MessageKind, RichTextSpan,  UiMessage, UserMessage
 };
 use tauri::{AppHandle, State, async_runtime::spawn, command};
 use uuid::Uuid;

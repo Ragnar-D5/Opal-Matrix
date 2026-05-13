@@ -348,7 +348,9 @@ pub fn run() {
 
             let main_window = app.get_webview_window("main").expect("Failed to get main window");
 
-            main_window.maximize().ok();
+            if cfg!(not(target_os = "android")) {
+                main_window.maximize().ok();
+            }
 
             Ok(())
         })

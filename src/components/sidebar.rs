@@ -1,4 +1,4 @@
-use phosphor_leptos::{Icon, HASH, MATRIX_LOGO};
+use phosphor_leptos::{Icon, IconWeight, HASH, MATRIX_LOGO};
 use std::collections::HashMap;
 
 use crate::components::presence::PresenceBadge;
@@ -307,7 +307,12 @@ pub fn Sidebar() -> impl IntoView {
                                     }
                                 }
                             >
-                                <Icon icon=MATRIX_LOGO size="80%" color="currentColor" />
+                                <Icon
+                                    icon=MATRIX_LOGO
+                                    size="85%"
+                                    color="currentColor"
+                                    weight=IconWeight::Bold
+                                />
                             </div>
                         </div>
                     </div>

@@ -1,12 +1,11 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap};
 
-use log::{info};
 use rusqlite::Connection;
 use shared::{messages::{MessageKind, UiMessage}, user_profile::UserProfile};
 use tauri::{AppHandle, Emitter};
 
 use crate::{
-    TauriError, send_notification, state::AppState, storage::{fetch_sidebar, members::MemberRow, rooms::get_room_name}
+    TauriError, send_notification,  storage::{fetch_sidebar, members::MemberRow, rooms::get_room_name}
 };
 
 pub(crate) mod messages;
