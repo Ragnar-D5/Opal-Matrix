@@ -2,7 +2,7 @@ use crate::{
     components::{
         input::{get_caret_position, get_node_and_offset},
         presence::PresenceBadge,
-        RichTextExt,
+        text::RichTextExt,
     },
     state::{AppState, MemberStore},
     tauri_functions::{get_members, MemberShip},

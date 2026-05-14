@@ -1,4 +1,6 @@
+use crate::components::loading::Loading;
 use crate::components::shader::BackgroundShader;
+use shared::sidebar::SidebarState;
 use std::collections::HashMap;
 
 use log::error;
@@ -45,7 +47,7 @@ pub async fn call_tauri_no_args(cmd: &str) -> Result<JsValue, JsValue> {
     wasm_bindgen_futures::JsFuture::from(invoke(cmd, JsValue::NULL)).await
 }
 
-#[derive(Clone, Debug, Copy)]
+#[derive(Clone, Debug, Copy, PartialEq)]
 pub enum CurrentWindow {
     HomeserverDiscoveryPage,
     LoginPage,
@@ -63,6 +65,16 @@ pub fn App() -> impl IntoView {
     let store_for_presences = store.clone();
 
     provide_context(store);
+
+    Effect::new(move |_| {
+        if state.current_window.get() != CurrentWindow::LoadingPage
+            && state.loading_time.get() == 0.0
+        {
+            if let Some(perf) = web_sys::window().and_then(|w| w.performance()) {
+                state.loading_time.set(perf.now() / 1000.0);
+            }
+        }
+    });
 
     let profile_update =
         use_tauri_event::<HashMap<String, HashMap<String, UserProfile>>>("member_update");
@@ -121,6 +133,50 @@ pub fn App() -> impl IntoView {
         }
     });
 
+    let sidebar_update_event: ReadSignal<Option<SidebarState>> = use_tauri_event("sidebar_update");
+
+    Effect::new(move |_| {
+        if let Some(mut new_state) = sidebar_update_event.get() {
+            new_state
+                .dms
+                .sort_by(|a, b| b.last_ts().unwrap_or(0).cmp(&a.last_ts().unwrap_or(0)));
+
+            let current_order = state.server_order.get_untracked();
+
+            let order_map: HashMap<&String, usize> = current_order
+                .servers
+                .iter()
+                .enumerate()
+                .map(|(index, id)| (id, index))
+                .collect();
+
+            new_state.servers.sort_by(|a, b| {
+                let pos_a = order_map.get(&a.room_id).copied().unwrap_or(usize::MAX);
+                let pos_b = order_map.get(&b.room_id).copied().unwrap_or(usize::MAX);
+
+                if pos_a == usize::MAX && pos_b == usize::MAX {
+                    let name_a = a.name.as_deref().unwrap_or("");
+                    let name_b = b.name.as_deref().unwrap_or("");
+                    return name_a.cmp(name_b);
+                }
+
+                pos_a.cmp(&pos_b)
+            });
+
+            let final_order: Vec<String> = new_state
+                .servers
+                .iter()
+                .map(|s| s.room_id.clone())
+                .collect();
+
+            if final_order != current_order.servers {
+                state.set_server_order(final_order);
+            }
+
+            state.sidebar_state.set(new_state);
+        }
+    });
+
     Effect::new(move |_| {
         spawn_local(async move {
             match call_tauri_no_args("try_restore").await {
@@ -130,7 +186,6 @@ pub fn App() -> impl IntoView {
 
                     if let Some(response) = response_option {
                         state.user_id.set(response.user_id);
-                        state.current_window.set(CurrentWindow::HomePage);
                     } else {
                         state
                             .current_window
@@ -183,29 +238,19 @@ pub fn App() -> impl IntoView {
             };
 
             let _ = call_tauri_no_args("send_frontend").await;
+            state.current_window.set(CurrentWindow::HomePage);
         });
     });
 
     view! {
+        <BackgroundShader />
         {move || match state.current_window.get() {
             CurrentWindow::HomeserverDiscoveryPage => {
                 view! { <HomeserverDiscoveryPage /> }.into_any()
             }
             CurrentWindow::LoginPage => view! { <LoginPage /> }.into_any(),
-            CurrentWindow::HomePage => {
-
-                view! { <HomePage /> }
-                    .into_any()
-            }
-            CurrentWindow::LoadingPage => {
-
-                view! {
-                    <div class="loading">
-                        <p>"Loading..."</p>
-                    </div>
-                }
-                    .into_any()
-            }
+            CurrentWindow::HomePage => view! { <HomePage /> }.into_any(),
+            CurrentWindow::LoadingPage => Loading().into_any(),
         }}
     }
 }
@@ -341,7 +386,6 @@ fn HomePage() -> impl IntoView {
     };
 
     view! {
-        <BackgroundShader />
         <div
             class="bg-transparent flex h-screen overflow-hidden p-[var(--gap)] gap-[var(--gap)] relative"
             style=root_css_vars

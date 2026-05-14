@@ -1,6 +1,8 @@
 use std::{cell::RefCell, rc::Rc};
 
 use leptos::{html::Canvas, prelude::*};
+
+use crate::state::AppState;
 use wasm_bindgen::{prelude::Closure, JsCast};
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{Response, WebGl2RenderingContext};
@@ -8,6 +10,7 @@ use web_sys::{Response, WebGl2RenderingContext};
 #[component]
 pub fn BackgroundShader() -> impl IntoView {
     let canvas_ref: NodeRef<Canvas> = NodeRef::new();
+    let state: AppState = expect_context();
 
     // Load the shader file from the assets folder
     let shader_source = LocalResource::new(|| async move {
@@ -47,6 +50,7 @@ pub fn BackgroundShader() -> impl IntoView {
             let program_rc = Rc::new(program);
             let canvas_rc = Rc::new(canvas);
             let start_time = web_sys::window().unwrap().performance().unwrap().now();
+            let start_time_sec = (start_time / 1000.0) as f32;
 
             let f: Rc<RefCell<Option<Closure<dyn FnMut()>>>> = Rc::new(RefCell::new(None));
             let g = f.clone();
@@ -73,6 +77,15 @@ pub fn BackgroundShader() -> impl IntoView {
 
                 let time_loc = gl_rc.get_uniform_location(&program_rc, "u_time");
                 gl_rc.uniform1f(time_loc.as_ref(), time_sec);
+
+                let loading_loc = gl_rc.get_uniform_location(&program_rc, "u_loading_time");
+                let loading_time_sec = state.loading_time.get_untracked() as f32;
+                let loading_uniform = if loading_time_sec == 0.0 {
+                    0.0
+                } else {
+                    loading_time_sec - start_time_sec
+                };
+                gl_rc.uniform1f(loading_loc.as_ref(), loading_uniform);
 
                 // 3. Draw
                 gl_rc.draw_arrays(WebGl2RenderingContext::TRIANGLES, 0, 6);

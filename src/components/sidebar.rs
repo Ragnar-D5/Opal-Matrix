@@ -208,50 +208,6 @@ pub fn Sidebar() -> impl IntoView {
 
     let (dragged_server_id, set_dragged_server_id) = signal::<Option<String>>(None);
 
-    let sidebar_update_event: ReadSignal<Option<SidebarState>> = use_tauri_event("sidebar_update");
-
-    Effect::new(move |_| {
-        if let Some(mut new_state) = sidebar_update_event.get() {
-            new_state
-                .dms
-                .sort_by(|a, b| b.last_ts().unwrap_or(0).cmp(&a.last_ts().unwrap_or(0)));
-
-            let current_order = state.server_order.get_untracked();
-
-            let order_map: HashMap<&String, usize> = current_order
-                .servers
-                .iter()
-                .enumerate()
-                .map(|(index, id)| (id, index))
-                .collect();
-
-            new_state.servers.sort_by(|a, b| {
-                let pos_a = order_map.get(&a.room_id).copied().unwrap_or(usize::MAX);
-                let pos_b = order_map.get(&b.room_id).copied().unwrap_or(usize::MAX);
-
-                if pos_a == usize::MAX && pos_b == usize::MAX {
-                    let name_a = a.name.as_deref().unwrap_or("");
-                    let name_b = b.name.as_deref().unwrap_or("");
-                    return name_a.cmp(name_b);
-                }
-
-                pos_a.cmp(&pos_b)
-            });
-
-            let final_order: Vec<String> = new_state
-                .servers
-                .iter()
-                .map(|s| s.room_id.clone())
-                .collect();
-
-            if final_order != current_order.servers {
-                state.set_server_order(final_order);
-            }
-
-            state.sidebar_state.set(new_state);
-        }
-    });
-
     let Ok(img) = web_sys::HtmlImageElement::new() else {
         return view! { <div class="item p-4">"Error initializing drag image"</div> }.into_any();
     };
