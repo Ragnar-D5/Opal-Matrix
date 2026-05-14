@@ -501,10 +501,21 @@ impl TimelineItem {
                 };
 
                 view! {
-                    <div class="flex items-center gap-2 my-4">
-                        <div class="flex-1 border-t-1 border-[var(--muted-text-color)]"></div>
-                        <span class="text-muted text-sm">{label}</span>
-                        <div class="flex-1 border-t-1 border-[var(--muted-text-color)]"></div>
+                    <div class="flex items-center gap-2 my-4 drop-shadow">
+                        <div
+                            class="flex-1 border-t-1 border-[var(--muted-text-color)]"
+                            style="filter: drop-shadow(0 0 4px rgba(0, 0, 0, 0.5));"
+                        ></div>
+                        <span
+                            style="text-shadow: 0 0 4px rgba(0, 0, 0, 0.7);"
+                            class="text-muted text-sm"
+                        >
+                            {label}
+                        </span>
+                        <div
+                            class="flex-1 border-t-1 border-[var(--muted-text-color)]"
+                            style="filter: drop-shadow(0 0 4px rgba(0, 0, 0, 0.5));"
+                        ></div>
                     </div>
                 }
             }
@@ -514,7 +525,6 @@ impl TimelineItem {
                     <div class="flex-1 border-2 border-[#00ffff] rounded-full"></div>
 
                     <span class="relative flex items-center h-[20px] bg-[#00ffff] text-[var(--bg-color)] text-[10px] font-bold px-2 rounded-r-[3px] ml-1 uppercase tracking-wider select-none">
-                        // The left-pointing arrow (<) built using CSS borders
                         <div class="absolute -left-[6px] top-0 w-0 h-0 border-y-[10px] border-y-transparent border-r-[6px] border-r-[#00ffff]"></div>
                         "New"
                     </span>
@@ -586,7 +596,12 @@ impl TimelineItem {
 
                 view! {
                     <div class="flex items-center justify-center my-2">
-                        <span class="text-muted text-xxl">{text}</span>
+                        <span
+                            style="text-shadow: 0 0 4px rgba(0, 0, 0, 0.7);"
+                            class="text-muted text-xxl"
+                        >
+                            {text}
+                        </span>
                     </div>
                 }
                 .into_any()
