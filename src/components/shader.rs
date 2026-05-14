@@ -1,5 +1,7 @@
+use std::{cell::RefCell, rc::Rc};
+
 use leptos::{html::Canvas, prelude::*};
-use wasm_bindgen::JsCast;
+use wasm_bindgen::{prelude::Closure, JsCast};
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{Response, WebGl2RenderingContext};
 
@@ -10,7 +12,7 @@ pub fn BackgroundShader() -> impl IntoView {
     // Load the shader file from the assets folder
     let shader_source = LocalResource::new(|| async move {
         let window = web_sys::window()?;
-        let resp_value = JsFuture::from(window.fetch_with_str("/public/background.glsl"))
+        let resp_value = JsFuture::from(window.fetch_with_str("/public/background_center.glsl"))
             .await
             .ok()?;
         let resp: Response = resp_value.dyn_into().ok()?;
@@ -32,20 +34,61 @@ pub fn BackgroundShader() -> impl IntoView {
                 .dyn_into::<WebGl2RenderingContext>()
                 .unwrap();
 
-            // 1. SYNC PIXELS TO CSS SIZE
-            let width = canvas.client_width() as u32;
-            let height = canvas.client_height() as u32;
-            canvas.set_width(width);
-            canvas.set_height(height);
-            gl.viewport(0, 0, width as i32, height as i32);
-
             let vert_src = r#"#version 300 es
-                in vec2 position;
-                void main() {
-                    gl_Position = vec4(position, 0.0, 1.0);
-                }"#;
+                        in vec2 position;
+                        void main() {
+                            gl_Position = vec4(position, 0.0, 1.0);
+                        }"#;
 
-            setup_webgl_program(&gl, vert_src, &frag_src);
+            let program = setup_webgl_program(&gl, vert_src, &frag_src);
+
+            // --- ANIMATION LOOP SETUP ---
+            let gl_rc = Rc::new(gl);
+            let program_rc = Rc::new(program);
+            let canvas_rc = Rc::new(canvas);
+            let start_time = web_sys::window().unwrap().performance().unwrap().now();
+
+            let f: Rc<RefCell<Option<Closure<dyn FnMut()>>>> = Rc::new(RefCell::new(None));
+            let g = f.clone();
+
+            *g.borrow_mut() = Some(Closure::wrap(Box::new(move || {
+                let current_time = web_sys::window().unwrap().performance().unwrap().now();
+                let time_sec = ((current_time - start_time) / 1000.0) as f32;
+
+                gl_rc.use_program(Some(&program_rc));
+
+                // 1. Handle Resize & Resolution
+                let width = canvas_rc.client_width() as f32;
+                let height = canvas_rc.client_height() as f32;
+
+                if canvas_rc.width() as f32 != width || canvas_rc.height() as f32 != height {
+                    canvas_rc.set_width(width as u32);
+                    canvas_rc.set_height(height as u32);
+                    gl_rc.viewport(0, 0, width as i32, height as i32);
+                }
+
+                // 2. Set Uniforms
+                let res_loc = gl_rc.get_uniform_location(&program_rc, "u_resolution");
+                gl_rc.uniform2f(res_loc.as_ref(), width, height);
+
+                let time_loc = gl_rc.get_uniform_location(&program_rc, "u_time");
+                gl_rc.uniform1f(time_loc.as_ref(), time_sec);
+
+                // 3. Draw
+                gl_rc.draw_arrays(WebGl2RenderingContext::TRIANGLES, 0, 6);
+
+                // Schedule next frame
+                if let Some(window) = web_sys::window() {
+                    let _ = window.request_animation_frame(
+                        f.borrow().as_ref().unwrap().as_ref().unchecked_ref(),
+                    );
+                }
+            }) as Box<dyn FnMut()>));
+
+            // Start the first frame
+            let _ = web_sys::window()
+                .unwrap()
+                .request_animation_frame(g.borrow().as_ref().unwrap().as_ref().unchecked_ref());
         }
     });
 
@@ -57,7 +100,11 @@ pub fn BackgroundShader() -> impl IntoView {
     }
 }
 
-fn setup_webgl_program(gl: &WebGl2RenderingContext, vert_src: &str, frag_src: &str) {
+fn setup_webgl_program(
+    gl: &WebGl2RenderingContext,
+    vert_src: &str,
+    frag_src: &str,
+) -> web_sys::WebGlProgram {
     // Helper to compile and link shaders
     let vert_shader = compile_shader(gl, WebGl2RenderingContext::VERTEX_SHADER, vert_src);
     let frag_shader = compile_shader(gl, WebGl2RenderingContext::FRAGMENT_SHADER, frag_src);
@@ -89,6 +136,8 @@ fn setup_webgl_program(gl: &WebGl2RenderingContext, vert_src: &str, frag_src: &s
     gl.vertex_attrib_pointer_with_i32(pos_attr, 2, WebGl2RenderingContext::FLOAT, false, 0, 0);
 
     gl.draw_arrays(WebGl2RenderingContext::TRIANGLES, 0, 6);
+
+    program
 }
 
 fn compile_shader(

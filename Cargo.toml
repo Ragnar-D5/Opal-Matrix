@@ -17,7 +17,10 @@ web-sys = { version = "0.3.95", features = [
   "WebGlShader",
   "WebGl2RenderingContext",
   "WebGlProgram",
-  "WebGlBuffer"
+  "WebGlBuffer",
+  "WebGlUniformLocation",
+  "Performance",
+  "WebGlVertexArrayObject"
 ] }
 leptos = { version = "0.8", features = ["csr"] }
 wasm-bindgen = "0.2"

@@ -4,7 +4,7 @@
     --color-item-hover: rgba(200, 200, 255, 0.05);
     --color-item-selected: rgba(255, 255, 255, 0.1);
     --bg-color: #1e1e2e;
-    --tile-bg-color: rgba(0, 0, 0, 0.4);
+    --tile-bg-color: rgba(0, 0, 0, 0.2);
     --dim-text-color: hsl(220, 15%, 40%);
     --text-color: hsl(220, 25%, 60%);
     --bright-text-color: hsl(220, 25%, 70%);
