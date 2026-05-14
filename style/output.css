@@ -202,6 +202,9 @@
   .absolute {
     position: absolute;
   }
+  .fixed {
+    position: fixed;
+  }
   .relative {
     position: relative;
   }
@@ -270,6 +273,9 @@
   }
   .left-4 {
     left: calc(var(--spacing) * 4);
+  }
+  .-z-10 {
+    z-index: calc(10 * -1);
   }
   .z-10 {
     z-index: 10;
@@ -476,6 +482,9 @@
   }
   .w-full {
     width: 100%;
+  }
+  .w-screen {
+    width: 100vw;
   }
   .max-w-sm {
     max-width: var(--container-sm);
@@ -706,9 +715,6 @@
   }
   .bg-\[var\(--accent-color\)\] {
     background-color: var(--accent-color);
-  }
-  .bg-\[var\(--bg-color\)\] {
-    background-color: var(--bg-color);
   }
   .bg-\[var\(--bright-text-color\)\] {
     background-color: var(--bright-text-color);

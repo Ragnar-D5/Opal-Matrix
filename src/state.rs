@@ -85,7 +85,41 @@ impl AppState {
             self.append_room_id(room_id);
 
             self.save_breadcrumbs();
+            return;
         }
+
+        let Some(server_id) = server_id.as_deref() else {
+            return;
+        };
+
+        if let Some(room_id) = self.first_channel_id_for_server(server_id) {
+            self.set_active_room_id(Some(room_id));
+        }
+    }
+
+    fn first_channel_id_for_server(&self, server_id: &str) -> Option<String> {
+        let state = self.sidebar_state.get();
+        let server = state.servers.iter().find(|srv| srv.room_id == server_id)?;
+
+        match &server.kind {
+            RoomKind::Space { children } => Self::find_first_channel(children),
+            RoomKind::Channel { .. } => Some(server.room_id.clone()),
+        }
+    }
+
+    fn find_first_channel(nodes: &[RoomNode]) -> Option<String> {
+        for node in nodes {
+            match &node.kind {
+                RoomKind::Channel { .. } => return Some(node.room_id.clone()),
+                RoomKind::Space { children } => {
+                    if let Some(room_id) = Self::find_first_channel(children) {
+                        return Some(room_id);
+                    }
+                }
+            }
+        }
+
+        None
     }
 
     fn append_room_id(&self, room_id: String) {

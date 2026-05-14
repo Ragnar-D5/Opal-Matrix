@@ -14,6 +14,10 @@ web-sys = { version = "0.3.95", features = [
   "Range",
   "Selection",
   "TreeWalker",
+  "WebGlShader",
+  "WebGl2RenderingContext",
+  "WebGlProgram",
+  "WebGlBuffer"
 ] }
 leptos = { version = "0.8", features = ["csr"] }
 wasm-bindgen = "0.2"
@@ -34,6 +38,7 @@ serde = "1.0.228"
 nucleo-matcher = "0.3.1"
 linkify = "0.11.0"
 regex = "1.12.3"
+wgpu = "29.0.3"
 
 [workspace]
 members = [".", "shared", "src-tauri"]

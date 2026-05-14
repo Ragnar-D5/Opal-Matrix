@@ -1,3 +1,4 @@
+use crate::components::shader::BackgroundShader;
 use std::collections::HashMap;
 
 use log::error;
@@ -320,8 +321,7 @@ fn HomePage() -> impl IntoView {
 
     let root_css_vars = move || {
         let base = format!(
-            "background-color: var(--bg-color);
-            cursor: default;
+            "cursor: default;
 
             line-height: 22px",
         );
@@ -341,18 +341,11 @@ fn HomePage() -> impl IntoView {
     };
 
     view! {
+        <BackgroundShader />
         <div
-            class="bg-[var(--bg-color)] flex h-screen overflow-hidden p-[var(--gap)] gap-[var(--gap)] relative"
+            class="bg-transparent flex h-screen overflow-hidden p-[var(--gap)] gap-[var(--gap)] relative"
             style=root_css_vars
         >
-            // <h2>"Login Successful!"</h2>
-            // <p>"Welcome, " <strong>{user_id}</strong></p>
-
-            // <form on:submit=send_recovery_key>
-            // <input placeholder="Recovery Key" on:input=move |ev| set_recovery_key.set(event_target_value(&ev)) />
-            // <button type="submit">"Set Recovery Key"</button>
-            // </form>
-
             <div data-tauri-drag-region class="absolute top-0 left-0 right-0 h-3 z-50"></div>
             <Sidebar />
             <Chat />

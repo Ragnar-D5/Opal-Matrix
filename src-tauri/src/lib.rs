@@ -1,4 +1,3 @@
-use dirs;
 use log::trace;
 use std::sync::Arc;
 
@@ -315,29 +314,66 @@ async fn backend_log(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let log_foldername = format!(
-        "{}/logs/{}",
-        dirs::data_dir()
-            .expect("Failed to get app data dir")
-            .join(APP_NAME)
-            .to_string_lossy(),
-        Local::now().format("%Y-%m-%d")
-    )
-    .into();
-    let log_filename = format!("{}.log", Local::now().format("%H-%M-%S")).into();
-
     tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_http::init())
         .setup(|app| {
-            let data_dir = app
-                .path()
-                .data_dir()
-                .expect("Failed to get app data dir")
-                .join(APP_NAME);
+            let app_data_root = app.path().app_data_dir().map_err(|e| {
+                std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("Failed to resolve app data dir: {e}"),
+                )
+            })?;
+            let data_dir = app_data_root.join(APP_NAME);
 
-            std::fs::create_dir_all(&data_dir).ok();
+            std::fs::create_dir_all(&data_dir)?;
+
+            let log_dir = data_dir
+                .join("logs")
+                .join(Local::now().format("%Y-%m-%d").to_string());
+            std::fs::create_dir_all(&log_dir)?;
+            let log_file = format!("{}.log", Local::now().format("%H-%M-%S"));
+
+            app.handle().plugin(
+                tauri_plugin_log::Builder::new()
+                    .level(log::LevelFilter::Debug)
+                    .targets([
+                        Target::new(tauri_plugin_log::TargetKind::Stdout),
+                        Target::new(TargetKind::Folder {
+                            path: log_dir,
+                            file_name: Some(log_file),
+                        }),
+                    ])
+                    .level_for("reqwest", log::LevelFilter::Off)
+                    .level_for("keyring", log::LevelFilter::Off)
+                    .level_for("matrix_sdk_crypto", log::LevelFilter::Off)
+                    .level_for("rustls_platform_verifier", log::LevelFilter::Off)
+                    .level_for("html5ever", log::LevelFilter::Off)
+                    .format(|out, message, record| {
+                        let level = match record.level() {
+                            log::Level::Error => "ERROR",
+                            log::Level::Warn => "WARN",
+                            log::Level::Info => "INFO",
+                            log::Level::Debug => "DEBUG",
+                            log::Level::Trace => "TRACE",
+                        };
+
+                        let time = chrono::offset::Local::now()
+                            .format("%Y-%m-%d %H:%M:%S.%3f")
+                            .to_string();
+
+                        out.finish(format_args!(
+                            "{}|{}|{}:{}|{}",
+                            level,
+                            time,
+                            record.file().unwrap_or("Unknown"),
+                            record.line().unwrap_or(0).to_string(),
+                            message
+                        ));
+                    })
+                    .build(),
+            )?;
 
             let state = Arc::new(AppState {
                 app_data_dir: data_dir,
@@ -346,47 +382,14 @@ pub fn run() {
 
             app.manage(state);
 
+            #[cfg(not(target_os = "android"))]
             let main_window = app.get_webview_window("main").expect("Failed to get main window");
 
-            if cfg!(not(target_os = "android")) {
-                main_window.maximize().ok();
-            }
+            #[cfg(not(target_os = "android"))]
+            main_window.maximize().ok();
 
             Ok(())
         })
-        .plugin(
-            tauri_plugin_log::Builder::new()
-                .level(log::LevelFilter::Debug)
-                .targets([Target::new(tauri_plugin_log::TargetKind::Stdout), Target::new(TargetKind::Folder { path: log_foldername, file_name: log_filename })])
-                .level_for("reqwest", log::LevelFilter::Off)
-                .level_for("keyring", log::LevelFilter::Off)
-                .level_for("matrix_sdk_crypto", log::LevelFilter::Off)
-                .level_for("rustls_platform_verifier", log::LevelFilter::Off)
-                .level_for("html5ever", log::LevelFilter::Off)
-                .format(|out, message, record| {
-                    let level = match record.level() {
-                        log::Level::Error => "ERROR",
-                        log::Level::Warn => "WARN",
-                        log::Level::Info => "INFO",
-                        log::Level::Debug => "DEBUG",
-                        log::Level::Trace => "TRACE",
-                    };
-
-                    let time = chrono::offset::Local::now()
-                        .format("%Y-%m-%d %H:%M:%S.%3f")
-                        .to_string();
-
-                    out.finish(format_args!(
-                        "{}|{}|{}:{}|{}",
-                        level,
-                        time,
-                        record.file().unwrap_or("Unknown"),
-                        record.line().unwrap_or(0).to_string(),
-                        message
-                    ));
-                })
-                .build(),
-        )
         .invoke_handler(tauri::generate_handler![
             login,
             fetch_raw_html,

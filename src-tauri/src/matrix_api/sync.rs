@@ -353,7 +353,7 @@ async fn handle_sync_response(
             send_sidebar_update(conn, handle, &user_id)?;
         }
         if !changes.new_messages.is_empty() {
-            let messages_to_delete = state.messages_to_delete.write().await.to_owned();
+            let mut messages_to_delete = state.messages_to_delete.write().await.to_owned();
 
             let messages: HashMap<String, Vec<UiMessage>> = changes
                 .new_messages
@@ -378,6 +378,8 @@ async fn handle_sync_response(
                                 }),
                             },
                         ));
+
+                        messages_to_delete.remove(&msg_row.event_id);
                     }
 
                     Some(result)
