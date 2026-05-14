@@ -283,6 +283,17 @@ async fn set_room_id(
 }
 
 #[command(rename_all = "snake_case")]
+async fn set_frontend_focused(
+    state: State<'_, Arc<AppState>>,
+    focused: bool,
+) -> Result<(), TauriError> {
+    let mut focused_guard = state.frontend_is_focused.write().await;
+    *focused_guard = focused;
+
+    Ok(())
+}
+
+#[command(rename_all = "snake_case")]
 async fn backend_log(
     level: String,
     timestamp: String,
@@ -398,6 +409,7 @@ pub fn run() {
             send_frontend,
             backend_log,
             set_room_id,
+            set_frontend_focused,
 
             // frontend commands
             frontend::messages::commit_message,

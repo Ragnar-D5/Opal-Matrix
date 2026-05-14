@@ -109,3 +109,14 @@ pub async fn set_backend_room_id(room_id: Option<String>) -> Result<(), String> 
 
     Ok(())
 }
+
+pub async fn set_focused_in_backend(focused: bool) -> Result<(), String> {
+    let args = serde_wasm_bindgen::to_value(&json!({ "focused": focused }))
+        .map_err(|e| format!("Failed to construct args: {e}"))?;
+
+    call_tauri("set_frontend_focused", args)
+        .await
+        .map_err(|e| format!("Failed to set focused: {:?}", e))?;
+
+    Ok(())
+}

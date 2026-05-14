@@ -311,10 +311,11 @@ impl TryInto<UiMessage> for MessageRow {
                     }
                 };
 
-                let msg_type = content
+                let Some(msg_type) = content
                     .get("msgtype")
-                    .and_then(|v| v.as_str())
-                    .ok_or(format!("Missing msgtype: {:?}", value))?;
+                    .and_then(|v| v.as_str()) else {
+                        return Ok(UiMessage::deleted(self.event_id, self.timestamp, self.sender));
+                };
                 let mentions = content
                     .get("m.mentions")
                     .and_then(|v| serde_json::from_value(v.clone()).ok())

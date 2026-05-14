@@ -391,11 +391,14 @@ async fn handle_sync_response(
                 });
 
             let current_room_id = state.room_id().await?;
+            let frontend_focused = state.frontend_is_focused.read().await.to_owned();
+
             send_messages_update(
                 handle,
                 conn,
                 &user_id,
                 current_room_id,
+                frontend_focused,
                 messages,
                 !first_sync,
             )?;

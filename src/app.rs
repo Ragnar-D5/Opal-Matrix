@@ -16,7 +16,7 @@ use web_sys::HtmlImageElement;
 use crate::components::{chat::Chat, sidebar::Sidebar};
 use crate::hooks::use_tauri_event;
 use crate::state::{AppState, MemberStore};
-use crate::tauri_functions::set_backend_room_id;
+use crate::tauri_functions::{set_backend_room_id, set_focused_in_backend};
 
 #[wasm_bindgen]
 extern "C" {
@@ -119,6 +119,16 @@ pub fn App() -> impl IntoView {
 
         on_focus.forget();
         on_blur.forget();
+    });
+
+    Effect::new(move |_| {
+        let focused = state.is_focused.get();
+
+        spawn_local(async move {
+            if let Err(e) = set_focused_in_backend(focused).await {
+                error!("Error setting focus in backend: {:?}", e);
+            }
+        });
     });
 
     let presence_update = use_tauri_event::<HashMap<String, PresenceInfo>>("presence_update");

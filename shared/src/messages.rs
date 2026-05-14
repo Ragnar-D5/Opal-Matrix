@@ -172,6 +172,15 @@ impl UserMessage {
         }
     }
 
+    pub fn deleted() -> Self {
+        Self {
+            mentions: Mentions::default(),
+            reactions: Vec::new(),
+            replies_to: None,
+            content: MessageContent::Deleted,
+        }
+    }
+
     pub fn display_string(&self) -> String {
         match &self.content {
             MessageContent::Text { spans, .. } => spans
@@ -251,5 +260,15 @@ impl UiMessage {
 
     pub fn is_user_message(&self) -> bool {
         matches!(self.kind, MessageKind::UserMessage(_))
+    }
+
+    pub fn deleted(event_id: String, timestamp: u64, sender_id: String) -> Self {
+        Self {
+            event_id,
+            timestamp,
+            sender_id,
+            is_pending: false,
+            kind: MessageKind::UserMessage(UserMessage::deleted()),
+        }
     }
 }

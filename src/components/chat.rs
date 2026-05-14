@@ -503,20 +503,9 @@ impl TimelineItem {
 
                 view! {
                     <div class="flex items-center gap-2 my-4 drop-shadow">
-                        <div
-                            class="flex-1 border-t-1 border-[var(--muted-text-color)]"
-                            style="filter: drop-shadow(0 0 4px rgba(0, 0, 0, 0.5));"
-                        ></div>
-                        <span
-                            style="text-shadow: 0 0 4px rgba(0, 0, 0, 0.7);"
-                            class="text-muted text-sm"
-                        >
-                            {label}
-                        </span>
-                        <div
-                            class="flex-1 border-t-1 border-[var(--muted-text-color)]"
-                            style="filter: drop-shadow(0 0 4px rgba(0, 0, 0, 0.5));"
-                        ></div>
+                        <div class="flex-1 border-t-1 border-[var(--muted-text-color)] bdf"></div>
+                        <span class="text-muted text-sm bdf-text">{label}</span>
+                        <div class="flex-1 border-t-1 border-[var(--muted-text-color)] bdf"></div>
                     </div>
                 }
             }
@@ -597,12 +586,7 @@ impl TimelineItem {
 
                 view! {
                     <div class="flex items-center justify-center my-2">
-                        <span
-                            style="text-shadow: 0 0 4px rgba(0, 0, 0, 0.7);"
-                            class="text-muted text-xxl"
-                        >
-                            {text}
-                        </span>
+                        <span class="text-muted text-xxl bdf-text">{text}</span>
                     </div>
                 }
                 .into_any()

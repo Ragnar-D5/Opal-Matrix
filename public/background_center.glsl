@@ -5,11 +5,47 @@ uniform float u_time;
 uniform float u_loading_time;
 uniform vec2 u_resolution;
 
-const float k_loading_speed_mult = 10.0;
+const float k_loading_speed_mult = 15.0;
 const float k_normal_speed_mult = 1.0;
 const float k_loading_transition_seconds = 0.5;
+const float k_loading_radius_mult = 0.7;
+const float k_normal_radius_mult = 1.08;
+
+const float k_bg_wave_freq = 24.0;
+const float k_bg_diag_threshold = 0.4;
+
+const float k_hex_ring_radius = 0.15;
+const float k_hex_ring_width = 0.02;
+
+const float k_core_circle_radius = 0.06;
+const float k_core_circle_width = 0.01;
+
+const float k_orbit_outer_base = 0.25;
+const float k_orbit_outer_step = 0.12;
+const float k_orbit_inner_base = 0.08;
+const float k_orbit_inner_step = 0.05;
+const float k_orbit_ring_width_base = 0.003;
+const float k_orbit_ring_width_step = 0.001;
+const float k_orbit_outer_spread = 1.12;
+const float k_orbit_outer_spacing_pow = 1.4;
+const float k_orbit_count = 4.0;
+const float k_orbit_extra_count = 2.0;
+const float k_orbit_extra_distance_mult = 1.4;
+const float k_orbit_extra_inset = 0.25;
+const float k_orbit_total_count = k_orbit_count + k_orbit_extra_count;
+
+const float k_orbit_speed_mult_base = 0.85;
+const float k_orbit_speed_mult_step = 0.12;
+
+const float k_dash_threshold = 0.1;
+const float k_head_threshold = 0.9;
 
 out vec4 outColor;
+
+float aastep(float threshold, float value) {
+    float w = fwidth(value) * 0.5;
+    return smoothstep(threshold - w, threshold + w, value);
+}
 
 void main() {
     vec2 uv = gl_FragCoord.xy / u_resolution.xy;
@@ -19,8 +55,8 @@ void main() {
     // --- 1. Background ---
     vec3 bg_color = vec3(0.0);
 
-    float bgWave = sin((uv.x + uv.y) * 24.0 + u_time * 0.5);
-    float bgDiag = step(0.4, bgWave);
+    float bgWave = sin((uv.x + uv.y) * k_bg_wave_freq + u_time * 0.5);
+    float bgDiag = aastep(k_bg_diag_threshold, bgWave);
     bg_color += vec3(0.02, 0.03, 0.08) * bgDiag;
 
     // --- Distance Metric ---
@@ -30,12 +66,11 @@ void main() {
     float circle_dist = length(uv);
 
     // --- 2. Glowing Center (Circular) ---
-    // Increased the multiplier from 6.0 to 8.5 to pull the glow inwards (darker overall)
     float core_glow = exp(-circle_dist * 5.0);
-    float core_ring = smoothstep(0.02, 0.0, abs(hex_dist - 0.15)) * 0.5;
-
-    // Lowered the base color intensity from (0.2, 0.6, 1.0) to make it darker
+    float core_ring = (1.0 - aastep(k_hex_ring_width, abs(hex_dist - k_hex_ring_radius))) * 0.5;
+    float core_circle = 1.0 - aastep(k_core_circle_width, abs(circle_dist - k_core_circle_radius));
     vec3 center_color = vec3(0.06, 0.25, 0.4) * (core_glow + core_ring);
+    center_color += vec3(0.08, 0.3, 0.5) * core_circle;
 
     // --- 3. Circling Lines (Orbitals) ---
     float angle = atan(uv.y, uv.x);
@@ -57,24 +92,39 @@ void main() {
         phase_time = k_loading_speed_mult * t0 + transition_integral + k_normal_speed_mult * after;
     }
 
-    for (float i = 1.0; i <= 4.0; i++) {
-        float outer_r = 0.25 + i * 0.12;
-        float inner_r = 0.08 + i * 0.05;
-        float r = mix(inner_r, outer_r, loading_ease);
+    float outer_spread_base = k_orbit_outer_base + k_orbit_count * k_orbit_outer_step * (1.0 - k_orbit_outer_spread);
+    float outer_min = (outer_spread_base + 1.0 * k_orbit_outer_step * k_orbit_outer_spread)
+            * k_normal_radius_mult;
+    float outer_max = (outer_spread_base + k_orbit_count * k_orbit_outer_step * k_orbit_outer_spread)
+            * k_normal_radius_mult;
+
+    for (float i = 1.0; i <= k_orbit_total_count; i++) {
+        float t = clamp((i - 1.0) / (k_orbit_count - 1.0), 0.0, 1.0);
+        float outer_r = mix(outer_min, outer_max, pow(t, k_orbit_outer_spacing_pow));
+        float inner_r = (k_orbit_inner_base + i * k_orbit_inner_step) * k_loading_radius_mult;
+        float base_r = mix(inner_r, outer_r, loading_ease);
+
+        float extra_mask = step(k_orbit_count + 0.5, i);
+        float extra_index = i - k_orbit_count;
+        float extra_step = (k_orbit_extra_distance_mult - 1.0) * outer_max;
+        float extra_target = outer_max + extra_index * extra_step;
+        float extra_r = extra_target + (1.0 - loading_ease) * k_orbit_extra_inset;
+        float r = mix(base_r, extra_r, extra_mask);
 
         float base_speed = (mod(i, 2.0) == 0.0 ? 1.0 : -1.0) * (0.3 + i * 0.15);
+        float speed_mult = k_orbit_speed_mult_base + k_orbit_speed_mult_step * i;
         float segments = 2.0 + i;
-        float current_angle = angle * segments + phase_time * base_speed;
+        float current_angle = angle * segments + phase_time * base_speed * speed_mult;
 
-        float ring_width = 0.003 + 0.001 * i;
+        float ring_width = k_orbit_ring_width_base + k_orbit_ring_width_step * i;
 
-        // We use hex_dist here so the orbitals are also hexagons
-        float ring_mask = smoothstep(ring_width + 0.01, ring_width, abs(hex_dist - r));
-        float dash = smoothstep(0.1, 0.5, sin(current_angle));
-        float head = smoothstep(0.9, 0.98, fract(current_angle / 6.28318));
+        float ring_mask = 1.0 - aastep(ring_width, abs(hex_dist - r));
+        float dash = aastep(k_dash_threshold, sin(current_angle));
+        float head = aastep(k_head_threshold, fract(current_angle / 6.28318));
 
+        float ring_alpha = mix(1.0, loading_ease, extra_mask);
         vec3 col = 0.5 + 0.5 * cos(u_time * 0.4 + i + vec3(0.0, 1.5, 3.0));
-        orbital_color += ring_mask * dash * col * (0.8 + head * 2.5);
+        orbital_color += ring_mask * dash * col * (0.8 + head * 2.5) * ring_alpha;
     }
 
     vec3 final_color = vec3(0.03, 0.03, 0.05) + bg_color + center_color + orbital_color;

@@ -1,15 +1,13 @@
 use phosphor_leptos::{Icon, IconWeight, HASH, MATRIX_LOGO};
-use std::collections::HashMap;
 
 use crate::components::presence::PresenceBadge;
 use crate::components::{get_color, FloatingTile};
 use crate::state::{AppState, MemberStore};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use shared::sidebar::{RoomKind, RoomNode, SidebarState};
+use shared::sidebar::{RoomKind, RoomNode};
 
 use crate::components::TextCircle;
-use crate::hooks::use_tauri_event;
 
 #[component]
 fn DmDiv(dm: RoomNode) -> impl IntoView {

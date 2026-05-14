@@ -115,6 +115,7 @@ pub struct AppState {
     pub connection: Mutex<Option<rusqlite::Connection>>,
 
     pub frontend_current_room_id: RwLock<Option<String>>,
+    pub frontend_is_focused: RwLock<bool>,
 
     pub messages_to_delete: RwLock<HashMap<String, String>>,
 }
