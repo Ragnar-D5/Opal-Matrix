@@ -174,6 +174,10 @@ pub fn App() -> impl IntoView {
             }
 
             state.sidebar_state.set(new_state);
+
+            if state.current_window.get() == CurrentWindow::LoadingPage {
+                state.current_window.set(CurrentWindow::HomePage);
+            }
         }
     });
 
@@ -238,7 +242,6 @@ pub fn App() -> impl IntoView {
             };
 
             let _ = call_tauri_no_args("send_frontend").await;
-            state.current_window.set(CurrentWindow::HomePage);
         });
     });
 
