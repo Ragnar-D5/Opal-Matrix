@@ -6,7 +6,7 @@ uniform float u_loading_time;
 uniform vec2 u_resolution;
 
 const float k_loading_speed_mult = 15.0;
-const float k_normal_speed_mult = 1.0;
+const float k_normal_speed_mult = 0.60;
 const float k_loading_transition_seconds = 0.5;
 const float k_loading_radius_mult = 0.7;
 const float k_normal_radius_mult = 1.08;
