@@ -15,6 +15,7 @@ fn ArgSpan(text: impl ToString) -> impl IntoView {
 }
 
 enum LoginInputStatus {
+    Loading,
     Valid,
     UsernameEmpty,
     PasswordEmpty,
@@ -50,6 +51,9 @@ impl LoginInputStatus {
             .into_any(),
             LoginInputStatus::Error(err) => {
                 view! { <p class="text-red-600 select-none">{err.clone()}</p> }.into_any()
+            }
+            LoginInputStatus::Loading => {
+                view! { <p class="text-gray-600 select-none">"Logging in..."</p> }.into_any()
             }
         }
     }
