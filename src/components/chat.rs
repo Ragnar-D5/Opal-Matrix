@@ -15,7 +15,7 @@ use crate::{
     tauri_functions::{get_members, send_marker, MemberShip},
 };
 
-use phosphor_leptos::{Icon, IconWeight, HASH, INFO, TRASH, UPLOAD_SIMPLE};
+use phosphor_leptos::{Icon, IconWeight, HASH, INFO, TRASH, UPLOAD_SIMPLE, WARNING_CIRCLE};
 
 use chrono::{DateTime, Local, NaiveDate, TimeZone};
 use leptos::{ev, html::Div, leptos_dom::logging::console_error, prelude::*, task::spawn_local};
@@ -23,8 +23,8 @@ use leptos_use::{use_event_listener, use_intersection_observer, UseIntersectionO
 use serde::Serialize;
 use shared::{
     messages::{
-        MembershipAction, MessageContent, MessageKind, Reaction, RepliesTo, RichTextSpan,
-        SystemMessage, UiMessage, UserMessage,
+        MembershipAction, MessageContent, MessageKind, MessageState, Reaction, RepliesTo,
+        RichTextSpan, SystemMessage, UiMessage, UserMessage,
     },
     sidebar::{RoomKind, RoomNode, SidebarState},
     user_profile::PresenceStatus,
@@ -35,7 +35,7 @@ use web_sys::{DomParser, SupportedType};
 #[derive(PartialEq, Clone)]
 struct GroupedMessage {
     message: UserMessage,
-    is_pending: bool,
+    state: MessageState,
     event_id: String,
 }
 
@@ -212,16 +212,11 @@ fn render_user_message(
     message: &UserMessage,
     store: MemberStore,
     room_id: String,
-    is_pending: bool,
 ) -> impl IntoView {
     match &message.content {
         MessageContent::Text { spans, is_edited } => {
-
             view! {
-                <div
-                    class="text-normal leading-relaxed break-words"
-                    class=("opacity-50", is_pending)
-                >
+                <div class="text-normal leading-relaxed break-words">
                     {spans
                         .clone()
                         .into_iter()
@@ -232,8 +227,7 @@ fn render_user_message(
                             .into_any()
                     } else {
                         view! {}.into_any()
-                    }}
-                    {spans.clone().into_iter().map(render_link).collect_view()}
+                    }} {spans.clone().into_iter().map(render_link).collect_view()}
                 </div>
             }
                 .into_any()
@@ -253,7 +247,7 @@ fn render_user_message(
             };
 
             view! {
-                <div class="mt-1" class=("opacity-50", is_pending)>
+                <div class="mt-1">
                     <img
                         src=final_url
                         alt=name.clone()
@@ -265,10 +259,7 @@ fn render_user_message(
         }
         MessageContent::File { url, filename, size } => {
             view! {
-                <div
-                    class="flex items-center gap-2 mt-1 p-2 rounded-md bg-white/5 border border-[var(--tile-border-color)] inline-flex"
-                    class=("opacity-50", is_pending)
-                >
+                <div class="flex items-center gap-2 mt-1 p-2 rounded-md bg-white/5 border border-[var(--tile-border-color)] inline-flex">
                     <span class="text-xl">"📄"</span>
                     <a
                         href=url.clone()
@@ -286,10 +277,7 @@ fn render_user_message(
         }
         MessageContent::Encrypted => {
             view! {
-                <div
-                    class="text-red-300 bold leading-relaxed break-words text-muted"
-                    class=("opacity-50", is_pending)
-                >
+                <div class="text-red-300 bold leading-relaxed break-words text-muted">
                     "Encrypted message"
                 </div>
             }
@@ -297,10 +285,7 @@ fn render_user_message(
         }
         MessageContent::Deleted => {
             view! {
-                <div
-                    class="text-muted italic leading-relaxed break-words flex flex-row items-center gap-1"
-                    class=("opacity-50", is_pending)
-                >
+                <div class="text-muted italic leading-relaxed break-words flex flex-row items-center gap-1">
                     <Icon icon=TRASH size="20px" />
                     "This message was deleted"
                 </div>
@@ -311,6 +296,22 @@ fn render_user_message(
 }
 
 impl TimelineItem {
+    fn render_key(&self) -> String {
+        match &self.kind {
+            TimelineItemKind::MessageGroup(group) => {
+                let mut key = self.id.clone();
+                for msg in group {
+                    key.push('|');
+                    key.push_str(&msg.event_id);
+                    key.push(':');
+                    key.push_str(&msg.state.to_string());
+                }
+                key
+            }
+            _ => self.id.clone(),
+        }
+    }
+
     fn render(&self) -> impl IntoView {
         let state: AppState = expect_context();
         let store: MemberStore = expect_context();
@@ -344,7 +345,7 @@ impl TimelineItem {
                                 .enumerate()
                                 .map(|(idx, grouped_msg)| {
                                     let msg = &grouped_msg.message;
-                                    let is_pending = grouped_msg.is_pending;
+                                    let state = &grouped_msg.state;
                                     let is_first = idx == 0;
                                     let message_mentions_user = msg
                                         .mentions
@@ -367,9 +368,9 @@ impl TimelineItem {
                                         msg,
                                         store.clone(),
                                         room_id.clone(),
-                                        is_pending,
                                     );
                                     let date = self.date;
+                                    let failed = state == &MessageState::Failed;
 
                                     view! {
                                         <div
@@ -451,9 +452,21 @@ impl TimelineItem {
                                                             .into_any()
                                                     } else {
                                                         view! {}.into_any()
-                                                    }}
-                                                    <div>
-                                                        {content}
+                                                    }} <div>
+                                                        <div class=(
+                                                            "opacity-50",
+                                                            state != &MessageState::Sent,
+                                                        )>{content}</div>
+                                                        <Show when=move || failed>
+                                                            <div class="flex items-center gap-1 mt-1 text-red-500 text-xs">
+                                                                <Icon
+                                                                    icon=WARNING_CIRCLE
+                                                                    weight=IconWeight::Duotone
+                                                                    size="16px"
+                                                                />
+                                                                "Failed to send"
+                                                            </div>
+                                                        </Show>
                                                         {if !reaction_counts.is_empty() {
                                                             view! {
                                                                 <div class="flex flex-wrap gap-1 mt-1 mb-2">
@@ -650,32 +663,37 @@ fn TimeLine() -> impl IntoView {
         use_tauri_event("messages_update");
 
     Effect::new(move |_| {
-        if let Some(update) = messages_update_event.get() {
-            let room_id = expect_context::<AppState>().active_room_id.get();
-            if let Some(rid) = room_id {
-                if let Some(new_msgs) = update.get(&rid) {
-                    set_messages.update(|existing| {
-                        let mut seen_ids: HashSet<String> =
-                            existing.iter().map(|m| m.event_id.clone()).collect();
+        let Some(update) = messages_update_event.get() else {
+            return;
+        };
 
-                        for msg in new_msgs {
-                            match &msg.kind {
-                                MessageKind::SystemMessage(SystemMessage::RemoveMessage {
-                                    event_id,
-                                }) => {
-                                    existing.retain(|m| &m.event_id != event_id);
-                                }
-                                _ => {
-                                    if seen_ids.insert(msg.event_id.clone()) {
-                                        existing.push(msg.clone());
-                                    }
-                                }
-                            }
+        let Some(room_id) = state.active_room_id.get() else {
+            return;
+        };
+
+        let Some(new_msgs) = update.get(&room_id) else {
+            return;
+        };
+
+        set_messages.update(|existing| {
+            let mut seen_ids: HashSet<String> =
+                existing.iter().map(|m| m.event_id.clone()).collect();
+
+            for msg in new_msgs {
+                match &msg.kind {
+                    MessageKind::SystemMessage(SystemMessage::RemoveMessage { event_id }) => {
+                        existing.retain(|m| &m.event_id != event_id);
+                    }
+                    _ => {
+                        if seen_ids.contains(&msg.event_id) {
+                            existing.retain(|m| m.event_id != msg.event_id);
                         }
-                    });
+                        existing.push(msg.clone());
+                        seen_ids.insert(msg.event_id.clone());
+                    }
                 }
             }
-        }
+        });
     });
 
     let has_unread_notifications = Memo::new(move |_| {
@@ -704,7 +722,7 @@ fn TimeLine() -> impl IntoView {
             .get()
             .iter()
             .filter_map(|m| {
-                if m.is_pending {
+                if m.state != MessageState::Sent {
                     None
                 } else {
                     Some((m.timestamp, m.event_id.clone()))
@@ -888,7 +906,7 @@ fn TimeLine() -> impl IntoView {
                             if same_sender && same_minute && !current_is_reply && !last_is_reply {
                                 group.push(GroupedMessage {
                                     message: user_msg.clone(),
-                                    is_pending: msg.is_pending,
+                                    state: msg.state.clone(),
                                     event_id: msg.event_id.clone(),
                                 });
                                 last_item.id = format!("{}_{}", last_item.id, msg.event_id);
@@ -904,7 +922,7 @@ fn TimeLine() -> impl IntoView {
                             id: msg.event_id.clone(),
                             kind: TimelineItemKind::MessageGroup(vec![GroupedMessage {
                                 message: user_msg.clone(),
-                                is_pending: msg.is_pending,
+                                state: msg.state.clone(),
                                 event_id: msg.event_id.clone(),
                             }]),
                         })
@@ -1064,7 +1082,7 @@ fn TimeLine() -> impl IntoView {
             <div class="mb-5"></div>
             <For
                 each=move || flattened_items.get()
-                key=|item| item.id.clone()
+                key=|item| item.render_key()
                 children=|item| item.render()
             />
 

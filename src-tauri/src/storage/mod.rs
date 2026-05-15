@@ -167,8 +167,8 @@ pub fn apply_sync_changes(
     }
 
     let mut stmt_messages = tx.prepare(
-        "INSERT INTO messages (event_id, room_id, sender, msg_type, raw_json, timestamp)
-        VALUES (?, ?, ?, ?, ?, ?)
+        "INSERT INTO messages (event_id, room_id, sender, msg_type, raw_json, timestamp, state)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(event_id) DO UPDATE SET
             msg_type = excluded.msg_type,
             raw_json = excluded.raw_json",
@@ -180,7 +180,8 @@ pub fn apply_sync_changes(
             msg.sender,
             msg.msg_type,
             msg.raw_json,
-            msg.timestamp
+            msg.timestamp,
+            msg.state.to_string()
         ])?;
     }
     drop(stmt_messages);

@@ -4,7 +4,6 @@ use crate::{
     state::AppState,
 };
 use leptos::{prelude::*, task::spawn_local};
-use log::info;
 use serde_json::json;
 use shared::api::errors::LoginError;
 use web_sys::{HtmlInputElement, SubmitEvent};
@@ -129,6 +128,8 @@ pub fn LoginPage(window: RwSignal<CurrentWindow>) -> impl IntoView {
     };
 
     let login = move |ev: SubmitEvent| {
+        status.set(LoginInputStatus::Loading);
+
         ev.prevent_default();
         spawn_local(async move {
             let username = username.get_untracked();

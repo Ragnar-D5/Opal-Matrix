@@ -1,9 +1,8 @@
-use log::debug;
 use ruma::api::SupportedVersions;
 use ruma::events::Mentions as RumaMentions;
 use ruma::OwnedUserId;
 use serde_json::Value;
-use shared::messages::{Mentions, UiMessage};
+use shared::messages::{Mentions, MessageState, UiMessage};
 use std::borrow::Cow;
 use std::{str::FromStr, sync::Arc};
 use tauri_plugin_http::reqwest::{self, Client};
@@ -126,13 +125,6 @@ pub async fn fetch_messages(
     let mut hit_room_create = false;
 
     for msg in api_messages {
-        if msg
-            .to_string()
-            .contains("$cse5M93hIaL9xnDvUJ93MNIIb6LRw6dluFAuowNWiGI")
-        {
-            debug!("Got message: {msg}");
-        }
-
         let Some(event_id) = msg
             .get("event_id")
             .and_then(|v| v.as_str())
@@ -181,6 +173,7 @@ pub async fn fetch_messages(
             msg_type: msg_type.to_string(),
             raw_json: msg.to_string(),
             timestamp: timestamp as u64 / 1000,
+            state: MessageState::Sent,
         });
     }
 
@@ -265,6 +258,7 @@ pub async fn backfill_gap(
                     msg_type: final_type.to_string(),
                     raw_json: processed_msg.to_string(),
                     timestamp: timestamp as u64 / 1000,
+                    state: MessageState::Sent,
                 });
             }
 

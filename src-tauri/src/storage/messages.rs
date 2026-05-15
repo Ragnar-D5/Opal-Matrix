@@ -5,8 +5,7 @@ use rusqlite::Connection;
 use scraper::{Html, Node};
 use serde_json::Value;
 use shared::messages::{
-    EncryptedFileInfo, MembershipAction, Mentions, MessageContent, MessageKind, RichTextSpan,
-    SystemMessage, UiMessage, UserMessage,
+    EncryptedFileInfo, MembershipAction, Mentions, MessageContent, MessageKind, MessageState, RichTextSpan, SystemMessage, UiMessage, UserMessage
 };
 
 use crate::TauriError;
@@ -21,6 +20,7 @@ pub struct MessageRow {
     pub msg_type: String,
     pub raw_json: String,
     pub timestamp: u64,
+    pub state: MessageState,
 }
 
 impl DataBaseModel for MessageRow {
@@ -33,6 +33,7 @@ impl DataBaseModel for MessageRow {
                     msg_type TEXT NOT NULL,
                     raw_json TEXT NOT NULL,
                     timestamp INTEGER NOT NULL,
+                    state TEXT NOT NULL,
                     FOREIGN KEY (room_id) REFERENCES rooms(room_id)
                 );
             ",
@@ -52,7 +53,7 @@ pub fn get_messages(
     match oldest_id {
         Some(id) => {
             let mut stmt = conn.prepare(
-                "SELECT event_id, room_id, sender, msg_type, raw_json, timestamp
+                "SELECT event_id, room_id, sender, msg_type, raw_json, timestamp, state
             FROM MESSAGES
             WHERE room_id = ?
                 AND timestamp < (SELECT timestamp FROM MESSAGES WHERE event_id = ?)
@@ -62,6 +63,7 @@ pub fn get_messages(
             )?;
 
             let rows = stmt.query_map(rusqlite::params![room_id, id, id, limit], |row| {
+                let state: String = row.get(6)?;
                 Ok(MessageRow {
                     event_id: row.get(0)?,
                     room_id: row.get(1)?,
@@ -69,6 +71,7 @@ pub fn get_messages(
                     msg_type: row.get(3)?,
                     raw_json: row.get(4)?,
                     timestamp: row.get(5)?,
+                    state: state.into(),
                 })
             })?;
 
@@ -78,7 +81,7 @@ pub fn get_messages(
         }
         None => {
             let mut stmt = conn.prepare(
-                "SELECT event_id, room_id, sender, msg_type, raw_json, timestamp
+                "SELECT event_id, room_id, sender, msg_type, raw_json, timestamp, state
             FROM MESSAGES
             WHERE room_id = ?
             ORDER BY timestamp DESC
@@ -86,6 +89,7 @@ pub fn get_messages(
             )?;
 
             let rows = stmt.query_map(rusqlite::params![room_id, limit], |row| {
+                let state: String = row.get(6)?;
                 Ok(MessageRow {
                     event_id: row.get(0)?,
                     room_id: row.get(1)?,
@@ -93,6 +97,7 @@ pub fn get_messages(
                     msg_type: row.get(3)?,
                     raw_json: row.get(4)?,
                     timestamp: row.get(5)?,
+                    state: state.into(),
                 })
             })?;
 
@@ -110,8 +115,8 @@ pub fn save_messages(conn: &mut Connection, messages: Vec<MessageRow>) -> Result
 
     {
         let mut stmt = tx.prepare(
-            "INSERT OR IGNORE INTO messages (event_id, room_id, sender, msg_type, raw_json, timestamp)
-            VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT OR IGNORE INTO messages (event_id, room_id, sender, msg_type, raw_json, timestamp, state)
+            VALUES (?, ?, ?, ?, ?, ?, ?)",
         )?;
 
         for msg in messages {
@@ -121,7 +126,8 @@ pub fn save_messages(conn: &mut Connection, messages: Vec<MessageRow>) -> Result
                 msg.sender,
                 msg.msg_type,
                 msg.raw_json,
-                msg.timestamp
+                msg.timestamp,
+                msg.state.to_string(),
             ])?;
         }
     }
@@ -267,13 +273,10 @@ impl TryInto<UiMessage> for MessageRow {
             .get("content")
             .ok_or(format!("Missing content: {:?}", value))?;
 
-        // Check if it is pending by checking if the event_id is a uuid v4
-        let is_pending = uuid::Uuid::parse_str(&self.event_id)
-            .map(|uuid| uuid.get_version_num() == 4)
-            .unwrap_or(false);
+        let state = self.state;
 
         let message_kind = match self.msg_type.as_str() {
-            "m.room.message" => {
+            "m.room.message" | "m.room.message.failed" => {
                 let mut user_message = UserMessage::new();
 
                 if let Some(relates_to) = content.get("m.relates_to") {
@@ -293,7 +296,7 @@ impl TryInto<UiMessage> for MessageRow {
 
                         return Ok(UiMessage {
                             event_id: self.event_id,
-                            is_pending,
+                            state: state,
                             timestamp: self.timestamp,
                             sender_id: self.sender,
                             kind: MessageKind::SystemMessage(SystemMessage::MessageEdited {
@@ -568,7 +571,7 @@ impl TryInto<UiMessage> for MessageRow {
 
         let msg = UiMessage {
             event_id: self.event_id,
-            is_pending,
+            state: state,
             timestamp: self.timestamp,
             sender_id: self.sender,
             kind: message_kind,
@@ -580,5 +583,11 @@ impl TryInto<UiMessage> for MessageRow {
 
 pub fn delete_message(conn: &Connection, event_id: &str) -> Result<(), TauriError> {
     conn.execute("DELETE FROM messages WHERE event_id = ?", rusqlite::params![event_id])?;
+    Ok(())
+}
+pub fn set_message_state(conn: &Connection, event_id: &str, state: MessageState) -> Result<(), TauriError> {
+    let string = state.to_string();
+
+    conn.execute("UPDATE messages SET state = ? WHERE event_id = ?", rusqlite::params![string, event_id])?;
     Ok(())
 }

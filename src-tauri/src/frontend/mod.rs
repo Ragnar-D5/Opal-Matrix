@@ -65,6 +65,16 @@ pub fn emit_messages_update(
     Ok(())
 }
 
+pub fn emit_single_message_update(
+    handle: &AppHandle,
+    room_id: &String,
+    message: &UiMessage,
+) -> Result<(), TauriError> {
+    let payload = HashMap::from([(room_id.clone(), vec![message.clone()])]);
+    emit_messages_update(handle, &payload)
+}
+
+
 pub fn send_messages_update(
     handle: &AppHandle,
     conn: &Connection,

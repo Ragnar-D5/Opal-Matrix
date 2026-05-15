@@ -224,13 +224,42 @@ pub enum MessageKind {
     SystemMessage(SystemMessage),
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+pub enum MessageState {
+    #[default]
+    Pending,
+    Sent,
+    Failed,
+}
+
+impl ToString for MessageState {
+    fn to_string(&self) -> String {
+        match self {
+            MessageState::Failed => "failed".to_string(),
+            MessageState::Pending => "pending".to_string(),
+            MessageState::Sent => "sent".to_string(),
+        }
+    }
+}
+
+impl From<String> for MessageState {
+    fn from(s: String) -> Self {
+        match s.as_str() {
+            "pending" => MessageState::Pending,
+            "sent" => MessageState::Sent,
+            "failed" => MessageState::Failed,
+            _ => MessageState::Pending, // Default to pending for unknown states
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct UiMessage {
     pub event_id: String,
     pub timestamp: u64,
     pub sender_id: String,
 
-    pub is_pending: bool,
+    pub state: MessageState,
     pub kind: MessageKind,
 }
 
@@ -267,7 +296,7 @@ impl UiMessage {
             event_id,
             timestamp,
             sender_id,
-            is_pending: false,
+            state: MessageState::default(),
             kind: MessageKind::UserMessage(UserMessage::deleted()),
         }
     }

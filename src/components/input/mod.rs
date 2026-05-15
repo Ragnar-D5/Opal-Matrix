@@ -226,6 +226,11 @@ pub fn handle_keydown(
                 };
 
                 el.set_inner_html("<br>");
+                if let Some(room_id) = state.active_room_id.get_untracked() {
+                    state.drafts.update(|drafts| {
+                        drafts.remove(&room_id);
+                    });
+                }
 
                 spawn_local(async move {
                     if let Err(e) = commit_message(message, room_id).await {

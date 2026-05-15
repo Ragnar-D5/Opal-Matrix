@@ -1,4 +1,4 @@
-use crate::components::authentication::{Authentication, HomeserverDiscoveryPage, LoginPage};
+use crate::components::authentication::Authentication;
 use crate::components::loading::Loading;
 use crate::components::shader::BackgroundShader;
 use shared::api::RestoreResponse;
@@ -199,9 +199,7 @@ pub fn App() -> impl IntoView {
                         }
                         RestoreResponse::Success { user_id } => {
                             state.user_id.set(user_id);
-                            state
-                                .current_window
-                                .set(CurrentWindow::HomeserverDiscoveryPage);
+                            state.current_window.set(CurrentWindow::HomePage);
                         }
                         RestoreResponse::Failed { home_server: _ } => {
                             state.current_window.set(CurrentWindow::LoginPage);

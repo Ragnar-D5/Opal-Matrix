@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{sync::Arc};
 
 use chrono::Local;
 use ego_tree::NodeRef;
@@ -6,17 +6,13 @@ use log::{error,  warn};
 use scraper::{Html, Node};
 use serde_json::json;
 use shared::messages::{
-    Mentions, MessageContent, MessageKind, RichTextSpan,  UiMessage, UserMessage
+    Mentions, MessageContent, MessageKind, MessageState, RichTextSpan, UiMessage, UserMessage
 };
 use tauri::{AppHandle, State, async_runtime::spawn, command};
 use uuid::Uuid;
 
 use crate::{
-    frontend::emit_messages_update,
-    matrix_api::messages::send_message_to_matrix,
-    state::{AppState, HomeServerInfo},
-    storage::messages::{delete_message, save_messages, MessageRow},
-    TauriError,
+    TauriError, frontend::{emit_single_message_update}, matrix_api::messages::send_message_to_matrix, state::{AppState, HomeServerInfo}, storage::messages::{MessageRow, delete_message, save_messages, set_message_state}
 };
 
 #[command(rename_all = "snake_case")]
@@ -38,7 +34,7 @@ pub async fn commit_message(
     let message = UiMessage {
         event_id: txn_id.clone(),
         timestamp: timestamp,
-        is_pending: true,
+        state: MessageState::Pending,
         kind: MessageKind::UserMessage(UserMessage {
             mentions: mentions.clone(),
             reactions: Vec::new(),
@@ -76,6 +72,7 @@ pub async fn commit_message(
         msg_type: "m.room.message".to_string(),
         timestamp,
         raw_json: message_json.to_string(),
+        state: MessageState::Pending,
     };
 
     state
@@ -86,9 +83,11 @@ pub async fn commit_message(
     let txn_id_clone = txn_id.clone();
     let room_id_clone = room_id.clone();
     let state_clone = state.inner().clone();
+    let mut message_clone = message.clone();
+    let handle_clone = handle.clone();
 
     spawn(async move {
-        let event_id = match send_message_to_matrix(
+        let event_id = send_message_to_matrix(
             base_url,
             &supported_versions,
             access_token,
@@ -97,15 +96,7 @@ pub async fn commit_message(
             body,
             formatted_body,
             mentions,
-        ).await {
-            Ok(res) => res,
-            Err(error) => {
-                error!("Failed to send message: {:?}", error);
-                return;
-            }
-        };
-
-        state_clone.messages_to_delete.write().await.insert(event_id, txn_id_clone.clone());
+        ).await.map_err(|e| error!("Failed to send message: {:?}", e)).ok();
 
         let mut conn_guard = state_clone.connection.lock().await;
         let Some(conn) = conn_guard.as_mut() else {
@@ -113,13 +104,26 @@ pub async fn commit_message(
             return;
         };
 
-        if let Err(error) = delete_message(conn, &txn_id_clone) {
-            error!("Failed to delete message {}: {:?}", txn_id_clone, error);
+        if let Some(event_id) = event_id {
+            state_clone.messages_to_delete.write().await.insert(event_id, txn_id_clone.clone());
+
+            if let Err(error) = delete_message(conn, &txn_id_clone) {
+                error!("Failed to delete message {}: {:?}", txn_id_clone, error);
+            }
+        } else {
+            if let Err(error) = set_message_state(conn, &txn_id_clone, MessageState::Failed) {
+                error!("Failed to update message state for {}: {:?}", txn_id_clone, error);
+            }
+
+            message_clone.state = MessageState::Failed;
+
+            emit_single_message_update(&handle_clone, &room_id_clone, &message_clone).unwrap_or_else(|error| {
+                error!("Failed to emit message update for {}: {:?}", txn_id_clone, error);
+            });
         }
     });
 
-    let dict = HashMap::from([(room_id.clone(), vec![message.clone()])]);
-    emit_messages_update(&handle, &dict)?;
+    emit_single_message_update(&handle, &room_id, &message)?;
 
     Ok(())
 }
@@ -160,7 +164,7 @@ fn walk_node(
             if let Some(data_type) = elem.attr("data-type")
                 && let Some(id) = elem.attr("data-id")
             {
-                let display_text = extract_text(node);
+                let display_text = extract_text(node).trim_start_matches('@').to_string();
 
                 if data_type == "room_mention" {
                     spans.push(RichTextSpan::RoomMention);
@@ -168,8 +172,8 @@ fn walk_node(
                     mentions.room = true;
                     formatted.push_str("<strong>@room</strong>");
                 } else if data_type == "user_mention" {
-                    // It's a User Mention
                     mentions.user_ids.push(id.to_string());
+
                     spans.push(RichTextSpan::UserMention {
                         user_id: id.to_string(),
                         display_name: display_text.clone(),

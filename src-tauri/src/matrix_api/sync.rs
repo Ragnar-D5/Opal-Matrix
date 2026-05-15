@@ -28,11 +28,12 @@ use ruma::{
 
 use serde_json::value::RawValue;
 use shared::{
-    messages::{MessageKind, SystemMessage, UiMessage},
+    messages::{MessageKind, MessageState, SystemMessage, UiMessage},
     user_profile::{PresenceInfo, PresenceStatus},
 };
 use tauri::{AppHandle, Emitter};
 use tauri_plugin_http::reqwest::{self, Client};
+use uuid::Uuid;
 
 use crate::{
     frontend::{send_member_update, send_messages_update, send_sidebar_update},
@@ -369,10 +370,10 @@ async fn handle_sync_response(
                         result.push((
                             room_id.clone(),
                             UiMessage {
-                                event_id: room_id.clone(),
+                                event_id: Uuid::new_v4().to_string(),
                                 sender_id: msg_row.sender,
-                                is_pending: false,
                                 timestamp: msg_row.timestamp,
+                                state: MessageState::default(),
                                 kind: MessageKind::SystemMessage(SystemMessage::RemoveMessage {
                                     event_id: other_id.clone(),
                                 }),
@@ -406,11 +407,6 @@ async fn handle_sync_response(
     }
 
     for (room_id, prev_batch) in backfill_rooms {
-        warn!(
-            "Room {} timeline is limited! Starting backfill from {}",
-            room_id, prev_batch
-        );
-
         let state = state.clone();
         tauri::async_runtime::spawn(async move {
             if let Err(e) = backfill_gap(&state, room_id.to_string(), prev_batch).await {
@@ -664,6 +660,7 @@ fn extract_message(
                 raw_json: raw_json.get().to_string(),
                 msg_type: "m.room.message".to_string(),
                 timestamp: ev.origin_server_ts().as_secs().into(),
+                state: MessageState::Sent,
             });
         }
         AnySyncMessageLikeEvent::RoomRedaction(ev) => {
@@ -674,6 +671,7 @@ fn extract_message(
                 raw_json: raw_json.get().to_string(),
                 msg_type: "m.room.redaction".to_string(),
                 timestamp: ev.origin_server_ts().as_secs().into(),
+                state: MessageState::Sent,
             });
         }
         AnySyncMessageLikeEvent::RoomEncrypted(ev) => changes.new_messages.push(MessageRow {
@@ -683,6 +681,7 @@ fn extract_message(
             raw_json: raw_json.get().to_string(),
             msg_type: "m.room.encrypted".to_string(),
             timestamp: ev.origin_server_ts().as_secs().into(),
+            state: MessageState::Sent,
         }),
         AnySyncMessageLikeEvent::Reaction(ev) => {
             changes.new_messages.push(MessageRow {
@@ -692,6 +691,7 @@ fn extract_message(
                 raw_json: raw_json.get().to_string(),
                 msg_type: "m.reaction".to_string(),
                 timestamp: ev.origin_server_ts().as_secs().into(),
+                state: MessageState::Sent,
             });
         }
         _ => return Ok(()),
@@ -718,5 +718,6 @@ fn create_system_message(
         msg_type,
         raw_json: raw_json,
         timestamp,
+        state: MessageState::Sent,
     });
 }
