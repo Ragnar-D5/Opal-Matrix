@@ -1,6 +1,7 @@
 use colorsys::Hsl;
 use leptos::prelude::*;
 
+pub(crate) mod authentication;
 pub(crate) mod chat;
 pub(crate) mod input;
 pub(crate) mod loading;
@@ -31,6 +32,19 @@ pub fn FloatingTile(#[prop(into, optional)] class: String, children: Children) -
             style="scrollbar-width: none;"
         >
             {children()}
+        </div>
+    }
+}
+
+#[component]
+pub fn SingleFloatingTile(
+    #[prop(into, optional)] class: String,
+    #[prop(into, optional)] style: String,
+    children: Children,
+) -> impl IntoView {
+    view! {
+        <div class="w-screen h-screen flex justify-center items-center" style=style>
+            <FloatingTile class=class>{children()}</FloatingTile>
         </div>
     }
 }

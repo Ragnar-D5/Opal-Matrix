@@ -1,4 +1,6 @@
-use log::trace;
+use log::{error, trace};
+use shared::api::errors::LoginError;
+use shared::api::RestoreResponse;
 use std::sync::Arc;
 
 use aes::cipher::{KeyIvInit, StreamCipher};
@@ -8,7 +10,6 @@ use base64::Engine;
 use bytes::Bytes;
 use chrono::Local;
 use log::info;
-use serde::Serialize;
 use tauri::{command, AppHandle, Url};
 use tauri::{Manager, State};
 
@@ -30,6 +31,7 @@ use tauri_plugin_log::{Target, TargetKind};
 use tauri_plugin_notification::{NotificationExt, PermissionState};
 
 use crate::frontend::send_sidebar_update;
+use crate::matrix_api::authentication::matrix_login;
 use crate::state::AppState;
 
 const MATRIX_ID_SET: &AsciiSet = &CONTROLS.add(b'!').add(b':');
@@ -161,32 +163,23 @@ where
     }
 }
 
-#[derive(Serialize)]
-struct LoginResponse {
-    user_id: String,
-}
-
-#[tauri::command]
+#[command]
 async fn try_restore(
     state: State<'_, Arc<AppState>>,
     handle: AppHandle,
-) -> Result<Option<LoginResponse>, TauriError> {
-    let success = state.login_or_restore_session().await?;
+) -> Result<RestoreResponse, TauriError> {
+    let Some(session) = state.get_last_session().await? else {
+        return Ok(RestoreResponse::NoSession);
+    };
+    let Some(user_id) = state.login_or_restore_session(session.clone()).await? else {
+        return Ok(RestoreResponse::Failed {
+            home_server: session.homeserver_url,
+        });
+    };
 
-    if success {
-        let client_guard = state.client.read().await;
+    state.init_stuff(&handle).await?;
 
-        let client_info = client_guard.as_ref().ok_or("Not logged in")?.clone();
-
-        state.init_stuff(&handle).await?;
-        // state.set_recovery_key("".to_string()).await?;
-
-        Ok(Some(LoginResponse {
-            user_id: client_info.user_id,
-        }))
-    } else {
-        Ok(None)
-    }
+    Ok(RestoreResponse::Success { user_id: user_id })
 }
 
 #[tauri::command(rename_all = "snake_case")]
@@ -196,22 +189,26 @@ async fn login(
     recovery_key: String,
     state: State<'_, Arc<AppState>>,
     handle: AppHandle,
-) -> Result<LoginResponse, TauriError> {
+) -> Result<String, LoginError> {
     info!("Logging in new");
 
-    // Ensure no sync iteration is still running with an old crypto machine/token pair, fixes an error only occuring on Android?
-    state.stop_sync().await?;
+    state.stop_sync().await.map_err(|e| {
+        error!("Failed to stop sync: {:?}", e);
+        LoginError::BackendError
+    })?;
 
     let server_info = state
         .home_server_info
         .read()
         .await
         .as_ref()
-        .ok_or("Home server not set")?
+        .ok_or_else(|| {
+            error!("No server info");
+            LoginError::BackendError
+        })?
         .clone();
 
-    let (client_info, token) =
-        authentication::matrix_login(server_info, username, password).await?;
+    let (client_info, token) = matrix_login(server_info, username, password).await?;
 
     {
         let mut client_guard = state.client.write().await;
@@ -221,19 +218,26 @@ async fn login(
         *client_guard = Some(client_info.clone());
     }
 
-    state.save_session().await?;
+    state.save_session().await.map_err(|e| {
+        error!("Failed to save session: {:?}", e);
+        LoginError::BackendError
+    })?;
 
-    state.init_stuff(&handle).await?;
+    state.init_stuff(&handle).await.map_err(|e| {
+        error!("Failed to initialize stuff: {:?}", e);
+        LoginError::BackendError
+    })?;
 
-    state.set_recovery_key(recovery_key).await?;
+    state.set_recovery_key(recovery_key).await.map_err(|e| {
+        error!("Failed to set recovery key: {:?}", e);
+        LoginError::BackendError
+    })?;
 
-    Ok(LoginResponse {
-        user_id: client_info.user_id,
-    })
+    Ok(client_info.user_id)
 }
 
 /// Sets the recovery key for the current user. The key is saved in the keyring.
-#[tauri::command(rename_all = "snake_case")]
+#[command(rename_all = "snake_case")]
 async fn set_recovery_key(
     state: State<'_, Arc<AppState>>,
     handle: AppHandle,
@@ -330,13 +334,12 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_http::init())
         .setup(|app| {
-            let app_data_root = app.path().app_data_dir().map_err(|e| {
+            let data_dir = app.path().app_data_dir().map_err(|e| {
                 std::io::Error::new(
                     std::io::ErrorKind::Other,
                     format!("Failed to resolve app data dir: {e}"),
                 )
             })?;
-            let data_dir = app_data_root.join(APP_NAME);
 
             std::fs::create_dir_all(&data_dir)?;
 

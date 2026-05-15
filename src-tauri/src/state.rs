@@ -21,7 +21,7 @@ use crate::{
     construct_url,
     matrix_api::{
         authentication::{self, get_account_data},
-        crypto::{self, decrypt_ssss_aes_hmac_sha2},
+        crypto::{self, decrypt_ssss_aes_hmac_sha2, StoredSession},
         discovery::{fetch_supported_versions, Authentication},
         sync::run_sync_loop,
     },
@@ -184,46 +184,52 @@ impl AppState {
         return Ok(());
     }
 
-    pub async fn login_or_restore_session(&self) -> Result<bool, TauriError> {
-        let session = crypto::get_last_active_session().await?;
-
-        if let Some(session) = session {
-            let token = Token {
-                access_token: session.access_token,
-                refresh_token: session.refresh_token.map(|r| RefreshToken {
-                    token: r,
-                    expires_at: session.expires_at.unwrap_or(0),
-                }),
-            };
-
-            let client_info = ClientInfo {
-                user_id: session.user_id.clone(),
-                device_id: session.device_id.clone(),
-            };
-
-            {
-                let mut token_guard = self.token.write().await;
-                *token_guard = Some(token);
-
-                let mut client_guard = self.client.write().await;
-                *client_guard = Some(client_info);
-
-                let mut server_guard = self.home_server_info.write().await;
-                *server_guard = Some(HomeServerInfo::try_new(session.homeserver_url).await?);
-
-                let mut recovery_guard = self.recovery_key.write().await;
-                *recovery_guard = session.recovery_key;
-
-                let mut next_batch_guard = self.next_batch.write().await;
-                *next_batch_guard = session.next_batch;
-            }
-
-            return Ok(self.check_token().await.is_ok());
-        }
-
-        Ok(false)
+    pub async fn get_last_session(&self) -> Result<Option<StoredSession>, TauriError> {
+        crypto::get_last_active_session().await
     }
 
+    pub async fn login_or_restore_session(
+        &self,
+        session: StoredSession,
+    ) -> Result<Option<String>, TauriError> {
+        let token = Token {
+            access_token: session.access_token,
+            refresh_token: session.refresh_token.map(|r| RefreshToken {
+                token: r,
+                expires_at: session.expires_at.unwrap_or(0),
+            }),
+        };
+
+        let client_info = ClientInfo {
+            user_id: session.user_id.clone(),
+            device_id: session.device_id.clone(),
+        };
+
+        {
+            let mut token_guard = self.token.write().await;
+            *token_guard = Some(token);
+
+            let mut client_guard = self.client.write().await;
+            *client_guard = Some(client_info);
+
+            let mut server_guard = self.home_server_info.write().await;
+            *server_guard = Some(HomeServerInfo::try_new(session.homeserver_url).await?);
+
+            let mut recovery_guard = self.recovery_key.write().await;
+            *recovery_guard = session.recovery_key;
+
+            let mut next_batch_guard = self.next_batch.write().await;
+            *next_batch_guard = session.next_batch;
+        }
+
+        if self.check_token().await.is_err() {
+            return Ok(None);
+        } else {
+            return Ok(Some(session.user_id));
+        }
+    }
+
+    /// Checks if the current token is valid and refreshes it if necessary, returning the access token.
     pub async fn check_token(&self) -> Result<String, TauriError> {
         let needs_refresh = {
             let token_guard = self.token.read().await;

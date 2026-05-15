@@ -4,7 +4,7 @@
     --color-item-hover: rgba(200, 200, 255, 0.05);
     --color-item-selected: rgba(255, 255, 255, 0.1);
     --bg-color: #1e1e2e;
-    --tile-bg-color: rgba(0, 0, 0, 0.2);
+    --tile-bg-color: rgba(0, 0, 0, 0.3);
     --dim-text-color: hsl(220, 15%, 40%);
     --text-color: hsl(220, 25%, 60%);
     --bright-text-color: hsl(220, 25%, 70%);
@@ -16,15 +16,25 @@
     --presence-idle-color: rgb(255, 255, 100);
     --presence-busy-color: rgb(255, 100, 100);
     --presence-offline-color: rgb(150, 150, 150);
+
     --accent-color: #46aec5;
+    --accent-text-color: #181825;
+
     --header-height: 46px;
     --floating-border-radius: 8px;
     --ui-base-color: rgba(255, 255, 255, 0.3);
     --ui-hover-color: rgba(255, 255, 255, 0.8);
+
     --ui-floating-bg: rgba(0, 0, 0, 0.2);
+    --ui-floating-hover-bg: rgba(0, 0, 0, 0.3);
+
     --ui-border-radius: 6px;
     --ui-hover-bg: rgba(255, 255, 255, 0.075);
     --link-color: #5865f2;
+
+    --confirm-color: #2b7fff;
+    --confirm-hover-color: #184890;
+    --confirm-text-color: #ffffff;
 }
 
 @utility text-token {

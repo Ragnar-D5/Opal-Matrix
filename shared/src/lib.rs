@@ -1,4 +1,5 @@
 pub mod account_data;
+pub mod api;
 pub mod commands;
 pub mod macros;
 pub mod messages;

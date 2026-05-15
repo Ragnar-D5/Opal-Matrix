@@ -78,14 +78,33 @@ pub fn BackgroundShader() -> impl IntoView {
                 let time_loc = gl_rc.get_uniform_location(&program_rc, "u_time");
                 gl_rc.uniform1f(time_loc.as_ref(), time_sec);
 
-                let loading_loc = gl_rc.get_uniform_location(&program_rc, "u_loading_time");
-                let loading_time_sec = state.loading_time.get_untracked() as f32;
-                let loading_uniform = if loading_time_sec == 0.0 {
+                let last_changed_loc =
+                    gl_rc.get_uniform_location(&program_rc, "u_last_changed_time");
+                let last_changed_time_sec = state.last_changed_time.get_untracked() as f32;
+                let last_changed_uniform = if last_changed_time_sec == 0.0 {
                     0.0
                 } else {
-                    loading_time_sec - start_time_sec
+                    last_changed_time_sec - start_time_sec
                 };
-                gl_rc.uniform1f(loading_loc.as_ref(), loading_uniform);
+                gl_rc.uniform1f(last_changed_loc.as_ref(), last_changed_uniform);
+
+                let state_loc = gl_rc.get_uniform_location(&program_rc, "u_state");
+                let state_value = match state.current_window.get_untracked() {
+                    crate::app::CurrentWindow::LoadingPage => 0.0,
+                    crate::app::CurrentWindow::HomeserverDiscoveryPage => 1.0,
+                    crate::app::CurrentWindow::LoginPage => 2.0,
+                    crate::app::CurrentWindow::HomePage => 3.0,
+                };
+                gl_rc.uniform1f(state_loc.as_ref(), state_value);
+
+                let prev_state_loc = gl_rc.get_uniform_location(&program_rc, "u_prev_state");
+                let prev_state_value = match state.previous_window.get_untracked() {
+                    crate::app::CurrentWindow::LoadingPage => 0.0,
+                    crate::app::CurrentWindow::HomeserverDiscoveryPage => 1.0,
+                    crate::app::CurrentWindow::LoginPage => 2.0,
+                    crate::app::CurrentWindow::HomePage => 3.0,
+                };
+                gl_rc.uniform1f(prev_state_loc.as_ref(), prev_state_value);
 
                 // 3. Draw
                 gl_rc.draw_arrays(WebGl2RenderingContext::TRIANGLES, 0, 6);

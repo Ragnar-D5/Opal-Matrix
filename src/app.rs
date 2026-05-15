@@ -1,13 +1,14 @@
+use crate::components::authentication::{Authentication, HomeserverDiscoveryPage, LoginPage};
 use crate::components::loading::Loading;
 use crate::components::shader::BackgroundShader;
+use shared::api::RestoreResponse;
 use shared::sidebar::SidebarState;
 use std::collections::HashMap;
 
 use log::error;
 
+use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos::{ev::SubmitEvent, prelude::*};
-use serde::{Deserialize, Serialize};
 use shared::account_data::{Breadcrumbs, ServerOrder};
 use shared::user_profile::{PresenceInfo, UserProfile};
 use wasm_bindgen::prelude::*;
@@ -25,18 +26,6 @@ extern "C" {
 
     #[wasm_bindgen(js_namespace = ["__TAURI__", "opener"])]
     pub fn openUrl(url: &str) -> js_sys::Promise;
-}
-
-#[derive(Deserialize, Debug, Clone)]
-pub struct MatrixLoginResponse {
-    pub user_id: String,
-}
-
-#[derive(Serialize, Deserialize)]
-struct LoginArgs {
-    username: String,
-    password: String,
-    recovery_key: String,
 }
 
 pub async fn call_tauri(cmd: &str, args: JsValue) -> Result<JsValue, JsValue> {
@@ -66,13 +55,18 @@ pub fn App() -> impl IntoView {
 
     provide_context(store);
 
+    let last_window = RwSignal::new(state.current_window.get_untracked());
+
     Effect::new(move |_| {
-        if state.current_window.get() != CurrentWindow::LoadingPage
-            && state.loading_time.get() == 0.0
-        {
+        let current = state.current_window.get();
+        let previous = last_window.get_untracked();
+
+        if current != previous {
             if let Some(perf) = web_sys::window().and_then(|w| w.performance()) {
-                state.loading_time.set(perf.now() / 1000.0);
+                state.last_changed_time.set(perf.now() / 1000.0);
             }
+            state.previous_window.set(previous);
+            last_window.set(current);
         }
     });
 
@@ -195,15 +189,23 @@ pub fn App() -> impl IntoView {
         spawn_local(async move {
             match call_tauri_no_args("try_restore").await {
                 Ok(js_val) => {
-                    let response_option: Option<MatrixLoginResponse> =
-                        serde_wasm_bindgen::from_value(js_val).unwrap();
+                    let response: RestoreResponse = serde_wasm_bindgen::from_value(js_val).unwrap();
 
-                    if let Some(response) = response_option {
-                        state.user_id.set(response.user_id);
-                    } else {
-                        state
-                            .current_window
-                            .set(CurrentWindow::HomeserverDiscoveryPage);
+                    match response {
+                        RestoreResponse::NoSession => {
+                            state
+                                .current_window
+                                .set(CurrentWindow::HomeserverDiscoveryPage);
+                        }
+                        RestoreResponse::Success { user_id } => {
+                            state.user_id.set(user_id);
+                            state
+                                .current_window
+                                .set(CurrentWindow::HomeserverDiscoveryPage);
+                        }
+                        RestoreResponse::Failed { home_server: _ } => {
+                            state.current_window.set(CurrentWindow::LoginPage);
+                        }
                     }
                 }
                 Err(_) => {
@@ -258,108 +260,12 @@ pub fn App() -> impl IntoView {
     view! {
         <BackgroundShader />
         {move || match state.current_window.get() {
-            CurrentWindow::HomeserverDiscoveryPage => {
-                view! { <HomeserverDiscoveryPage /> }.into_any()
+            CurrentWindow::HomeserverDiscoveryPage | CurrentWindow::LoginPage => {
+                view! { <Authentication /> }.into_any()
             }
-            CurrentWindow::LoginPage => view! { <LoginPage /> }.into_any(),
             CurrentWindow::HomePage => view! { <HomePage /> }.into_any(),
             CurrentWindow::LoadingPage => Loading().into_any(),
         }}
-    }
-}
-
-#[component]
-fn LoginPage() -> impl IntoView {
-    let state = expect_context::<AppState>();
-
-    let (username, set_username) = signal(String::new());
-    let (password, set_password) = signal(String::new());
-    let (recovery_key, set_recovery_key) = signal(String::new());
-    let (error_msg, set_error_msg) = signal(String::new());
-
-    let username_ref = NodeRef::<leptos::html::Input>::new();
-    Effect::new(move || {
-        if let Some(el) = username_ref.get() {
-            let _ = el.focus();
-        }
-    });
-
-    let login = move |ev: SubmitEvent| {
-        ev.prevent_default();
-        spawn_local(async move {
-            let username = username.get_untracked();
-            let password = password.get_untracked();
-            let recovery_key = recovery_key.get_untracked();
-
-            if username.is_empty() || password.is_empty() || recovery_key.is_empty() {
-                return;
-            }
-
-            let args = serde_wasm_bindgen::to_value(&LoginArgs {
-                username: username,
-                password: password,
-                recovery_key: recovery_key,
-            })
-            .unwrap();
-
-            match call_tauri("login", args).await {
-                Ok(js_val) => {
-                    let response: MatrixLoginResponse =
-                        serde_wasm_bindgen::from_value(js_val).unwrap();
-
-                    state.user_id.set(response.user_id);
-                    state.current_window.set(CurrentWindow::HomePage);
-                }
-                Err(err) => {
-                    let err_str = err
-                        .as_string()
-                        .unwrap_or_else(|| "Unknown error".to_string());
-
-                    // Display the error locally
-                    set_error_msg.set(err_str);
-                }
-            };
-
-            // Do some loading animation
-        });
-    };
-
-    view! {
-        <div class="flex flex-col items-center pt-[50px]">
-
-            <form class="flex flex-col gap-4" on:submit=login>
-                <input
-                    id="username-input"
-                    placeholder="Username"
-                    class="p-2.5 text-xl rounded-lg select-none"
-                    node_ref=username_ref
-                    on:input=move |ev| set_username.set(event_target_value(&ev))
-                />
-                <input
-                    id="password-input"
-                    placeholder="Password"
-                    class="p-2.5 text-xl rounded-lg select-none"
-                    on:input=move |ev| set_password.set(event_target_value(&ev))
-                    type="password"
-                />
-                <input
-                    id="recovery-key-input"
-                    placeholder="Recovery Key"
-                    class="p-2.5 text-xl rounded-lg select-none"
-                    on:input=move |ev| set_recovery_key.set(event_target_value(&ev))
-                    type="password"
-                />
-                <button
-                    type="submit"
-                    class="mt-5 px-5 py-2.5 bg-blue-500 text-white rounded-md border-none cursor-pointer select-none"
-                >
-                    "Login"
-                </button>
-            </form>
-
-            // Show errors if there are any
-            <p class="text-red-300">{move || error_msg.get()}</p>
-        </div>
     }
 }
 
@@ -406,83 +312,6 @@ fn HomePage() -> impl IntoView {
             <div data-tauri-drag-region class="absolute top-0 left-0 right-0 h-3 z-50"></div>
             <Sidebar />
             <Chat />
-        </div>
-    }
-}
-
-#[derive(Serialize, Deserialize)]
-struct HomeServerArgs {
-    url: String,
-}
-
-#[component]
-pub fn HomeserverDiscoveryPage() -> impl IntoView {
-    let state = expect_context::<AppState>();
-    let (text, set_text) = signal(String::new());
-    let (is_valid, set_is_valid) = signal(false);
-
-    let try_home_server = move || {
-        let current_value = text.get();
-
-        spawn_local(async move {
-            let args =
-                serde_wasm_bindgen::to_value(&HomeServerArgs { url: current_value }).unwrap();
-
-            match call_tauri("choose_home_server", args).await {
-                Ok(url) => {
-                    if url == *text.read_untracked() {
-                        set_is_valid.set(true);
-                    } else {
-                        set_is_valid.set(false);
-                    }
-                    //if a server can be found here
-                }
-                Err(_) => {}
-            }
-        });
-    };
-
-    let choose_home_server = async move || {
-        let chosen_server = text.get_untracked();
-
-        let args = serde_wasm_bindgen::to_value(&HomeServerArgs { url: chosen_server }).unwrap();
-
-        // TODO: refactor code be less duplicate, see discovery.rs for reference
-        call_tauri("choose_home_server", args).await.unwrap();
-    };
-
-    view! {
-        <div class="flex flex-col items-center pt-[50px]">
-            <input
-                type="text"
-                placeholder="example.org"
-                class="p-2.5 text-xl rounded-lg select-none"
-                autofocus
-                on:input=move |ev| {
-                    set_text.set(event_target_value(&ev));
-                    set_is_valid.set(false);
-                    try_home_server();
-                }
-                prop:value=text
-            />
-
-            // The button only renders when is_valid is true
-            <Show
-                when=move || is_valid.get()
-                fallback=|| view! { <p class="text-gray-600 select-none">"Checking server..."</p> }
-            >
-                <button
-                    class="mt-5 px-5 py-2.5 bg-blue-500 text-white rounded-md border-none cursor-pointer select-none"
-                    on:click=move |_| {
-                        spawn_local(async move {
-                            choose_home_server().await;
-                            state.current_window.set(CurrentWindow::LoginPage);
-                        })
-                    }
-                >
-                    "Login Page"
-                </button>
-            </Show>
         </div>
     }
 }

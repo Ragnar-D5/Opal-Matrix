@@ -4,8 +4,8 @@ use crate::{
     construct_url, reqwest_response_to_http_response,
     state::{ClientInfo, HomeServerInfo, RefreshToken, Token},
 };
+use log::error;
 use ruma::api::{
-    IncomingResponse, OutgoingRequest,
     auth_scheme::SendAccessToken,
     client::{
         session::{
@@ -14,8 +14,10 @@ use ruma::api::{
         },
         uiaa::UserIdentifier,
     },
+    IncomingResponse, OutgoingRequest,
 };
 use serde_json::Value;
+use shared::api::errors::LoginError;
 
 use crate::TauriError;
 use tauri_plugin_http::reqwest::{self, Client};
@@ -25,7 +27,7 @@ pub async fn matrix_login(
     server_info: HomeServerInfo,
     username: String,
     password: String,
-) -> Result<(ClientInfo, Token), TauriError> {
+) -> Result<(ClientInfo, Token), LoginError> {
     let client = Client::new();
 
     let mut req = LoginRequest::new(LoginInfo::Password(Password::new(
@@ -37,20 +39,33 @@ pub async fn matrix_login(
     req.initial_device_display_name = Some("Opal Matrix on Linux".to_string());
     req.refresh_token = true;
 
-    let req = req.try_into_http_request::<Vec<u8>>(
-        server_info.base_url.as_str(),
-        SendAccessToken::None,
-        Cow::Owned(server_info.supported_versions),
-    )?;
+    let req = req
+        .try_into_http_request::<Vec<u8>>(
+            server_info.base_url.as_str(),
+            SendAccessToken::None,
+            Cow::Owned(server_info.supported_versions),
+        )
+        .map_err(|e| {
+            error!("Failed to construct login request: {e}");
+            LoginError::BackendError
+        })?;
 
-    let http_req = reqwest::Request::try_from(req)?;
+    let http_req = reqwest::Request::try_from(req).map_err(|_| LoginError::BackendError)?;
 
-    let res = reqwest_response_to_http_response(client.execute(http_req).await?)
-        .await
-        .map_err(|e| format!("Failed to create HTTP response: {:?}", e))?;
+    let res = reqwest_response_to_http_response(client.execute(http_req).await.map_err(|e| {
+        error!("Network error during login: {:?}", e);
+        LoginError::NetworkError
+    })?)
+    .await
+    .map_err(|e| {
+        error!("Error converting response to http: {:?}", e);
+        LoginError::BackendError
+    })?;
 
-    let ruma_res = LoginResponse::try_from_http_response(res)
-        .map_err(|e| format!("Failed to parse response: {}", e))?;
+    let ruma_res = LoginResponse::try_from_http_response(res).map_err(|e| {
+        error!("Failed to parse response: {}", e);
+        LoginError::InvalidCredentials
+    })?;
 
     let refresh_token = ruma_res.refresh_token.clone();
     let expires_in_ms = ruma_res.expires_in.map(|d| d.as_secs() as u64).unwrap_or(0);
@@ -113,7 +128,7 @@ pub async fn get_account_data(
     let client = Client::new();
 
     let url = construct_url(vec![
-        matrix_url,
+        matrix_url.as_str(),
         "_matrix",
         "client",
         "v3",

@@ -15,7 +15,8 @@ use leptos::prelude::*;
 #[derive(Clone, Debug, Copy)]
 pub struct AppState {
     pub current_window: RwSignal<CurrentWindow>,
-    pub loading_time: RwSignal<f64>,
+    pub previous_window: RwSignal<CurrentWindow>,
+    pub last_changed_time: RwSignal<f64>,
     pub user_id: RwSignal<String>,
 
     pub active_room_id: RwSignal<Option<String>>,
@@ -48,7 +49,8 @@ impl AppState {
     pub fn new() -> Self {
         Self {
             current_window: RwSignal::new(CurrentWindow::LoadingPage),
-            loading_time: RwSignal::new(0.0),
+            previous_window: RwSignal::new(CurrentWindow::LoadingPage),
+            last_changed_time: RwSignal::new(0.0),
             user_id: RwSignal::new(String::new()),
             active_room_id: RwSignal::new(None),
             active_server_id: RwSignal::new(None),

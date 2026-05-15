@@ -2,12 +2,18 @@
 precision highp float;
 
 uniform float u_time;
-uniform float u_loading_time;
+uniform float u_last_changed_time;
+uniform float u_state;
+uniform float u_prev_state;
 uniform vec2 u_resolution;
 
 const float k_loading_speed_mult = 15.0;
-const float k_normal_speed_mult = 0.60;
-const float k_loading_transition_seconds = 0.5;
+const float k_normal_speed_mult = 1.0;
+const float k_state_transition_seconds = 0.5;
+const float k_state_count = 4.0;
+const float k_state_max = k_state_count - 1.0;
+const float k_speed_drop_pow = 2.0;
+const float k_speed_state_pow = 0.2;
 const float k_loading_radius_mult = 0.7;
 const float k_normal_radius_mult = 1.08;
 
@@ -75,21 +81,38 @@ void main() {
     // --- 3. Circling Lines (Orbitals) ---
     float angle = atan(uv.y, uv.x);
     vec3 orbital_color = vec3(0.0);
-    float transition_seconds = max(k_loading_transition_seconds, 0.0001);
-    float loading_elapsed = u_time - u_loading_time;
-    float loading_progress = (u_loading_time == 0.0)
-        ? 0.0 : clamp(loading_elapsed / transition_seconds, 0.0, 1.0);
-    float loading_ease = loading_progress * loading_progress * (3.0 - 2.0 * loading_progress);
+    float state_index = clamp(u_state, 0.0, k_state_max);
+    float prev_state = clamp(u_prev_state, 0.0, k_state_max);
+    float transition_seconds = max(k_state_transition_seconds, 0.0001);
+    float state_elapsed = u_time - u_last_changed_time;
+    float state_t = (u_last_changed_time == 0.0)
+        ? 1.0 : clamp(state_elapsed / transition_seconds, 0.0, 1.0);
+    float state_ease = state_t * state_t * (3.0 - 2.0 * state_t);
+    float state_mix = mix(prev_state, state_index, state_ease);
+    float distance_factor = state_mix / k_state_max;
 
-    float phase_time = u_time * k_loading_speed_mult;
-    if (u_loading_time != 0.0) {
-        float t0 = u_loading_time;
-        float s = loading_progress;
-        float e_int = s * s * s - 0.5 * s * s * s * s;
+    float prev_distance = prev_state / k_state_max;
+    float curr_distance = state_index / k_state_max;
+    float speed_prev = mix(k_loading_speed_mult, k_normal_speed_mult, pow(prev_distance, k_speed_state_pow));
+    float speed_curr = mix(k_loading_speed_mult, k_normal_speed_mult, pow(curr_distance, k_speed_state_pow));
+
+    float phase_time = u_time * speed_curr;
+    if (u_last_changed_time != 0.0) {
+        float t0 = u_last_changed_time;
+        float s = state_t;
+        float speed_s = s;
+        float speed_e_int = s * s * s - 0.5 * s * s * s * s;
+
+        if (speed_curr < speed_prev) {
+            float p = k_speed_drop_pow;
+            speed_s = 1.0 - pow(1.0 - s, p);
+            speed_e_int = s - (1.0 - pow(1.0 - s, p + 1.0)) / (p + 1.0);
+        }
+
         float transition_integral = transition_seconds *
-                (k_loading_speed_mult * s + (k_normal_speed_mult - k_loading_speed_mult) * e_int);
+                (speed_prev * s + (speed_curr - speed_prev) * speed_e_int);
         float after = max(u_time - t0 - transition_seconds, 0.0);
-        phase_time = k_loading_speed_mult * t0 + transition_integral + k_normal_speed_mult * after;
+        phase_time = speed_prev * t0 + transition_integral + speed_curr * after;
     }
 
     float outer_spread_base = k_orbit_outer_base + k_orbit_count * k_orbit_outer_step * (1.0 - k_orbit_outer_spread);
@@ -102,13 +125,13 @@ void main() {
         float t = clamp((i - 1.0) / (k_orbit_count - 1.0), 0.0, 1.0);
         float outer_r = mix(outer_min, outer_max, pow(t, k_orbit_outer_spacing_pow));
         float inner_r = (k_orbit_inner_base + i * k_orbit_inner_step) * k_loading_radius_mult;
-        float base_r = mix(inner_r, outer_r, loading_ease);
+        float base_r = mix(inner_r, outer_r, distance_factor);
 
         float extra_mask = step(k_orbit_count + 0.5, i);
         float extra_index = i - k_orbit_count;
         float extra_step = (k_orbit_extra_distance_mult - 1.0) * outer_max;
         float extra_target = outer_max + extra_index * extra_step;
-        float extra_r = extra_target + (1.0 - loading_ease) * k_orbit_extra_inset;
+        float extra_r = extra_target + (1.0 - distance_factor) * k_orbit_extra_inset;
         float r = mix(base_r, extra_r, extra_mask);
 
         float base_speed = (mod(i, 2.0) == 0.0 ? 1.0 : -1.0) * (0.3 + i * 0.15);
@@ -122,7 +145,7 @@ void main() {
         float dash = aastep(k_dash_threshold, sin(current_angle));
         float head = aastep(k_head_threshold, fract(current_angle / 6.28318));
 
-        float ring_alpha = mix(1.0, loading_ease, extra_mask);
+        float ring_alpha = mix(1.0, distance_factor, extra_mask);
         vec3 col = 0.5 + 0.5 * cos(u_time * 0.4 + i + vec3(0.0, 1.5, 3.0));
         orbital_color += ring_mask * dash * col * (0.8 + head * 2.5) * ring_alpha;
     }
