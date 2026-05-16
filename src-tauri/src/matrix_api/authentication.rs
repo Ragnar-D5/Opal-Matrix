@@ -93,7 +93,7 @@ pub async fn refresh_token(
     let req = payload.try_into_http_request::<Vec<u8>>(
         &server_info.base_url.as_str(),
         SendAccessToken::None,
-        Cow::Owned(server_info.supported_versions),
+        Cow::Borrowed(&server_info.supported_versions),
     )?;
 
     let req = reqwest::Request::try_from(req)?;

@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
-use crate::{AppState, TauriError, construct_url};
-use serde::{Serialize, de::DeserializeOwned};
+use crate::{construct_url, AppState, TauriError};
+use serde::{de::DeserializeOwned, Serialize};
 use shared::account_data::{AccountData, AccountDataPayload, AccountDataType};
-use tauri::{State, command};
+use tauri::{command, State};
 use tauri_plugin_http::reqwest::Client;
 
 /// Generic function to set account data for a given type T that implements the `AccountData` trait.
@@ -16,7 +16,7 @@ async fn set_account_data_api<T: Serialize + AccountData>(
     let client = Client::new();
 
     let url = construct_url(vec![
-        matrix_url,
+        matrix_url.as_str(),
         "_matrix",
         "client",
         "v3",
@@ -46,7 +46,7 @@ async fn get_account_data_api<T: DeserializeOwned + Serialize + AccountData + De
     let client = Client::new();
 
     let url = construct_url(vec![
-        matrix_url,
+        matrix_url.as_str(),
         "_matrix",
         "client",
         "v3",

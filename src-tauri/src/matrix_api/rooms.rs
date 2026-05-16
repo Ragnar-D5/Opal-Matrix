@@ -28,7 +28,7 @@ pub async fn get_members_api(
         .try_into_http_request::<Vec<u8>>(
             server_info.base_url.as_str(),
             SendAccessToken::Always(access_token.as_str()),
-            Cow::Owned(server_info.supported_versions.clone()),
+            Cow::Borrowed(&server_info.supported_versions),
         )?;
 
     let http_req = reqwest::Request::try_from(req)?;

@@ -76,7 +76,7 @@ async fn matrix_sync(
     let req = req.try_into_http_request::<Vec<u8>>(
         &server_info.base_url,
         SendAccessToken::Always(access_token),
-        Cow::Owned(server_info.supported_versions.clone()),
+        Cow::Borrowed(&server_info.supported_versions),
     )?;
 
     let http_req = reqwest::Request::try_from(req)?;

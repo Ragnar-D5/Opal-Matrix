@@ -1,7 +1,8 @@
 use leptos::{prelude::Get, task::spawn_local};
+use log::error;
 use serde::Serialize;
 use serde_json::json;
-use shared::messages::RichTextSpan;
+use shared::{api::LinkPreviewResponse, messages::RichTextSpan};
 
 use crate::{app::call_tauri, state::AppState};
 
@@ -119,4 +120,22 @@ pub async fn set_focused_in_backend(focused: bool) -> Result<(), String> {
         .map_err(|e| format!("Failed to set focused: {:?}", e))?;
 
     Ok(())
+}
+
+pub async fn fetch_preview_data(url: String) -> Result<LinkPreviewResponse, String> {
+    // Convert our arguments to a JS object for Tauri
+    let args = serde_wasm_bindgen::to_value(&json!({ "url": url })).map_err(|e| e.to_string())?;
+
+    match call_tauri("get_url_preview", args).await {
+        Ok(result) => serde_wasm_bindgen::from_value(result).map_err(|e| {
+            let error_message = format!("Failed to deserialize preview data: {:?}", e);
+            error!("{}", error_message);
+            error_message
+        }),
+        Err(e) => {
+            let error_message = format!("Failed to fetch preview data: {:?}", e);
+            error!("{}", error_message);
+            return Err(error_message);
+        }
+    }
 }

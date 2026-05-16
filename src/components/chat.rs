@@ -6,6 +6,7 @@ use crate::{
             menu::{MenuType, SelectionMenu},
         },
         presence::PresenceBadge,
+        previews::render_link,
         text::RichTextExt,
         user_profile::{UserProfileExt, UserProfileMaybeExt},
         FloatingTile,
@@ -34,7 +35,6 @@ use std::{
     collections::{HashMap, HashSet},
     hash::{DefaultHasher, Hash, Hasher},
 };
-use web_sys::{DomParser, SupportedType};
 
 #[derive(PartialEq, Clone, Hash)]
 struct GroupedMessage {
@@ -66,107 +66,6 @@ fn format_date(date: DateTime<Local>) -> String {
         -1 => date.format("Yesterday, %H:%M").to_string(),
         _ => date.format("%d/%m/%Y, %H:%M").to_string(),
     }
-}
-
-#[derive(Serialize)]
-struct FetchArgs {
-    url: String,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct OgData {
-    pub title: String,
-    pub description: Option<String>,
-    pub image: Option<String>,
-}
-
-pub fn parse_og_tags_in_browser(html: &str) -> Option<OgData> {
-    let parser = DomParser::new().ok()?;
-    let doc = parser
-        .parse_from_string(html, SupportedType::TextHtml)
-        .ok()?;
-
-    let get_meta = |property: &str| -> Option<String> {
-        let selector = format!("meta[property='{}'], meta[name='{}']", property, property);
-        if let Ok(Some(element)) = doc.query_selector(&selector) {
-            element.get_attribute("content")
-        } else {
-            None
-        }
-    };
-
-    let title = get_meta("og:title").or_else(|| {
-        doc.query_selector("title")
-            .ok()
-            .flatten()
-            .and_then(|t| t.text_content())
-    })?;
-
-    let description = get_meta("og:description").or_else(|| get_meta("description"));
-    let image = get_meta("og:image");
-
-    Some(OgData {
-        title,
-        description,
-        image,
-    })
-}
-
-async fn fetch_preview_data(url: String) -> Result<OgData, String> {
-    // Convert our arguments to a JS object for Tauri
-    let args = serde_wasm_bindgen::to_value(&FetchArgs { url }).map_err(|e| e.to_string())?;
-
-    // Call the Rust backend to bypass CORS
-    let html_js = call_tauri("fetch_raw_html", args)
-        .await
-        .map_err(|e| e.as_string().unwrap_or_default())?;
-
-    // Extract the string and parse it
-    let html_str = html_js.as_string().ok_or("Failed to fetch HTML")?;
-    parse_og_tags_in_browser(&html_str).ok_or("No OpenGraph tags found".to_string())
-}
-
-fn render_link(span: RichTextSpan) -> impl IntoView {
-    let RichTextSpan::Link { url, .. } = span else {
-        return view! {}.into_any();
-    };
-
-    let preview = LocalResource::new(move || {
-        let fetch_url = url.clone();
-        async move { fetch_preview_data(fetch_url).await }
-    });
-
-    view! {
-        <Suspense fallback=move || {
-            view! {
-                <div class="animate-pulse bg-white/5 w-full max-w-sm h-24 rounded-md mt-2"></div>
-            }
-        }>
-            {move || {
-                preview
-                    .get()
-                    .and_then(|res| res.ok())
-                    .map(|data| {
-                        view! {
-                            <div class="flex flex-col max-w-sm rounded-md bg-white/5 border border-white/10 overflow-hidden mt-2 cursor-pointer hover:bg-white/10">
-                                {data
-                                    .image
-                                    .map(|img| {
-                                        view! { <img src=img class="w-full h-32 object-cover" /> }
-                                    })} <div class="p-3">
-                                    <span class="text-sm font-bold text-bright line-clamp-1">
-                                        {data.title}
-                                    </span>
-                                    <span class="text-xs text-muted line-clamp-2 mt-1">
-                                        {data.description}
-                                    </span>
-                                </div>
-                            </div>
-                        }
-                    })
-            }}
-        </Suspense>
-    }.into_any()
 }
 
 #[component]
@@ -360,7 +259,7 @@ impl TimelineItem {
                                     };
                                     let show_highlight = message_mentions_user
                                         || (is_first && highlight_reply_preview);
-                                    let (hovered, set_hovered) = signal(false);
+                                    let hovered = RwSignal::new(false);
                                     let mut reaction_counts: HashMap<String, usize> = HashMap::new();
                                     for r in &msg.reactions {
                                         *reaction_counts.entry(r.reaction.clone()).or_insert(0)
@@ -382,7 +281,7 @@ impl TimelineItem {
                                                 if show_highlight {
                                                     format!(
                                                         "linear-gradient(in oklch to right, oklch(from var(--accent-color) l c h / {}) 20%, oklch(from var(--accent-color) l c h / 0) 100%)",
-                                                        if hovered { "0.05" } else { "0.15" },
+                                                        if hovered { "0.10" } else { "0.15" },
                                                     )
                                                 } else if hovered {
                                                     "rgba(0, 0, 0, 0.2)".to_string()
@@ -390,8 +289,8 @@ impl TimelineItem {
                                                     "transparent".to_string()
                                                 }
                                             }
-                                            on:mouseenter=move |_| set_hovered.set(true)
-                                            on:mouseleave=move |_| set_hovered.set(false)
+                                            on:mouseenter=move |_| hovered.set(true)
+                                            on:mouseleave=move |_| hovered.set(false)
                                         >
                                             {if show_highlight {
                                                 view! {

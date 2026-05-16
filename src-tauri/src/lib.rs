@@ -1,6 +1,8 @@
 use log::{error, trace};
 use shared::api::errors::LoginError;
 use shared::api::RestoreResponse;
+use std::collections::HashMap;
+use std::fs::{read_to_string, write};
 use std::sync::Arc;
 
 use aes::cipher::{KeyIvInit, StreamCipher};
@@ -327,6 +329,8 @@ async fn backend_log(
     );
 }
 
+pub struct BrandColorsMap(pub HashMap<String, String>);
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -334,6 +338,40 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_http::init())
         .setup(|app| {
+            let config_dir = app.path().app_config_dir().map_err(|e| {
+                std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("Failed to resolve app config dir: {e}"),
+                )
+            })?;
+
+            std::fs::create_dir_all(&config_dir)?;
+
+            let brand_colors_file_path = config_dir.join("brand_colors.json");
+
+            let color_map: HashMap<String, String> = if brand_colors_file_path.exists() {
+                let json_str = read_to_string(&brand_colors_file_path).unwrap_or_default();
+                serde_json::from_str(&json_str).unwrap_or_default()
+            } else {
+                let default_json = serde_json::json!({
+                    "youtube.com": "#FF0000",
+                    "youtu.be": "#FF0000",
+                    "reddit.com": "#FF4500",
+                    "twitter.com": "#1DA1F2",
+                    "github.com": "#24292e",
+                    "spotify.com": "#1DB954",
+                    "netflix.com": "#E50914",
+                    "codeberg.org": "#f05133",
+                });
+
+                let pretty_json = serde_json::to_string_pretty(&default_json).unwrap();
+                write(&brand_colors_file_path, pretty_json).expect("Failed to write default brands.json");
+
+                serde_json::from_value(default_json).unwrap()
+            };
+
+            app.manage(BrandColorsMap(color_map));
+
             let data_dir = app.path().app_data_dir().map_err(|e| {
                 std::io::Error::new(
                     std::io::ErrorKind::Other,
@@ -430,6 +468,7 @@ pub fn run() {
             matrix_api::account_data::get_account_data,
             matrix_api::account_data::get_breadcrumbs,
             matrix_api::account_data::get_server_order,
+            matrix_api::previews::get_url_preview,
         ])
         .register_asynchronous_uri_scheme_protocol(
             "mxc",
