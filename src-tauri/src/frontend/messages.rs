@@ -160,7 +160,6 @@ fn walk_node(
             spans.push(RichTextSpan::Plain(content.to_string()));
         }
         Node::Element(elem) => {
-            // Priority: Check for data attributes first
             if let Some(data_type) = elem.attr("data-type")
                 && let Some(id) = elem.attr("data-id")
             {

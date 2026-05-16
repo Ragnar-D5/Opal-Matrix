@@ -15,6 +15,7 @@ use crate::{
     tauri_functions::{get_members, send_marker, MemberShip},
 };
 
+use log::info;
 use phosphor_leptos::{Icon, IconWeight, HASH, INFO, TRASH, UPLOAD_SIMPLE, WARNING_CIRCLE};
 
 use chrono::{DateTime, Local, NaiveDate, TimeZone};
@@ -29,10 +30,13 @@ use shared::{
     sidebar::{RoomKind, RoomNode, SidebarState},
     user_profile::PresenceStatus,
 };
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    hash::{DefaultHasher, Hash, Hasher},
+};
 use web_sys::{DomParser, SupportedType};
 
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Clone, Hash)]
 struct GroupedMessage {
     message: UserMessage,
     state: MessageState,
@@ -299,14 +303,12 @@ impl TimelineItem {
     fn render_key(&self) -> String {
         match &self.kind {
             TimelineItemKind::MessageGroup(group) => {
-                let mut key = self.id.clone();
+                let mut hasher = DefaultHasher::new();
                 for msg in group {
-                    key.push('|');
-                    key.push_str(&msg.event_id);
-                    key.push(':');
-                    key.push_str(&msg.state.to_string());
+                    msg.hash(&mut hasher);
                 }
-                key
+
+                format!("{}-{:x}", self.id, hasher.finish())
             }
             _ => self.id.clone(),
         }
@@ -679,6 +681,8 @@ fn TimeLine() -> impl IntoView {
             let mut seen_ids: HashSet<String> =
                 existing.iter().map(|m| m.event_id.clone()).collect();
 
+            info!("New messages: {:?}", new_msgs);
+
             for msg in new_msgs {
                 match &msg.kind {
                     MessageKind::SystemMessage(SystemMessage::RemoveMessage { event_id }) => {
@@ -777,17 +781,30 @@ fn TimeLine() -> impl IntoView {
 
         msgs = msgs
             .into_iter()
+            .filter(|msg| match &msg.kind {
+                MessageKind::SystemMessage(SystemMessage::MessageRedacted { event_id }) => {
+                    redactions.insert(event_id.clone());
+                    false
+                }
+                _ => true,
+            })
+            .collect();
+
+        msgs = msgs
+            .into_iter()
             .filter(|msg| {
+                if redactions.contains(&msg.event_id) {
+                    if matches!(msg.kind, MessageKind::SystemMessage(_)) {
+                        return false;
+                    }
+                }
+
                 let result = match &msg.kind {
                     MessageKind::SystemMessage(SystemMessage::MessageEdited {
                         event_id,
                         new_spans,
                     }) => {
                         edits.insert(event_id.clone(), new_spans.clone());
-                        false
-                    }
-                    MessageKind::SystemMessage(SystemMessage::MessageRedacted { event_id }) => {
-                        redactions.insert(event_id.clone());
                         false
                     }
                     MessageKind::SystemMessage(SystemMessage::MessageReacted {

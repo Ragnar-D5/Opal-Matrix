@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Hash)]
 pub enum MembershipAction {
     Joined,
     Left,
@@ -15,7 +15,7 @@ pub enum MembershipAction {
     },
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Hash)]
 pub enum SystemMessage {
     RoomCreation,
     MembershipChange(MembershipAction),
@@ -59,14 +59,14 @@ pub enum SystemMessage {
     },
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Hash)]
 pub struct EncryptedFileInfo {
     pub key: String,
     pub iv: String,
     pub hash: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Hash)]
 pub enum RichTextSpan {
     Plain(String),
     UserMention {
@@ -81,7 +81,7 @@ pub enum RichTextSpan {
     Newline,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Hash)]
 pub enum MessageContent {
     Text {
         spans: Vec<RichTextSpan>,
@@ -104,7 +104,7 @@ pub enum MessageContent {
     Deleted,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, Hash)]
 pub struct Mentions {
     #[serde(default)]
     pub room: bool,
@@ -112,20 +112,20 @@ pub struct Mentions {
     pub user_ids: Vec<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Hash)]
 pub struct Reaction {
     pub sender_id: String,
     pub reaction: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Hash)]
 pub struct RepliesTo {
     pub text: Option<Vec<RichTextSpan>>,
     pub sender_id: Option<String>,
     pub event_id: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Hash)]
 pub struct UserMessage {
     pub mentions: Mentions,
     pub reactions: Vec<Reaction>,
@@ -218,13 +218,13 @@ impl UserMessage {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Hash)]
 pub enum MessageKind {
     UserMessage(UserMessage),
     SystemMessage(SystemMessage),
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, Hash)]
 pub enum MessageState {
     #[default]
     Pending,
@@ -253,7 +253,7 @@ impl From<String> for MessageState {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Hash)]
 pub struct UiMessage {
     pub event_id: String,
     pub timestamp: u64,
