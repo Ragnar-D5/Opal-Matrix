@@ -2,7 +2,7 @@ use crate::{
     app::call_tauri,
     components::{
         input::{
-            get_active_mention_filter, get_caret_position, handle_input, handle_keydown,
+            get_active_filter, get_caret_position, handle_input, handle_keydown,
             menu::{MenuType, SelectionMenu},
         },
         presence::PresenceBadge,
@@ -24,6 +24,7 @@ use leptos::{ev, html::Div, leptos_dom::logging::console_error, prelude::*, task
 use leptos_use::{use_event_listener, use_intersection_observer, UseIntersectionObserverReturn};
 use serde::Serialize;
 use shared::{
+    commands::Command,
     messages::{
         MembershipAction, MessageContent, MessageKind, MessageState, Reaction, RepliesTo,
         RichTextSpan, SystemMessage, UiMessage, UserMessage,
@@ -1117,8 +1118,15 @@ fn ChatInput() -> impl IntoView {
     let store: MemberStore = expect_context();
 
     let menu = RwSignal::new(MenuType::None);
-    let selected_indx = RwSignal::new(0);
-    let matches = RwSignal::new(Vec::<MemberShip>::new());
+    let selected_index = RwSignal::new(0);
+
+    provide_context(selected_index);
+
+    let mention_matches = RwSignal::new(Vec::<MemberShip>::new());
+    let command_matches = RwSignal::new(Vec::<Command>::new());
+
+    provide_context(mention_matches);
+    provide_context(command_matches);
 
     let input_ref = NodeRef::<Div>::new();
 
@@ -1133,8 +1141,13 @@ fn ChatInput() -> impl IntoView {
                 if el.contains(Some(&focus_node)) {
                     let caret_pos = get_caret_position(&el);
 
-                    if let Some(filter) = get_active_mention_filter(&el, caret_pos) {
+                    if let Some(filter) = get_active_filter(&el, caret_pos, '@') {
                         menu.set(MenuType::UserAutocomplete { filter });
+                        return;
+                    }
+                    if let Some(filter) = get_active_filter(&el, caret_pos, '/') {
+                        menu.set(MenuType::CommandAutocomplete { filter });
+                        return;
                     } else {
                         menu.set(MenuType::None);
                     }
@@ -1189,12 +1202,7 @@ fn ChatInput() -> impl IntoView {
 
     view! {
         <div class="p-2 pt-0 w-full rounded-full relative">
-            <SelectionMenu
-                menu=menu
-                selected_index=selected_indx
-                matches=matches
-                input_ref=input_ref
-            />
+            <SelectionMenu menu=menu input_ref=input_ref />
             <div class="text-(--bright-text-color) w-full min-h-13 border-1 border-[var(--tile-border-color)] rounded-(--ui-border-radius) bg-[rgba(0, 0, 0, 0.6)] flex flex-row bg-(--ui-floating-bg) items-center gap-3 px-3">
                 <Icon icon=UPLOAD_SIMPLE size="20px" color="var(--ui-base-color)" />
                 <div class="relative flex-1 min-w-0 flex items-center">
@@ -1212,8 +1220,9 @@ fn ChatInput() -> impl IntoView {
                             ev,
                             input_ref,
                             menu,
-                            selected_indx,
-                            matches,
+                            selected_index,
+                            mention_matches,
+                            command_matches,
                             state,
                             store.clone(),
                             is_empty,

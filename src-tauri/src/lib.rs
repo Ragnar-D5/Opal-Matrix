@@ -454,6 +454,7 @@ pub fn run() {
 
             // frontend commands
             frontend::messages::commit_message,
+            frontend::commands::get_commands,
 
             // storage commands
             storage::get_members,

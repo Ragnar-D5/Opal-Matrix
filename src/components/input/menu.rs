@@ -5,12 +5,14 @@ use crate::{
         text::RichTextExt,
     },
     state::{AppState, MemberStore},
-    tauri_functions::{get_members, MemberShip},
+    tauri_functions::{get_commands, get_members, MemberShip},
 };
 use leptos::html::Div;
 use leptos::prelude::*;
+use log::error;
 use nucleo_matcher::{Config, Matcher, Utf32Str};
-use web_sys::HtmlElement;
+use shared::commands::{Command, CommandExecution};
+use web_sys::{HtmlDivElement, HtmlElement};
 
 use crate::components::user_profile::UserProfileMaybeExt;
 
@@ -18,7 +20,7 @@ use crate::components::user_profile::UserProfileMaybeExt;
 pub enum MenuType {
     None,
     UserAutocomplete { filter: String },
-    // Commands { filter: String },
+    CommandAutocomplete { filter: String },
 }
 
 impl MenuType {
@@ -27,9 +29,26 @@ impl MenuType {
     }
 }
 
-pub fn commit_mention(
+pub enum SelectedItem {
+    User(MemberShip),
+    Command(Command),
+}
+
+impl From<MemberShip> for SelectedItem {
+    fn from(membership: MemberShip) -> Self {
+        SelectedItem::User(membership)
+    }
+}
+
+impl From<Command> for SelectedItem {
+    fn from(command: Command) -> Self {
+        SelectedItem::Command(command)
+    }
+}
+
+pub fn commit_selection(
     el: &HtmlElement,
-    membership: &MemberShip,
+    selected: SelectedItem,
     state: AppState,
     store: MemberStore,
 ) {
@@ -64,115 +83,226 @@ pub fn commit_mention(
     let start_loc = get_node_and_offset(el, start_pos);
     let end_loc = get_node_and_offset(el, end_pos);
 
-    if let (Some((start_node, start_off)), Some((end_node, end_off))) = (start_loc, end_loc) {
-        let range = doc.create_range().unwrap();
-        range.set_start(&start_node, start_off).unwrap();
-        range.set_end(&end_node, end_off).unwrap();
+    let (Some((start_node, start_off)), Some((end_node, end_off))) = (start_loc, end_loc) else {
+        return;
+    };
 
-        range.delete_contents().unwrap();
+    let range = doc.create_range().unwrap();
+    range.set_start(&start_node, start_off).unwrap();
+    range.set_end(&end_node, end_off).unwrap();
 
-        let room_id = state.active_room_id.get_untracked().unwrap_or_default();
+    range.delete_contents().unwrap();
 
-        let mention_view = membership.to_span(state.clone()).render(store, room_id);
+    let (focus_node, focus_offset) = match selected {
+        SelectedItem::User(membership) => {
+            let room_id = state.active_room_id.get_untracked().unwrap_or_default();
+            let mention_view = membership.to_span(state.clone()).render(store, room_id);
+            let any_view: AnyView = mention_view.into_any();
+            let mut render_state = any_view.build();
 
-        let any_view: AnyView = mention_view.into_any();
+            let temp_container = doc.create_element("div").unwrap();
+            render_state.mount(&temp_container, None);
 
-        let mut state = any_view.build();
+            let mention_node = temp_container
+                .first_child()
+                .expect("Mention view should have at least one root element");
 
-        let temp_container = doc.create_element("div").unwrap();
-        state.mount(&temp_container, None);
+            let space_node = doc.create_text_node("\u{00A0}");
 
-        let mention_node = temp_container
-            .first_child()
-            .expect("Mention view should have at least one root element");
+            range.insert_node(&space_node).unwrap();
+            range.insert_node(&mention_node).unwrap();
 
-        let space_node = doc.create_text_node("\u{00A0}");
+            (web_sys::Node::from(space_node), 1)
+        }
+        SelectedItem::Command(command) => match command.execution {
+            CommandExecution::Macro(replacement) => {
+                let text_node = doc.create_text_node(&replacement);
+                let text_len = text_node.length();
+                range.insert_node(&text_node).unwrap();
+                (web_sys::Node::from(text_node), text_len)
+            }
+            _ => {
+                let command_text = format!("/{} ", command.name);
+                let text_node = doc.create_text_node(&command_text);
+                let text_len = text_node.length();
 
-        range.insert_node(&space_node).unwrap();
-        range.insert_node(&mention_node).unwrap();
+                range.insert_node(&text_node).unwrap();
 
-        let new_range = doc.create_range().unwrap();
-        new_range.set_start(&space_node, 1).unwrap();
-        new_range.collapse_with_to_start(true);
+                (web_sys::Node::from(text_node), text_len)
+            }
+        },
+    };
 
-        let win = window();
-        let sel = win.get_selection().unwrap().unwrap();
-        sel.remove_all_ranges().unwrap();
-        sel.add_range(&new_range).unwrap();
-    }
+    let new_range = doc.create_range().unwrap();
+    new_range.set_start(&focus_node, focus_offset).unwrap();
+    new_range.collapse_with_to_start(true);
+
+    let win = window();
+    let sel = win.get_selection().unwrap().unwrap();
+    sel.remove_all_ranges().unwrap();
+    sel.add_range(&new_range).unwrap();
 }
 
-fn filter_mentions(
-    filter: String,
-    members: Vec<MemberShip>,
-    matcher: StoredValue<Matcher>,
-) -> Vec<MemberShip> {
+fn filter_items<T: RenderMenuRow>(filter: String, items: Vec<T>, matcher: &mut Matcher) -> Vec<T> {
     if filter.is_empty() {
-        return members;
+        return items;
     }
 
     let filter = filter.to_lowercase();
-
     let mut needle_buf = Vec::new();
     let mut haystack_buf = Vec::new();
-
-    let mut matcher = matcher.get_value();
     let needle = Utf32Str::new(filter.as_str(), &mut needle_buf);
 
+    let fields = T::match_fields();
     let mut matched = Vec::new();
-    let mut unmatched = Vec::new();
 
-    for member in members {
-        if filter.is_empty() {
-            matched.push((0, member));
-            continue;
-        }
-
+    for item in items {
         let mut best_score: Option<u16> = None;
 
-        // --- 1. Match against Display Name (Priority) ---
-        if let Some(ref name) = member.display_name {
-            let name = name.to_lowercase();
+        // Cascade through each field function sequentially
+        for (idx, field_fn) in fields.iter().enumerate() {
+            if let Some(text) = field_fn(&item) {
+                let text = text.to_lowercase();
+                let haystack = Utf32Str::new(text.as_str(), &mut haystack_buf);
 
-            let haystack = Utf32Str::new(name.as_str(), &mut haystack_buf);
-            if let Some(score) = matcher.fuzzy_match(haystack, needle) {
-                // Small "bonus" to display name matches so they match higher than user ID matches with the same score
-                best_score = Some(score + 10);
+                if let Some(score) = matcher.fuzzy_match(haystack, needle) {
+                    // Dynamic Priority Bonus: earlier fields in the vector yield higher scores
+                    let bonus = ((fields.len() - 1 - idx) * 10) as u16;
+                    let final_score = score + bonus;
+
+                    if best_score.map_or(true, |current| final_score > current) {
+                        best_score = Some(final_score);
+                    }
+                }
             }
         }
 
-        // --- 2. Match against User ID (Fallback/Secondary) ---
-        let user_id = member.user_id.to_lowercase();
-
-        let id_haystack = Utf32Str::new(user_id.as_str(), &mut haystack_buf);
-        if let Some(id_score) = matcher.fuzzy_match(id_haystack, needle) {
-            if best_score.map_or(true, |current| id_score > current) {
-                best_score = Some(id_score);
-            }
-        }
-
-        // --- 3. Categorize ---
         if let Some(score) = best_score {
-            matched.push((score, member));
-        } else {
-            unmatched.push(member);
+            matched.push((score, item));
         }
     }
 
     matched.sort_by(|a, b| b.0.cmp(&a.0));
+    matched.into_iter().map(|(_, item)| item).collect()
+}
 
-    matched.into_iter().map(|(_, m)| m).collect()
+trait RenderMenuRow {
+    fn id(&self) -> String;
+    fn render_row(self, room_id: String, el: HtmlDivElement, idx: usize) -> impl IntoView;
+    fn match_fields() -> Vec<fn(&Self) -> Option<String>>;
+}
+
+impl RenderMenuRow for MemberShip {
+    fn id(&self) -> String {
+        self.user_id.clone()
+    }
+
+    fn render_row(self, room_id: String, el: HtmlDivElement, idx: usize) -> impl IntoView {
+        let state: AppState = expect_context();
+        let store: MemberStore = expect_context();
+        let selected_index: RwSignal<usize> = expect_context();
+
+        let presence = store.get_presence(&self.user_id);
+        let profile = store.get_profile(&room_id, &self.user_id).get();
+        let p_clone = profile.clone();
+        let m_clone = self.clone();
+        let el = el.clone();
+        let store = store.clone();
+
+        view! {
+            <button
+                class="flex flex-row items-center gap-2 mx-(--gap) px-(--gap) py-1 rounded-(--ui-border-radius) cursor-pointer"
+                class=("bg-(--ui-hover-bg)", move || idx == selected_index.get())
+                on:mouseenter=move |_| selected_index.set(idx)
+                on:click=move |_| {
+                    commit_selection(
+                        &el.clone(),
+                        SelectedItem::from(self.clone()),
+                        state,
+                        store.clone(),
+                    )
+                }
+            >
+                {move || {
+                    let profile = profile.clone();
+                    let presence = presence.clone();
+                    if state.active_room_id.get().unwrap_or_default() != m_clone.user_id {
+                        view! {
+                            <PresenceBadge presence=presence size=15.0>
+                                {profile.render_icon(30)}
+                            </PresenceBadge>
+                        }
+                            .into_any()
+                    } else {
+                        profile.render_icon(30).into_any()
+                    }
+                }}
+                {p_clone.render_name(14)}
+                <div class="flex flex-grow"></div>
+                <span
+                    class=("text-(--ui-hover-color)", move || idx == selected_index.get())
+                    class=("text-(--ui-base-color)", move || idx != selected_index.get())
+                >
+                    {self.user_id.clone()}
+                </span>
+            </button>
+        }
+    }
+
+    fn match_fields() -> Vec<fn(&Self) -> Option<String>> {
+        vec![|member| member.display_name.clone(), |member| {
+            Some(member.user_id.clone())
+        }]
+    }
+}
+
+impl RenderMenuRow for Command {
+    fn id(&self) -> String {
+        format!("{}:{}", self.source, self.name)
+    }
+
+    fn render_row(self, _: String, _: HtmlDivElement, idx: usize) -> impl IntoView {
+        let selected_index: RwSignal<usize> = expect_context();
+
+        view! {
+            <button
+                class="flex flex-row justify-center items-center rounded-(--ui-border-radius) cursor-pointer mx-(--gap) px-(--gap) py-1"
+                class=("bg-(--ui-hover-bg)", move || selected_index.get() == idx)
+            >
+                <div class="flex flex-col">
+                    <span class="text-start text-sm text-normal">{self.usage}</span>
+                    <span
+                        class="text-start"
+                        class=("text-(--ui-hover-color)", move || idx == selected_index.get())
+                        class=("text-(--ui-base-color)", move || idx != selected_index.get())
+                    >
+                        {self.description}
+                    </span>
+                </div>
+                <div class="flex flex-grow"></div>
+                <span
+                    class=("text-(--ui-hover-color)", move || idx == selected_index.get())
+                    class=("text-(--ui-base-color)", move || idx != selected_index.get())
+                >
+                    {self.source}
+                </span>
+            </button>
+        }
+    }
+
+    fn match_fields() -> Vec<fn(&Self) -> Option<String>> {
+        vec![|command| Some(command.name.clone()), |command| {
+            Some(command.description.clone())
+        }]
+    }
 }
 
 #[component]
-pub fn SelectionMenu(
-    menu: RwSignal<MenuType>,
-    selected_index: RwSignal<usize>,
-    matches: RwSignal<Vec<MemberShip>>,
-    input_ref: NodeRef<Div>,
-) -> impl IntoView {
+pub fn SelectionMenu(menu: RwSignal<MenuType>, input_ref: NodeRef<Div>) -> impl IntoView {
     let state: AppState = expect_context();
-    let store: MemberStore = expect_context();
+
+    let mention_matches: RwSignal<Vec<MemberShip>> = expect_context();
+    let command_matches: RwSignal<Vec<Command>> = expect_context();
 
     let matcher = StoredValue::new(Matcher::new(Config::DEFAULT));
 
@@ -191,108 +321,96 @@ pub fn SelectionMenu(
         }
     });
 
+    let commands_resource = LocalResource::new(move || async move {
+        get_commands()
+            .await
+            .map_err(|e| error!("Failed to get commands: {e}"))
+            .unwrap_or_default()
+    });
+
     Effect::new(move |_| {
-        if let MenuType::UserAutocomplete { filter, .. } = menu.get() {
-            matches.set(filter_mentions(
-                filter,
-                members_resource.get().unwrap_or_default(),
-                matcher,
-            ));
+        let mut m = matcher.get_value();
+
+        match menu.get() {
+            MenuType::UserAutocomplete { filter, .. } => {
+                mention_matches.set(filter_items(
+                    filter,
+                    members_resource.get().unwrap_or_default(),
+                    &mut m,
+                ));
+            }
+            MenuType::CommandAutocomplete { filter, .. } => {
+                command_matches.set(filter_items(
+                    filter,
+                    commands_resource.get().unwrap_or_default(),
+                    &mut m,
+                ));
+            }
+            MenuType::None => {
+                mention_matches.set(Vec::new());
+                command_matches.set(Vec::new());
+            }
         }
     });
 
+    let title_text = move || match menu.get() {
+        MenuType::UserAutocomplete { filter, .. } => {
+            let len = mention_matches.get().len();
+            if filter.is_empty() {
+                format!("MEMBERS ({len})")
+            } else {
+                format!("MEMBERS MATCHING @{filter} ({len})")
+            }
+        }
+        MenuType::CommandAutocomplete { filter, .. } => {
+            let len = command_matches.get().len();
+            if filter.is_empty() {
+                format!("COMMANDS ({len})")
+            } else {
+                format!("COMMANDS MATCHING /{filter} ({len})")
+            }
+        }
+        MenuType::None => String::new(),
+    };
+
+    let content = move || {
+        let Some(el) = input_ref.get() else {
+            return view! {}.into_any();
+        };
+        let room_id = state.active_room_id.get().unwrap_or_default();
+        let room_id_command = room_id.clone();
+        let el_command = el.clone();
+
+        view! {
+            <span class="text-(--ui-base-color) bold text-xs p-2 bb-4">{title_text()}</span>
+            <For
+                each=move || mention_matches.get().into_iter().enumerate()
+                key=|(_, member)| member.id()
+                children=move |(idx, member)| {
+                    let room_id = room_id.clone();
+                    let el = el.clone();
+                    member.render_row(room_id, el, idx)
+                }
+            />
+            <For
+                each=move || command_matches.get().into_iter().enumerate()
+                key=|(_, command)| command.id()
+                children=move |(idx, command)| {
+                    let room_id = room_id_command.clone();
+                    let el = el_command.clone();
+                    command.render_row(room_id, el, idx)
+                }
+            />
+        }
+        .into_any()
+    };
+
     view! {
         <div
-            class="absolute bottom-full left-4 right-4 bottom-(--gap) bg-(--ui-floating-bg) backdrop-blur-2xl rounded-(--ui-border-radius) border border-(--tile-border-color) flex flex-col text-xs pb-(--gap)"
+            class="mb-(--gap) absolute bottom-full left-4 right-4 bottom-(--gap) bg-(--ui-floating-hover-bg) backdrop-blur-2xl rounded-(--ui-border-radius) border border-(--tile-border-color) flex flex-col text-xs pb-(--gap)"
             class:hidden=move || menu.get().is_none()
         >
-            {move || {
-                let Some(el) = input_ref.get() else {
-                    return view! {}.into_any();
-                };
-                let store = store.clone();
-                let room_id = state.active_room_id.get().unwrap_or_default();
-                match menu.get() {
-                    MenuType::UserAutocomplete { filter, .. } => {
-                        view! {
-                            <span class="text-(--ui-base-color) bold text-xs p-2 bb-4">
-                                {
-                                    let len = matches.get().len();
-                                    format!(
-                                        "MEMBERS {}",
-                                        if filter.is_empty() {
-                                            format!("({len})")
-                                        } else {
-                                            format!("MATCHING @{filter} ({len})")
-                                        },
-                                    )
-                                }
-                            </span>
-                            <For
-                                each=move || matches.get().into_iter().enumerate()
-                                key=|(_, member)| member.user_id.clone()
-                                children=move |(idx, member)| {
-                                    let presence = store.get_presence(&member.user_id);
-                                    let profile = store
-                                        .get_profile(&room_id, &member.user_id)
-                                        .get();
-                                    let p_clone = profile.clone();
-                                    let m_clone = member.clone();
-                                    let el = el.clone();
-                                    let store = store.clone();
-
-                                    view! {
-                                        <button
-                                            class="flex flex-row items-center gap-2 mx-(--gap) px-(--gap) py-1 rounded-(--ui-border-radius) cursor-pointer"
-                                            class=(
-                                                "bg-(--ui-hover-bg)",
-                                                move || idx == selected_index.get(),
-                                            )
-                                            on:mouseenter=move |_| selected_index.set(idx)
-                                            on:click=move |_| {
-                                                commit_mention(&el.clone(), &member, state, store.clone())
-                                            }
-                                        >
-                                            {move || {
-                                                let profile = profile.clone();
-                                                let presence = presence.clone();
-                                                if state.active_room_id.get().unwrap_or_default()
-                                                    != m_clone.user_id
-                                                {
-                                                    view! {
-                                                        <PresenceBadge presence=presence size=15.0>
-                                                            {profile.render_icon(30)}
-                                                        </PresenceBadge>
-                                                    }
-                                                        .into_any()
-                                                } else {
-                                                    profile.render_icon(30).into_any()
-                                                }
-                                            }}
-                                            {p_clone.render_name(14)}
-                                            <div class="flex flex-grow"></div>
-                                            <span
-                                                class=(
-                                                    "text-(--ui-hover-color)",
-                                                    move || idx == selected_index.get(),
-                                                )
-                                                class=(
-                                                    "text-(--ui-base-color)",
-                                                    move || idx != selected_index.get(),
-                                                )
-                                            >
-                                                {member.user_id.clone()}
-                                            </span>
-                                        </button>
-                                    }
-                                }
-                            />
-                        }
-                            .into_any()
-                    }
-                    _ => view! {}.into_any(),
-                }
-            }}
+            {move || content}
         </div>
     }.into_any()
 }

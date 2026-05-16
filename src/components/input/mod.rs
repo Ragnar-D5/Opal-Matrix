@@ -2,14 +2,15 @@ use leptos::task::spawn_local;
 use leptos::{html::Div, prelude::*, tachys::dom::document};
 use log::warn;
 use regex::Regex;
+use shared::commands::Command;
 use wasm_bindgen::JsCast;
 use web_sys::{window, Node};
 use web_sys::{HtmlDivElement, HtmlElement, KeyboardEvent};
 
-use crate::components::input::menu::commit_mention;
+use crate::components::input::menu::MenuType;
+use crate::components::input::menu::{commit_selection, SelectedItem};
 use crate::state::{AppState, MemberStore};
-use crate::tauri_functions::commit_message;
-use crate::{components::input::menu::MenuType, tauri_functions::MemberShip};
+use crate::tauri_functions::{commit_message, MemberShip};
 
 pub(crate) mod menu;
 
@@ -142,7 +143,11 @@ fn cleanup_link_spaces(editor: &HtmlElement) {
     }
 }
 
-pub fn get_active_mention_filter(el: &HtmlDivElement, caret_pos: u32) -> Option<String> {
+pub fn get_active_filter(
+    el: &HtmlDivElement,
+    caret_pos: u32,
+    starting_character: char,
+) -> Option<String> {
     let (node, local_offset) = get_node_and_offset(el, caret_pos)?;
 
     if let Some(parent) = node.parent_element() {
@@ -170,7 +175,9 @@ pub fn get_active_mention_filter(el: &HtmlDivElement, caret_pos: u32) -> Option<
         start_idx -= 1;
     }
 
-    if start_idx == utf16.len() || utf16[start_idx] != 64 {
+    let target_utf16 = starting_character as u16;
+
+    if start_idx == utf16.len() || utf16[start_idx] != target_utf16 {
         return None;
     }
 
@@ -193,7 +200,8 @@ pub fn handle_keydown(
     input_ref: NodeRef<Div>,
     menu: RwSignal<MenuType>,
     selected_index: RwSignal<usize>,
-    matches: RwSignal<Vec<MemberShip>>,
+    mention_matches: RwSignal<Vec<MemberShip>>,
+    command_matches: RwSignal<Vec<Command>>,
     state: AppState,
     store: MemberStore,
     is_empty: RwSignal<bool>,
@@ -211,12 +219,28 @@ pub fn handle_keydown(
             ev.prevent_default();
 
             if current_menu != MenuType::None {
-                let matches = matches.get_untracked();
-                let Some(matching) = matches.get(selected_index.get_untracked()) else {
-                    return;
+                let mentions = mention_matches.get_untracked();
+                let commands = command_matches.get_untracked();
+
+                let selected = match current_menu {
+                    MenuType::UserAutocomplete { .. } => {
+                        let Some(selected) = mentions.get(selected_index.get()) else {
+                            return;
+                        };
+
+                        SelectedItem::from(selected.clone())
+                    }
+                    MenuType::CommandAutocomplete { .. } => {
+                        let Some(selected) = commands.get(selected_index.get()) else {
+                            return;
+                        };
+
+                        SelectedItem::from(selected.clone())
+                    }
+                    MenuType::None => return,
                 };
 
-                commit_mention(&el, matching, state, store);
+                commit_selection(&el, selected, state, store);
                 menu.set(MenuType::None);
             } else {
                 let message = el.inner_html();
@@ -242,20 +266,43 @@ pub fn handle_keydown(
         "ArrowUp" | "ArrowDown" if current_menu != MenuType::None => {
             ev.prevent_default();
 
-            let len = matches.get_untracked().len();
-            if key.as_str() == "ArrowUp" {
-                selected_index.update(|idx| {
-                    if *idx == 0 {
-                        *idx = len - 1;
-                    } else {
-                        *idx -= 1;
-                    }
-                });
-            } else {
-                selected_index.update(|idx| {
-                    *idx = (*idx + 1) % len;
-                });
-            }
+            let len = match current_menu {
+                MenuType::UserAutocomplete { .. } => mention_matches.get_untracked().len(),
+                MenuType::CommandAutocomplete { .. } => command_matches.get_untracked().len(),
+                MenuType::None => return,
+            };
+
+            match (current_menu, key.as_str()) {
+                (MenuType::UserAutocomplete { .. }, "ArrowUp") => {
+                    selected_index.update(|idx| {
+                        if *idx == 0 {
+                            *idx = len - 1;
+                        } else {
+                            *idx -= 1;
+                        }
+                    });
+                }
+                (MenuType::UserAutocomplete { .. }, "ArrowDown") => {
+                    selected_index.update(|idx| {
+                        *idx = (*idx + 1) % len;
+                    });
+                }
+                (MenuType::CommandAutocomplete { .. }, "ArrowUp") => {
+                    selected_index.update(|idx| {
+                        if *idx == 0 {
+                            *idx = len - 1;
+                        } else {
+                            *idx -= 1;
+                        }
+                    });
+                }
+                (MenuType::CommandAutocomplete { .. }, "ArrowDown") => {
+                    selected_index.update(|idx| {
+                        *idx = (*idx + 1) % len;
+                    });
+                }
+                _ => return,
+            };
         }
         "Escape" if current_menu != MenuType::None => {
             menu.set(MenuType::None);

@@ -2,9 +2,12 @@ use leptos::{prelude::Get, task::spawn_local};
 use log::error;
 use serde::Serialize;
 use serde_json::json;
-use shared::{api::LinkPreviewResponse, messages::RichTextSpan};
+use shared::{api::LinkPreviewResponse, commands::Command, messages::RichTextSpan};
 
-use crate::{app::call_tauri, state::AppState};
+use crate::{
+    app::{call_tauri, call_tauri_no_args},
+    state::AppState,
+};
 
 #[derive(Serialize)]
 struct ReadMarkerArgs {
@@ -137,5 +140,13 @@ pub async fn fetch_preview_data(url: String) -> Result<LinkPreviewResponse, Stri
             error!("{}", error_message);
             return Err(error_message);
         }
+    }
+}
+
+pub async fn get_commands() -> Result<Vec<Command>, String> {
+    match call_tauri_no_args("get_commands").await {
+        Ok(result) => serde_wasm_bindgen::from_value(result)
+            .map_err(|e| format!("Failed to deserialize commands: {:?}", e)),
+        Err(e) => Err(format!("Failed to fetch commands: {:?}", e)),
     }
 }

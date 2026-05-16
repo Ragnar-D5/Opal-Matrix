@@ -10,6 +10,7 @@ use crate::{
 
 pub(crate) mod messages;
 pub(crate) mod sidebar;
+pub(crate) mod commands;
 
 pub fn send_member_update(handle: &AppHandle, updates: Vec<MemberRow>) -> Result<(), TauriError> {
     if updates.is_empty() {

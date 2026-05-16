@@ -1,5 +1,3 @@
-use std::rc::Rc;
-
 use leptos::prelude::*;
 use log::info;
 use shared::messages::RichTextSpan;
