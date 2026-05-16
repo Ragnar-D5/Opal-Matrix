@@ -12,7 +12,7 @@ use leptos::prelude::*;
 use log::error;
 use nucleo_matcher::{Config, Matcher, Utf32Str};
 use shared::commands::{Command, CommandExecution};
-use web_sys::{HtmlDivElement, HtmlElement};
+use web_sys::{Document, HtmlDivElement, HtmlElement, Node, Range};
 
 use crate::components::user_profile::UserProfileMaybeExt;
 
@@ -44,6 +44,47 @@ impl From<Command> for SelectedItem {
     fn from(command: Command) -> Self {
         SelectedItem::Command(command)
     }
+}
+
+fn render_command(command: Command) -> impl IntoView {
+    if command.is_macro().is_some() {
+        return view! {}.into_any();
+    };
+
+    view! {
+        <span
+            contenteditable="false"
+            class="rounded-(--floating-border-radius) bg-(--ui-solid-bg) border border-(--accent-color) px-[2px]"
+        >
+            /
+            {command.name}
+        </span>
+    }
+    .into_any()
+}
+
+fn commit_command(command: Command, doc: &Document, range: Range) -> (Node, u32) {
+    if let Some(replacement) = &command.is_macro() {
+        let text_node = doc.create_text_node(&replacement);
+        let text_len = text_node.length();
+        range.insert_node(&text_node).unwrap();
+        return (Node::from(text_node), text_len);
+    }
+
+    let mut render_state = render_command(command).build();
+    let temp_container = doc.create_element("div").unwrap();
+    render_state.mount(&temp_container, None);
+
+    let command_node = temp_container
+        .first_child()
+        .expect("Command view should have at least one root element");
+
+    let space_node = doc.create_text_node("\u{00A0}");
+
+    range.insert_node(&space_node).unwrap();
+    range.insert_node(&command_node).unwrap();
+
+    (web_sys::Node::from(space_node), 1)
 }
 
 pub fn commit_selection(
@@ -114,23 +155,7 @@ pub fn commit_selection(
 
             (web_sys::Node::from(space_node), 1)
         }
-        SelectedItem::Command(command) => match command.execution {
-            CommandExecution::Macro(replacement) => {
-                let text_node = doc.create_text_node(&replacement);
-                let text_len = text_node.length();
-                range.insert_node(&text_node).unwrap();
-                (web_sys::Node::from(text_node), text_len)
-            }
-            _ => {
-                let command_text = format!("/{} ", command.name);
-                let text_node = doc.create_text_node(&command_text);
-                let text_len = text_node.length();
-
-                range.insert_node(&text_node).unwrap();
-
-                (web_sys::Node::from(text_node), text_len)
-            }
-        },
+        SelectedItem::Command(command) => commit_command(command, &doc, range),
     };
 
     let new_range = doc.create_range().unwrap();
@@ -407,7 +432,7 @@ pub fn SelectionMenu(menu: RwSignal<MenuType>, input_ref: NodeRef<Div>) -> impl 
 
     view! {
         <div
-            class="mb-(--gap) absolute bottom-full left-4 right-4 bottom-(--gap) bg-(--ui-floating-hover-bg) backdrop-blur-2xl rounded-(--ui-border-radius) border border-(--tile-border-color) flex flex-col text-xs pb-(--gap)"
+            class="mb-(--gap) absolute bottom-full left-4 right-4 bottom-(--gap) bg-(--ui-floating-hover-bg) backdrop-blur-2xl rounded-(--ui-border-radius) border border-(--tile-border-color) flex flex-col text-xs pb-(--gap) max-h-100 overflow-y-auto"
             class:hidden=move || menu.get().is_none()
         >
             {move || content}

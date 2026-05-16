@@ -697,6 +697,9 @@
     --tw-border-style: none;
     border-style: none;
   }
+  .border-\(--accent-color\) {
+    border-color: var(--accent-color);
+  }
   .border-\(--tile-border-color\) {
     border-color: var(--tile-border-color);
   }
@@ -840,6 +843,9 @@
   }
   .px-5 {
     padding-inline: calc(var(--spacing) * 5);
+  }
+  .px-\[2px\] {
+    padding-inline: 2px;
   }
   .py-0\.5 {
     padding-block: calc(var(--spacing) * 0.5);

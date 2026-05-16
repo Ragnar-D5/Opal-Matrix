@@ -1,3 +1,4 @@
+use log::warn;
 use shared::commands::{default_commands, default_macros, Command};
 use tauri::command;
 
@@ -7,4 +8,11 @@ pub fn get_commands() -> Vec<Command> {
     default_commands.extend(default_macros());
 
     default_commands
+        .into_iter()
+        .filter(|cmd| {
+            cmd.validate_template_structure()
+                .map_err(|e| warn!("Invalid command: {e}"))
+                .is_ok()
+        })
+        .collect()
 }
