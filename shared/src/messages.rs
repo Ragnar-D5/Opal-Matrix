@@ -1,3 +1,4 @@
+use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 
 use ruma::events::room::{guest_access::GuestAccess, history_visibility::HistoryVisibility};
@@ -121,12 +122,6 @@ pub enum MessageContent {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Hash)]
-pub struct Reaction {
-    pub sender_id: String,
-    pub reaction: String,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Hash)]
 pub struct RepliesTo {
     pub text: Option<Vec<RichTextSpan>>,
     pub sender_id: Option<String>,
@@ -136,27 +131,22 @@ pub struct RepliesTo {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct UserMessage {
     pub mentions: Mentions,
-    pub reactions: Vec<Reaction>,
+    pub reactions: HashMap<String, HashSet<String>>,
     pub replies_to: Option<RepliesTo>,
 
     pub content: MessageContent,
-}
-
-impl UserMessage {
-    pub fn mentions_user(&self, user_id: &String) -> bool {
-        self.mentions
-            .user_ids
-            .iter()
-            .map(|v| v.to_string())
-            .any(|v| v == *user_id)
-    }
 }
 
 impl Hash for UserMessage {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.mentions.room.hash(state);
         self.mentions.user_ids.hash(state);
-        self.reactions.hash(state);
+        for (key, value) in &self.reactions {
+            key.hash(state);
+            for v in value {
+                v.hash(state);
+            }
+        }
         self.replies_to.hash(state);
         self.content.hash(state);
     }
@@ -173,10 +163,18 @@ impl PartialEq for UserMessage {
 }
 
 impl UserMessage {
+    pub fn mentions_user(&self, user_id: &String) -> bool {
+        self.mentions
+            .user_ids
+            .iter()
+            .map(|v| v.to_string())
+            .any(|v| v == *user_id)
+    }
+
     pub fn new() -> Self {
         Self {
             mentions: Mentions::default(),
-            reactions: Vec::new(),
+            reactions: HashMap::new(),
             replies_to: None,
             content: MessageContent::Deleted,
         }
@@ -209,7 +207,7 @@ impl UserMessage {
     pub fn deleted() -> Self {
         Self {
             mentions: Mentions::default(),
-            reactions: Vec::new(),
+            reactions: HashMap::new(),
             replies_to: None,
             content: MessageContent::Deleted,
         }
@@ -328,9 +326,9 @@ impl UiMessage {
         }
     }
 
-    pub fn add_reaction(&mut self, reaction: Reaction) {
+    pub fn add_reactions(&mut self, reactions: &HashMap<String, HashSet<String>>) {
         if let MessageKind::UserMessage(user_message) = &mut self.kind {
-            user_message.reactions.push(reaction);
+            user_message.reactions = reactions.clone()
         }
     }
 

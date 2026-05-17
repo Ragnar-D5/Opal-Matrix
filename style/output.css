@@ -30,7 +30,6 @@
     --text-xl--line-height: calc(1.75 / 1.25);
     --text-3xl: 1.875rem;
     --text-3xl--line-height: calc(2.25 / 1.875);
-    --font-weight-medium: 500;
     --font-weight-semibold: 600;
     --font-weight-bold: 700;
     --font-weight-extrabold: 800;
@@ -712,12 +711,6 @@
   .border-\[var\(--tile-border-color\)\] {
     border-color: var(--tile-border-color);
   }
-  .border-white\/5 {
-    border-color: color-mix(in srgb, #fff 5%, transparent);
-    @supports (color: color-mix(in lab, red, red)) {
-      border-color: color-mix(in oklab, var(--color-white) 5%, transparent);
-    }
-  }
   .border-white\/20 {
     border-color: color-mix(in srgb, #fff 20%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
@@ -793,14 +786,11 @@
       background-color: color-mix(in oklab, var(--color-white) 5%, transparent);
     }
   }
-  .bg-white\/10 {
-    background-color: color-mix(in srgb, #fff 10%, transparent);
-    @supports (color: color-mix(in lab, red, red)) {
-      background-color: color-mix(in oklab, var(--color-white) 10%, transparent);
-    }
-  }
   .object-cover {
     object-fit: cover;
+  }
+  .p-0\.5 {
+    padding: calc(var(--spacing) * 0.5);
   }
   .p-1 {
     padding: calc(var(--spacing) * 1);
@@ -970,10 +960,6 @@
   .font-extrabold {
     --tw-font-weight: var(--font-weight-extrabold);
     font-weight: var(--font-weight-extrabold);
-  }
-  .font-medium {
-    --tw-font-weight: var(--font-weight-medium);
-    font-weight: var(--font-weight-medium);
   }
   .font-semibold {
     --tw-font-weight: var(--font-weight-semibold);
@@ -1208,6 +1194,13 @@
       }
     }
   }
+  .hover\:bg-\(--ui-solid-hover-bg\) {
+    &:hover {
+      @media (hover: hover) {
+        background-color: var(--ui-solid-hover-bg);
+      }
+    }
+  }
   .hover\:bg-\[color\:var\(--color-item-hover\)\] {
     &:hover {
       @media (hover: hover) {
@@ -1235,16 +1228,6 @@
         background-color: color-mix(in srgb, #000 20%, transparent);
         @supports (color: color-mix(in lab, red, red)) {
           background-color: color-mix(in oklab, var(--color-black) 20%, transparent);
-        }
-      }
-    }
-  }
-  .hover\:bg-white\/20 {
-    &:hover {
-      @media (hover: hover) {
-        background-color: color-mix(in srgb, #fff 20%, transparent);
-        @supports (color: color-mix(in lab, red, red)) {
-          background-color: color-mix(in oklab, var(--color-white) 20%, transparent);
         }
       }
     }
@@ -1311,6 +1294,7 @@
   --ui-floating-bg: rgba(0, 0, 0, 0.2);
   --ui-floating-hover-bg: rgba(0, 0, 0, 0.4);
   --ui-solid-bg: #0c0c14;
+  --ui-solid-hover-bg: #1e1e2e;
   --ui-border-radius: 6px;
   --ui-hover-bg: rgba(255, 255, 255, 0.075);
   --link-color: #5865f2;

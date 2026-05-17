@@ -1,4 +1,4 @@
-use std::{str::FromStr, sync::Arc};
+use std::{collections::HashMap, str::FromStr, sync::Arc};
 
 use chrono::Local;
 use ego_tree::NodeRef;
@@ -38,7 +38,7 @@ pub async fn commit_message(
         state: MessageState::Pending,
         kind: MessageKind::UserMessage(UserMessage {
             mentions: mentions.clone(),
-            reactions: Vec::new(),
+            reactions: HashMap::new(),
             replies_to: None,
             content: MessageContent::Text {
                 spans: spans.clone(),

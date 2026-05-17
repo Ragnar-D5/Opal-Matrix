@@ -26,11 +26,11 @@ use serde_json::json;
 use shared::{
     commands::Command,
     messages::{
-        MembershipAction, MessageContent, MessageKind, MessageState, Reaction, RepliesTo,
-        RichTextSpan, SystemMessage, UiMessage, UserMessage,
+        MembershipAction, MessageContent, MessageKind, MessageState, RepliesTo, RichTextSpan,
+        SystemMessage, UiMessage, UserMessage,
     },
     sidebar::{RoomKind, RoomNode, SidebarState},
-    user_profile::PresenceStatus,
+    user_profile::{PresenceStatus, UserProfile},
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -199,6 +199,193 @@ fn render_user_message(
     }
 }
 
+fn render_reactions(
+    reactions: &HashMap<String, HashSet<String>>,
+    store: MemberStore,
+    room_id: &String,
+) -> impl IntoView {
+    if reactions.is_empty() {
+        return view! {}.into_any();
+    }
+
+    view! {
+        <div class="flex flex-wrap gap-1 mt-1 mb-2">
+            {reactions
+                .iter()
+                .map(|(emoji, reactors)| {
+                    let reactors_vec: Vec<String> = reactors.iter().cloned().collect();
+                    let emoji = emoji.clone();
+                    let store = store.clone();
+                    let room_id = room_id.clone();
+                    view! {
+                        <div class="flex items-center gap-1.5 p-0.5 rounded-full bg-(--ui-solid-bg) border border-(--tile-border-color) hover:bg-(--ui-solid-hover-bg) cursor-pointer">
+                            <span class="text-sm leading-none">{emoji.clone()}</span>
+                            <div class="flex flex-row">
+                                <For
+                                    each=move || reactors_vec.clone()
+                                    key=|user_id| user_id.clone()
+                                    children=move |user_id| {
+                                        let profile_sig = store.get_profile(&room_id, &user_id);
+                                        view! {
+                                            {move || { profile_sig.get().map(|p| p.render_icon(20)) }}
+                                        }
+                                    }
+                                />
+
+                            </div>
+                        </div>
+                    }
+                })
+                .collect_view()}
+        </div>
+    }
+            .into_any()
+}
+
+fn render_message_group(
+    group: Vec<GroupedMessage>,
+    store: MemberStore,
+    room_id: String,
+    date: DateTime<Local>,
+    own_user_id: String,
+    profile_sig: ArcRwSignal<Option<UserProfile>>,
+) -> impl IntoView {
+    let first_msg = group.first();
+    let first_message_mentions_user = first_msg
+        .map(|msg| msg.message.mentions_user(&own_user_id))
+        .unwrap_or(false);
+
+    let first_reply_data = first_msg.and_then(|m| m.message.replies_to.clone());
+    let highlight_reply_preview = first_message_mentions_user && first_reply_data.is_some();
+
+    let name_sig = profile_sig.clone();
+
+    group
+    .iter()
+    .enumerate()
+    .map(|(idx, grouped_msg)| {
+        let msg = &grouped_msg.message;
+        let state = &grouped_msg.state;
+        let is_first = idx == 0;
+        let message_mentions_user = msg.mentions_user(&own_user_id)
+            || msg.mentions.room;
+        let reply_data = if is_first {
+            first_reply_data.clone()
+        } else {
+            None
+        };
+        let show_highlight = message_mentions_user
+            || (is_first && highlight_reply_preview);
+        let hovered = RwSignal::new(false);
+        let content = render_user_message(
+            msg,
+            store.clone(),
+            room_id.clone(),
+        );
+        let failed = state == &MessageState::Failed;
+        let reactions = msg.reactions.clone();
+
+        let store = store.clone();
+
+        view! {
+            <div
+                class="group/msg relative flex flex-col gap-[var(--gap)] hover:bg-black/20 ml-1 pl-4 py-[2px] rounded-md"
+                style:background=move || {
+                    let hovered = hovered.get();
+                    if show_highlight {
+                        format!(
+                            "linear-gradient(in oklch to right, oklch(from var(--accent-color) l c h / {}) 20%, oklch(from var(--accent-color) l c h / 0) 100%)",
+                            if hovered { "0.10" } else { "0.15" },
+                        )
+                    } else if hovered {
+                        "rgba(0, 0, 0, 0.2)".to_string()
+                    } else {
+                        "transparent".to_string()
+                    }
+                }
+                on:mouseenter=move |_| hovered.set(true)
+                on:mouseleave=move |_| hovered.set(false)
+            >
+                {if show_highlight {
+                    view! {
+                        <div class="absolute left-1 top-1 bottom-1 w-1 rounded-full bg-[var(--accent-color)] pointer-events-none"></div>
+                    }
+                        .into_any()
+                } else {
+                    view! {}.into_any()
+                }}
+
+                {move || {
+                    if hovered.get() && !is_first {
+                        view! {
+                            <div class="absolute text-xs text-muted mt-[5px] ml-[5px]">
+                                {date.format("%H:%M").to_string()}
+                            </div>
+                        }
+                            .into_any()
+                    } else {
+                        view! {}.into_any()
+                    }
+                }}
+
+                {if is_first {
+                    view! { <ReplyPreview replies_to=reply_data.clone() /> }.into_any()
+                } else {
+                    view! {}.into_any()
+                }}
+
+                <div class="flex gap-[var(--gap)]">
+                    <div class="shrink-0 mr-2 w-[40px] mt-[5px]">
+                        {if is_first {
+                            let profile_sig = profile_sig.clone();
+                            view! {
+                                {move || {
+                                    let profile = profile_sig.get();
+                                    profile.render_icon(40)
+                                }}
+                            }
+                                .into_any()
+                        } else {
+                            view! {}.into_any()
+                        }}
+                    </div>
+
+                    <div class="flex flex-col min-w-0 flex-1">
+                        {if is_first {
+                            let name_sig = name_sig.clone();
+                            view! {
+                                <div class="flex items-baseline gap-2">
+                                    <span class="text-bright truncate cursor-pointer">
+                                        {move || name_sig.get().render_name(16)}
+                                    </span>
+                                    <span class="text-muted text-xs">{format_date(date)}</span>
+                                </div>
+                            }
+                                .into_any()
+                        } else {
+                            view! {}.into_any()
+                        }} <div>
+                            <div class=("opacity-50", state != &MessageState::Sent)>{content}</div>
+                            <Show when=move || failed>
+                                <div class="flex items-center gap-1 mt-1 text-red-500 text-xs">
+                                    <Icon
+                                        icon=WARNING_CIRCLE
+                                        weight=IconWeight::Duotone
+                                        size="16px"
+                                    />
+                                    "Failed to send"
+                                </div>
+                            </Show>
+                            {render_reactions(&reactions, store, &room_id)}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+    })
+    .collect_view()
+}
+
 impl TimelineItem {
     fn render_key(&self) -> String {
         match &self.kind {
@@ -224,178 +411,23 @@ impl TimelineItem {
 
         let profile_sig = store.get_profile(&room_id, &self.sender);
 
-        let name_sig = profile_sig.clone();
         let sender_id = self.sender.clone();
 
         let own_user_id = state.user_id.get();
 
         match &self.kind {
             TimelineItemKind::MessageGroup(group) => {
-                let first_msg = group.first();
-                let first_message_mentions_user = first_msg
-                    .map(|msg| msg.message.mentions_user(&own_user_id))
-                    .unwrap_or(false);
-
-                let first_reply_data = first_msg.and_then(|m| m.message.replies_to.clone());
-                let highlight_reply_preview = first_message_mentions_user && first_reply_data.is_some();
-
                 view! {
                     <div class="flex flex-col gap-1 py-3 rounded-md">
                         <div class="flex flex-col w-full">
-                            {group
-                                .iter()
-                                .enumerate()
-                                .map(|(idx, grouped_msg)| {
-                                    let msg = &grouped_msg.message;
-                                    let state = &grouped_msg.state;
-                                    let is_first = idx == 0;
-                                    let message_mentions_user = msg.mentions_user(&own_user_id)
-                                        || msg.mentions.room;
-                                    let reply_data = if is_first {
-                                        first_reply_data.clone()
-                                    } else {
-                                        None
-                                    };
-                                    let show_highlight = message_mentions_user
-                                        || (is_first && highlight_reply_preview);
-                                    let hovered = RwSignal::new(false);
-                                    let mut reaction_counts: HashMap<String, usize> = HashMap::new();
-                                    for r in &msg.reactions {
-                                        *reaction_counts.entry(r.reaction.clone()).or_insert(0)
-                                            += 1;
-                                    }
-                                    let content = render_user_message(
-                                        msg,
-                                        store.clone(),
-                                        room_id.clone(),
-                                    );
-                                    let date = self.date;
-                                    let failed = state == &MessageState::Failed;
-
-                                    view! {
-                                        <div
-                                            class="group/msg relative flex flex-col gap-[var(--gap)] hover:bg-black/20 ml-1 pl-4 py-[2px] rounded-md"
-                                            style:background=move || {
-                                                let hovered = hovered.get();
-                                                if show_highlight {
-                                                    format!(
-                                                        "linear-gradient(in oklch to right, oklch(from var(--accent-color) l c h / {}) 20%, oklch(from var(--accent-color) l c h / 0) 100%)",
-                                                        if hovered { "0.10" } else { "0.15" },
-                                                    )
-                                                } else if hovered {
-                                                    "rgba(0, 0, 0, 0.2)".to_string()
-                                                } else {
-                                                    "transparent".to_string()
-                                                }
-                                            }
-                                            on:mouseenter=move |_| hovered.set(true)
-                                            on:mouseleave=move |_| hovered.set(false)
-                                        >
-                                            {if show_highlight {
-                                                view! {
-                                                    <div class="absolute left-1 top-1 bottom-1 w-1 rounded-full bg-[var(--accent-color)] pointer-events-none"></div>
-                                                }
-                                                    .into_any()
-                                            } else {
-                                                view! {}.into_any()
-                                            }}
-
-                                            {move || {
-                                                if hovered.get() && !is_first {
-                                                    view! {
-                                                        <div class="absolute text-xs text-muted mt-[5px] ml-[5px]">
-                                                            {date.format("%H:%M").to_string()}
-                                                        </div>
-                                                    }
-                                                        .into_any()
-                                                } else {
-                                                    view! {}.into_any()
-                                                }
-                                            }}
-
-                                            {if is_first {
-                                                view! { <ReplyPreview replies_to=reply_data.clone() /> }
-                                                    .into_any()
-                                            } else {
-                                                view! {}.into_any()
-                                            }}
-
-                                            <div class="flex gap-[var(--gap)]">
-                                                <div class="shrink-0 mr-2 w-[40px] mt-[5px]">
-                                                    {if is_first {
-                                                        let profile_sig = profile_sig.clone();
-                                                        view! {
-                                                            {move || {
-                                                                let profile = profile_sig.get();
-                                                                profile.render_icon(40)
-                                                            }}
-                                                        }
-                                                            .into_any()
-                                                    } else {
-                                                        view! {}.into_any()
-                                                    }}
-                                                </div>
-
-                                                <div class="flex flex-col min-w-0 flex-1">
-                                                    {if is_first {
-                                                        let name_sig = name_sig.clone();
-                                                        view! {
-                                                            <div class="flex items-baseline gap-2">
-                                                                <span class="text-bright truncate cursor-pointer">
-                                                                    {move || name_sig.get().render_name(16)}
-                                                                </span>
-                                                                <span class="text-muted text-xs">
-                                                                    {format_date(self.date)}
-                                                                </span>
-                                                            </div>
-                                                        }
-                                                            .into_any()
-                                                    } else {
-                                                        view! {}.into_any()
-                                                    }} <div>
-                                                        <div class=(
-                                                            "opacity-50",
-                                                            state != &MessageState::Sent,
-                                                        )>{content}</div>
-                                                        <Show when=move || failed>
-                                                            <div class="flex items-center gap-1 mt-1 text-red-500 text-xs">
-                                                                <Icon
-                                                                    icon=WARNING_CIRCLE
-                                                                    weight=IconWeight::Duotone
-                                                                    size="16px"
-                                                                />
-                                                                "Failed to send"
-                                                            </div>
-                                                        </Show>
-                                                        {if !reaction_counts.is_empty() {
-                                                            view! {
-                                                                <div class="flex flex-wrap gap-1 mt-1 mb-2">
-                                                                    {reaction_counts
-                                                                        .into_iter()
-                                                                        .map(|(emoji, count)| {
-                                                                            view! {
-                                                                                <div class="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-white/10 border border-white/5 hover:bg-white/20 cursor-pointer">
-                                                                                    <span class="text-sm leading-none">{emoji}</span>
-                                                                                    <span class="text-[10px] font-medium text-muted">
-                                                                                        {count}
-                                                                                    </span>
-                                                                                </div>
-                                                                            }
-                                                                        })
-                                                                        .collect_view()}
-                                                                </div>
-                                                            }
-                                                                .into_any()
-                                                        } else {
-                                                            view! {}.into_any()
-                                                        }}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    }
-                                })
-                                .collect_view()}
+                            {render_message_group(
+                                group.clone(),
+                                store.clone(),
+                                room_id.clone(),
+                                self.date,
+                                own_user_id.clone(),
+                                profile_sig.clone(),
+                            )}
                         </div>
                     </div>
                 }
@@ -687,7 +719,7 @@ fn TimeLine() -> impl IntoView {
 
         let mut edits = HashMap::new();
         let mut redactions = HashSet::new();
-        let mut reactions_map = HashMap::new();
+        let mut reactions_map: HashMap<String, HashMap<String, HashSet<String>>> = HashMap::new();
 
         let mut processed_messages = HashMap::new();
 
@@ -728,13 +760,13 @@ fn TimeLine() -> impl IntoView {
                         event_id,
                         ref reaction,
                     }) => {
-                        reactions_map.insert(
-                            event_id.clone(),
-                            Reaction {
-                                sender_id: msg.sender_id.clone(),
-                                reaction: reaction.clone(),
-                            },
-                        );
+                        // Add user id to vec of hashmap at key user id
+                        reactions_map
+                            .entry(event_id.clone())
+                            .or_default()
+                            .entry(reaction.clone())
+                            .or_default()
+                            .insert(msg.sender_id.clone());
                         false
                     }
                     _ => true,
@@ -764,8 +796,8 @@ fn TimeLine() -> impl IntoView {
             if let Some(new_spans) = edits.get(&msg.event_id) {
                 msg.edit(new_spans.clone());
             }
-            if let Some(reaction) = reactions_map.get(&msg.event_id) {
-                msg.add_reaction(reaction.clone());
+            if let Some(reactions) = reactions_map.get(&msg.event_id) {
+                msg.add_reactions(reactions);
             }
 
             let current_date = get_date_from_ts(msg.timestamp as i64);

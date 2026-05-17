@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use ego_tree::NodeRef;
 use linkify::LinkFinder;
 use ruma::events::room::history_visibility::HistoryVisibility;
@@ -430,7 +432,7 @@ impl TryInto<UiMessage> for MessageRow {
                 AnySyncMessageLikeEvent::RoomEncrypted(_) => {
                     MessageKind::UserMessage(UserMessage {
                         mentions: Mentions::default(),
-                        reactions: Vec::new(),
+                        reactions: HashMap::new(),
                         replies_to: None,
                         content: MessageContent::Encrypted,
                     })
