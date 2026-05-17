@@ -4,6 +4,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use tauri::{command, State};
 
+use crate::storage::rooms::RoomAliasRow;
 use crate::AppState;
 use crate::TauriError;
 use members::MemberRow;
@@ -44,6 +45,7 @@ pub async fn init_storage(
     SpaceChildRow::create_table(&conn)?;
     SpaceParentRow::create_table(&conn)?;
     ReadReceiptRow::create_table(&conn)?;
+    RoomAliasRow::create_table(&conn)?;
 
     Ok((db_exists, conn))
 }
@@ -56,11 +58,12 @@ pub trait DataBaseModel {
 pub struct SyncChanges {
     pub joined_rooms: Vec<OwnedRoomId>,
     pub new_messages: Vec<MessageRow>,
-    pub member_updates: Vec<MemberRow>,
+    pub member_updates: HashMap<(String, String), MemberRow>,
     pub read_receipts: Vec<ReadReceiptRow>,
 
     pub direct_rooms: Option<HashSet<OwnedRoomId>>,
 
+    pub room_aliases: HashMap<OwnedRoomId, Vec<RoomAliasRow>>,
     pub room_updates: HashMap<OwnedRoomId, RoomRow>,
 
     pub space_children: Vec<SpaceChildRow>,
@@ -99,6 +102,7 @@ pub fn apply_sync_changes(
 
         stmt_ensure_rooms.execute(params![room_id.to_string()])?;
     }
+
     drop(stmt_room_exists);
     drop(stmt_ensure_rooms);
 
@@ -194,7 +198,7 @@ pub fn apply_sync_changes(
             avatar_url = excluded.avatar_url,
             membership = excluded.membership",
     )?;
-    for member in changes.member_updates {
+    for ((_, _), member) in changes.member_updates {
         stmt_members.execute(params![
             member.room_id,
             member.user_id,
@@ -204,6 +208,25 @@ pub fn apply_sync_changes(
         ])?;
     }
     drop(stmt_members);
+
+    let mut stmt_delete_aliases = tx.prepare("DELETE FROM room_aliases WHERE room_id = ?")?;
+    let mut stmt_insert_alias = tx.prepare(
+        "INSERT INTO room_aliases (alias, room_id, is_canonical)
+             VALUES (?, ?, ?)
+             ON CONFLICT(alias) DO UPDATE SET
+                room_id = excluded.room_id,
+                is_canonical = excluded.is_canonical",
+    )?;
+
+    for (room_id, aliases) in changes.room_aliases {
+        stmt_delete_aliases.execute(params![room_id.to_string()])?;
+
+        for row in aliases {
+            stmt_insert_alias.execute(params![row.alias, row.room_id, row.is_canonical])?;
+        }
+    }
+    drop(stmt_delete_aliases);
+    drop(stmt_insert_alias);
 
     let mut stmt_room_state = tx.prepare(
         "UPDATE rooms SET

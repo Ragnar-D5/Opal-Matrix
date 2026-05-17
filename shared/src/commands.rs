@@ -23,7 +23,11 @@ pub struct Argument {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum CommandExecution {
     /// The macro is inserted directly. This is done directly.
-    Macro(String),
+    Macro {
+        replacement: String,
+        /// The position of the caret after insertion, if specified. If not specified, the caret will be placed at the end of the inserted text.
+        caret_position: Option<u32>,
+    },
     /// The arguments are substituted into the template string, which is then inserted into the message. The template can contain placeholders in the format {argument_name}, which will be replaced with the corresponding argument value when the command is executed.
     /// This is done when the message is actually sent.
     Format(String),
@@ -54,7 +58,11 @@ pub struct Command {
 }
 
 impl Command {
-    pub fn new_macro(name: impl ToString, replacement: impl ToString) -> Self {
+    pub fn new_macro(
+        name: impl ToString,
+        replacement: impl ToString,
+        caret_position: Option<u32>,
+    ) -> Self {
         let replacement = replacement.to_string();
 
         Command {
@@ -63,22 +71,29 @@ impl Command {
             description: format!("Inserts '{}'", &replacement),
             usage: format!("/{}", name.to_string()),
             arguments: vec![],
-            execution: CommandExecution::Macro(replacement),
+            execution: CommandExecution::Macro {
+                replacement,
+                caret_position,
+            },
             output: CommandOutput::Text,
         }
     }
 
     /// Checks if the command is a macro and returns the replacement string if it is.
-    pub fn is_macro(&self) -> Option<String> {
-        if let CommandExecution::Macro(replacement) = &self.execution {
-            Some(replacement.clone())
+    pub fn is_macro(&self) -> Option<(String, Option<u32>)> {
+        if let CommandExecution::Macro {
+            replacement,
+            caret_position,
+        } = &self.execution
+        {
+            Some((replacement.clone(), caret_position.clone()))
         } else {
             None
         }
     }
 
     pub fn generate_usage(&mut self) {
-        if let CommandExecution::Macro(replacement) = &self.execution {
+        if let CommandExecution::Macro { replacement, .. } = &self.execution {
             self.usage = replacement.clone();
             return;
         }
@@ -172,107 +187,107 @@ impl Command {
 }
 
 pub fn default_commands() -> Vec<Command> {
-    let mut cmds = vec![
-        Command {
-            name: "link".to_string(),
-            source: "Built-in".to_string(),
-            description: "Formats a link.".to_string(),
-            usage: String::new(),
-            arguments: vec![
-                Argument {
-                    name: "text".to_string(),
-                    description: "The text to display for the link".to_string(),
-                    argument_type: ArgumentType::Text,
-                },
-                Argument {
-                    name: "url".to_string(),
-                    description: "The URL the link should point to".to_string(),
-                    argument_type: ArgumentType::Text,
-                },
-            ],
-            execution: CommandExecution::Format("[{text}]({url})".to_string()),
-            output: CommandOutput::Text,
-        },
-        Command {
-            name: "effect".to_string(),
-            source: "Built-in".to_string(),
-            description: "Adds the selected effect to the message".to_string(),
-            usage: "".to_string(),
-            arguments: vec![Argument {
-                name: "effect".to_string(),
-                description: "The effect to apply to the message".to_string(),
-                argument_type: ArgumentType::Enum(vec![
-                    ("confetti".to_string(), "nic.custom.confetti".to_string()),
-                    ("fireworks".to_string(), "nic.custom.fireworks".to_string()),
-                    (
-                        "rainfall".to_string(),
-                        "io.element.effect.rainfall".to_string(),
-                    ),
-                    (
-                        "snowfall".to_string(),
-                        "io.element.effect.snowfall".to_string(),
-                    ),
-                    (
-                        "spaceinvaders".to_string(),
-                        "io.element.effects.space_invaders".to_string(),
-                    ),
-                ]),
-            }],
-            execution: CommandExecution::Format("{effect}".to_string()),
-            output: CommandOutput::MessageType,
-        },
-        Command {
-            name: "spoiler".to_string(),
-            source: "Built-in".to_string(),
-            description: "Hides text behind a spoiler.".to_string(),
-            usage: "".to_string(),
-            arguments: vec![Argument {
-                name: "text".to_string(),
-                description: "The secret text to hide".to_string(),
-                argument_type: ArgumentType::Text,
-            }],
-            execution: CommandExecution::Format("||{text}||".to_string()),
-            output: CommandOutput::Text,
-        },
-        Command {
-            name: "strikethrough".to_string(),
-            source: "Built-in".to_string(),
-            description: "Strikes through the text.".to_string(),
-            usage: "".to_string(),
-            arguments: vec![Argument {
-                name: "text".to_string(),
-                description: "The text to strike through".to_string(),
-                argument_type: ArgumentType::Text,
-            }],
-            execution: CommandExecution::Format("~~{text}~~".to_string()),
-            output: CommandOutput::Text,
-        },
-        Command {
-            name: "italic".to_string(),
-            source: "Built-in".to_string(),
-            description: "Italics the text.".to_string(),
-            usage: "".to_string(),
-            arguments: vec![Argument {
-                name: "text".to_string(),
-                description: "The text to italicize".to_string(),
-                argument_type: ArgumentType::Text,
-            }],
-            execution: CommandExecution::Format("*{text}*".to_string()),
-            output: CommandOutput::Text,
-        },
-        Command {
-            name: "bold".to_string(),
-            source: "Built-in".to_string(),
-            description: "Bolds the text.".to_string(),
-            usage: "".to_string(),
-            arguments: vec![Argument {
-                name: "text".to_string(),
-                description: "The text to bold".to_string(),
-                argument_type: ArgumentType::Text,
-            }],
-            execution: CommandExecution::Format("**{text}**".to_string()),
-            output: CommandOutput::Text,
-        },
+    let mut cmds: Vec<Command> = vec![
+        // Command {
+        //     name: "link".to_string(),
+        //     source: "Built-in".to_string(),
+        //     description: "Formats a link.".to_string(),
+        //     usage: String::new(),
+        //     arguments: vec![
+        //         Argument {
+        //             name: "text".to_string(),
+        //             description: "The text to display for the link".to_string(),
+        //             argument_type: ArgumentType::Text,
+        //         },
+        //         Argument {
+        //             name: "url".to_string(),
+        //             description: "The URL the link should point to".to_string(),
+        //             argument_type: ArgumentType::Text,
+        //         },
+        //     ],
+        //     execution: CommandExecution::Format("[{text}]({url})".to_string()),
+        //     output: CommandOutput::Text,
+        // },
+        // Command {
+        //     name: "effect".to_string(),
+        //     source: "Built-in".to_string(),
+        //     description: "Adds the selected effect to the message".to_string(),
+        //     usage: "".to_string(),
+        //     arguments: vec![Argument {
+        //         name: "effect".to_string(),
+        //         description: "The effect to apply to the message".to_string(),
+        //         argument_type: ArgumentType::Enum(vec![
+        //             ("confetti".to_string(), "nic.custom.confetti".to_string()),
+        //             ("fireworks".to_string(), "nic.custom.fireworks".to_string()),
+        //             (
+        //                 "rainfall".to_string(),
+        //                 "io.element.effect.rainfall".to_string(),
+        //             ),
+        //             (
+        //                 "snowfall".to_string(),
+        //                 "io.element.effect.snowfall".to_string(),
+        //             ),
+        //             (
+        //                 "spaceinvaders".to_string(),
+        //                 "io.element.effects.space_invaders".to_string(),
+        //             ),
+        //         ]),
+        //     }],
+        //     execution: CommandExecution::Format("{effect}".to_string()),
+        //     output: CommandOutput::MessageType,
+        // },
+        // Command {
+        //     name: "spoiler".to_string(),
+        //     source: "Built-in".to_string(),
+        //     description: "Hides text behind a spoiler.".to_string(),
+        //     usage: "".to_string(),
+        //     arguments: vec![Argument {
+        //         name: "text".to_string(),
+        //         description: "The secret text to hide".to_string(),
+        //         argument_type: ArgumentType::Text,
+        //     }],
+        //     execution: CommandExecution::Format("||{text}||".to_string()),
+        //     output: CommandOutput::Text,
+        // },
+        // Command {
+        //     name: "strikethrough".to_string(),
+        //     source: "Built-in".to_string(),
+        //     description: "Strikes through the text.".to_string(),
+        //     usage: "".to_string(),
+        //     arguments: vec![Argument {
+        //         name: "text".to_string(),
+        //         description: "The text to strike through".to_string(),
+        //         argument_type: ArgumentType::Text,
+        //     }],
+        //     execution: CommandExecution::Format("~~{text}~~".to_string()),
+        //     output: CommandOutput::Text,
+        // },
+        // Command {
+        //     name: "italic".to_string(),
+        //     source: "Built-in".to_string(),
+        //     description: "Italics the text.".to_string(),
+        //     usage: "".to_string(),
+        //     arguments: vec![Argument {
+        //         name: "text".to_string(),
+        //         description: "The text to italicize".to_string(),
+        //         argument_type: ArgumentType::Text,
+        //     }],
+        //     execution: CommandExecution::Format("*{text}*".to_string()),
+        //     output: CommandOutput::Text,
+        // },
+        // Command {
+        //     name: "bold".to_string(),
+        //     source: "Built-in".to_string(),
+        //     description: "Bolds the text.".to_string(),
+        //     usage: "".to_string(),
+        //     arguments: vec![Argument {
+        //         name: "text".to_string(),
+        //         description: "The text to bold".to_string(),
+        //         argument_type: ArgumentType::Text,
+        //     }],
+        //     execution: CommandExecution::Format("**{text}**".to_string()),
+        //     output: CommandOutput::Text,
+        // },
     ];
 
     for cmd in cmds.iter_mut() {
@@ -284,10 +299,15 @@ pub fn default_commands() -> Vec<Command> {
 
 pub fn default_macros() -> Vec<Command> {
     vec![
-        Command::new_macro("shrug", "¯\\_(ツ)_/¯"),
-        Command::new_macro("tableflip", "(╯°□°）╯︵ ┻━┻"),
-        Command::new_macro("unflip", "┬─┬ ノ(^_^ノ)"),
-        Command::new_macro("lenny", "( ͡° ͜ʖ ͡°)"),
-        Command::new_macro("disapprove", "ಠ_ಠ"),
+        Command::new_macro("shrug", "¯\\_(ツ)_/¯", None),
+        Command::new_macro("tableflip", "(╯°□°）╯︵ ┻━┻", None),
+        Command::new_macro("unflip", "┬─┬ ノ(^_^ノ)", None),
+        Command::new_macro("lenny", "( ͡° ͜ʖ ͡°)", None),
+        Command::new_macro("disapprove", "ಠ_ಠ", None),
+        Command::new_macro("link", "[]()", Some(1)),
+        Command::new_macro("spoiler", "||||", Some(2)),
+        Command::new_macro("strikethrough", "~~~~", Some(2)),
+        Command::new_macro("italic", "**", Some(2)),
+        Command::new_macro("bold", "****", Some(2)),
     ]
 }

@@ -11,7 +11,7 @@ use leptos::html::Div;
 use leptos::prelude::*;
 use log::error;
 use nucleo_matcher::{Config, Matcher, Utf32Str};
-use shared::commands::{Command, CommandExecution};
+use shared::commands::Command;
 use web_sys::{Document, HtmlDivElement, HtmlElement, Node, Range};
 
 use crate::components::user_profile::UserProfileMaybeExt;
@@ -64,11 +64,11 @@ fn render_command(command: Command) -> impl IntoView {
 }
 
 fn commit_command(command: Command, doc: &Document, range: Range) -> (Node, u32) {
-    if let Some(replacement) = &command.is_macro() {
+    if let Some((replacement, caret_position)) = &command.is_macro() {
         let text_node = doc.create_text_node(&replacement);
         let text_len = text_node.length();
         range.insert_node(&text_node).unwrap();
-        return (Node::from(text_node), text_len);
+        return (Node::from(text_node), caret_position.unwrap_or(text_len));
     }
 
     let mut render_state = render_command(command).build();

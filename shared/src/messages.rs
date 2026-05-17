@@ -1,3 +1,7 @@
+use std::hash::Hash;
+
+use ruma::events::room::{guest_access::GuestAccess, history_visibility::HistoryVisibility};
+use ruma::room::JoinRule;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Hash)]
@@ -15,12 +19,17 @@ pub enum MembershipAction {
     },
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum SystemMessage {
-    RoomCreation,
+    RoomCreated {
+        creator_id: String,
+    },
     MembershipChange(MembershipAction),
     RoomNameChange {
         new_name: String,
+    },
+    RoomAvatarChange {
+        new_avatar_url: Option<String>,
     },
     TopicChange {
         new_topic: String,
@@ -30,13 +39,13 @@ pub enum SystemMessage {
     },
     PowerlevelChange,
     JoinRuleChange {
-        new_rule: String,
+        new_rule: JoinRule,
     },
     HistoryVisibilityChange {
-        new_visibility: String,
+        new_visibility: HistoryVisibility,
     },
     GuestAccessChange {
-        new_access: String,
+        new_access: GuestAccess,
     },
     CallJoined {
         intent: String,
@@ -52,7 +61,13 @@ pub enum SystemMessage {
     },
     MessageRedacted {
         event_id: String,
+        reason: Option<String>,
     },
+    VerificationRequest {
+        from_user_id: String,
+        methods: Vec<String>,
+    },
+    Unknown,
     /// Used to delete messages only in the ui (for example pending messages)
     RemoveMessage {
         event_id: String,
@@ -218,10 +233,23 @@ impl UserMessage {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum MessageKind {
     UserMessage(UserMessage),
     SystemMessage(SystemMessage),
+}
+
+impl Hash for MessageKind {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        match self {
+            MessageKind::UserMessage(user_message) => {
+                user_message.hash(state);
+            }
+            MessageKind::SystemMessage(_) => {
+                "systemmessage".hash(state);
+            }
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, Hash)]

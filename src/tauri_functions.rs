@@ -1,8 +1,11 @@
 use leptos::{prelude::Get, task::spawn_local};
-use log::error;
 use serde::Serialize;
 use serde_json::json;
-use shared::{api::LinkPreviewResponse, commands::Command, messages::RichTextSpan};
+use shared::{
+    api::{FetchMessagesResponse, LinkPreviewResponse},
+    commands::Command,
+    messages::RichTextSpan,
+};
 
 use crate::{
     app::{call_tauri, call_tauri_no_args},
@@ -126,21 +129,16 @@ pub async fn set_focused_in_backend(focused: bool) -> Result<(), String> {
 }
 
 pub async fn fetch_preview_data(url: String) -> Result<LinkPreviewResponse, String> {
-    // Convert our arguments to a JS object for Tauri
     let args = serde_wasm_bindgen::to_value(&json!({ "url": url })).map_err(|e| e.to_string())?;
 
-    match call_tauri("get_url_preview", args).await {
-        Ok(result) => serde_wasm_bindgen::from_value(result).map_err(|e| {
-            let error_message = format!("Failed to deserialize preview data: {:?}", e);
-            error!("{}", error_message);
-            error_message
-        }),
-        Err(e) => {
-            let error_message = format!("Failed to fetch preview data: {:?}", e);
-            error!("{}", error_message);
-            return Err(error_message);
-        }
-    }
+    let js_val = call_tauri("get_url_preview", args)
+        .await
+        .map_err(|e| format!("Failed to fetch preview data: {:?}", e))?;
+
+    let preview: LinkPreviewResponse = serde_wasm_bindgen::from_value(js_val)
+        .map_err(|e| format!("Failed to deserialize preview data: {:?}", e))?;
+
+    Ok(preview)
 }
 
 pub async fn get_commands() -> Result<Vec<Command>, String> {
@@ -149,4 +147,26 @@ pub async fn get_commands() -> Result<Vec<Command>, String> {
             .map_err(|e| format!("Failed to deserialize commands: {:?}", e)),
         Err(e) => Err(format!("Failed to fetch commands: {:?}", e)),
     }
+}
+
+pub async fn fetch_messages(
+    room_id: String,
+    oldest_id: Option<String>,
+) -> Result<FetchMessagesResponse, String> {
+    let args = serde_wasm_bindgen::to_value(&json!({
+        "room_id": room_id,
+        "oldest_id": oldest_id
+    }))
+    .map_err(|e| format!("Failed to serialize request: {:?}", e))?;
+
+    let res = call_tauri("fetch_messages", args)
+        .await
+        .map_err(|e| format!("Tauri call failed: {:?}", e))?;
+
+    let json_string: String = js_sys::JSON::stringify(&res)
+        .map_err(|e| format!("Failed to convert response to string: {:?}", e))?
+        .into();
+
+    serde_json::from_str(&json_string)
+        .map_err(|e| format!("Failed to parse JSON response: {:?}", e))
 }

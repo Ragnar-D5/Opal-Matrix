@@ -45,7 +45,7 @@ use crate::{
         members::MemberRow,
         messages::MessageRow,
         receipts::ReadReceiptRow,
-        rooms::{SpaceChildRow, SpaceParentRow},
+        rooms::{RoomAliasRow, SpaceChildRow, SpaceParentRow},
         SyncChanges,
     },
     TauriError,
@@ -415,7 +415,7 @@ async fn handle_sync_response(
         });
     }
 
-    send_member_update(handle, changes.member_updates.into())?;
+    send_member_update(handle, changes.member_updates.into_values().collect())?;
 
     Ok(())
 }
@@ -543,11 +543,9 @@ fn extract_state(
             update.name = Some(ev.name.clone());
         }
         AnyStateEventContent::RoomAvatar(ev) => {
-            let Some(url) = ev.url else {
-                return Ok(());
+            if let Some(url) = ev.url {
+                update.avatar_url = Some(url.as_str().into());
             };
-
-            update.avatar_url = Some(url.as_str().into());
         }
         AnyStateEventContent::RoomTopic(ev) => {
             update.topic = Some(ev.topic.clone());
@@ -560,14 +558,55 @@ fn extract_state(
                 update.room_type = Some(room_type.as_str().to_string());
             }
         }
-        AnyStateEventContent::RoomMember(ev) => {
-            changes.member_updates.push(MemberRow {
+        AnyStateEventContent::RoomAliases(ev) => {
+            let new_aliases = ev.aliases.into_iter().map(|alias| RoomAliasRow {
                 room_id: room_id.to_string(),
-                user_id: state_key,
-                display_name: ev.displayname.clone(),
-                avatar_url: ev.avatar_url.clone().map(|u| u.as_str().to_string()),
-                membership: ev.membership.into(),
+                alias: alias.to_string(),
+                is_canonical: false,
             });
+
+            changes
+                .room_aliases
+                .entry(room_id.clone())
+                .or_default()
+                .extend(new_aliases);
+        }
+        AnyStateEventContent::RoomCanonicalAlias(ev) => {
+            let mut new_aliases = Vec::new();
+
+            if let Some(alias) = ev.alias {
+                new_aliases.push(RoomAliasRow {
+                    room_id: room_id.to_string(),
+                    alias: alias.to_string(),
+                    is_canonical: true,
+                });
+            }
+
+            for alias in ev.alt_aliases {
+                new_aliases.push(RoomAliasRow {
+                    room_id: room_id.to_string(),
+                    alias: alias.to_string(),
+                    is_canonical: false,
+                });
+            }
+
+            changes
+                .room_aliases
+                .entry(room_id.clone())
+                .or_default()
+                .extend(new_aliases);
+        }
+        AnyStateEventContent::RoomMember(ev) => {
+            changes.member_updates.insert(
+                (room_id.to_string(), state_key.clone()),
+                MemberRow {
+                    room_id: room_id.to_string(),
+                    user_id: state_key,
+                    display_name: ev.displayname.clone(),
+                    avatar_url: ev.avatar_url.clone().map(|u| u.as_str().to_string()),
+                    membership: ev.membership.into(),
+                },
+            );
         }
         AnyStateEventContent::RoomPowerLevels(ev) => {
             update.power_levels = Some(serde_json::to_string(&ev).unwrap_or_default());

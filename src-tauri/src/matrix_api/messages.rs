@@ -2,7 +2,8 @@ use ruma::api::SupportedVersions;
 use ruma::events::Mentions as RumaMentions;
 use ruma::OwnedUserId;
 use serde_json::Value;
-use shared::messages::{Mentions, MessageState, UiMessage};
+use shared::api::FetchMessagesResponse;
+use shared::messages::{Mentions, MessageState};
 use std::borrow::Cow;
 use std::{str::FromStr, sync::Arc};
 use tauri_plugin_http::reqwest::{self, Client};
@@ -73,7 +74,7 @@ pub async fn fetch_messages(
     state: State<'_, Arc<AppState>>,
     room_id: String,
     oldest_id: Option<String>,
-) -> Result<(Vec<UiMessage>, bool), TauriError> {
+) -> Result<FetchMessagesResponse, TauriError> {
     let limit = 20;
 
     let mut conn_guard = state.connection.lock().await;
@@ -84,13 +85,13 @@ pub async fn fetch_messages(
     let mut local_messages = get_messages(&conn, &room_id, oldest_id.clone(), limit)?;
 
     if local_messages.len() >= limit {
-        return Ok((
-            local_messages
+        return Ok(FetchMessagesResponse {
+            messages: local_messages
                 .into_iter()
                 .filter_map(|m| m.try_into().ok())
                 .collect(),
-            true,
-        ));
+            has_more: true,
+        });
     }
 
     let prev_batch: Option<String> = conn
@@ -104,13 +105,13 @@ pub async fn fetch_messages(
 
     let Some(prev_token) = prev_batch else {
         warn!("Room {room_id} has no prev_batch token, cannot fetch more messages from server");
-        return Ok((
-            local_messages
+        return Ok(FetchMessagesResponse {
+            messages: local_messages
                 .into_iter()
                 .filter_map(|m| m.try_into().ok())
                 .collect(),
-            false,
-        ));
+            has_more: false,
+        });
     };
 
     let (access_token, server_info) = state.get_api().await?;
@@ -181,13 +182,13 @@ pub async fn fetch_messages(
 
     let has_more = !hit_room_create && next_token.is_some() && next_token != Some(prev_token);
 
-    Ok((
-        local_messages
+    Ok(FetchMessagesResponse {
+        messages: local_messages
             .into_iter()
             .filter_map(|m| m.try_into().ok())
             .collect(),
         has_more,
-    ))
+    })
 }
 
 pub async fn backfill_gap(

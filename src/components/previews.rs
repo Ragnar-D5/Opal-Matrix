@@ -1,5 +1,4 @@
 use leptos::prelude::*;
-use log::info;
 use shared::messages::RichTextSpan;
 
 use crate::tauri_functions::fetch_preview_data;
@@ -12,7 +11,12 @@ pub fn render_link(span: RichTextSpan) -> impl IntoView {
     let fetch_url = url.clone();
     let preview = LocalResource::new(move || {
         let fetch_url = fetch_url.clone();
-        async move { fetch_preview_data(fetch_url).await.ok() }
+        async move {
+            fetch_preview_data(fetch_url.clone())
+                .await
+                .map_err(|e| log::error!("Error fetching preview for URL {}: {:?}", fetch_url, e))
+                .ok()
+        }
     });
 
     view! {
@@ -26,12 +30,7 @@ pub fn render_link(span: RichTextSpan) -> impl IntoView {
             {move || {
                 match preview.get() {
                     None => None,
-                    Some(None) => {
-                        info!(
-                            "Backend call succeeded, but no preview data was returned for this link."
-                        );
-                        Some(view! {}.into_any())
-                    }
+                    Some(None) => Some(view! {}.into_any()),
                     Some(Some(data)) => {
                         let link_url = data.url.clone().unwrap_or(url.clone());
                         let app_color = data.color.clone().unwrap_or_else(|| "#ffffff".to_string());

@@ -2,6 +2,8 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::messages::UiMessage;
+
 pub mod errors;
 
 #[derive(Serialize, Deserialize)]
@@ -52,4 +54,10 @@ impl LinkPreviewResponse {
             }
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FetchMessagesResponse {
+    pub messages: Vec<UiMessage>,
+    pub has_more: bool,
 }

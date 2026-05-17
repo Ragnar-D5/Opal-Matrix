@@ -13,16 +13,16 @@ use crate::{
     },
     hooks::use_tauri_event,
     state::{AppState, MemberProfileHandle, MemberStore, RoomHeader},
-    tauri_functions::{get_members, send_marker, MemberShip},
+    tauri_functions::{fetch_messages, get_members, send_marker, MemberShip},
 };
 
-use log::info;
+use log::error;
 use phosphor_leptos::{Icon, IconWeight, HASH, INFO, TRASH, UPLOAD_SIMPLE, WARNING_CIRCLE};
 
 use chrono::{DateTime, Local, NaiveDate, TimeZone};
 use leptos::{ev, html::Div, leptos_dom::logging::console_error, prelude::*, task::spawn_local};
 use leptos_use::{use_event_listener, use_intersection_observer, UseIntersectionObserverReturn};
-use serde::Serialize;
+use serde_json::json;
 use shared::{
     commands::Command,
     messages::{
@@ -437,66 +437,98 @@ impl TimelineItem {
             }
             .into_any(),
             TimelineItemKind::SystemMessage(sys_msg) => {
-                let display_name = profile_sig.get().unwrap_or_default().display_name.unwrap_or(sender_id);
+                let sys_msg = sys_msg.clone();
+                let sender_id = sender_id.clone();
+                let room_id = room_id.clone();
+                let store = store.clone();
 
-                let text = match sys_msg {
-                    SystemMessage::RoomCreation => format!("{} created the room", display_name),
-                    SystemMessage::RoomNameChange { new_name } => {
-                        format!("{} changed the room name to '{}'", display_name, new_name)
-                    }
-                    SystemMessage::TopicChange { new_topic } => {
-                        format!("{} changed the topic to '{}'", display_name, new_topic)
-                    }
-                    SystemMessage::MembershipChange(action) => match action {
-                        MembershipAction::Joined => format!("{} joined the room", display_name),
-                        MembershipAction::Left => format!("{} left the room", display_name),
-                        MembershipAction::Invited { .. } => {
-                            format!("{} was invited to the room", display_name)
+                let text = move || {
+                    let display_name = profile_sig.get()
+                        .unwrap_or_default()
+                        .display_name
+                        .unwrap_or_else(|| sender_id.clone());
+
+                    match &sys_msg {
+                        SystemMessage::RoomCreated { .. } => format!("{} created the room", display_name),
+                        SystemMessage::RoomNameChange { new_name } => {
+                            format!("{} changed the room name to '{}'", display_name, new_name)
                         }
-                        MembershipAction::Kicked { target_id, reason } => format!(
-                            "{} kicked {}{}",
-                            display_name,
-                            target_id,
-                            if let Some(r) = reason {
-                                format!(": {}", r)
-                            } else {
-                                "".to_string()
+                        SystemMessage::TopicChange { new_topic } => {
+                            format!("{} changed the topic to '{}'", display_name, new_topic)
+                        }
+                        SystemMessage::MembershipChange(action) => match action {
+                            MembershipAction::Joined => format!("{} joined the room", display_name),
+                            MembershipAction::Left => format!("{} left the room", display_name),
+                            MembershipAction::Invited { .. } => {
+                                format!("{} was invited to the room", display_name)
                             }
+                            MembershipAction::Kicked { target_id, reason } => format!(
+                                "{} kicked {}{}",
+                                display_name,
+                                target_id,
+                                if let Some(r) = reason {
+                                    format!(": {}", r)
+                                } else {
+                                    "".to_string()
+                                }
+                            ),
+                            MembershipAction::Banned { target_id, reason } => format!(
+                                "{} banned {}{}",
+                                display_name,
+                                target_id,
+                                if let Some(r) = reason {
+                                    format!(": {}", r)
+                                } else {
+                                    "".to_string()
+                                }
+                            ),
+                        },
+                        SystemMessage::EncryptionEnabled { algorithm } => {
+                            format!("{} enabled encryption ({})", display_name, algorithm)
+                        }
+                        SystemMessage::PowerlevelChange => {
+                            format!("{} changed the power levels", display_name)
+                        }
+                        SystemMessage::JoinRuleChange { new_rule } => {
+                            format!("{} changed the join rules to '{}'", display_name, new_rule.as_str())
+                        }
+                        SystemMessage::HistoryVisibilityChange { new_visibility } => format!(
+                            "{} changed the history visibility to '{}'",
+                            display_name, new_visibility
                         ),
-                        MembershipAction::Banned { target_id, reason } => format!(
-                            "{} banned {}{}",
-                            display_name,
-                            target_id,
-                            if let Some(r) = reason {
-                                format!(": {}", r)
+                        SystemMessage::GuestAccessChange { new_access } => format!(
+                            "{} changed the guest access to '{}'",
+                            display_name, new_access
+                        ),
+                        SystemMessage::CallJoined { intent } => {
+                            format!("{} joined a call ({})", display_name, intent)
+                        }
+                        SystemMessage::CallLeft => format!("{} left a call", display_name),
+                        SystemMessage::MessageEdited { .. } => format!("{} edited a message", display_name),
+                        SystemMessage::MessageReacted { .. } => format!("{} reacted to a message", display_name),
+                        SystemMessage::MessageRedacted { .. } => format!("{} redacted a message", display_name),
+                        SystemMessage::RemoveMessage { .. } => format!("{} removed a message", display_name),
+                        SystemMessage::RoomAvatarChange { new_avatar_url } => {
+                            if new_avatar_url.is_some() {
+                                format!("{} changed the room avatar", display_name)
                             } else {
-                                "".to_string()
+                                format!("{} removed the room avatar", display_name)
                             }
-                        ),
-                    },
-                    SystemMessage::EncryptionEnabled { algorithm } => {
-                        format!("{} enabled encryption ({})", display_name, algorithm)
-                    }
-                    SystemMessage::PowerlevelChange => {
-                        format!("{} changed the power levels", display_name)
-                    }
-                    SystemMessage::JoinRuleChange { new_rule } => {
-                        format!("{} changed the join rules to '{}'", display_name, new_rule)
-                    }
-                    SystemMessage::HistoryVisibilityChange { new_visibility } => format!(
-                        "{} changed the history visibility to '{}'",
-                        display_name, new_visibility
-                    ),
-                    SystemMessage::GuestAccessChange { new_access } => format!(
-                        "{} changed the guest access to '{}'",
-                        display_name, new_access
-                    ),
-                    SystemMessage::CallJoined { intent } => {
-                        format!("{} joined a call ({})", display_name, intent)
-                    }
-                    SystemMessage::CallLeft => format!("{} left a call", display_name),
+                        }
+                        SystemMessage::VerificationRequest { from_user_id, .. } => {
+                            let from_display_name = store
+                                .get_profile(&room_id, from_user_id)
+                                .get()
+                                .and_then(|p| p.display_name)
+                                .unwrap_or_else(|| from_user_id.clone());
 
-                    _ => format!("{} performed an action", display_name),
+                            format!(
+                                "{} sent a verification request to {}",
+                                display_name, from_display_name,
+                            )
+                        }
+                        SystemMessage::Unknown => format!("{} sent an unknown message", display_name),
+                    }
                 };
 
                 view! {
@@ -541,17 +573,6 @@ fn room_has_notifications(state: &SidebarState, room_id: &str) -> bool {
         > 0
 }
 
-#[derive(Serialize)]
-struct FetchMessagesRequest {
-    room_id: String,
-    oldest_id: Option<String>,
-}
-
-#[derive(Serialize)]
-struct ReceiptArgs {
-    room_id: String,
-}
-
 #[component]
 fn TimeLine() -> impl IntoView {
     let (messages, set_messages) = signal(Vec::<UiMessage>::new());
@@ -580,8 +601,6 @@ fn TimeLine() -> impl IntoView {
         set_messages.update(|existing| {
             let mut seen_ids: HashSet<String> =
                 existing.iter().map(|m| m.event_id.clone()).collect();
-
-            info!("New messages: {:?}", new_msgs);
 
             for msg in new_msgs {
                 match &msg.kind {
@@ -682,7 +701,7 @@ fn TimeLine() -> impl IntoView {
         msgs = msgs
             .into_iter()
             .filter(|msg| match &msg.kind {
-                MessageKind::SystemMessage(SystemMessage::MessageRedacted { event_id }) => {
+                MessageKind::SystemMessage(SystemMessage::MessageRedacted { event_id, .. }) => {
                     redactions.insert(event_id.clone());
                     false
                 }
@@ -876,51 +895,31 @@ fn TimeLine() -> impl IntoView {
             return;
         }
 
-        let room_id = state.active_room_id.get_untracked();
-        if room_id.is_none() {
+        let Some(room_id) = state.active_room_id.get_untracked() else {
             return;
-        }
+        };
 
         set_is_loading.set(true);
 
         spawn_local(async move {
-            let result = async {
-                let rid = room_id?; // Safe return if None
-                let oldest_id = messages
-                    .get_untracked()
-                    .iter()
-                    .min_by_key(|m| m.timestamp)
-                    .map(|m| m.event_id.clone());
+            let oldest_id = messages
+                .get_untracked()
+                .iter()
+                .min_by_key(|m| m.timestamp)
+                .map(|m| m.event_id.clone());
 
-                let request = FetchMessagesRequest {
-                    room_id: rid,
-                    oldest_id,
-                };
-                let args = serde_wasm_bindgen::to_value(&request).ok()?;
+            let result = fetch_messages(room_id, oldest_id).await;
 
-                let res = call_tauri("fetch_messages", args).await;
-
-                match res {
-                    Ok(js_val) => Some(js_val),
-                    Err(e) => {
-                        console_error(&format!("Error fetching messages: {:?}", e));
-                        None
-                    }
-                }
-            }
-            .await;
-
-            if let Some(js_val) = result {
-                if let Ok((new_messages, has_more)) =
-                    serde_wasm_bindgen::from_value::<(Vec<UiMessage>, bool)>(js_val)
-                {
-                    set_has_more.set(has_more);
+            match result {
+                Ok(res) => {
+                    set_has_more.set(res.has_more);
 
                     set_messages.update(|existing| {
                         let mut seen_ids: HashSet<String> =
                             existing.iter().map(|m| m.event_id.clone()).collect();
 
-                        let mut unique_new: Vec<UiMessage> = new_messages
+                        let mut unique_new: Vec<UiMessage> = res
+                            .messages
                             .into_iter()
                             .filter(|m| seen_ids.insert(m.event_id.clone()))
                             .collect();
@@ -930,6 +929,9 @@ fn TimeLine() -> impl IntoView {
                     });
 
                     set_initial_loaded.set(true);
+                }
+                Err(e) => {
+                    error!("Failed to fetch messages: {}", e);
                 }
             }
 
@@ -951,10 +953,9 @@ fn TimeLine() -> impl IntoView {
         });
 
     Effect::new(move |_| {
-        let rid = state.active_room_id.get();
-
-        if rid.is_some() {
+        if state.active_room_id.get().is_some() {
             set_messages.set(Vec::new());
+            set_is_loading.set(false);
             set_has_more.set(true);
             set_initial_loaded.set(false);
             set_read_marker_id.set(None);
@@ -977,9 +978,9 @@ fn TimeLine() -> impl IntoView {
         };
 
         spawn_local(async move {
-            let args = serde_wasm_bindgen::to_value(&ReceiptArgs {
-                room_id: room_id.clone(),
-            })
+            let args = serde_wasm_bindgen::to_value(&json!({
+                "room_id": room_id
+            }))
             .expect("Failed to serialize args");
 
             match call_tauri("get_receipt", args).await {

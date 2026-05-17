@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+ruma = {version="0.14.1", features = ["events"]}
 serde = {version = "1.0.228", features = ["derive"]}
 url = "2.5.8"
 uuid = "1.23.1"

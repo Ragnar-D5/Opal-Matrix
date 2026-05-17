@@ -22,6 +22,8 @@ pub struct RoomRow {
 
     pub highlight_count: Option<u32>,
     pub notification_count: Option<u32>,
+
+    pub alias: Option<String>,
 }
 
 impl DataBaseModel for RoomRow {
@@ -46,7 +48,30 @@ impl DataBaseModel for RoomRow {
                 prev_batch TEXT,
 
                 highlight_count INTEGER,
-                notification_count INTEGER
+                notification_count INTEGER,
+
+                alias TEXT
+            )",
+        )?;
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct RoomAliasRow {
+    pub room_id: String,
+    pub alias: String,
+    pub is_canonical: bool,
+}
+
+impl DataBaseModel for RoomAliasRow {
+    fn create_table(conn: &rusqlite::Connection) -> Result<(), crate::TauriError> {
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS room_aliases (
+                alias TEXT NOT NULL PRIMARY KEY,
+                room_id TEXT NOT NULL,
+                is_canonical BOOLEAN NOT NULL DEFAULT 0,
+                FOREIGN KEY (room_id) REFERENCES rooms(room_id) ON DELETE CASCADE
             )",
         )?;
         Ok(())

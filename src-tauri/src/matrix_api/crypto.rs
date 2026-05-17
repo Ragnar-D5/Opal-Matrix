@@ -3,12 +3,12 @@ use log::warn;
 use matrix_sdk_crypto::types::events::room::encrypted::EncryptedEvent;
 use std::{collections::BTreeMap, path::PathBuf, str::FromStr};
 
-use crate::{APP_NAME, AppState, TauriError, authentication::get_account_data, construct_url};
+use crate::{authentication::get_account_data, construct_url, AppState, TauriError, APP_NAME};
 
 use http::Response as HttpResponse;
 use matrix_sdk_crypto::{
-    DecryptionSettings, EncryptionSyncChanges, OlmMachine, olm::ExportedRoomKey,
-    store::types::BackupDecryptionKey, types::requests::AnyOutgoingRequest,
+    olm::ExportedRoomKey, store::types::BackupDecryptionKey, types::requests::AnyOutgoingRequest,
+    DecryptionSettings, EncryptionSyncChanges, OlmMachine,
 };
 use matrix_sdk_sqlite::SqliteCryptoStore;
 use tauri_plugin_http::reqwest::{self, Client};
@@ -16,14 +16,14 @@ use tauri_plugin_http::reqwest::{self, Client};
 use log::{error, info};
 
 use ruma::{
-    OwnedDeviceId, OwnedRoomId, RoomId, UserId,
     api::client::{backup::EncryptedSessionData, sync::sync_events::v3::Response as SyncResponse},
     serde::Raw,
+    OwnedDeviceId, OwnedRoomId, RoomId, UserId,
 };
 
 use keyring::Entry;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 const LAST_USER_KEY: &str = "__last_active_user__";
 
@@ -488,7 +488,7 @@ pub async fn set_room_keys(
     let client = Client::new();
 
     let url = construct_url(vec![
-        matrix_url,
+        matrix_url.as_str(),
         "_matrix",
         "client",
         "v3",
@@ -550,7 +550,7 @@ pub async fn set_room_keys(
         decrypt_ssss_aes_hmac_sha2(recovery_key, "m.megolm_backup.v1", ciphertext, iv, mac)?;
 
     let url = construct_url(vec![
-        matrix_url,
+        matrix_url.as_str(),
         "_matrix",
         "client",
         "v3",
@@ -626,10 +626,10 @@ pub async fn set_room_keys(
 
 use {
     aes::{
-        Aes256,
         cipher::{KeyInit, KeyIvInit, StreamCipher},
+        Aes256,
     },
-    base64::{Engine, engine::general_purpose::STANDARD as b64},
+    base64::{engine::general_purpose::STANDARD as b64, Engine},
     ctr::Ctr64BE,
     hkdf::Hkdf,
     hmac::{Hmac, Mac},
