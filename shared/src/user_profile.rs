@@ -22,3 +22,12 @@ pub struct UserProfile {
     pub display_name: Option<String>,
     pub avatar_url: Option<String>,
 }
+
+impl UserProfile {
+    pub fn get_name(&self) -> String {
+        self.display_name
+            .as_ref()
+            .cloned()
+            .unwrap_or_else(|| self.user_id.clone())
+    }
+}

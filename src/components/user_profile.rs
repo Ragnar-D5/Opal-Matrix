@@ -38,7 +38,7 @@ impl UserProfileExt for UserProfile {
             .into_any(),
             None => view! {
                 <TextCircle
-                    text=name
+                    text=name.chars().next().unwrap_or('?').to_string()
                     color=self.get_color()
                     class="rounded-full select-none"
                     style=format!("height: {}; width: {};", size_str, size_str)

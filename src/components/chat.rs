@@ -9,13 +9,14 @@ use crate::{
         previews::render_link,
         text::RichTextExt,
         user_profile::{UserProfileExt, UserProfileMaybeExt},
-        FloatingTile,
+        FloatingTile, TextCircle, TextCircleProps,
     },
     hooks::use_tauri_event,
     state::{AppState, MemberProfileHandle, MemberStore, RoomHeader},
     tauri_functions::{fetch_messages, get_members, send_marker, MemberShip},
 };
 
+use colorsys::Hsl;
 use log::error;
 use phosphor_leptos::{Icon, IconWeight, HASH, INFO, TRASH, UPLOAD_SIMPLE, WARNING_CIRCLE};
 
@@ -203,43 +204,75 @@ fn render_reactions(
     reactions: &HashMap<String, HashSet<String>>,
     store: MemberStore,
     room_id: &String,
+    user_id: &String,
 ) -> impl IntoView {
     if reactions.is_empty() {
         return view! {}.into_any();
     }
 
-    view! {
-        <div class="flex flex-wrap gap-1 mt-1 mb-2">
-            {reactions
-                .iter()
-                .map(|(emoji, reactors)| {
-                    let reactors_vec: Vec<String> = reactors.iter().cloned().collect();
-                    let emoji = emoji.clone();
-                    let store = store.clone();
-                    let room_id = room_id.clone();
-                    view! {
-                        <div class="flex items-center gap-1.5 p-0.5 rounded-full bg-(--ui-solid-bg) border border-(--tile-border-color) hover:bg-(--ui-solid-hover-bg) cursor-pointer">
-                            <span class="text-sm leading-none">{emoji.clone()}</span>
-                            <div class="flex flex-row">
-                                <For
-                                    each=move || reactors_vec.clone()
-                                    key=|user_id| user_id.clone()
-                                    children=move |user_id| {
-                                        let profile_sig = store.get_profile(&room_id, &user_id);
-                                        view! {
-                                            {move || { profile_sig.get().map(|p| p.render_icon(20)) }}
-                                        }
-                                    }
-                                />
+    let content = reactions
+        .iter()
+        .map(|(emoji, reactors)| {
+            let reactors_vec: Vec<String> = reactors.iter().cloned().collect();
+            let emoji = emoji.clone();
+            let store = store.clone();
+            let room_id = room_id.clone();
 
-                            </div>
-                        </div>
-                    }
-                })
-                .collect_view()}
-        </div>
-    }
-            .into_any()
+            let reactor_pics = move || {
+                let mut pics = Vec::new();
+
+                let mut all_pics: Vec<(String, _)> = reactors_vec
+                    .iter()
+                    .filter_map(|user_id| {
+                        store
+                            .get_profile(&room_id, user_id)
+                            .get()
+                            .map(|p| (p.get_name(), p.render_icon(20).into_any()))
+                    })
+                    .collect();
+
+                all_pics.sort_by_key(|(name, _)| name.clone());
+
+                let len = all_pics.len();
+                pics.extend(all_pics.into_iter().map(|(_, pic)| pic).take(4));
+
+                if len > 4 {
+                    pics.push(
+                        TextCircle(TextCircleProps::builder().text(format!("+{}", len - 4)).class("w-[30px] h-[20px] rounded-full").color(Hsl::new(0.0, 0.0, 60.0, None)).build()).into_any()
+                    );
+                }
+
+                pics.collect_view()
+            };
+
+            let contains_user = reactors.contains(user_id);
+
+            view! {
+                <div
+                    class="flex items-center p-0.5 pr-1 rounded-lg border cursor-pointer transition-colors select-none"
+                    class=("bg-(--ui-solid-bg)", !contains_user)
+                    class=("hover:bg-(--ui-solid-hover-bg)", !contains_user)
+                    class=("border-(--tile-border-color)", !contains_user)
+                    class=("bg-(--accent-bg-color)", contains_user)
+                    class=("border-(--accent-color)", contains_user)
+                >
+                    <span class="text-sm leading-none pl-1">{emoji.clone()}</span>
+
+                    <span
+                        class="pl-1 pr-1.5 font-bold text-sm min-w-[2ch] tabular-nums text-center -space-x-1.5"
+                        class=("text-bright", contains_user)
+                        class=("text-dim", !contains_user)
+                    >
+                        {reactors.len()}
+                    </span>
+
+                    <div class="flex flex-row items-center pl-0.5">{reactor_pics()}</div>
+                </div>
+            }
+        })
+        .collect_view();
+
+    view! { <div class="flex flex-wrap gap-1 mt-1 mb-2">{content}</div> }.into_any()
 }
 
 fn render_message_group(
@@ -376,7 +409,7 @@ fn render_message_group(
                                     "Failed to send"
                                 </div>
                             </Show>
-                            {render_reactions(&reactions, store, &room_id)}
+                            {render_reactions(&reactions, store, &room_id, &own_user_id)}
                         </div>
                     </div>
                 </div>

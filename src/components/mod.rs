@@ -80,7 +80,7 @@ pub fn TextCircle(
             ></div>
 
             <span class="relative" style="font-size: 50cqmin; line-height: 1;">
-                {text.chars().next().unwrap_or('?').to_ascii_uppercase()}
+                {text}
             </span>
         </div>
     }
