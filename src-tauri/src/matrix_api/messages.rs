@@ -1,9 +1,8 @@
 use ruma::api::SupportedVersions;
-use ruma::events::Mentions as RumaMentions;
-use ruma::OwnedUserId;
+use ruma::events::Mentions;
 use serde_json::Value;
 use shared::api::FetchMessagesResponse;
-use shared::messages::{Mentions, MessageState};
+use shared::messages::MessageState;
 use std::borrow::Cow;
 use std::{str::FromStr, sync::Arc};
 use tauri_plugin_http::reqwest::{self, Client};
@@ -282,22 +281,6 @@ pub async fn backfill_gap(
     Ok(())
 }
 
-trait AsRumaMentions {
-    fn as_ruma_mentions(&self) -> RumaMentions;
-}
-
-impl AsRumaMentions for Mentions {
-    fn as_ruma_mentions(&self) -> RumaMentions {
-        let mut m = RumaMentions::with_user_ids(
-            self.user_ids
-                .iter()
-                .filter_map(|v| OwnedUserId::from_str(v.as_str()).ok()),
-        );
-        m.room = self.room;
-        m
-    }
-}
-
 use ruma::api::client::message::send_message_event::v3::{
     Request as SendMessageRequest, Response as SendMessageResponse,
 };
@@ -314,8 +297,6 @@ pub async fn send_message_to_matrix(
     formatted_body: String,
     mentions: Mentions,
 ) -> Result<String, TauriError> {
-    let mentions = mentions.as_ruma_mentions();
-
     let message_content =
         ruma::events::room::message::RoomMessageEventContent::text_html(body, formatted_body)
             .add_mentions(mentions);

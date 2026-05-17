@@ -1,12 +1,13 @@
-use std::{sync::Arc};
+use std::{str::FromStr, sync::Arc};
 
 use chrono::Local;
 use ego_tree::NodeRef;
 use log::{error,  warn};
+use ruma::{OwnedUserId, events::Mentions};
 use scraper::{Html, Node};
 use serde_json::json;
 use shared::messages::{
-    Mentions, MessageContent, MessageKind, MessageState, RichTextSpan, UiMessage, UserMessage
+    MessageContent, MessageKind, MessageState, RichTextSpan, UiMessage, UserMessage
 };
 use tauri::{AppHandle, State, async_runtime::spawn, command};
 use uuid::Uuid;
@@ -171,7 +172,11 @@ fn walk_node(
                     mentions.room = true;
                     formatted.push_str("<strong>@room</strong>");
                 } else if data_type == "user_mention" {
-                    mentions.user_ids.push(id.to_string());
+                    if let Ok(user_id) = OwnedUserId::from_str(id) {
+                        mentions.user_ids.insert(user_id);
+                    } else {
+                        warn!("Invalid user ID in mention: {id}");
+                    }
 
                     spans.push(RichTextSpan::UserMention {
                         user_id: id.to_string(),

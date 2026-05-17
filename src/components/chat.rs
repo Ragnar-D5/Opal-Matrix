@@ -233,7 +233,7 @@ impl TimelineItem {
             TimelineItemKind::MessageGroup(group) => {
                 let first_msg = group.first();
                 let first_message_mentions_user = first_msg
-                    .map(|msg| msg.message.mentions.user_ids.contains(&own_user_id))
+                    .map(|msg| msg.message.mentions_user(&own_user_id))
                     .unwrap_or(false);
 
                 let first_reply_data = first_msg.and_then(|m| m.message.replies_to.clone());
@@ -249,10 +249,8 @@ impl TimelineItem {
                                     let msg = &grouped_msg.message;
                                     let state = &grouped_msg.state;
                                     let is_first = idx == 0;
-                                    let message_mentions_user = msg
-                                        .mentions
-                                        .user_ids
-                                        .contains(&own_user_id) || msg.mentions.room;
+                                    let message_mentions_user = msg.mentions_user(&own_user_id)
+                                        || msg.mentions.room;
                                     let reply_data = if is_first {
                                         first_reply_data.clone()
                                     } else {

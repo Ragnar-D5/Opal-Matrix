@@ -1,6 +1,7 @@
 use std::hash::Hash;
 
 use ruma::events::room::{guest_access::GuestAccess, history_visibility::HistoryVisibility};
+use ruma::events::Mentions;
 use ruma::room::JoinRule;
 use serde::{Deserialize, Serialize};
 
@@ -119,14 +120,6 @@ pub enum MessageContent {
     Deleted,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, Hash)]
-pub struct Mentions {
-    #[serde(default)]
-    pub room: bool,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub user_ids: Vec<String>,
-}
-
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Hash)]
 pub struct Reaction {
     pub sender_id: String,
@@ -140,13 +133,43 @@ pub struct RepliesTo {
     pub event_id: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct UserMessage {
     pub mentions: Mentions,
     pub reactions: Vec<Reaction>,
     pub replies_to: Option<RepliesTo>,
 
     pub content: MessageContent,
+}
+
+impl UserMessage {
+    pub fn mentions_user(&self, user_id: &String) -> bool {
+        self.mentions
+            .user_ids
+            .iter()
+            .map(|v| v.to_string())
+            .any(|v| v == *user_id)
+    }
+}
+
+impl Hash for UserMessage {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.mentions.room.hash(state);
+        self.mentions.user_ids.hash(state);
+        self.reactions.hash(state);
+        self.replies_to.hash(state);
+        self.content.hash(state);
+    }
+}
+
+impl PartialEq for UserMessage {
+    fn eq(&self, other: &Self) -> bool {
+        self.mentions.room == other.mentions.room
+            && self.mentions.user_ids == other.mentions.user_ids
+            && self.reactions == other.reactions
+            && self.replies_to == other.replies_to
+            && self.content == other.content
+    }
 }
 
 impl UserMessage {
@@ -169,10 +192,6 @@ impl UserMessage {
             sender_id: None,
             event_id,
         });
-    }
-
-    pub fn set_mentions(&mut self, mentions: Mentions) {
-        self.mentions = mentions;
     }
 
     pub fn set_reply_text(&mut self, spans: Vec<RichTextSpan>) {

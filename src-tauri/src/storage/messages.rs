@@ -2,6 +2,7 @@ use ego_tree::NodeRef;
 use linkify::LinkFinder;
 use ruma::events::room::history_visibility::HistoryVisibility;
 use ruma::events::room::member::MembershipState;
+use ruma::events::Mentions;
 use ruma::events::{
     room::{
         message::{MessageFormat, MessageType, Relation},
@@ -13,8 +14,8 @@ use rusqlite::Connection;
 use scraper::{Html, Node};
 use serde_json::Value;
 use shared::messages::{
-    EncryptedFileInfo, MembershipAction, Mentions, MessageContent, MessageKind, MessageState,
-    RichTextSpan, SystemMessage, UiMessage, UserMessage,
+    EncryptedFileInfo, MembershipAction, MessageContent, MessageKind, MessageState, RichTextSpan,
+    SystemMessage, UiMessage, UserMessage,
 };
 
 use crate::TauriError;
@@ -303,35 +304,6 @@ impl TryInto<UiMessage> for MessageRow {
             AnySyncTimelineEvent::MessageLike(ev) => match ev {
                 AnySyncMessageLikeEvent::RoomMessage(ev) => {
                     if let Some(or) = ev.as_original() {
-                        let mentions: Mentions = or
-                            .content
-                            .mentions
-                            .clone()
-                            .map(|v| Mentions {
-                                room: v.room,
-                                user_ids: v.user_ids.iter().map(|x| x.to_string()).collect(),
-                            })
-                            .unwrap_or_default();
-
-                        // let replies = or.content.relates_to.clone().map(|v| {
-                        //     if let Relation::Reply {
-                        //         in_reply_to: event_id,
-                        //     } = v
-                        //     {
-                        //         RepliesTo {
-                        //             event_id: event_id.to_string(),
-                        //             text: None,
-                        //             sender_id: None,
-                        //         }
-                        //     } else {
-                        //         RepliesTo {
-                        //             event_id: "".to_string(),
-                        //             text: None,
-                        //             sender_id: None,
-                        //         }
-                        //     }
-                        // });
-
                         let mut user_message = UserMessage::new();
 
                         if let Some(Relation::Reply { in_reply_to }) = or.content.relates_to.clone()
@@ -339,7 +311,7 @@ impl TryInto<UiMessage> for MessageRow {
                             user_message.set_replies_to(in_reply_to.event_id.to_string());
                         };
 
-                        user_message.set_mentions(mentions);
+                        user_message.mentions = or.content.mentions.clone().unwrap_or_default();
 
                         user_message.content = match or.content.msgtype.clone() {
                             MessageType::Text(text_content) => {
