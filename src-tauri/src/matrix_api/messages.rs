@@ -362,6 +362,8 @@ pub async fn send_message_to_matrix(
 ) -> Result<String, TauriError> {
     debug!("Started sending message");
 
+    return Err("Not working".into());
+
     let client = reqwest::Client::new();
 
     let message_content =

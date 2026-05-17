@@ -28,7 +28,7 @@ pub async fn commit_message(
 
     let (body, formatted_body) = process_string_to_message(&html, &mut mentions, &mut spans);
 
-    let txn_id = Uuid::new_v4().to_string();
+    let txn_id = format!("${}", Uuid::new_v4().to_string());
     let user_id = state.user_id().await?;
     let timestamp = Local::now().timestamp() as u64;
 
