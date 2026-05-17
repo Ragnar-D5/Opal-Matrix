@@ -13,7 +13,7 @@ use tauri::{AppHandle, State, async_runtime::spawn, command};
 use uuid::Uuid;
 
 use crate::{
-    TauriError, frontend::{emit_single_message_update}, matrix_api::messages::send_message_to_matrix, state::{AppState, HomeServerInfo}, storage::messages::{MessageRow, delete_message, save_messages, set_message_state}
+    TauriError, frontend::emit_single_message_update, matrix_api::messages::send_message_to_matrix, state::{AppState, HomeServerInfo}, storage::{members::get_members_for_room, messages::{MessageRow, delete_message, save_messages, set_message_state}}
 };
 
 #[command(rename_all = "snake_case")]
@@ -87,6 +87,12 @@ pub async fn commit_message(
     let mut message_clone = message.clone();
     let handle_clone = handle.clone();
 
+    let members: Vec<String> = get_members_for_room(state.clone(), room_id.clone())
+        .await?
+        .into_iter()
+        .map(|entry| entry.0)
+        .collect();
+
     spawn(async move {
         let event_id = send_message_to_matrix(
             base_url,
@@ -97,6 +103,8 @@ pub async fn commit_message(
             body,
             formatted_body,
             mentions,
+            state_clone.clone(),
+            members
         ).await.map_err(|e| error!("Failed to send message: {:?}", e)).ok();
 
         let mut conn_guard = state_clone.connection.lock().await;

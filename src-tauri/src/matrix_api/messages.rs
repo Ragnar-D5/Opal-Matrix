@@ -1,6 +1,8 @@
+use matrix_sdk_crypto::EncryptionSettings;
 use ruma::api::SupportedVersions;
 use ruma::events::Mentions;
-use serde_json::Value;
+use ruma::RoomId;
+use serde_json::{json, Value};
 use shared::api::FetchMessagesResponse;
 use shared::messages::MessageState;
 use std::borrow::Cow;
@@ -18,6 +20,7 @@ use ruma::{
     OwnedRoomId, UInt,
 };
 
+use crate::matrix_api::crypto::{handle_outgoing_requests, send_post, send_to_device_request};
 use crate::{
     matrix_api::crypto::process_message,
     state::HomeServerInfo,
@@ -27,7 +30,7 @@ use crate::{
     },
     AppState,
 };
-use log::warn;
+use log::{debug, warn};
 use rusqlite::{params, OptionalExtension};
 use tauri::{command, State};
 
@@ -287,6 +290,64 @@ use ruma::api::client::message::send_message_event::v3::{
 
 /// This function is called to send the contents of the input field
 /// as m.room.message
+// pub async fn send_message_to_matrix(
+//     base_url: String,
+//     supported_versions: &SupportedVersions,
+//     access_token: String,
+//     room_id: &String,
+//     txn_id: String,
+//     body: String,
+//     formatted_body: String,
+//     mentions: Mentions,
+// ) -> Result<String, TauriError> {
+//     let message_content =
+//         ruma::events::room::message::RoomMessageEventContent::text_html(body, formatted_body)
+//             .add_mentions(mentions);
+
+//     let ruma_request = SendMessageRequest::new(
+//         room_id.clone().try_into()?,
+//         txn_id.clone().into(),
+//         &message_content,
+//     )?;
+
+//     let http_request = ruma_request.try_into_http_request::<Vec<u8>>(
+//         base_url.as_str(),
+//         SendAccessToken::IfRequired(access_token.as_str()),
+//         Cow::Borrowed(&supported_versions),
+//     )?;
+
+//     let reqwest_request = reqwest::Request::try_from(http_request.clone())?;
+
+//     let client = reqwest::Client::new();
+
+//     let mut response = client.execute(reqwest_request).await?;
+//     let mut timeout = 1;
+
+//     while !response.status().is_success() {
+//         if timeout >= 120 {
+//             return Err("Failed to send message after timeout was reached".into());
+//         }
+
+//         timeout *= 2;
+//         tokio::time::sleep(std::time::Duration::from_secs(timeout)).await;
+
+//         response = client
+//             .execute(reqwest::Request::try_from(http_request.clone())?)
+//             .await?;
+//     }
+
+//     let http_res = reqwest_response_to_http_response(response).await?;
+
+//     let res = SendMessageResponse::try_from_http_response(http_res)?;
+
+//     Ok(res.event_id.to_string())
+// }
+
+/// This function is called to send the contents of the input field
+/// as m.room.message
+///
+/// This will also share new room keys if neccessary and after that
+/// encrypt and send the message
 pub async fn send_message_to_matrix(
     base_url: String,
     supported_versions: &SupportedVersions,
@@ -296,26 +357,131 @@ pub async fn send_message_to_matrix(
     body: String,
     formatted_body: String,
     mentions: Mentions,
+    state: Arc<AppState>,
+    members: Vec<String>,
 ) -> Result<String, TauriError> {
+    debug!("Started sending message");
+
+    let client = reqwest::Client::new();
+
     let message_content =
         ruma::events::room::message::RoomMessageEventContent::text_html(body, formatted_body)
             .add_mentions(mentions);
 
-    let ruma_request = SendMessageRequest::new(
-        room_id.clone().try_into()?,
-        txn_id.clone().into(),
-        &message_content,
-    )?;
+    debug!("Aquiring crypto machine");
+    // TODO: Decide when to encrypt
+    let http_request = match state.crypto_machine.lock().await.as_ref() {
+        Some(crypto_machine) => {
+            debug!("Aquired crypto machine");
 
-    let http_request = ruma_request.try_into_http_request::<Vec<u8>>(
-        base_url.as_str(),
-        SendAccessToken::IfRequired(access_token.as_str()),
-        Cow::Borrowed(&supported_versions),
-    )?;
+            let parsed_user_ids: Vec<ruma::OwnedUserId> = members
+                .into_iter()
+                .map(|string| ruma::UserId::parse(string))
+                .collect::<Result<Vec<_>, _>>()?;
+
+            let user_id_refs = parsed_user_ids.iter().map(AsRef::as_ref);
+
+            crypto_machine
+                .update_tracked_users(user_id_refs.clone())
+                .await?;
+
+            if let Some((txn_id, keys_claim_request)) = crypto_machine
+                .get_missing_sessions(user_id_refs.clone())
+                .await?
+            {
+                debug!("Missing sessions found, claiming keys...");
+
+                let url = format!("{}/_matrix/client/v3/keys/claim", base_url);
+
+                let body = json!({
+                    "one_time_keys": keys_claim_request.one_time_keys,
+                });
+
+                let http_res = send_post(&client, url, body, &access_token).await?;
+
+                let matrix_res =
+                    ruma::api::client::keys::claim_keys::v3::Response::try_from_http_response(
+                        http_res,
+                    )?;
+
+                crypto_machine
+                    .mark_request_as_sent(&txn_id, &matrix_res)
+                    .await?;
+            }
+
+            debug!("Trying to share room keys");
+            let requests = crypto_machine
+                .share_room_key(
+                    &RoomId::parse(room_id)?,
+                    user_id_refs,
+                    EncryptionSettings::default(),
+                )
+                .await?;
+            handle_outgoing_requests(crypto_machine, &access_token, &base_url).await?;
+
+            for request in requests {
+                let matrix_response =
+                    send_to_device_request(&base_url, &request, &client, &access_token).await?;
+
+                crypto_machine
+                    .mark_request_as_sent(&request.txn_id, &matrix_response)
+                    .await?;
+            }
+
+            debug!("Encrypting message");
+            let encrypted_content_intermediate = serde_json::to_value(
+                crypto_machine
+                    .encrypt_room_event(
+                        room_id.as_str().try_into().unwrap(),
+                        message_content.clone(),
+                    )
+                    .await?
+                    .deserialize()?
+                    .scheme,
+            )?;
+
+            use ruma::events::room::encrypted::*;
+
+            let encrypted_content: MegolmV1AesSha2Content =
+                serde_json::from_value(encrypted_content_intermediate)?;
+            debug!("Successfully encrypted message");
+
+            let room_encrypted_event_content = RoomEncryptedEventContent::new(
+                EncryptedEventScheme::MegolmV1AesSha2(encrypted_content),
+                None,
+            ); //change None to accomodate relation of messages
+
+            debug!("{:?}", message_content);
+
+            let ruma_request = SendMessageRequest::new(
+                room_id.clone().try_into()?,
+                txn_id.clone().into(),
+                &room_encrypted_event_content,
+            )?;
+
+            ruma_request.try_into_http_request::<Vec<u8>>(
+                base_url.as_str(),
+                SendAccessToken::IfRequired(access_token.as_str()),
+                Cow::Borrowed(&supported_versions),
+            )?
+        }
+        None => {
+            debug!("No crypto machine found");
+            let ruma_request = SendMessageRequest::new(
+                room_id.clone().try_into()?,
+                txn_id.clone().into(),
+                &message_content,
+            )?;
+
+            ruma_request.try_into_http_request::<Vec<u8>>(
+                base_url.as_str(),
+                SendAccessToken::IfRequired(access_token.as_str()),
+                Cow::Borrowed(&supported_versions),
+            )?
+        }
+    };
 
     let reqwest_request = reqwest::Request::try_from(http_request.clone())?;
-
-    let client = reqwest::Client::new();
 
     let mut response = client.execute(reqwest_request).await?;
     let mut timeout = 1;

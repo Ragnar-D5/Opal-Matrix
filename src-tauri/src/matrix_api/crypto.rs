@@ -16,7 +16,10 @@ use tauri_plugin_http::reqwest::{self, Client};
 use log::{error, info};
 
 use ruma::{
-    api::client::{backup::EncryptedSessionData, sync::sync_events::v3::Response as SyncResponse},
+    api::{
+        client::{backup::EncryptedSessionData, sync::sync_events::v3::Response as SyncResponse},
+        IncomingResponse,
+    },
     serde::Raw,
     OwnedDeviceId, OwnedRoomId, RoomId, UserId,
 };
@@ -283,7 +286,7 @@ pub async fn process_sync_response(
 /// Handles outgoing requests from the OlmMachine by sending the appropriate HTTP requests to the Matrix server and marking the requests as sent with the responses received from the server.
 ///
 /// This function is called before and after processing incoming messages and sync responses to ensure that any necessary key uploads, claims, or message sends are performed in a timely manner.
-async fn handle_outgoing_requests(
+pub async fn handle_outgoing_requests(
     olm_machine: &OlmMachine,
     token: &String,
     matrix_url: &String,
@@ -403,8 +406,36 @@ async fn handle_outgoing_requests(
     Ok(())
 }
 
+use matrix_sdk_crypto::types::requests::ToDeviceRequest;
+use ruma::api::client::to_device::send_event_to_device::v3::Response;
+/// Function for manually sending `ToDeviceRequests`
+///
+/// Mainly used for sending the room keys
+pub async fn send_to_device_request(
+    matrix_url: &String,
+    request: &ToDeviceRequest,
+    client: &reqwest::Client,
+    token: &String,
+) -> Result<Response, TauriError> {
+    let url = format!(
+        "{}/_matrix/client/v3/sendToDevice/{}/{}",
+        matrix_url, request.event_type, request.txn_id
+    );
+
+    let body = json!({
+        "messages": request.messages,
+    });
+
+    let http_res = self::send_put(&client, url, body, &token).await?;
+
+    ruma::api::client::to_device::send_event_to_device::v3::Response::try_from_http_response(
+        http_res,
+    )
+    .map_err(|e| e.into())
+}
+
 /// Helper function to send a POST request with the given body and bearer token, and return the response as an HttpResponse containing the raw bytes. This is used for sending various key management requests to the Matrix server.
-async fn send_post(
+pub async fn send_post(
     client: &reqwest::Client,
     url: String,
     body: Value,

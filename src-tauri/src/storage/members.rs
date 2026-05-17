@@ -4,8 +4,8 @@ use crate::{AppState, TauriError};
 
 use super::DataBaseModel;
 use ruma::events::room::member::MembershipState as RumaMembershipState;
-use rusqlite::{Connection, ToSql, types::FromSql};
-use tauri::{State, command};
+use rusqlite::{types::FromSql, Connection, ToSql};
+use tauri::{command, State};
 
 #[derive(Debug, Clone)]
 pub enum MembershipState {
