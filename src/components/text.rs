@@ -1,5 +1,6 @@
+use crate::openUrl;
 use colorsys::ColorAlpha;
-use leptos::prelude::*;
+use leptos::{prelude::*, task::spawn_local};
 use shared::messages::RichTextSpan;
 
 use crate::{components::user_profile::UserProfileExt, state::MemberStore};
@@ -47,9 +48,15 @@ impl RichTextExt for RichTextSpan {
             RichTextSpan::Link { url, .. } => {
                 let style =
                     "color: var(--link-color); text-decoration: underline; cursor: pointer;";
+                let url_click = url.clone();
 
                 view! {
-                    <span style=style class="text-token">
+                    <span style=style class="text-token" on:click=move |_| {
+                        let url_async = url_click.clone(); // Clone inside the handler for this specific click execution
+                        spawn_local(async move {
+                            let _ =openUrl(&url_async).await.map_err(|e| log::warn!("Failed to open link: {:?}", e));
+                        });
+                    }>
                         {url}
                     </span>
                 }
