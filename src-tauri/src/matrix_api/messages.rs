@@ -1,8 +1,8 @@
 use matrix_sdk_crypto::EncryptionSettings;
+use ruma::RoomId;
 use ruma::api::SupportedVersions;
 use ruma::events::Mentions;
-use ruma::RoomId;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use shared::api::FetchMessagesResponse;
 use shared::messages::MessageState;
 use std::borrow::Cow;
@@ -10,31 +10,31 @@ use std::{str::FromStr, sync::Arc};
 use tauri_plugin_http::reqwest::{self, Client};
 
 use ruma::{
+    OwnedRoomId, UInt,
     api::{
+        IncomingResponse, OutgoingRequest,
         auth_scheme::SendAccessToken,
         client::message::get_message_events::v3::{
             Request as MessageEventsRequest, Response as MessageEventsResponse,
         },
-        IncomingResponse, OutgoingRequest,
     },
-    OwnedRoomId, UInt,
 };
 
 use crate::matrix_api::crypto::{handle_outgoing_requests, send_post, send_to_device_request};
 use crate::{
+    AppState,
     matrix_api::crypto::process_message,
     state::HomeServerInfo,
     storage::{
-        messages::{get_messages, save_messages, MessageRow},
+        messages::{MessageRow, get_messages, save_messages},
         rooms::save_prev_token,
     },
-    AppState,
 };
 use log::{debug, warn};
-use rusqlite::{params, OptionalExtension};
-use tauri::{command, State};
+use rusqlite::{OptionalExtension, params};
+use tauri::{State, command};
 
-use crate::{reqwest_response_to_http_response, TauriError};
+use crate::{TauriError, reqwest_response_to_http_response};
 
 /// Fetches messages from the Matrix server for a given room, starting from a specified pagination token. Returns the messages and the next pagination token (if available).
 async fn get_messages_api(
@@ -359,126 +359,121 @@ pub async fn send_message_to_matrix(
     mentions: Mentions,
     state: Arc<AppState>,
     members: Vec<String>,
+    algorithm: Option<String>,
 ) -> Result<String, TauriError> {
-    debug!("Started sending message");
-
     let client = reqwest::Client::new();
 
     let message_content =
         ruma::events::room::message::RoomMessageEventContent::text_html(body, formatted_body)
             .add_mentions(mentions);
 
-    debug!("Aquiring crypto machine");
-    // TODO: Decide when to encrypt
-    let http_request = match state.crypto_machine.lock().await.as_ref() {
-        Some(crypto_machine) => {
-            debug!("Aquired crypto machine");
+    let http_request = if algorithm.is_some() {
+        let crypto_machine = {
+            let mut crypto_guard = state.crypto_machine.lock().await;
+            crypto_guard
+                .as_mut()
+                .cloned()
+                .ok_or("Crypto machine not initialized")?
+        };
 
-            let parsed_user_ids: Vec<ruma::OwnedUserId> = members
-                .into_iter()
-                .map(|string| ruma::UserId::parse(string))
-                .collect::<Result<Vec<_>, _>>()?;
+        let parsed_user_ids: Vec<ruma::OwnedUserId> = members
+            .into_iter()
+            .map(|string| ruma::UserId::parse(string))
+            .collect::<Result<Vec<_>, _>>()?;
 
-            let user_id_refs = parsed_user_ids.iter().map(AsRef::as_ref);
+        let user_id_refs = parsed_user_ids.iter().map(AsRef::as_ref);
+
+        crypto_machine
+            .update_tracked_users(user_id_refs.clone())
+            .await?;
+
+        if let Some((txn_id, keys_claim_request)) = crypto_machine
+            .get_missing_sessions(user_id_refs.clone())
+            .await?
+        {
+            debug!("Missing sessions found, claiming keys...");
+
+            let url = format!("{}/_matrix/client/v3/keys/claim", base_url);
+
+            let body = json!({
+                "one_time_keys": keys_claim_request.one_time_keys,
+            });
+
+            let http_res = send_post(&client, url, body, &access_token).await?;
+
+            let matrix_res =
+                ruma::api::client::keys::claim_keys::v3::Response::try_from_http_response(
+                    http_res,
+                )?;
 
             crypto_machine
-                .update_tracked_users(user_id_refs.clone())
+                .mark_request_as_sent(&txn_id, &matrix_res)
                 .await?;
+        }
 
-            if let Some((txn_id, keys_claim_request)) = crypto_machine
-                .get_missing_sessions(user_id_refs.clone())
-                .await?
-            {
-                debug!("Missing sessions found, claiming keys...");
+        debug!("Trying to share room keys");
+        let requests = crypto_machine
+            .share_room_key(
+                &RoomId::parse(room_id)?,
+                user_id_refs,
+                EncryptionSettings::default(),
+            )
+            .await?;
+        handle_outgoing_requests(&crypto_machine, &access_token, &base_url).await?;
 
-                let url = format!("{}/_matrix/client/v3/keys/claim", base_url);
+        for request in requests {
+            let matrix_response =
+                send_to_device_request(&base_url, &request, &client, &access_token).await?;
 
-                let body = json!({
-                    "one_time_keys": keys_claim_request.one_time_keys,
-                });
+            crypto_machine
+                .mark_request_as_sent(&request.txn_id, &matrix_response)
+                .await?;
+        }
 
-                let http_res = send_post(&client, url, body, &access_token).await?;
-
-                let matrix_res =
-                    ruma::api::client::keys::claim_keys::v3::Response::try_from_http_response(
-                        http_res,
-                    )?;
-
-                crypto_machine
-                    .mark_request_as_sent(&txn_id, &matrix_res)
-                    .await?;
-            }
-
-            debug!("Trying to share room keys");
-            let requests = crypto_machine
-                .share_room_key(
-                    &RoomId::parse(room_id)?,
-                    user_id_refs,
-                    EncryptionSettings::default(),
+        let encrypted_content_intermediate = serde_json::to_value(
+            crypto_machine
+                .encrypt_room_event(
+                    room_id.as_str().try_into().unwrap(),
+                    message_content.clone(),
                 )
-                .await?;
-            handle_outgoing_requests(crypto_machine, &access_token, &base_url).await?;
+                .await?
+                .deserialize()?
+                .scheme,
+        )?;
 
-            for request in requests {
-                let matrix_response =
-                    send_to_device_request(&base_url, &request, &client, &access_token).await?;
+        use ruma::events::room::encrypted::*;
 
-                crypto_machine
-                    .mark_request_as_sent(&request.txn_id, &matrix_response)
-                    .await?;
-            }
+        let encrypted_content: MegolmV1AesSha2Content =
+            serde_json::from_value(encrypted_content_intermediate)?;
 
-            debug!("Encrypting message");
-            let encrypted_content_intermediate = serde_json::to_value(
-                crypto_machine
-                    .encrypt_room_event(
-                        room_id.as_str().try_into().unwrap(),
-                        message_content.clone(),
-                    )
-                    .await?
-                    .deserialize()?
-                    .scheme,
-            )?;
+        let room_encrypted_event_content = RoomEncryptedEventContent::new(
+            EncryptedEventScheme::MegolmV1AesSha2(encrypted_content),
+            None,
+        ); //change None to accomodate relation of messages
 
-            use ruma::events::room::encrypted::*;
+        let ruma_request = SendMessageRequest::new(
+            room_id.clone().try_into()?,
+            txn_id.clone().into(),
+            &room_encrypted_event_content,
+        )?;
 
-            let encrypted_content: MegolmV1AesSha2Content =
-                serde_json::from_value(encrypted_content_intermediate)?;
-            debug!("Successfully encrypted message");
+        ruma_request.try_into_http_request::<Vec<u8>>(
+            base_url.as_str(),
+            SendAccessToken::IfRequired(access_token.as_str()),
+            Cow::Borrowed(&supported_versions),
+        )?
+    } else {
+        let ruma_request = SendMessageRequest::new(
+            room_id.clone().try_into()?,
+            txn_id.clone().into(),
+            &message_content,
+        )?;
 
-            let room_encrypted_event_content = RoomEncryptedEventContent::new(
-                EncryptedEventScheme::MegolmV1AesSha2(encrypted_content),
-                None,
-            ); //change None to accomodate relation of messages
-
-            debug!("{:?}", message_content);
-
-            let ruma_request = SendMessageRequest::new(
-                room_id.clone().try_into()?,
-                txn_id.clone().into(),
-                &room_encrypted_event_content,
-            )?;
-
-            ruma_request.try_into_http_request::<Vec<u8>>(
-                base_url.as_str(),
-                SendAccessToken::IfRequired(access_token.as_str()),
-                Cow::Borrowed(&supported_versions),
-            )?
-        }
-        None => {
-            debug!("No crypto machine found");
-            let ruma_request = SendMessageRequest::new(
-                room_id.clone().try_into()?,
-                txn_id.clone().into(),
-                &message_content,
-            )?;
-
-            ruma_request.try_into_http_request::<Vec<u8>>(
-                base_url.as_str(),
-                SendAccessToken::IfRequired(access_token.as_str()),
-                Cow::Borrowed(&supported_versions),
-            )?
-        }
+        ruma_request.try_into_http_request::<Vec<u8>>(
+            base_url.as_str(),
+            SendAccessToken::IfRequired(access_token.as_str()),
+            Cow::Borrowed(&supported_versions),
+        )?
     };
 
     let reqwest_request = reqwest::Request::try_from(http_request.clone())?;

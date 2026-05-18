@@ -1,3 +1,5 @@
+use rusqlite::Connection;
+
 use super::DataBaseModel;
 use crate::TauriError;
 
@@ -165,6 +167,21 @@ pub fn get_room_name(
         } else {
             return Ok(name);
         }
+    }
+
+    Ok(None)
+}
+
+pub fn get_room_encryption(
+    conn: &Connection,
+    room_id: &String,
+) -> Result<Option<String>, TauriError> {
+    let mut stmt = conn.prepare("SELECT algorithm FROM rooms WHERE room_id = ?")?;
+    let mut rows = stmt.query(rusqlite::params![room_id])?;
+
+    if let Some(row) = rows.next()? {
+        let algorithm: Option<String> = row.get(0)?;
+        return Ok(algorithm);
     }
 
     Ok(None)

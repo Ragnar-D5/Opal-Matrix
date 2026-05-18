@@ -18,8 +18,9 @@ use crate::{
     matrix_api::messages::send_message_to_matrix,
     state::{AppState, HomeServerInfo},
     storage::{
-        members::get_members_for_room,
+        members::{get_members_for_room, get_members_for_room_api},
         messages::{MessageRow, delete_message, save_messages, set_message_state},
+        rooms::get_room_encryption,
     },
 };
 
@@ -83,8 +84,18 @@ pub async fn commit_message(
         state: MessageState::Pending,
     };
 
-    state
-        .with_connection_mut(move |conn| save_messages(conn, vec![db_message]))
+    let room_id_clone = room_id.clone();
+    let (members, algorithm) = state
+        .with_connection_mut(move |conn| {
+            save_messages(conn, vec![db_message])?;
+            let members: Vec<String> = get_members_for_room_api(conn, &room_id_clone)?
+                .into_iter()
+                .map(|entry| entry.0)
+                .collect();
+            let algorithm = get_room_encryption(conn, &room_id_clone)?;
+
+            Ok((members, algorithm))
+        })
         .await?;
 
     let (
@@ -100,12 +111,6 @@ pub async fn commit_message(
     let mut message_clone = message.clone();
     let handle_clone = handle.clone();
 
-    let members: Vec<String> = get_members_for_room(state.clone(), room_id.clone())
-        .await?
-        .into_iter()
-        .map(|entry| entry.0)
-        .collect();
-
     spawn(async move {
         let event_id = send_message_to_matrix(
             base_url,
@@ -118,6 +123,7 @@ pub async fn commit_message(
             mentions,
             state_clone.clone(),
             members,
+            algorithm,
         )
         .await
         .map_err(|e| error!("Failed to send message: {:?}", e))
