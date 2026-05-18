@@ -1,8 +1,8 @@
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 
-use ruma::events::room::{guest_access::GuestAccess, history_visibility::HistoryVisibility};
 use ruma::events::Mentions;
+use ruma::events::room::{guest_access::GuestAccess, history_visibility::HistoryVisibility};
 use ruma::room::JoinRule;
 use serde::{Deserialize, Serialize};
 

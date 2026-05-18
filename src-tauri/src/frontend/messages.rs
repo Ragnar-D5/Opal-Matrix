@@ -2,18 +2,25 @@ use std::{collections::HashMap, str::FromStr, sync::Arc};
 
 use chrono::Local;
 use ego_tree::NodeRef;
-use log::{error,  warn};
+use log::{error, warn};
 use ruma::{OwnedUserId, events::Mentions};
 use scraper::{Html, Node};
 use serde_json::json;
 use shared::messages::{
-    MessageContent, MessageKind, MessageState, RichTextSpan, UiMessage, UserMessage
+    MessageContent, MessageKind, MessageState, RichTextSpan, UiMessage, UserMessage,
 };
 use tauri::{AppHandle, State, async_runtime::spawn, command};
 use uuid::Uuid;
 
 use crate::{
-    TauriError, frontend::emit_single_message_update, matrix_api::messages::send_message_to_matrix, state::{AppState, HomeServerInfo}, storage::{members::get_members_for_room, messages::{MessageRow, delete_message, save_messages, set_message_state}}
+    TauriError,
+    frontend::emit_single_message_update,
+    matrix_api::messages::send_message_to_matrix,
+    state::{AppState, HomeServerInfo},
+    storage::{
+        members::get_members_for_room,
+        messages::{MessageRow, delete_message, save_messages, set_message_state},
+    },
 };
 
 #[command(rename_all = "snake_case")]
@@ -80,7 +87,13 @@ pub async fn commit_message(
         .with_connection_mut(move |conn| save_messages(conn, vec![db_message]))
         .await?;
 
-    let (access_token, HomeServerInfo {base_url, supported_versions}) = state.get_api().await?;
+    let (
+        access_token,
+        HomeServerInfo {
+            base_url,
+            supported_versions,
+        },
+    ) = state.get_api().await?;
     let txn_id_clone = txn_id.clone();
     let room_id_clone = room_id.clone();
     let state_clone = state.inner().clone();
@@ -104,8 +117,11 @@ pub async fn commit_message(
             formatted_body,
             mentions,
             state_clone.clone(),
-            members
-        ).await.map_err(|e| error!("Failed to send message: {:?}", e)).ok();
+            members,
+        )
+        .await
+        .map_err(|e| error!("Failed to send message: {:?}", e))
+        .ok();
 
         let mut conn_guard = state_clone.connection.lock().await;
         let Some(conn) = conn_guard.as_mut() else {
@@ -114,21 +130,32 @@ pub async fn commit_message(
         };
 
         if let Some(event_id) = event_id {
-            state_clone.messages_to_delete.write().await.insert(event_id, txn_id_clone.clone());
+            state_clone
+                .messages_to_delete
+                .write()
+                .await
+                .insert(event_id, txn_id_clone.clone());
 
             if let Err(error) = delete_message(conn, &txn_id_clone) {
                 error!("Failed to delete message {}: {:?}", txn_id_clone, error);
             }
         } else {
             if let Err(error) = set_message_state(conn, &txn_id_clone, MessageState::Failed) {
-                error!("Failed to update message state for {}: {:?}", txn_id_clone, error);
+                error!(
+                    "Failed to update message state for {}: {:?}",
+                    txn_id_clone, error
+                );
             }
 
             message_clone.state = MessageState::Failed;
 
-            emit_single_message_update(&handle_clone, &room_id_clone, &message_clone).unwrap_or_else(|error| {
-                error!("Failed to emit message update for {}: {:?}", txn_id_clone, error);
-            });
+            emit_single_message_update(&handle_clone, &room_id_clone, &message_clone)
+                .unwrap_or_else(|error| {
+                    error!(
+                        "Failed to emit message update for {}: {:?}",
+                        txn_id_clone, error
+                    );
+                });
         }
     });
 
@@ -169,6 +196,17 @@ fn walk_node(
             spans.push(RichTextSpan::Plain(content.to_string()));
         }
         Node::Element(elem) => {
+            if let Some(url) = elem.attr("data-url") {
+                let display_text = extract_text(node);
+                body.push_str(&display_text);
+                formatted.push_str(&format!("<a href=\"{}\">{}</a>", url, display_text));
+
+                spans.push(RichTextSpan::Link {
+                    url: url.to_string(),
+                    text: Some(display_text),
+                });
+                return;
+            }
             if let Some(data_type) = elem.attr("data-type")
                 && let Some(id) = elem.attr("data-id")
             {
@@ -210,7 +248,7 @@ fn walk_node(
                     formatted.push_str("<br>");
                     spans.push(RichTextSpan::Newline);
                 }
-                other => warn!("Unknown element: {other}"),
+                other => warn!("Unknown element: {other}; {:?}", elem),
             }
         }
         _ => {}

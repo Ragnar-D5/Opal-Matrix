@@ -84,8 +84,7 @@ pub fn handle_input(input_ref: NodeRef<Div>, is_empty: RwSignal<bool>, state: Ap
             span.set_class_name("text-blue-500 underline link cursor-pointer");
             span.set_attribute("data-url", url).unwrap();
 
-            let link_text_node = doc.create_text_node(url);
-            span.append_child(&link_text_node).unwrap();
+            span.set_text_content(Some(url));
             fragment.append_child(&span).unwrap();
 
             last_end = end;
@@ -118,19 +117,26 @@ pub fn handle_input(input_ref: NodeRef<Div>, is_empty: RwSignal<bool>, state: Ap
 
 fn cleanup_link_spaces(editor: &HtmlElement) {
     let doc = document();
-
     let links = editor.query_selector_all(".link").unwrap();
 
     for i in 0..links.length() {
         let el: HtmlElement = links.item(i).unwrap().dyn_into().unwrap();
-        let text = el.inner_text();
+        let text = el.text_content().unwrap_or_default();
+        let data_url = el.get_attribute("data-url").unwrap_or_default();
+
+        if text != data_url {
+            let parent = el.parent_node().unwrap();
+            let text_node = doc.create_text_node(&text);
+            parent.replace_child(&text_node, &el).unwrap();
+            continue;
+        }
 
         if text.ends_with(' ') || text.ends_with('\u{00A0}') {
             let clean_text = text.trim_end();
             el.set_inner_text(clean_text);
+            el.set_attribute("data-url", clean_text).unwrap();
 
             let space_node = doc.create_text_node("\u{00A0}");
-
             let parent = el.parent_node().unwrap();
             if let Some(next_sibling) = el.next_sibling() {
                 parent

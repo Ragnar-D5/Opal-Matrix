@@ -17,20 +17,12 @@ fn DmDiv(dm: RoomNode) -> impl IntoView {
 
     let id = dm.room_id.to_string();
     let name = dm.name.clone().unwrap_or_else(|| "Unnamed".to_string());
-    let avatar_url = dm.avatar_url;
-    let initial = name.chars().next().unwrap_or('?').to_string();
 
     let is_active = Memo::new(move |_| state.active_room_id.get() == Some(id.clone()));
-    let color = get_color(dm.dm_user_id.clone().unwrap_or_default());
 
     let user_id = dm.dm_user_id.clone().unwrap_or_default();
 
     let profile = members.get_profile(&dm.room_id, &user_id);
-
-    let avatar_content = match avatar_url {
-        Some(url) => view! { <img class="avatar-img w-8 h-8 rounded-full object-cover" src=url alt=name.clone() /> }.into_any(),
-        None => view! { <TextCircle text=initial color=color class="rounded-full w-8 h-8" /> }.into_any(),
-    };
 
     let members = members.clone();
     let presence = members.get_presence(&user_id);
@@ -46,7 +38,7 @@ fn DmDiv(dm: RoomNode) -> impl IntoView {
                 class=("text-dim", move || !is_active.get())
             >
                 <PresenceBadge presence=presence>
-                    {move || { profile.get().render_icon(32) }}
+                    {move || profile.get().render_icon(32)}
                 </PresenceBadge>
                 <span class="inline-block align-center pl-2">{name}</span>
                 {if dm.notification_count > 0 {
