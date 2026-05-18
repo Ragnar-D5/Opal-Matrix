@@ -18,7 +18,7 @@ use crate::{
     matrix_api::messages::send_message_to_matrix,
     state::{AppState, HomeServerInfo},
     storage::{
-        members::{get_members_for_room, get_members_for_room_api},
+        members::get_members_for_room_api,
         messages::{MessageRow, delete_message, save_messages, set_message_state},
         rooms::get_room_encryption,
     },

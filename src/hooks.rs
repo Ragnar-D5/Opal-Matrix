@@ -35,7 +35,15 @@ where
                     }
                 };
 
-                match serde_wasm_bindgen::from_value::<T>(payload_js.clone()) {
+                let js_string: String = match js_sys::JSON::stringify(&payload_js) {
+                    Ok(s) => s.into(),
+                    Err(e) => {
+                        error!("Failed to stringify Tauri event payload: {:?}", e);
+                        return;
+                    }
+                };
+
+                match serde_json::from_str::<T>(&js_string) {
                     Ok(payload) => set_payload_signal.set(Some(payload)),
                     Err(e) => {
                         error!(

@@ -6,7 +6,9 @@ use std::{
 
 use log::{trace, warn};
 use ruma::{
+    OwnedRoomId, UInt,
     api::{
+        IncomingResponse, OutgoingRequest,
         auth_scheme::SendAccessToken,
         client::{
             filter::FilterDefinition,
@@ -14,16 +16,14 @@ use ruma::{
                 Filter, Request as SyncRequest, Response as SyncResponse, State as SyncState,
             },
         },
-        IncomingResponse, OutgoingRequest,
     },
     events::{
-        presence::PresenceEventContent, AnyGlobalAccountDataEvent, AnyRoomAccountDataEvent,
-        AnyStateEventContent, AnySyncEphemeralRoomEvent, AnySyncMessageLikeEvent,
-        AnySyncStateEvent, AnySyncTimelineEvent,
+        AnyGlobalAccountDataEvent, AnyRoomAccountDataEvent, AnyStateEventContent,
+        AnySyncEphemeralRoomEvent, AnySyncMessageLikeEvent, AnySyncStateEvent,
+        AnySyncTimelineEvent, presence::PresenceEventContent,
     },
     presence::PresenceState,
     serde::Raw,
-    OwnedRoomId, UInt,
 };
 
 use serde_json::value::RawValue;
@@ -36,19 +36,19 @@ use tauri_plugin_http::reqwest::{self, Client};
 use uuid::Uuid;
 
 use crate::{
+    TauriError,
     frontend::{send_member_update, send_messages_update, send_sidebar_update},
     matrix_api::{crypto, handle_sync_calls, messages::backfill_gap},
     reqwest_response_to_http_response,
     state::{AppState, HomeServerInfo},
     storage::{
-        apply_sync_changes, handle_safe_stuff,
+        SyncChanges, apply_sync_changes, handle_safe_stuff,
         members::MemberRow,
         messages::MessageRow,
+        reactions::ReactionRow,
         receipts::ReadReceiptRow,
         rooms::{RoomAliasRow, SpaceChildRow, SpaceParentRow},
-        SyncChanges,
     },
-    TauriError,
 };
 
 /// Performs a /sync request to the Matrix server with the given access token and since parameter, returning the parsed SyncResponse.
@@ -723,15 +723,25 @@ fn extract_message(
             state: MessageState::Sent,
         }),
         AnySyncMessageLikeEvent::Reaction(ev) => {
-            changes.new_messages.push(MessageRow {
-                event_id: ev.event_id().to_string(),
-                room_id: room_id.to_string(),
-                sender: ev.sender().to_string(),
-                raw_json: raw_json.get().to_string(),
-                msg_type: "m.reaction".to_string(),
-                timestamp: ev.origin_server_ts().as_secs().into(),
-                state: MessageState::Sent,
-            });
+            if let Some(or) = ev.as_original() {
+                changes.new_messages.push(MessageRow {
+                    event_id: ev.event_id().to_string(),
+                    room_id: room_id.to_string(),
+                    sender: ev.sender().to_string(),
+                    raw_json: raw_json.get().to_string(),
+                    msg_type: "m.reaction".to_string(),
+                    timestamp: ev.origin_server_ts().as_secs().into(),
+                    state: MessageState::Sent,
+                });
+                changes.reactions.push(ReactionRow {
+                    event_id: ev.event_id().to_string(),
+                    room_id: room_id.to_string(),
+                    target_event_id: or.content.relates_to.event_id.to_string(),
+                    sender_id: ev.sender().to_string(),
+                    reaction_key: or.content.relates_to.key.to_string(),
+                    timestamp: ev.origin_server_ts().as_secs().into(),
+                });
+            }
         }
         _ => return Ok(()),
     }

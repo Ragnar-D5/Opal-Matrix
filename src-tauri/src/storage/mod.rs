@@ -2,22 +2,24 @@ use shared::user_profile::UserProfile;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
-use tauri::{command, State};
+use tauri::{State, command};
 
-use crate::storage::rooms::RoomAliasRow;
 use crate::AppState;
 use crate::TauriError;
+use crate::storage::reactions::ReactionRow;
+use crate::storage::rooms::RoomAliasRow;
 use members::MemberRow;
 use messages::MessageRow;
 use receipts::ReadReceiptRow;
 use rooms::{RoomRow, SpaceChildRow, SpaceParentRow};
 use ruma::OwnedRoomId;
-use rusqlite::params;
 use rusqlite::Connection;
+use rusqlite::params;
 use shared::sidebar::FlatRoom;
 
 pub(crate) mod members;
 pub(crate) mod messages;
+pub(crate) mod reactions;
 pub(crate) mod receipts;
 pub(crate) mod rooms;
 
@@ -46,6 +48,7 @@ pub async fn init_storage(
     SpaceParentRow::create_table(&conn)?;
     ReadReceiptRow::create_table(&conn)?;
     RoomAliasRow::create_table(&conn)?;
+    ReactionRow::create_table(&conn)?;
 
     Ok((db_exists, conn))
 }
@@ -60,6 +63,8 @@ pub struct SyncChanges {
     pub new_messages: Vec<MessageRow>,
     pub member_updates: HashMap<(String, String), MemberRow>,
     pub read_receipts: Vec<ReadReceiptRow>,
+
+    pub reactions: Vec<ReactionRow>,
 
     pub direct_rooms: Option<HashSet<OwnedRoomId>>,
 
@@ -189,6 +194,37 @@ pub fn apply_sync_changes(
         ])?;
     }
     drop(stmt_messages);
+
+    let mut stmt_ensure_messages = tx.prepare(
+        "INSERT OR IGNORE INTO messages (event_id, room_id, sender, msg_type, raw_json, timestamp, state)
+         VALUES (?, ?, 'unknown', 'm.room.message', '{}', ?, 'stub')"
+    )?;
+    for reaction in &changes.reactions {
+        stmt_ensure_messages.execute(params![
+            reaction.target_event_id,
+            reaction.room_id,
+            reaction.timestamp,
+        ])?;
+    }
+    drop(stmt_ensure_messages);
+
+    let mut stmt_reactions = tx.prepare(
+        "INSERT INTO reactions (event_id, room_id, target_event_id, sender_id, reaction_key, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(event_id) DO UPDATE SET
+            timestamp = excluded.timestamp",
+    )?;
+    for reaction in changes.reactions {
+        stmt_reactions.execute(params![
+            reaction.event_id,
+            reaction.room_id,
+            reaction.target_event_id,
+            reaction.sender_id,
+            reaction.reaction_key,
+            reaction.timestamp
+        ])?;
+    }
+    drop(stmt_reactions);
 
     let mut stmt_members = tx.prepare(
         "INSERT INTO members (room_id, user_id, display_name, avatar_url, membership)
