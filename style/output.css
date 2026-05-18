@@ -463,9 +463,6 @@
   .w-1 {
     width: calc(var(--spacing) * 1);
   }
-  .w-1\/4 {
-    width: calc(1 / 4 * 100%);
-  }
   .w-2 {
     width: calc(var(--spacing) * 2);
   }
@@ -486,9 +483,6 @@
   }
   .w-65 {
     width: calc(var(--spacing) * 65);
-  }
-  .w-100 {
-    width: calc(var(--spacing) * 100);
   }
   .w-\[20rem\] {
     width: 20rem;
@@ -522,6 +516,9 @@
   }
   .min-w-0 {
     min-width: calc(var(--spacing) * 0);
+  }
+  .min-w-100 {
+    min-width: calc(var(--spacing) * 100);
   }
   .min-w-\[2ch\] {
     min-width: 2ch;

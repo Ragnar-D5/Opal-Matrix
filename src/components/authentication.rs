@@ -363,8 +363,8 @@ pub fn Authentication() -> impl IntoView {
     let window = state.current_window;
 
     view! {
-        <SingleFloatingTile class="w-1/4 p-5">
-            <div class="w-100 flex flex-col">
+        <SingleFloatingTile class="p-5">
+            <div class="min-w-100 flex flex-col">
                 {move || match window.get() {
                     CurrentWindow::HomeserverDiscoveryPage => {
                         view! { <HomeserverDiscoveryPage window=window /> }.into_any()
