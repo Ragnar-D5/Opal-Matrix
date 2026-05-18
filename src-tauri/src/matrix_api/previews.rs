@@ -9,7 +9,6 @@ use shared::api::LinkPreviewResponse;
 use std::{borrow::Cow, sync::Arc};
 use tauri::{State, command};
 use tauri_plugin_http::reqwest;
-use url::Url;
 
 use crate::{
     BrandColorsMap, TauriError, reqwest_response_to_http_response,
@@ -25,7 +24,6 @@ async fn fetch_url_preview(
     let reddit_replacement =
         Regex::new(r"(?i)(https?://)?(?:[a-z0-9-]+\.)*\breddit\.com\b").unwrap();
     let url = reddit_replacement.replace_all(url, "${1}vxreddit.com");
-    log::debug!("{url}");
 
     let req = GetMediaPreviewRequest::new(url.to_string()).try_into_http_request::<Vec<u8>>(
         server_info.base_url.as_str(),
