@@ -1,5 +1,6 @@
 use colorsys::Hsl;
 use leptos::prelude::*;
+use log::debug;
 use shared::user_profile::UserProfile;
 
 use crate::components::get_color;
@@ -80,6 +81,7 @@ pub trait UserProfileMaybeExt {
 
 impl UserProfileMaybeExt for Option<UserProfile> {
     fn render_icon(self, size: usize) -> impl IntoView {
+        debug!("{:?}", self);
         match self {
             Some(profile) => profile.render_icon(size).into_any(),
             None => view! {}.into_any(),

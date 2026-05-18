@@ -38,7 +38,7 @@ fn DmDiv(dm: RoomNode) -> impl IntoView {
                 class=("text-dim", move || !is_active.get())
             >
                 <PresenceBadge presence=presence>
-                    {move || profile.get().render_icon(32)}
+                    { avatar_content }
                 </PresenceBadge>
                 <span class="inline-block align-center pl-2">{name}</span>
                 {if dm.notification_count > 0 {

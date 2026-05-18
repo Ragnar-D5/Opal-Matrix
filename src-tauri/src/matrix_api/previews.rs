@@ -1,19 +1,19 @@
-use std::{borrow::Cow, sync::Arc};
-
+use regex::Regex;
 use ruma::api::{
+    IncomingResponse, OutgoingRequest,
     client::authenticated_media::get_media_preview::v1::{
         Request as GetMediaPreviewRequest, Response as GetMediaPreviewResponse,
     },
-    IncomingResponse, OutgoingRequest,
 };
 use shared::api::LinkPreviewResponse;
-use tauri::{command, State};
+use std::{borrow::Cow, sync::Arc};
+use tauri::{State, command};
 use tauri_plugin_http::reqwest;
+use url::Url;
 
 use crate::{
-    reqwest_response_to_http_response,
+    BrandColorsMap, TauriError, reqwest_response_to_http_response,
     state::{AppState, HomeServerInfo},
-    BrandColorsMap, TauriError,
 };
 
 /// Fetches a URL preview for a given URL and timestamp.
@@ -22,6 +22,11 @@ async fn fetch_url_preview(
     token: &String,
     url: &String,
 ) -> Result<LinkPreviewResponse, TauriError> {
+    let reddit_replacement =
+        Regex::new(r"(?i)(https?://)?(?:[a-z0-9-]+\.)*\breddit\.com\b").unwrap();
+    let url = reddit_replacement.replace_all(url, "${1}vxreddit.com");
+    log::debug!("{url}");
+
     let req = GetMediaPreviewRequest::new(url.to_string()).try_into_http_request::<Vec<u8>>(
         server_info.base_url.as_str(),
         ruma::api::auth_scheme::SendAccessToken::Always(token.as_str()),
