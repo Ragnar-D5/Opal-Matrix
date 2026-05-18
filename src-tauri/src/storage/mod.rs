@@ -16,6 +16,11 @@ use ruma::OwnedRoomId;
 use rusqlite::Connection;
 use rusqlite::params;
 use shared::sidebar::FlatRoom;
+use shared::user_profile::UserProfile;
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::sync::Arc;
+use tauri::{command, State};
 
 pub(crate) mod members;
 pub(crate) mod messages;
@@ -29,14 +34,12 @@ pub async fn init_storage(
     db_passphrase: &String,
 ) -> Result<(bool, Connection), TauriError> {
     let db_path = path.join(format!("{}.db", device_id));
-
     let db_exists = db_path.exists();
 
     let conn = Connection::open(&db_path).map_err(|e| format!("Failed to open database: {e}"))?;
 
     if false {
         conn.pragma_update(None, "key", db_passphrase)?;
-
         conn.query_row("SELECT count(*) FROM sqlite_master", [], |_| Ok(()))
             .map_err(|e| format!("Failed to access database: {e}"))?;
     }
@@ -57,7 +60,16 @@ pub trait DataBaseModel {
     fn create_table(conn: &Connection) -> Result<(), TauriError>;
 }
 
+#[derive(Clone, Debug)]
+pub struct RedactEvent {
+    pub event_id: String,
+    pub room_id: String,
+    pub sender_id: String,
+    pub timestamp: u64,
+}
+
 #[derive(Default, Debug, Clone)]
+
 pub struct SyncChanges {
     pub joined_rooms: Vec<OwnedRoomId>,
     pub new_messages: Vec<MessageRow>,
@@ -67,12 +79,10 @@ pub struct SyncChanges {
     pub reactions: Vec<ReactionRow>,
 
     pub direct_rooms: Option<HashSet<OwnedRoomId>>,
-
+    pub redacted_events: Vec<RedactEvent>,
     pub room_aliases: HashMap<OwnedRoomId, Vec<RoomAliasRow>>,
     pub room_updates: HashMap<OwnedRoomId, RoomRow>,
-
     pub space_children: Vec<SpaceChildRow>,
-
     pub space_parents: Vec<SpaceParentRow>,
 }
 
@@ -100,16 +110,34 @@ pub fn apply_sync_changes(
         let exists: bool = stmt_room_exists
             .query_row(params![room_id.to_string()], |_| Ok(()))
             .is_ok();
-
         if !exists {
             new_rooms.push(room_id.clone());
         }
-
         stmt_ensure_rooms.execute(params![room_id.to_string()])?;
     }
 
     drop(stmt_room_exists);
     drop(stmt_ensure_rooms);
+
+    if !changes.redacted_events.is_empty() {
+        let mut stmt_redact = tx.prepare(
+            "INSERT INTO messages (event_id, room_id, sender, msg_type, raw_json, timestamp, state)
+                 VALUES (?1, ?2, ?3, 'm.room.message', '{}', ?4, 'deleted')
+                 ON CONFLICT(event_id) DO UPDATE SET
+                    state = 'deleted'",
+        )?;
+
+        for redaction in changes.redacted_events {
+            stmt_redact.execute(params![
+                redaction.event_id,
+                redaction.room_id,
+                redaction.sender_id,
+                redaction.timestamp
+            ])?;
+        }
+
+        drop(stmt_redact);
+    }
 
     let mut stmt_space_children = tx.prepare(
         "INSERT INTO space_children (parent_room_id, child_room_id, order_str)
@@ -117,6 +145,7 @@ pub fn apply_sync_changes(
         ON CONFLICT(parent_room_id, child_room_id) DO UPDATE SET
             order_str = excluded.order_str",
     )?;
+
     let mut stmt_delete_space_child =
         tx.prepare("DELETE FROM space_children WHERE parent_room_id = ? AND child_room_id = ?")?;
 
@@ -126,6 +155,7 @@ pub fn apply_sync_changes(
         ON CONFLICT(child_room_id, parent_room_id) DO UPDATE SET
             is_canonical = excluded.is_canonical",
     )?;
+
     let mut stmt_delete_space_parent =
         tx.prepare("DELETE FROM space_parents WHERE child_room_id = ? AND parent_room_id = ?")?;
 
@@ -166,7 +196,6 @@ pub fn apply_sync_changes(
 
     if let Some(rooms) = changes.direct_rooms {
         tx.execute("UPDATE rooms SET is_direct = 0", [])?;
-
         let mut stmt_update_direct =
             tx.prepare("UPDATE rooms SET is_direct = 1 WHERE room_id = ?")?;
         for room_id in rooms {
@@ -180,8 +209,15 @@ pub fn apply_sync_changes(
         VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(event_id) DO UPDATE SET
             msg_type = excluded.msg_type,
-            raw_json = excluded.raw_json",
+            raw_json = excluded.raw_json,
+            timestamp = excluded.timestamp,
+            sender = excluded.sender,
+            state = CASE
+                WHEN messages.state = 'deleted' THEN messages.state
+                ELSE excluded.state
+            END",
     )?;
+
     for msg in changes.new_messages {
         stmt_messages.execute(params![
             msg.event_id,
@@ -193,6 +229,7 @@ pub fn apply_sync_changes(
             msg.state.to_string()
         ])?;
     }
+
     drop(stmt_messages);
 
     let mut stmt_ensure_messages = tx.prepare(
@@ -234,6 +271,7 @@ pub fn apply_sync_changes(
             avatar_url = excluded.avatar_url,
             membership = excluded.membership",
     )?;
+
     for ((_, _), member) in changes.member_updates {
         stmt_members.execute(params![
             member.room_id,
@@ -243,9 +281,11 @@ pub fn apply_sync_changes(
             member.membership
         ])?;
     }
+
     drop(stmt_members);
 
     let mut stmt_delete_aliases = tx.prepare("DELETE FROM room_aliases WHERE room_id = ?")?;
+
     let mut stmt_insert_alias = tx.prepare(
         "INSERT INTO room_aliases (alias, room_id, is_canonical)
              VALUES (?, ?, ?)
@@ -256,11 +296,11 @@ pub fn apply_sync_changes(
 
     for (room_id, aliases) in changes.room_aliases {
         stmt_delete_aliases.execute(params![room_id.to_string()])?;
-
         for row in aliases {
             stmt_insert_alias.execute(params![row.alias, row.room_id, row.is_canonical])?;
         }
     }
+
     drop(stmt_delete_aliases);
     drop(stmt_insert_alias);
 
@@ -280,6 +320,7 @@ pub fn apply_sync_changes(
         notification_count = COALESCE(?, notification_count)
     WHERE room_id = ?",
     )?;
+
     for (room_id, update) in changes.room_updates {
         stmt_room_state.execute(params![
             update.name,
@@ -297,6 +338,7 @@ pub fn apply_sync_changes(
             room_id.to_string()
         ])?;
     }
+
     drop(stmt_room_state);
 
     let mut stmt_receipts = tx.prepare(
@@ -306,6 +348,7 @@ pub fn apply_sync_changes(
             event_id = excluded.event_id,
             ts = excluded.ts",
     )?;
+
     for receipt in changes.read_receipts {
         stmt_receipts.execute(params![
             receipt.room_id,
@@ -315,9 +358,12 @@ pub fn apply_sync_changes(
             receipt.ts
         ])?;
     }
+
     drop(stmt_receipts);
 
     tx.commit()?;
+
+    delete_reactions_where_event_id_deleted(conn)?;
 
     Ok(SyncCallsToExecute {
         get_members: new_rooms,
@@ -410,13 +456,21 @@ pub fn fetch_sidebar(
     let room_iter = stmt.query_map([own_user_id, own_user_id, own_user_id], |row| {
         Ok(FlatRoom {
             room_id: row.get(0)?,
+
             name: row.get(1)?,
+
             topic: row.get(2)?,
+
             avatar_url: row.get(3)?,
+
             room_type: row.get(4)?,
+
             is_direct: row.get(5)?,
+
             last_ts: row.get(6)?,
+
             highlight_count: row.get(7)?,
+
             notification_count: row.get(8)?,
         })
     })?;
@@ -428,20 +482,33 @@ pub fn fetch_sidebar(
     }
 
     // Only respect child links if the child isn't a space, or if it is a space AND has a valid backlink.
+
     // This prevents un-consented spaces from swallowing top-level servers.
+
     let mut stmt_links = conn.prepare(
+
         "SELECT sc.parent_room_id, sc.child_room_id
+
         FROM space_children sc
+
         LEFT JOIN rooms child_room ON sc.child_room_id = child_room.room_id
+
         LEFT JOIN space_parents sp ON sc.child_room_id = sp.child_room_id AND sc.parent_room_id = sp.parent_room_id
+
         WHERE child_room.room_id IS NULL
+
            OR child_room.room_type IS NULL
+
            OR child_room.room_type != 'm.space'
+
            OR sp.parent_room_id IS NOT NULL
+
         ORDER BY sc.order_str"
+
     )?;
 
     let mut parent_to_children: HashMap<String, Vec<String>> = HashMap::new();
+
     let mut all_children: HashSet<String> = HashSet::new();
 
     let link_iter = stmt_links.query_map([], |row| {
@@ -454,6 +521,7 @@ pub fn fetch_sidebar(
                 .entry(parent_id)
                 .or_default()
                 .push(child_id.clone());
+
             all_children.insert(child_id);
         }
     }
@@ -462,20 +530,27 @@ pub fn fetch_sidebar(
 }
 
 #[command(rename_all = "snake_case")]
+
 pub async fn get_members(
     state: State<'_, Arc<AppState>>,
+
     room_id: String,
 ) -> Result<HashMap<String, UserProfile>, TauriError> {
     let conn_guard = state.connection.lock().await;
+
     let conn = conn_guard
         .as_ref()
         .ok_or("Database connection not initialized")?;
 
     let mut stmt = conn.prepare(
         "SELECT room_id, user_id, display_name, avatar_url, membership
+
         FROM members
+
         WHERE room_id = ?
+
         UNION ALL
+
         SELECT ?, ?, 'room', NULL, 'join'",
     )?;
 
@@ -484,22 +559,30 @@ pub async fn get_members(
         |row| {
             Ok(MemberRow {
                 room_id: row.get(0)?,
+
                 user_id: row.get(1)?,
+
                 display_name: row.get(2)?,
+
                 avatar_url: row.get(3)?,
+
                 membership: row.get(4)?,
             })
         },
     )?;
 
     let mut members = HashMap::new();
+
     for member in member_iter {
         let member = member?;
+
         members.insert(
             member.user_id.clone(),
             UserProfile {
                 user_id: member.user_id,
+
                 display_name: member.display_name,
+
                 avatar_url: member.avatar_url,
             },
         );
@@ -513,10 +596,15 @@ pub fn handle_safe_stuff(conn: &mut Connection, stuff: SafeStuff) -> Result<(), 
 
     let mut stmt_members = tx.prepare(
         "INSERT INTO members (room_id, user_id, display_name, avatar_url, membership)
+
         VALUES (?, ?, ?, ?, ?)
+
         ON CONFLICT(room_id, user_id) DO UPDATE SET
+
             display_name = excluded.display_name,
+
             avatar_url = excluded.avatar_url,
+
             membership = excluded.membership",
     )?;
 

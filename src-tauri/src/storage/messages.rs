@@ -33,6 +33,7 @@ pub struct MessageRow {
     pub raw_json: String,
     pub timestamp: u64,
     pub state: MessageState,
+    pub is_edited: bool,
 }
 
 impl DataBaseModel for MessageRow {
@@ -46,6 +47,7 @@ impl DataBaseModel for MessageRow {
                     raw_json TEXT NOT NULL,
                     timestamp INTEGER NOT NULL,
                     state TEXT NOT NULL,
+                    is_editet INTEGER NOT NULL,
                     FOREIGN KEY (room_id) REFERENCES rooms(room_id)
                 );
             ",
@@ -65,7 +67,7 @@ pub fn get_messages(
     match oldest_id {
         Some(id) => {
             let mut stmt = conn.prepare(
-                "SELECT event_id, room_id, sender, msg_type, raw_json, timestamp, state
+                "SELECT event_id, room_id, sender, msg_type, raw_json, timestamp, state, is_edited
                      FROM MESSAGES
                      WHERE room_id = ?1
                        AND (
@@ -89,6 +91,7 @@ pub fn get_messages(
                     raw_json: row.get(4)?,
                     timestamp: row.get(5)?,
                     state: state.into(),
+                    is_edited: row.get(7)?,
                 })
             })?;
 
@@ -98,7 +101,7 @@ pub fn get_messages(
         }
         None => {
             let mut stmt = conn.prepare(
-                "SELECT event_id, room_id, sender, msg_type, raw_json, timestamp, state
+                "SELECT event_id, room_id, sender, msg_type, raw_json, timestamp, state, is_edited
             FROM MESSAGES
             WHERE room_id = ?
             ORDER BY timestamp DESC
@@ -115,6 +118,7 @@ pub fn get_messages(
                     raw_json: row.get(4)?,
                     timestamp: row.get(5)?,
                     state: state.into(),
+                    is_edited: row.get(7)?,
                 })
             })?;
 
@@ -132,8 +136,8 @@ pub fn save_messages(conn: &mut Connection, messages: Vec<MessageRow>) -> Result
 
     {
         let mut stmt = tx.prepare(
-            "INSERT OR IGNORE INTO messages (event_id, room_id, sender, msg_type, raw_json, timestamp, state)
-            VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT OR IGNORE INTO messages (event_id, room_id, sender, msg_type, raw_json, timestamp, state, is_edited)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         )?;
 
         for msg in messages {
@@ -145,6 +149,7 @@ pub fn save_messages(conn: &mut Connection, messages: Vec<MessageRow>) -> Result
                 msg.raw_json,
                 msg.timestamp,
                 msg.state.to_string(),
+                msg.is_edited as i32,
             ])?;
         }
     }
@@ -566,303 +571,6 @@ impl TryInto<UiMessage> for MessageRow {
         };
 
         msg.kind = message_kind;
-
-        // let message_kind = match self.msg_type.as_str() {
-        //     "m.room.message" | "m.room.message.failed" => {
-        //         let mut user_message = UserMessage::new();
-
-        //         if let Some(relates_to) = content.get("m.relates_to") {
-        //             if relates_to.get("rel_type").and_then(|v| v.as_str()) == Some("m.replace") {
-        //                 let event_id = relates_to
-        //                     .get("event_id")
-        //                     .and_then(|v| v.as_str())
-        //                     .unwrap_or("")
-        //                     .to_string();
-
-        //                 let new_text = content
-        //                     .get("m.new_content")
-        //                     .and_then(|nc| nc.get("body"))
-        //                     .and_then(|v| v.as_str())
-        //                     .unwrap_or("[Empty Edit]")
-        //                     .to_string();
-
-        //                 return Ok(UiMessage {
-        //                     event_id: self.event_id,
-        //                     state: state,
-        //                     timestamp: self.timestamp,
-        //                     sender_id: self.sender,
-        //                     kind: MessageKind::SystemMessage(SystemMessage::MessageEdited {
-        //                         event_id,
-        //                         new_spans: vec![RichTextSpan::Plain(new_text)],
-        //                     }),
-        //                 });
-        //             }
-
-        //             if let Some(in_reply_to) = relates_to.get("m.in_reply_to") {
-        //                 if let Some(event_id) = in_reply_to.get("event_id").and_then(|v| v.as_str())
-        //                 {
-        //                     user_message.set_replies_to(event_id.to_string());
-        //                 }
-        //             }
-        //         };
-
-        //         let Some(msg_type) = content
-        //             .get("msgtype")
-        //             .and_then(|v| v.as_str()) else {
-        //                 return Ok(UiMessage::deleted(self.event_id, self.timestamp, self.sender));
-        //         };
-        //         let mentions = content
-        //             .get("m.mentions")
-        //             .and_then(|v| serde_json::from_value(v.clone()).ok())
-        //             .unwrap_or_default();
-        //         user_message.set_mentions(mentions);
-
-        //         match msg_type {
-        //             "m.text" => {
-        //                 let body = content
-        //                     .get("body")
-        //                     .and_then(|v| v.as_str())
-        //                     .ok_or(format!("Missing body: {:?}", value))?
-        //                     .to_string();
-
-        //                 let format = content.get("format").and_then(|v| v.as_str());
-        //                 let formatted_body = content
-        //                     .get("formatted_body")
-        //                     .and_then(|v| v.as_str())
-        //                     .map(|s| s.to_string());
-
-        //                 let spans = if format == Some("org.matrix.custom.html")
-        //                     && let Some(html) = formatted_body
-        //                 {
-        //                     log::info!("html: {html}");
-        //                     parse_html_to_spans(&html, &body)
-        //                 } else {
-        //                     parse_plain_text_to_spans(&body)
-        //                 };
-
-        //                 user_message.set_content(MessageContent::Text {
-        //                     spans,
-        //                     is_edited: false,
-        //                 });
-
-        //                 MessageKind::UserMessage(user_message)
-        //             }
-        //             "m.image" => {
-        //                 let info = content
-        //                     .get("info")
-        //                     .ok_or(format!("Missing info: {:?}", value))?;
-        //                 let url = content
-        //                     .get("url")
-        //                     .and_then(|v| v.as_str())
-        //                     .or_else(|| {
-        //                         content
-        //                             .get("file")
-        //                             .and_then(|f| f.get("url"))
-        //                             .and_then(|v| v.as_str())
-        //                     })
-        //                     .ok_or_else(|| format!("Missing url in image: {:?}", content))?;
-
-        //                 let encryption_info = if let Some(file_obj) = content.get("file") {
-        //                     Some(EncryptedFileInfo {
-        //                         key: file_obj
-        //                             .get("key")
-        //                             .and_then(|k| k.get("k"))
-        //                             .and_then(|v| v.as_str())
-        //                             .unwrap_or("")
-        //                             .to_string(),
-        //                         iv: file_obj
-        //                             .get("iv")
-        //                             .and_then(|v| v.as_str())
-        //                             .unwrap_or("")
-        //                             .to_string(),
-        //                         hash: file_obj
-        //                             .get("hashes")
-        //                             .and_then(|h| h.get("sha256"))
-        //                             .and_then(|v| v.as_str())
-        //                             .unwrap_or("")
-        //                             .to_string(),
-        //                     })
-        //                 } else {
-        //                     None
-        //                 };
-
-        //                 user_message.set_content(MessageContent::Image {
-        //                     name: content
-        //                         .get("body")
-        //                         .and_then(|v| v.as_str())
-        //                         .unwrap_or("image")
-        //                         .to_string(),
-        //                     url: url.to_string(),
-        //                     width: info.get("w").and_then(|v| v.as_u64()).map(|n| n as u32),
-        //                     height: info.get("h").and_then(|v| v.as_u64()).map(|n| n as u32),
-
-        //                     encryption_info: encryption_info,
-        //                 });
-
-        //                 MessageKind::UserMessage(user_message)
-        //             }
-        //             _ => {
-        //                 debug!("Unsupported msgtype: {}", msg_type);
-
-        //                 user_message.set_content(MessageContent::Text {
-        //                     spans: vec![RichTextSpan::Plain(
-        //                         content
-        //                             .get("body")
-        //                             .and_then(|v| v.as_str())
-        //                             .unwrap_or("[Unsupported message type]")
-        //                             .to_string(),
-        //                     )],
-        //                     is_edited: false,
-        //                 });
-
-        //                 MessageKind::UserMessage(user_message)
-        //             }
-        //         }
-        //     }
-        //     "m.room.member" => {
-        //         let membership = content
-        //             .get("membership")
-        //             .and_then(|v| v.as_str())
-        //             .ok_or(format!("Missing membership: {:?}", value))?;
-        //         let state_key = value
-        //             .get("state_key")
-        //             .and_then(|v| v.as_str())
-        //             .ok_or(format!("Missing state key: {:?}", value))?
-        //             .to_string();
-
-        //         MessageKind::SystemMessage(SystemMessage::MembershipChange(match membership {
-        //             "join" => MembershipAction::Joined,
-        //             "invite" => MembershipAction::Invited(state_key),
-        //             "leave" => {
-        //                 if state_key == self.sender {
-        //                     MembershipAction::Left
-        //                 } else {
-        //                     MembershipAction::Kicked {
-        //                         target_id: state_key,
-        //                         reason: content
-        //                             .get("reason")
-        //                             .and_then(|v| v.as_str())
-        //                             .map(|s| s.to_string()),
-        //                     }
-        //                 }
-        //             }
-        //             "ban" => MembershipAction::Banned {
-        //                 target_id: state_key,
-        //                 reason: content
-        //                     .get("reason")
-        //                     .and_then(|v| v.as_str())
-        //                     .map(|s| s.to_string()),
-        //             },
-        //             _ => {
-        //                 return Err(format!("Unknown membership: {membership}; {:?}", value).into());
-        //             }
-        //         }))
-        //     }
-        //     "m.room.create" => MessageKind::SystemMessage(SystemMessage::RoomCreation),
-        //     "m.room.name" => MessageKind::SystemMessage(SystemMessage::RoomNameChange {
-        //         new_name: content
-        //             .get("name")
-        //             .and_then(|v| v.as_str())
-        //             .ok_or(format!("Missing name: {:?}", value))?
-        //             .to_string(),
-        //     }),
-        //     "m.room.topic" => MessageKind::SystemMessage(SystemMessage::TopicChange {
-        //         new_topic: content
-        //             .get("topic")
-        //             .and_then(|v| v.as_str())
-        //             .ok_or(format!("Missing topic: {:?}", value))?
-        //             .to_string(),
-        //     }),
-        //     "m.room.encryption" => MessageKind::SystemMessage(SystemMessage::EncryptionEnabled {
-        //         algorithm: content
-        //             .get("algorithm")
-        //             .and_then(|v| v.as_str())
-        //             .unwrap_or("unknown")
-        //             .to_string(),
-        //     }),
-        //     "m.room.power_levels" => MessageKind::SystemMessage(SystemMessage::PowerlevelChange),
-        //     "m.room.join_rules" => MessageKind::SystemMessage(SystemMessage::JoinRuleChange {
-        //         new_rule: content
-        //             .get("join_rule")
-        //             .and_then(|v| v.as_str())
-        //             .unwrap_or("unknown")
-        //             .to_string(),
-        //     }),
-        //     "m.room.history_visibility" => {
-        //         MessageKind::SystemMessage(SystemMessage::HistoryVisibilityChange {
-        //             new_visibility: content
-        //                 .get("history_visibility")
-        //                 .and_then(|v| v.as_str())
-        //                 .unwrap_or("unknown")
-        //                 .to_string(),
-        //         })
-        //     }
-        //     "m.room.guest_access" => MessageKind::SystemMessage(SystemMessage::GuestAccessChange {
-        //         new_access: content
-        //             .get("guest_access")
-        //             .and_then(|v| v.as_str())
-        //             .unwrap_or("unknown")
-        //             .to_string(),
-        //     }),
-        //     "m.room.encrypted" => MessageKind::UserMessage(UserMessage {
-        //         mentions: Mentions::default(),
-        //         reactions: Vec::new(),
-        //         replies_to: None,
-
-        //         content: MessageContent::Encrypted,
-        //     }),
-        //     "org.matrix.msc3401.call.member" => {
-        //         if content.as_object().map_or(true, |obj| obj.is_empty()) {
-        //             MessageKind::SystemMessage(SystemMessage::CallLeft)
-        //         } else {
-        //             let intent = content
-        //                 .get("m.call.intent")
-        //                 .and_then(|v| v.as_str())
-        //                 .unwrap_or("audio")
-        //                 .to_string();
-
-        //             MessageKind::SystemMessage(SystemMessage::CallJoined { intent })
-        //         }
-        //     }
-        //     "m.reaction" => {
-        //         let event_id = content
-        //             .get("m.relates_to")
-        //             .and_then(|r| r.get("event_id"))
-        //             .and_then(|v| v.as_str())
-        //             .unwrap_or("")
-        //             .to_string();
-
-        //         let reaction = content
-        //             .get("m.relates_to")
-        //             .and_then(|r| r.get("key"))
-        //             .and_then(|v| v.as_str())
-        //             .unwrap_or("")
-        //             .to_string();
-
-        //         MessageKind::SystemMessage(SystemMessage::MessageReacted { event_id, reaction })
-        //     }
-        //     "m.room.redaction" => {
-        //         let event_id = value
-        //             .get("redacts")
-        //             .and_then(|v| v.as_str())
-        //             .unwrap_or("")
-        //             .to_string();
-
-        //         MessageKind::SystemMessage(SystemMessage::MessageRedacted { event_id })
-        //     }
-        //     "m.room.avatar" => MessageKind::SystemMessage(SystemMessage::RoomAvatarChange { new_avatar_url: content.get("url").map(|v| v.to_string()) }
-        //     ),
-        //     "m.call.invite"
-        //     | "org.matrix.msc4075.call.notify"
-        //     | "org.matrix.msc4075.rtc.notification" => {
-        //         return Err(TauriError::silent());
-        //     }
-        //     _ => {
-        //         warn!("Unsupported message type: {}; {:?}", self.msg_type, value);
-
-        //         return Err(TauriError::silent());
-        //     }
-        // };
 
         return Ok(msg);
     }

@@ -128,10 +128,16 @@ pub struct RepliesTo {
     pub event_id: String,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Hash, Eq)]
+pub struct Reactor {
+    pub user_id: String,
+    pub event_id: String,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct UserMessage {
     pub mentions: Mentions,
-    pub reactions: HashMap<String, HashSet<String>>,
+    pub reactions: HashMap<String, HashSet<Reactor>>,
     pub replies_to: Option<RepliesTo>,
 
     pub content: MessageContent,
@@ -271,10 +277,12 @@ impl Hash for MessageKind {
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, Hash)]
 pub enum MessageState {
-    #[default]
     Pending,
+    #[default]
     Sent,
     Failed,
+    Deleted,
+    Unknown,
 }
 
 impl ToString for MessageState {
@@ -283,6 +291,8 @@ impl ToString for MessageState {
             MessageState::Failed => "failed".to_string(),
             MessageState::Pending => "pending".to_string(),
             MessageState::Sent => "sent".to_string(),
+            MessageState::Deleted => "deleted".to_string(),
+            MessageState::Unknown => "unknown".to_string(),
         }
     }
 }
@@ -293,7 +303,9 @@ impl From<String> for MessageState {
             "pending" => MessageState::Pending,
             "sent" => MessageState::Sent,
             "failed" => MessageState::Failed,
-            _ => MessageState::Pending, // Default to pending for unknown states
+            "deleted" => MessageState::Deleted,
+            "unknown" => MessageState::Unknown,
+            _ => MessageState::default(),
         }
     }
 }
@@ -326,7 +338,7 @@ impl UiMessage {
         }
     }
 
-    pub fn add_reactions(&mut self, reactions: &HashMap<String, HashSet<String>>) {
+    pub fn set_reactions(&mut self, reactions: &HashMap<String, HashSet<Reactor>>) {
         if let MessageKind::UserMessage(user_message) = &mut self.kind {
             user_message.reactions = reactions.clone()
         }
