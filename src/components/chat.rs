@@ -29,7 +29,7 @@ use shared::{
     commands::Command,
     messages::{
         MembershipAction, MessageContent, MessageKind, MessageState, Reactor, RepliesTo,
-        RichTextSpan, SystemMessage, UiMessage, UserMessage,
+        SystemMessage, UiMessage, UserMessage,
     },
     sidebar::{RoomKind, RoomNode, SidebarState},
     user_profile::{PresenceStatus, UserProfile},
@@ -44,6 +44,7 @@ struct GroupedMessage {
     message: UserMessage,
     state: MessageState,
     event_id: String,
+    date: DateTime<Local>,
 }
 
 #[derive(PartialEq, Clone)]
@@ -280,7 +281,6 @@ fn render_message_group(
     group: Vec<GroupedMessage>,
     store: MemberStore,
     room_id: String,
-    date: DateTime<Local>,
     own_user_id: String,
     profile_sig: ArcRwSignal<Option<UserProfile>>,
 ) -> impl IntoView {
@@ -320,6 +320,7 @@ fn render_message_group(
         let reactions = msg.reactions.clone();
 
         let store = store.clone();
+        let date = grouped_msg.date;
 
         view! {
             <div
@@ -458,7 +459,6 @@ impl TimelineItem {
                                 group.clone(),
                                 store.clone(),
                                 room_id.clone(),
-                                self.date,
                                 own_user_id.clone(),
                                 profile_sig.clone(),
                             )}
@@ -748,11 +748,6 @@ fn TimeLine() -> impl IntoView {
         let marker_id = read_marker_id.get();
         let has_unread = show_unread_indicator.get();
 
-        let processed_messages = msgs
-            .iter()
-            .map(|m| (m.event_id.clone(), m.clone()))
-            .collect::<HashMap<_, _>>();
-
         let marker_ts = marker_id
             .as_ref()
             .and_then(|mid| msgs.iter().find(|m| m.event_id == *mid))
@@ -806,33 +801,15 @@ fn TimeLine() -> impl IntoView {
             }
 
             let maybe_item = match msg.kind.clone() {
-                MessageKind::UserMessage(mut user_msg) => {
-                    if let Some(replies_to) = &user_msg.replies_to {
-                        if let Some(original_msg) = processed_messages.get(&replies_to.event_id) {
-                            let original_sender = &original_msg.sender_id;
-                            let text = match &original_msg.kind {
-                                MessageKind::UserMessage(um) => match &um.content {
-                                    MessageContent::Text { spans, .. } => spans.clone(),
-                                    _ => {
-                                        vec![RichTextSpan::Plain("[non-text content]".to_string())]
-                                    }
-                                },
-                                MessageKind::SystemMessage(_) => {
-                                    vec![RichTextSpan::Plain("[system message]".to_string())]
-                                }
-                            };
-
-                            user_msg.set_reply_sender(original_sender.clone());
-                            user_msg.set_reply_text(text);
-                        }
-                    }
-
+                MessageKind::UserMessage(user_msg) => {
                     let mut grouped = false;
                     if let Some(last_item) = items.last_mut() {
                         if let TimelineItemKind::MessageGroup(ref mut group) = last_item.kind {
                             let same_sender = last_item.sender == msg.sender_id;
-                            let same_minute = (current_date.timestamp() / 60)
-                                == (last_item.date.timestamp() / 60);
+
+                            let time_diff_seconds =
+                                current_date.timestamp() - last_item.date.timestamp();
+                            let within_time_window = time_diff_seconds < (5 * 60);
 
                             let current_is_reply = user_msg.replies_to.is_some();
                             let last_is_reply = group
@@ -840,11 +817,16 @@ fn TimeLine() -> impl IntoView {
                                 .map(|m| m.message.replies_to.is_some())
                                 .unwrap_or(false);
 
-                            if same_sender && same_minute && !current_is_reply && !last_is_reply {
+                            if same_sender
+                                && within_time_window
+                                && !current_is_reply
+                                && !last_is_reply
+                            {
                                 group.push(GroupedMessage {
                                     message: user_msg.clone(),
                                     state: msg.state.clone(),
                                     event_id: msg.event_id.clone(),
+                                    date: current_date,
                                 });
                                 last_item.id = format!("{}_{}", last_item.id, msg.event_id);
                                 grouped = true;
@@ -861,6 +843,7 @@ fn TimeLine() -> impl IntoView {
                                 message: user_msg.clone(),
                                 state: msg.state.clone(),
                                 event_id: msg.event_id.clone(),
+                                date: current_date,
                             }]),
                         })
                     } else {
