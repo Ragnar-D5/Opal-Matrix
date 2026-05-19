@@ -1,8 +1,8 @@
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 
-use ruma::events::Mentions;
 use ruma::events::room::{guest_access::GuestAccess, history_visibility::HistoryVisibility};
+use ruma::events::Mentions;
 use ruma::room::JoinRule;
 use serde::{Deserialize, Serialize};
 
@@ -102,7 +102,6 @@ pub enum RichTextSpan {
 pub enum MessageContent {
     Text {
         spans: Vec<RichTextSpan>,
-        is_edited: bool,
     },
     Image {
         name: String,
@@ -139,6 +138,7 @@ pub struct UserMessage {
     pub mentions: Mentions,
     pub reactions: HashMap<String, HashSet<Reactor>>,
     pub replies_to: Option<RepliesTo>,
+    pub is_edited: bool,
 
     pub content: MessageContent,
 }
@@ -182,6 +182,7 @@ impl UserMessage {
             mentions: Mentions::default(),
             reactions: HashMap::new(),
             replies_to: None,
+            is_edited: false,
             content: MessageContent::Deleted,
         }
     }
@@ -215,6 +216,7 @@ impl UserMessage {
             mentions: Mentions::default(),
             reactions: HashMap::new(),
             replies_to: None,
+            is_edited: false,
             content: MessageContent::Deleted,
         }
     }
@@ -313,6 +315,7 @@ impl From<String> for MessageState {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Hash)]
 pub struct UiMessage {
     pub event_id: String,
+    pub room_id: String,
     pub timestamp: u64,
     pub sender_id: String,
 
@@ -329,18 +332,23 @@ impl UiMessage {
         }
     }
 
-    pub fn edit(&mut self, new_spans: Vec<RichTextSpan>) {
-        if let MessageKind::UserMessage(user_message) = &mut self.kind {
-            user_message.content = MessageContent::Text {
-                spans: new_spans,
-                is_edited: true,
-            };
-        }
-    }
-
     pub fn set_reactions(&mut self, reactions: &HashMap<String, HashSet<Reactor>>) {
         if let MessageKind::UserMessage(user_message) = &mut self.kind {
             user_message.reactions = reactions.clone()
+        }
+    }
+
+    pub fn set_edited(&mut self, is_edited: bool) {
+        if let MessageKind::UserMessage(user_message) = &mut self.kind {
+            user_message.is_edited = is_edited;
+        }
+    }
+
+    pub fn get_reactions(&self) -> Option<&HashMap<String, HashSet<Reactor>>> {
+        if let MessageKind::UserMessage(user_message) = &self.kind {
+            Some(&user_message.reactions)
+        } else {
+            None
         }
     }
 
@@ -348,9 +356,10 @@ impl UiMessage {
         matches!(self.kind, MessageKind::UserMessage(_))
     }
 
-    pub fn deleted(event_id: String, timestamp: u64, sender_id: String) -> Self {
+    pub fn deleted(event_id: String, room_id: String, timestamp: u64, sender_id: String) -> Self {
         Self {
             event_id,
+            room_id,
             timestamp,
             sender_id,
             state: MessageState::default(),

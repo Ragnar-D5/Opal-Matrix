@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::messages::UiMessage;
 
 pub mod errors;
+pub mod signals;
 
 #[derive(Serialize, Deserialize)]
 pub enum RestoreResponse {

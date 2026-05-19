@@ -20,6 +20,7 @@ use ruma::{
         client::{backup::EncryptedSessionData, sync::sync_events::v3::Response as SyncResponse},
         IncomingResponse,
     },
+    events::AnyTimelineEvent,
     serde::Raw,
     OwnedDeviceId, OwnedRoomId, RoomId, UserId,
 };
@@ -144,23 +145,8 @@ pub async fn get_or_create_passphrase(user_id: String) -> Result<String, TauriEr
 pub async fn process_message(
     state: &AppState,
     room_id: &String,
-    raw_message: Value,
-) -> Result<Value, TauriError> {
-    let event_id = raw_message
-        .get("event_id")
-        .and_then(|v| v.as_str())
-        .ok_or("Missing event_id in message")?
-        .to_string();
-    let sender = raw_message
-        .get("sender")
-        .and_then(|v| v.as_str())
-        .ok_or("Missing sender in message")?
-        .to_string();
-    let timestamp = raw_message
-        .get("origin_server_ts")
-        .and_then(|v| v.as_i64())
-        .ok_or("Missing origin_server_ts in message")?;
-
+    raw_message: Raw<EncryptedEvent>,
+) -> Result<Raw<AnyTimelineEvent>, TauriError> {
     let olm_machine = {
         let guard = state.crypto_machine.lock().await;
         guard.as_ref().ok_or("Olm machine not initialized")?.clone()
@@ -177,33 +163,21 @@ pub async fn process_message(
 
     handle_outgoing_requests(&olm_machine, &access_token, &matrix_url).await?;
 
-    let event: Raw<EncryptedEvent> = Raw::from_json_string(raw_message.to_string())?;
     match olm_machine
         .decrypt_room_event(
-            &event,
+            &raw_message,
             &RoomId::parse(room_id.clone())?,
             &decryption_settings,
         )
         .await
     {
         Ok(res) => {
-            let mut decrypted_val: Value = serde_json::from_str(res.event.into_json().get())?;
-
-            if let Some(obj) = decrypted_val.as_object_mut() {
-                obj.insert("event_id".to_string(), Value::String(event_id));
-                obj.insert("sender".to_string(), Value::String(sender));
-                obj.insert(
-                    "origin_server_ts".to_string(),
-                    Value::Number(timestamp.into()),
-                );
-            }
-
-            return Ok(decrypted_val);
+            return Ok(res.event);
         }
         Err(e) => {
             warn!("Failed to decrypt event: {}", e);
 
-            return Ok(Value::from_str(&raw_message.to_string())?);
+            return Ok(Raw::from_json(raw_message.into_json()));
         }
     };
 }

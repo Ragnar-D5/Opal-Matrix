@@ -42,15 +42,16 @@ pub async fn commit_message(
 
     let message = UiMessage {
         event_id: txn_id.clone(),
+        room_id: room_id.clone(),
         timestamp: timestamp,
         state: MessageState::Pending,
         kind: MessageKind::UserMessage(UserMessage {
             mentions: mentions.clone(),
             reactions: HashMap::new(),
             replies_to: None,
+            is_edited: false,
             content: MessageContent::Text {
                 spans: spans.clone(),
-                is_edited: false,
             },
         }),
         sender_id: user_id.clone(),
@@ -82,6 +83,7 @@ pub async fn commit_message(
         timestamp,
         raw_json: message_json.to_string(),
         state: MessageState::Pending,
+        last_edited_id: None,
     };
 
     let room_id_clone = room_id.clone();

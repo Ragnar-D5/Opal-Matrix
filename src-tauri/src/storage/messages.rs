@@ -1,8 +1,7 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use ego_tree::NodeRef;
 use linkify::LinkFinder;
-use ruma::events::room::history_visibility::HistoryVisibility;
 use ruma::events::room::member::MembershipState;
 use ruma::events::Mentions;
 use ruma::events::{
@@ -16,8 +15,8 @@ use rusqlite::Connection;
 use scraper::{Html, Node};
 use serde_json::Value;
 use shared::messages::{
-    EncryptedFileInfo, MembershipAction, MessageContent, MessageKind, MessageState, RichTextSpan,
-    SystemMessage, UiMessage, UserMessage,
+    EncryptedFileInfo, MembershipAction, MessageContent, MessageKind, MessageState, Reactor,
+    RichTextSpan, SystemMessage, UiMessage, UserMessage,
 };
 
 use crate::TauriError;
@@ -33,7 +32,7 @@ pub struct MessageRow {
     pub raw_json: String,
     pub timestamp: u64,
     pub state: MessageState,
-    pub is_edited: bool,
+    pub last_edited_id: Option<String>,
 }
 
 impl DataBaseModel for MessageRow {
@@ -47,7 +46,8 @@ impl DataBaseModel for MessageRow {
                     raw_json TEXT NOT NULL,
                     timestamp INTEGER NOT NULL,
                     state TEXT NOT NULL,
-                    is_editet INTEGER NOT NULL,
+                    last_edited_id TEXT,
+                    FOREIGN KEY (last_edited_id) REFERENCES message_edits(event_id),
                     FOREIGN KEY (room_id) REFERENCES rooms(room_id)
                 );
             ",
@@ -56,7 +56,7 @@ impl DataBaseModel for MessageRow {
     }
 }
 
-pub fn get_messages(
+pub fn get_messsages_to_id(
     conn: &Connection,
     room_id: &String,
     oldest_id: Option<String>,
@@ -67,18 +67,27 @@ pub fn get_messages(
     match oldest_id {
         Some(id) => {
             let mut stmt = conn.prepare(
-                "SELECT event_id, room_id, sender, msg_type, raw_json, timestamp, state, is_edited
-                     FROM MESSAGES
-                     WHERE room_id = ?1
-                       AND (
-                           timestamp < (SELECT timestamp FROM MESSAGES WHERE event_id = ?2)
-                           OR (
-                               timestamp = (SELECT timestamp FROM MESSAGES WHERE event_id = ?2)
-                               AND event_id < ?2
-                           )
-                       )
-                     ORDER BY timestamp DESC, event_id DESC
-                     LIMIT ?3",
+                "SELECT
+                m.event_id,
+                m.room_id,
+                m.sender,
+                m.msg_type,
+                COALESCE(e.new_json, m.raw_json) AS raw_json,
+                m.timestamp,
+                m.state,
+                m.last_edited_id
+                FROM messages m
+                LEFT JOIN message_edits e ON m.last_edited_id = e.event_id
+                WHERE m.room_id = ?1
+                AND (
+                    m.timestamp < (SELECT timestamp FROM MESSAGES WHERE event_id = ?2)
+                    OR (
+                        m.timestamp = (SELECT timestamp FROM MESSAGES WHERE event_id = ?2)
+                        AND m.event_id < ?2
+                    )
+                )
+                ORDER BY m.timestamp DESC
+                LIMIT ?3",
             )?;
 
             let rows = stmt.query_map(rusqlite::params![room_id, id, limit], |row| {
@@ -91,7 +100,7 @@ pub fn get_messages(
                     raw_json: row.get(4)?,
                     timestamp: row.get(5)?,
                     state: state.into(),
-                    is_edited: row.get(7)?,
+                    last_edited_id: row.get(7)?,
                 })
             })?;
 
@@ -101,11 +110,20 @@ pub fn get_messages(
         }
         None => {
             let mut stmt = conn.prepare(
-                "SELECT event_id, room_id, sender, msg_type, raw_json, timestamp, state, is_edited
-            FROM MESSAGES
-            WHERE room_id = ?
-            ORDER BY timestamp DESC
-            LIMIT ?",
+                "SELECT
+                m.event_id,
+                m.room_id,
+                m.sender,
+                m.msg_type,
+                COALESCE(e.new_json, m.raw_json) AS raw_json,
+                m.timestamp,
+                m.state,
+                m.last_edited_id
+                FROM messages m
+                LEFT JOIN message_edits e ON m.last_edited_id = e.event_id
+                WHERE m.room_id = ?1
+                ORDER BY m.timestamp DESC
+                LIMIT ?2",
             )?;
 
             let rows = stmt.query_map(rusqlite::params![room_id, limit], |row| {
@@ -118,7 +136,7 @@ pub fn get_messages(
                     raw_json: row.get(4)?,
                     timestamp: row.get(5)?,
                     state: state.into(),
-                    is_edited: row.get(7)?,
+                    last_edited_id: row.get(7)?,
                 })
             })?;
 
@@ -131,13 +149,92 @@ pub fn get_messages(
     Ok(messages)
 }
 
+pub fn get_messages_by_id_with_reactions(
+    conn: &Connection,
+    event_ids: Vec<String>,
+) -> Result<Vec<(MessageRow, HashMap<String, HashSet<Reactor>>)>, TauriError> {
+    let mut stmt = conn.prepare(
+        "SELECT
+            m.event_id AS event_id,
+            m.room_id,
+            m.sender,
+            m.msg_type,
+            COALESCE(e.new_json, m.raw_json) AS raw_json,
+            m.timestamp,
+            m.state,
+            m.last_edited_id,
+            r.sender_id AS reaction_user_id,
+            r.event_id AS reaction_event_id,
+            r.reaction
+        FROM messages m
+        LEFT JOIN message_edits e ON m.last_edited_id = e.event_id
+        LEFT JOIN reactions r ON m.event_id = r.target_event_id
+        WHERE m.event_id IN (SELECT value FROM json_each(?))",
+    )?;
+
+    let mut message_map: HashMap<String, (MessageRow, HashMap<String, HashSet<Reactor>>)> =
+        HashMap::new();
+
+    let json_array = serde_json::to_string(&event_ids)?;
+    let rows = stmt.query_map(rusqlite::params![json_array], |row| {
+        let state: String = row.get(6)?;
+        let message_row = MessageRow {
+            event_id: row.get(0)?,
+            room_id: row.get(1)?,
+            sender: row.get(2)?,
+            msg_type: row.get(3)?,
+            raw_json: row.get(4)?,
+            timestamp: row.get(5)?,
+            state: state.into(),
+            last_edited_id: row.get(7)?,
+        };
+
+        let user_id: Option<String> = row.get(8)?;
+        let reaction_event_id: Option<String> = row.get(9)?;
+        let reaction: Option<String> = row.get(10)?;
+
+        Ok((message_row, user_id, reaction_event_id, reaction))
+    })?;
+
+    for row_res in rows {
+        let (msg, user_id, reaction_event_id, reaction_key) = row_res?;
+
+        let entry = message_map
+            .entry(msg.event_id.clone())
+            .or_insert((msg, HashMap::new()));
+
+        if let (Some(u_id), Some(r_id), Some(r_key)) = (user_id, reaction_event_id, reaction_key) {
+            entry
+                .1
+                .entry(r_key)
+                .or_insert_with(HashSet::new)
+                .insert(Reactor {
+                    user_id: u_id,
+                    event_id: r_id,
+                });
+        }
+    }
+
+    Ok(message_map.into_values().collect())
+}
+
 pub fn save_messages(conn: &mut Connection, messages: Vec<MessageRow>) -> Result<(), TauriError> {
     let tx = conn.transaction()?;
 
     {
         let mut stmt = tx.prepare(
-            "INSERT OR IGNORE INTO messages (event_id, room_id, sender, msg_type, raw_json, timestamp, state, is_edited)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO messages (event_id, room_id, sender, msg_type, raw_json, timestamp, state, last_edited_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(event_id) DO UPDATE SET
+                room_id = excluded.room_id,
+                sender = excluded.sender,
+                msg_type = excluded.msg_type,
+                raw_json = excluded.raw_json,
+                timestamp = excluded.timestamp,
+                state = excluded.state,
+                last_edited_id = excluded.last_edited_id
+            WHERE messages.state = 'unknown'
+               OR messages.raw_json = '{}'",
         )?;
 
         for msg in messages {
@@ -149,7 +246,7 @@ pub fn save_messages(conn: &mut Connection, messages: Vec<MessageRow>) -> Result
                 msg.raw_json,
                 msg.timestamp,
                 msg.state.to_string(),
-                msg.is_edited as i32,
+                msg.last_edited_id,
             ])?;
         }
     }
@@ -158,9 +255,13 @@ pub fn save_messages(conn: &mut Connection, messages: Vec<MessageRow>) -> Result
     Ok(())
 }
 
-pub fn message_exists(conn: &Connection, event_id: &str) -> Result<bool, TauriError> {
-    let mut stmt = conn.prepare("SELECT 1 FROM messages WHERE event_id = ? LIMIT 1")?;
-    let exists = stmt.exists(rusqlite::params![event_id])?;
+pub fn any_exists(conn: &Connection, event_ids: Vec<String>) -> Result<bool, TauriError> {
+    let mut stmt = conn.prepare(
+        "SELECT 1 FROM messages WHERE event_id IN (SELECT value FROM json_each(?)) LIMIT 1",
+    )?;
+    let json_array = serde_json::to_string(&event_ids)?;
+    let exists = stmt.exists(rusqlite::params![json_array])?;
+
     Ok(exists)
 }
 
@@ -286,19 +387,41 @@ pub fn parse_plain_text_to_spans(text: &str) -> Vec<RichTextSpan> {
     }
 }
 
-impl TryInto<UiMessage> for MessageRow {
-    type Error = TauriError;
+fn object_is_empty(obj: &Value) -> bool {
+    match obj {
+        Value::Object(map) => map.is_empty(),
+        _ => false,
+    }
+}
 
-    fn try_into(self) -> Result<UiMessage, Self::Error> {
+impl MessageRow {
+    pub fn try_into_ui_message(self) -> Result<UiMessage, TauriError> {
         let value: Value = serde_json::from_str(&self.raw_json)?;
-        let content = value
+
+        if self.state == MessageState::Deleted {
+            if self.msg_type == "m.room.message" && !object_is_empty(&value) {
+                return Ok(UiMessage::deleted(
+                    self.event_id,
+                    self.room_id,
+                    self.timestamp,
+                    self.sender,
+                ));
+            } else {
+                return Err(TauriError::silent());
+            }
+        } else if self.state == MessageState::Unknown {
+            return Err(TauriError::silent());
+        }
+
+        let raw_content = value
             .get("content")
-            .ok_or(format!("Missing content: {:?}", value))?;
+            .ok_or(format!("Missing content: {:?}", self))?;
 
         let state = self.state;
 
         let mut msg = UiMessage {
             event_id: self.event_id,
+            room_id: self.room_id,
             state: state,
             timestamp: self.timestamp,
             sender_id: self.sender.clone(),
@@ -313,18 +436,24 @@ impl TryInto<UiMessage> for MessageRow {
                     if let Some(or) = ev.as_original() {
                         let mut user_message = UserMessage::new();
 
-                        if let Some(Relation::Reply { in_reply_to }) = or.content.relates_to.clone()
+                        let content = if let Some(Relation::Replacement(replacement)) =
+                            &or.content.relates_to
                         {
+                            replacement.new_content.clone().into()
+                        } else {
+                            or.content.clone()
+                        };
+
+                        if let Some(Relation::Reply { in_reply_to }) = &or.content.relates_to {
                             user_message.set_replies_to(in_reply_to.event_id.to_string());
                         };
 
-                        user_message.mentions = or.content.mentions.clone().unwrap_or_default();
+                        user_message.mentions = content.mentions.unwrap_or_default();
 
-                        user_message.content = match or.content.msgtype.clone() {
+                        user_message.content = match content.msgtype {
                             MessageType::Text(text_content) => {
-                                let body = text_content.body.clone();
-                                let spans = if let Some(formatted) = text_content.formatted.clone()
-                                {
+                                let body = text_content.body;
+                                let spans = if let Some(formatted) = text_content.formatted {
                                     match formatted.format {
                                         MessageFormat::Html => {
                                             parse_html_to_spans(&formatted.body, &body)
@@ -335,36 +464,34 @@ impl TryInto<UiMessage> for MessageRow {
                                     parse_plain_text_to_spans(&body)
                                 };
 
-                                MessageContent::Text {
-                                    spans,
-                                    is_edited: false,
-                                }
+                                MessageContent::Text { spans }
                             }
                             MessageType::Image(image_content) => {
                                 // TODO: Use the actual content instead of raw json for this
-                                let encryption_info = if let Some(file_obj) = content.get("file") {
-                                    Some(EncryptedFileInfo {
-                                        key: file_obj
-                                            .get("key")
-                                            .and_then(|k| k.get("k"))
-                                            .and_then(|v| v.as_str())
-                                            .unwrap_or("")
-                                            .to_string(),
-                                        iv: file_obj
-                                            .get("iv")
-                                            .and_then(|v| v.as_str())
-                                            .unwrap_or("")
-                                            .to_string(),
-                                        hash: file_obj
-                                            .get("hashes")
-                                            .and_then(|h| h.get("sha256"))
-                                            .and_then(|v| v.as_str())
-                                            .unwrap_or("")
-                                            .to_string(),
-                                    })
-                                } else {
-                                    None
-                                };
+                                let encryption_info =
+                                    if let Some(file_obj) = raw_content.get("file") {
+                                        Some(EncryptedFileInfo {
+                                            key: file_obj
+                                                .get("key")
+                                                .and_then(|k| k.get("k"))
+                                                .and_then(|v| v.as_str())
+                                                .unwrap_or("")
+                                                .to_string(),
+                                            iv: file_obj
+                                                .get("iv")
+                                                .and_then(|v| v.as_str())
+                                                .unwrap_or("")
+                                                .to_string(),
+                                            hash: file_obj
+                                                .get("hashes")
+                                                .and_then(|h| h.get("sha256"))
+                                                .and_then(|v| v.as_str())
+                                                .unwrap_or("")
+                                                .to_string(),
+                                        })
+                                    } else {
+                                        None
+                                    };
                                 let url = match image_content.source.clone() {
                                     MediaSource::Plain(url) => url.to_string(),
                                     MediaSource::Encrypted(file) => file.url.to_string(),
@@ -417,7 +544,7 @@ impl TryInto<UiMessage> for MessageRow {
                             reaction: annotation.key,
                         })
                     } else {
-                        MessageKind::SystemMessage(SystemMessage::Unknown)
+                        return Err(TauriError::silent());
                     }
                 }
                 AnySyncMessageLikeEvent::RoomRedaction(redact_ev) => {
@@ -428,10 +555,10 @@ impl TryInto<UiMessage> for MessageRow {
                                 reason: or.content.reason.clone(),
                             })
                         } else {
-                            MessageKind::SystemMessage(SystemMessage::Unknown)
+                            return Err(TauriError::silent());
                         }
                     } else {
-                        MessageKind::SystemMessage(SystemMessage::Unknown)
+                        return Err(TauriError::silent());
                     }
                 }
                 AnySyncMessageLikeEvent::RoomEncrypted(_) => {
@@ -439,6 +566,7 @@ impl TryInto<UiMessage> for MessageRow {
                         mentions: Mentions::default(),
                         reactions: HashMap::new(),
                         replies_to: None,
+                        is_edited: false,
                         content: MessageContent::Encrypted,
                     })
                 }
@@ -457,7 +585,8 @@ impl TryInto<UiMessage> for MessageRow {
                 | AnySyncMessageLikeEvent::KeyVerificationCancel(_)
                 | AnySyncMessageLikeEvent::KeyVerificationReady(_)
                 | AnySyncMessageLikeEvent::CallHangup(_)
-                | AnySyncMessageLikeEvent::RtcDecline(_) => {
+                | AnySyncMessageLikeEvent::RtcDecline(_)
+                | AnySyncMessageLikeEvent::CallSdpStreamMetadataChanged(_) => {
                     return Err(TauriError::silent());
                 }
                 _ => return Err(format!("Unsupported message event type: {:?}", ev).into()),
@@ -500,10 +629,10 @@ impl TryInto<UiMessage> for MessageRow {
                         },
                         // TODO: Actually use the event
                         AnyStateEventContent::CallMember(_) => {
-                            if content.as_object().map_or(true, |obj| obj.is_empty()) {
+                            if object_is_empty(raw_content) {
                                 SystemMessage::CallLeft
                             } else {
-                                let intent = content
+                                let intent = raw_content
                                     .get("m.call.intent")
                                     .and_then(|v| v.as_str())
                                     .unwrap_or("audio")
@@ -529,9 +658,8 @@ impl TryInto<UiMessage> for MessageRow {
                             }
                         }
                         AnyStateEventContent::RoomHistoryVisibility(vis_ev) => {
-                            let his_vis: HistoryVisibility = vis_ev.history_visibility.clone();
                             SystemMessage::HistoryVisibilityChange {
-                                new_visibility: his_vis,
+                                new_visibility: vis_ev.history_visibility,
                             }
                         }
                         AnyStateEventContent::RoomGuestAccess(guest_ev) => {
@@ -565,12 +693,13 @@ impl TryInto<UiMessage> for MessageRow {
 
                     MessageKind::SystemMessage(message)
                 } else {
-                    MessageKind::SystemMessage(SystemMessage::Unknown)
+                    return Err(TauriError::silent());
                 }
             }
         };
 
         msg.kind = message_kind;
+        msg.set_edited(self.last_edited_id.is_some());
 
         return Ok(msg);
     }
@@ -594,5 +723,21 @@ pub fn set_message_state(
         "UPDATE messages SET state = ? WHERE event_id = ?",
         rusqlite::params![string, event_id],
     )?;
+    Ok(())
+}
+
+pub fn redact_messages(conn: &mut Connection, event_ids: Vec<String>) -> Result<(), TauriError> {
+    let tx = conn.transaction()?;
+
+    {
+        let mut stmt = tx
+            .prepare("UPDATE messages SET raw_json = '{}', state = 'deleted' WHERE event_id = ?")?;
+
+        for event_id in event_ids {
+            stmt.execute(rusqlite::params![event_id])?;
+        }
+    }
+
+    tx.commit()?;
     Ok(())
 }

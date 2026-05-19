@@ -1,40 +1,46 @@
 use matrix_sdk_crypto::EncryptionSettings;
-use ruma::RoomId;
 use ruma::api::SupportedVersions;
-use ruma::events::Mentions;
-use serde_json::{Value, json};
+use ruma::events::{AnyMessageLikeEvent, AnyStateEvent, AnyTimelineEvent, Mentions};
+use ruma::serde::Raw;
+use ruma::RoomId;
+use serde_json::json;
 use shared::api::FetchMessagesResponse;
-use shared::messages::MessageState;
+use shared::messages::{MessageKind, Reactor, SystemMessage, UiMessage};
 use std::borrow::Cow;
+use std::collections::{HashMap, HashSet};
 use std::{str::FromStr, sync::Arc};
 use tauri_plugin_http::reqwest::{self, Client};
 
 use ruma::{
-    OwnedRoomId, UInt,
     api::{
-        IncomingResponse, OutgoingRequest,
         auth_scheme::SendAccessToken,
         client::message::get_message_events::v3::{
             Request as MessageEventsRequest, Response as MessageEventsResponse,
         },
+        IncomingResponse, OutgoingRequest,
     },
+    OwnedRoomId, UInt,
 };
 
 use crate::matrix_api::crypto::{handle_outgoing_requests, send_post, send_to_device_request};
+use crate::matrix_api::sync::extract_timeline;
+use crate::storage::message_extra::{get_reactions_for_message, save_reactions, ReactionRow};
+use crate::storage::messages::redact_messages;
+use crate::storage::{apply_sync_changes, SyncChanges};
 use crate::{
-    AppState,
     matrix_api::crypto::process_message,
     state::HomeServerInfo,
     storage::{
-        messages::{MessageRow, get_messages, save_messages},
+        messages::{get_messsages_to_id, MessageRow},
         rooms::save_prev_token,
     },
+    AppState,
 };
 use log::{debug, warn};
-use rusqlite::{OptionalExtension, params};
-use tauri::{State, command};
+use rusqlite::{params, Connection, OptionalExtension};
+use tauri::{command, State};
 
-use crate::{TauriError, reqwest_response_to_http_response};
+use crate::{reqwest_response_to_http_response, TauriError};
 
 /// Fetches messages from the Matrix server for a given room, starting from a specified pagination token. Returns the messages and the next pagination token (if available).
 async fn get_messages_api(
@@ -43,7 +49,7 @@ async fn get_messages_api(
     server_info: &HomeServerInfo,
     access_token: &String,
     limit: usize,
-) -> Result<(Vec<Value>, Option<String>), TauriError> {
+) -> Result<(Vec<Raw<AnyTimelineEvent>>, Option<String>), TauriError> {
     let mut req = MessageEventsRequest::backward(OwnedRoomId::from_str(room_id.as_str())?);
 
     req.limit = UInt::try_from(limit)?;
@@ -61,14 +67,97 @@ async fn get_messages_api(
 
     let messages_res = MessageEventsResponse::try_from_http_response(res)?;
 
-    Ok((
-        messages_res
-            .chunk
-            .iter()
-            .filter_map(|v| serde_json::from_str::<Value>(v.json().get()).ok())
-            .collect(),
-        messages_res.end,
-    ))
+    // let mut changes = SyncChanges::default();
+
+    // for raw_event in messages_res.chunk.into_iter() {
+    //     if let Ok(event) = raw_event.deserialize() {
+    //         extract_timeline(
+    //             &mut changes,
+    //             &ruma_room_id,
+    //             event.into(),
+    //             raw_event.clone().json(),
+    //             raw_event.cast(),
+    //         )
+    //         .map_err(|e| {
+    //             log::error!("Failed to extract timeline event: {:?}", e);
+    //         });
+    //     }
+    // }
+
+    Ok((messages_res.chunk, messages_res.end))
+}
+
+fn get_ui_messages_from_rows(
+    conn: &mut Connection,
+    room_id: &String,
+    messages: Vec<MessageRow>,
+) -> Result<Vec<UiMessage>, TauriError> {
+    let mut ui_messages: Vec<UiMessage> = messages
+        .into_iter()
+        .filter_map(|v| v.try_into_ui_message().ok())
+        .collect();
+
+    let mut reactions: HashMap<String, HashSet<ReactionRow>> = HashMap::new();
+    let mut redactions: Vec<String> = Vec::new();
+    for msg in ui_messages.iter() {
+        if let MessageKind::SystemMessage(SystemMessage::MessageReacted { event_id, reaction }) =
+            &msg.kind
+        {
+            reactions
+                .entry(event_id.clone())
+                .or_insert_with(HashSet::new)
+                .insert(ReactionRow {
+                    event_id: msg.event_id.clone(),
+                    room_id: room_id.clone(),
+                    target_event_id: event_id.clone(),
+                    sender_id: msg.sender_id.clone(),
+                    reaction: reaction.clone(),
+                    timestamp: 0,
+                });
+        } else if let MessageKind::SystemMessage(SystemMessage::MessageRedacted {
+            event_id, ..
+        }) = &msg.kind
+        {
+            redactions.push(event_id.clone());
+        }
+    }
+
+    ui_messages = ui_messages
+        .into_iter()
+        .map(|mut msg| {
+            let mut old_reactions: HashSet<ReactionRow> =
+                get_reactions_for_message(conn, &msg.event_id)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .collect();
+
+            if let Some(new_reactions) = reactions.get(&msg.event_id) {
+                old_reactions.extend(new_reactions.clone());
+            }
+
+            let reactions_map: HashMap<String, HashSet<Reactor>> = old_reactions.into_iter().fold(
+                HashMap::new(),
+                |mut acc: HashMap<String, HashSet<Reactor>>, reaction| {
+                    acc.entry(reaction.reaction.clone())
+                        .or_insert_with(HashSet::new)
+                        .insert(Reactor {
+                            user_id: reaction.sender_id.clone(),
+                            event_id: reaction.event_id.clone(),
+                        });
+                    acc
+                },
+            );
+
+            msg.set_reactions(&reactions_map);
+
+            msg
+        })
+        .collect();
+
+    save_reactions(conn, reactions.into_values().flatten().collect())?;
+    redact_messages(conn, redactions)?;
+
+    Ok(ui_messages)
 }
 
 #[command(rename_all = "snake_case")]
@@ -84,14 +173,11 @@ pub async fn fetch_messages(
         .as_mut()
         .ok_or("Database connection not available")?;
 
-    let mut local_messages = get_messages(&conn, &room_id, oldest_id.clone(), limit)?;
+    let local_messages = get_messsages_to_id(&conn, &room_id, oldest_id.clone(), limit)?;
 
     if local_messages.len() >= limit {
         return Ok(FetchMessagesResponse {
-            messages: local_messages
-                .into_iter()
-                .filter_map(|m| m.try_into().ok())
-                .collect(),
+            messages: get_ui_messages_from_rows(conn, &room_id, local_messages)?,
             has_more: true,
         });
     }
@@ -108,10 +194,7 @@ pub async fn fetch_messages(
     let Some(prev_token) = prev_batch else {
         warn!("Room {room_id} has no prev_batch token, cannot fetch more messages from server");
         return Ok(FetchMessagesResponse {
-            messages: local_messages
-                .into_iter()
-                .filter_map(|m| m.try_into().ok())
-                .collect(),
+            messages: get_ui_messages_from_rows(conn, &room_id, local_messages)?,
             has_more: false,
         });
     };
@@ -121,74 +204,57 @@ pub async fn fetch_messages(
     let (api_messages, next_token) =
         get_messages_api(&room_id, &prev_token, &server_info, &access_token, limit).await?;
 
+    let mut changes = SyncChanges::default();
+
+    let ruma_room_id = RoomId::parse(&room_id)?;
+
+    let mut hit_room_create = false;
+
+    for raw_event in api_messages.into_iter() {
+        let decrypted_event =
+            if let Ok(AnyTimelineEvent::MessageLike(AnyMessageLikeEvent::RoomEncrypted(_))) =
+                &raw_event.deserialize()
+            {
+                match process_message(&state, &room_id, Raw::from_json(raw_event.into_json())).await
+                {
+                    Ok(processed) => processed,
+                    Err(e) => {
+                        log::error!("Failed to process encrypted message: {:?}", e);
+                        continue;
+                    }
+                }
+            } else {
+                raw_event
+            };
+
+        if let Ok(event) = decrypted_event.deserialize() {
+            if let AnyTimelineEvent::State(AnyStateEvent::RoomCreate(_)) = &event {
+                hit_room_create = true;
+            }
+
+            let _ = extract_timeline(
+                &mut changes,
+                &ruma_room_id,
+                event.into(),
+                decrypted_event.clone().json(),
+                decrypted_event.cast(),
+            )
+            .map_err(|e| {
+                log::error!("Failed to extract timeline event: {:?}", e);
+            });
+        }
+    }
+
+    apply_sync_changes(conn, changes)?;
+
     if let Some(next_token) = next_token.clone() {
         save_prev_token(conn, &room_id, &next_token)?;
     }
 
-    let mut hit_room_create = false;
-
-    for msg in api_messages {
-        let Some(event_id) = msg
-            .get("event_id")
-            .and_then(|v| v.as_str())
-            .map(|v| v.to_string())
-        else {
-            continue;
-        };
-        let Some(msg_type) = msg
-            .get("type")
-            .and_then(|v| v.as_str())
-            .map(|v| v.to_string())
-        else {
-            continue;
-        };
-
-        if msg_type == "m.room.create" {
-            hit_room_create = true;
-        }
-
-        let msg = if msg_type == "m.room.encrypted" {
-            match process_message(&state, &room_id, msg).await {
-                Ok(res) => res,
-                Err(_) => continue,
-            }
-        } else {
-            msg
-        };
-        let Some(msg_type) = msg
-            .get("type")
-            .and_then(|v| v.as_str())
-            .map(|v| v.to_string())
-        else {
-            continue;
-        };
-
-        let Some(timestamp) = msg.get("origin_server_ts").and_then(|v| v.as_i64()) else {
-            continue;
-        };
-        let Some(sender) = msg.get("sender").and_then(|v| v.as_str()) else {
-            continue;
-        };
-        local_messages.push(MessageRow {
-            event_id: event_id.to_string(),
-            room_id: room_id.clone(),
-            sender: sender.to_string(),
-            msg_type: msg_type.to_string(),
-            raw_json: msg.to_string(),
-            timestamp: timestamp as u64 / 1000,
-            state: MessageState::Sent,
-        });
-    }
-
-    save_messages(conn, local_messages.clone())?;
-
     let has_more = !hit_room_create && next_token.is_some() && next_token != Some(prev_token);
 
     Ok(FetchMessagesResponse {
-        messages: local_messages
-            .into_iter()
-            .filter_map(|m| m.try_into().ok())
-            .collect(),
+        messages: get_ui_messages_from_rows(conn, &room_id, local_messages)?,
         has_more,
     })
 }
@@ -202,6 +268,8 @@ pub async fn backfill_gap(
 
     let (access_token, server_info) = state.get_api().await?;
 
+    let ruma_room_id = RoomId::parse(&room_id)?;
+
     loop {
         let (api_messages, next_token) =
             get_messages_api(&room_id, &current_token, &server_info, &access_token, 50).await?;
@@ -210,68 +278,56 @@ pub async fn backfill_gap(
             break;
         }
 
-        let mut new_rows = Vec::new();
-        let mut hit_existing = false;
-
         {
             let mut conn_guard = state.connection.lock().await;
             let conn = conn_guard.as_mut().ok_or("Database not initialized")?;
 
-            for msg_val in api_messages {
-                let clone = msg_val.clone();
-                let Some(event_id) = clone.get("event_id").and_then(|v| v.as_str()) else {
-                    continue;
-                };
+            let mut changes = SyncChanges::default();
 
-                if crate::storage::messages::message_exists(conn, event_id)? {
-                    hit_existing = true;
-                    break;
-                }
-
-                let Some(msg_type) = msg_val.get("type").and_then(|v| v.as_str()) else {
-                    continue;
-                };
-
-                let processed_msg = if msg_type == "m.room.encrypted" {
-                    match process_message(state, &room_id, msg_val.clone()).await {
-                        Ok(res) => res,
-                        Err(_) => continue,
+            for raw_event in api_messages.into_iter() {
+                let decrypted_event = if let Ok(AnyTimelineEvent::MessageLike(
+                    AnyMessageLikeEvent::RoomEncrypted(_),
+                )) = &raw_event.deserialize()
+                {
+                    match process_message(&state, &room_id, Raw::from_json(raw_event.into_json()))
+                        .await
+                    {
+                        Ok(processed) => processed,
+                        Err(e) => {
+                            log::error!("Failed to process encrypted message: {:?}", e);
+                            continue;
+                        }
                     }
                 } else {
-                    msg_val
+                    raw_event
                 };
 
-                let Some(final_type) = processed_msg.get("type").and_then(|v| v.as_str()) else {
-                    continue;
-                };
-                let Some(timestamp) = processed_msg
-                    .get("origin_server_ts")
-                    .and_then(|v| v.as_i64())
-                else {
-                    continue;
-                };
-                let Some(sender) = processed_msg.get("sender").and_then(|v| v.as_str()) else {
-                    continue;
-                };
+                if let Ok(event) = decrypted_event.deserialize() {
+                    let _ = extract_timeline(
+                        &mut changes,
+                        &ruma_room_id,
+                        event.into(),
+                        decrypted_event.clone().json(),
+                        decrypted_event.cast(),
+                    )
+                    .map_err(|e| {
+                        log::error!("Failed to extract timeline event: {:?}", e);
+                    });
+                }
 
-                new_rows.push(MessageRow {
-                    event_id: event_id.to_string(),
-                    room_id: room_id.clone(),
-                    sender: sender.to_string(),
-                    msg_type: final_type.to_string(),
-                    raw_json: processed_msg.to_string(),
-                    timestamp: timestamp as u64 / 1000,
-                    state: MessageState::Sent,
-                });
+                save_prev_token(conn, &room_id, &current_token)?;
             }
 
-            if !new_rows.is_empty() {
-                save_messages(conn, new_rows)?;
+            if crate::storage::messages::any_exists(
+                conn,
+                changes
+                    .new_messages
+                    .iter()
+                    .map(|v| v.event_id.clone())
+                    .collect(),
+            )? {
+                break;
             }
-        }
-
-        if hit_existing {
-            break;
         }
 
         if let Some(token) = next_token {

@@ -6,9 +6,7 @@ use std::{
 
 use log::{trace, warn};
 use ruma::{
-    OwnedRoomId, UInt,
     api::{
-        IncomingResponse, OutgoingRequest,
         auth_scheme::SendAccessToken,
         client::{
             filter::FilterDefinition,
@@ -16,39 +14,42 @@ use ruma::{
                 Filter, Request as SyncRequest, Response as SyncResponse, State as SyncState,
             },
         },
+        IncomingResponse, OutgoingRequest,
     },
     events::{
-        AnyGlobalAccountDataEvent, AnyRoomAccountDataEvent, AnyStateEventContent,
-        AnySyncEphemeralRoomEvent, AnySyncMessageLikeEvent, AnySyncStateEvent,
-        AnySyncTimelineEvent, presence::PresenceEventContent,
+        presence::PresenceEventContent, room::message::Relation, AnyGlobalAccountDataEvent,
+        AnyRoomAccountDataEvent, AnyStateEventContent, AnySyncEphemeralRoomEvent,
+        AnySyncMessageLikeEvent, AnySyncStateEvent, AnySyncTimelineEvent,
     },
     presence::PresenceState,
     serde::Raw,
+    OwnedRoomId, UInt,
 };
 
 use serde_json::value::RawValue;
 use shared::{
-    messages::{MessageKind, MessageState, SystemMessage, UiMessage},
+    api::signals::MessagesUpdate,
+    messages::{MessageState, UiMessage},
     user_profile::{PresenceInfo, PresenceStatus},
 };
 use tauri::{AppHandle, Emitter};
 use tauri_plugin_http::reqwest::{self, Client};
-use uuid::Uuid;
 
 use crate::{
-    TauriError,
     frontend::{send_member_update, send_messages_update, send_sidebar_update},
     matrix_api::{crypto, handle_sync_calls, messages::backfill_gap},
     reqwest_response_to_http_response,
     state::{AppState, HomeServerInfo},
     storage::{
-        SyncChanges, apply_sync_changes, handle_safe_stuff,
+        apply_sync_changes, handle_safe_stuff,
         members::MemberRow,
-        messages::MessageRow,
-        reactions::ReactionRow,
+        message_extra::{MessageEditRow, ReactionRow},
+        messages::{get_messages_by_id_with_reactions, MessageRow},
         receipts::ReadReceiptRow,
         rooms::{RoomAliasRow, SpaceChildRow, SpaceParentRow},
+        MessageEditInfo, RedactEvent, SyncChanges,
     },
+    TauriError,
 };
 
 /// Performs a /sync request to the Matrix server with the given access token and since parameter, returning the parsed SyncResponse.
@@ -332,12 +333,19 @@ async fn handle_sync_response(
     let access_token = state.check_token().await?;
     let user_id = state.user_id().await?;
 
-    let res = {
+    let (res, affected_event_ids) = {
         let mut conn_guard = state.connection.lock().await;
         let conn = conn_guard
             .as_mut()
             .ok_or("Database connection not initialized")?;
-        apply_sync_changes(conn, changes.clone())?
+
+        let affected_event_ids: Vec<String> =
+            changes.get_affected_event_ids(conn).into_iter().collect();
+
+        (
+            apply_sync_changes(conn, changes.clone())?,
+            affected_event_ids,
+        )
     };
 
     let stuff = handle_sync_calls(server_info, access_token, res).await?;
@@ -353,46 +361,63 @@ async fn handle_sync_response(
         if sidebar_needs_update {
             send_sidebar_update(conn, handle, &user_id)?;
         }
-        if !changes.new_messages.is_empty() {
-            let mut messages_to_delete = state.messages_to_delete.write().await.to_owned();
 
+        if !changes.new_messages.is_empty() || !affected_event_ids.is_empty() {
             let messages: HashMap<String, Vec<UiMessage>> = changes
                 .new_messages
-                .into_iter()
-                .flat_map(|msg_row| -> Option<Vec<(String, UiMessage)>> {
-                    let room_id = msg_row.room_id.clone();
-                    let mut result = Vec::new();
+                .iter()
+                .cloned()
+                .filter_map(|row| {
+                    let Some(ui_msg) = row.try_into_ui_message().ok() else {
+                        return None;
+                    };
 
-                    let converted: UiMessage = msg_row.clone().try_into().ok()?;
-                    result.push((room_id.clone(), converted));
-
-                    if let Some(other_id) = messages_to_delete.get(&msg_row.event_id) {
-                        result.push((
-                            room_id.clone(),
-                            UiMessage {
-                                event_id: Uuid::new_v4().to_string(),
-                                sender_id: msg_row.sender,
-                                timestamp: msg_row.timestamp,
-                                state: MessageState::default(),
-                                kind: MessageKind::SystemMessage(SystemMessage::RemoveMessage {
-                                    event_id: other_id.clone(),
-                                }),
-                            },
-                        ));
-
-                        messages_to_delete.remove(&msg_row.event_id);
-                    }
-
-                    Some(result)
+                    Some(ui_msg)
                 })
-                .flatten()
-                .fold(HashMap::new(), |mut acc, (room_id, ui_msg)| {
-                    acc.entry(room_id).or_default().push(ui_msg);
+                .fold(HashMap::new(), |mut acc, msg| {
+                    acc.entry(msg.room_id.clone()).or_default().push(msg);
                     acc
                 });
 
             let current_room_id = state.room_id().await?;
             let frontend_focused = state.frontend_is_focused.read().await.to_owned();
+
+            let updated_messages_vec: Vec<UiMessage> =
+                get_messages_by_id_with_reactions(conn, affected_event_ids)?
+                    .into_iter()
+                    .filter_map(|(row, reactions)| {
+                        let Some(mut ui_msg) = row.try_into_ui_message().ok() else {
+                            return None;
+                        };
+
+                        ui_msg.set_reactions(&reactions);
+
+                        Some(ui_msg)
+                    })
+                    .collect();
+
+            let mut updated_messages: HashMap<String, Vec<UiMessage>> = HashMap::new();
+
+            for msg in updated_messages_vec {
+                updated_messages
+                    .entry(msg.room_id.clone())
+                    .or_default()
+                    .push(msg);
+            }
+
+            let messages_to_delete: HashSet<String> = state
+                .messages_to_delete
+                .write()
+                .await
+                .drain()
+                .map(|(_, txn_id)| txn_id)
+                .collect();
+
+            let payload = MessagesUpdate {
+                new_messages: messages,
+                updated_messages: updated_messages,
+                messages_to_remove: messages_to_delete,
+            };
 
             send_messages_update(
                 handle,
@@ -400,7 +425,7 @@ async fn handle_sync_response(
                 &user_id,
                 current_room_id,
                 frontend_focused,
-                messages,
+                payload,
                 !first_sync,
             )?;
         }
@@ -651,7 +676,7 @@ fn extract_state(
 }
 
 /// Extracts relevant information from a timeline event and updates the SyncChanges accordingly.
-fn extract_timeline(
+pub fn extract_timeline(
     changes: &mut SyncChanges,
     room_id: &OwnedRoomId,
     ev: AnySyncTimelineEvent,
@@ -692,6 +717,32 @@ fn extract_message(
             }
         }
         AnySyncMessageLikeEvent::RoomMessage(ev) => {
+            if let Some(or) = ev.as_original() {
+                if let Some(Relation::Replacement(repl)) = &or.content.relates_to {
+                    log::debug!(
+                        "Message edit in room {}: event {} replaces {}",
+                        room_id,
+                        ev.event_id(),
+                        repl.event_id
+                    );
+
+                    changes.message_edits.push((
+                        MessageEditInfo {
+                            room_id: room_id.to_string(),
+                            sender_id: ev.sender().to_string(),
+                        },
+                        MessageEditRow {
+                            event_id: ev.event_id().to_string(),
+                            target_event_id: repl.event_id.to_string(),
+                            new_json: raw_json.get().to_string(),
+                            timestamp: ev.origin_server_ts().as_secs().into(),
+                        },
+                    ));
+
+                    return Ok(());
+                }
+            }
+
             changes.new_messages.push(MessageRow {
                 event_id: ev.event_id().to_string(),
                 room_id: room_id.to_string(),
@@ -700,6 +751,7 @@ fn extract_message(
                 msg_type: "m.room.message".to_string(),
                 timestamp: ev.origin_server_ts().as_secs().into(),
                 state: MessageState::Sent,
+                last_edited_id: None,
             });
         }
         AnySyncMessageLikeEvent::RoomRedaction(ev) => {
@@ -711,7 +763,25 @@ fn extract_message(
                 msg_type: "m.room.redaction".to_string(),
                 timestamp: ev.origin_server_ts().as_secs().into(),
                 state: MessageState::Sent,
+                last_edited_id: None,
             });
+
+            if let Some(or) = ev.as_original() {
+                if let Some(redacted_id) = &or.redacts {
+                    log::debug!(
+                        "Redaction in room {}: event {} redacts {}",
+                        room_id,
+                        ev.event_id(),
+                        redacted_id
+                    );
+                    changes.redacted_events.push(RedactEvent {
+                        event_id: redacted_id.to_string(),
+                        room_id: room_id.to_string(),
+                        sender_id: ev.sender().to_string(),
+                        timestamp: ev.origin_server_ts().as_secs().into(),
+                    });
+                }
+            }
         }
         AnySyncMessageLikeEvent::RoomEncrypted(ev) => changes.new_messages.push(MessageRow {
             event_id: ev.event_id().to_string(),
@@ -721,6 +791,7 @@ fn extract_message(
             msg_type: "m.room.encrypted".to_string(),
             timestamp: ev.origin_server_ts().as_secs().into(),
             state: MessageState::Sent,
+            last_edited_id: None,
         }),
         AnySyncMessageLikeEvent::Reaction(ev) => {
             if let Some(or) = ev.as_original() {
@@ -732,13 +803,21 @@ fn extract_message(
                     msg_type: "m.reaction".to_string(),
                     timestamp: ev.origin_server_ts().as_secs().into(),
                     state: MessageState::Sent,
+                    last_edited_id: None,
                 });
+                log::debug!(
+                    "Reaction in room {}: event {} reacts to {} with {}",
+                    room_id,
+                    ev.event_id(),
+                    or.content.relates_to.event_id,
+                    or.content.relates_to.key
+                );
                 changes.reactions.push(ReactionRow {
                     event_id: ev.event_id().to_string(),
                     room_id: room_id.to_string(),
                     target_event_id: or.content.relates_to.event_id.to_string(),
                     sender_id: ev.sender().to_string(),
-                    reaction_key: or.content.relates_to.key.to_string(),
+                    reaction: or.content.relates_to.key.to_string(),
                     timestamp: ev.origin_server_ts().as_secs().into(),
                 });
             }
@@ -768,5 +847,6 @@ fn create_system_message(
         raw_json: raw_json,
         timestamp,
         state: MessageState::Sent,
+        last_edited_id: None,
     });
 }

@@ -1,7 +1,7 @@
-use std::{collections::HashMap};
+use std::collections::{HashMap, HashSet};
 
 use rusqlite::Connection;
-use shared::{messages::{MessageKind, UiMessage}, user_profile::UserProfile};
+use shared::{api::signals::MessagesUpdate, messages::{MessageKind, UiMessage}, user_profile::UserProfile};
 use tauri::{AppHandle, Emitter};
 
 use crate::{
@@ -60,9 +60,9 @@ pub fn send_sidebar_update(
 /// Emits message to the frontend in the `messages_update` event.
 pub fn emit_messages_update(
     handle: &AppHandle,
-    messages: &HashMap<String, Vec<UiMessage>>,
+    payload: &MessagesUpdate,
 ) -> Result<(), TauriError> {
-    handle.emit("messages_update", messages)?;
+    handle.emit("messages_update", payload)?;
     Ok(())
 }
 
@@ -71,10 +71,20 @@ pub fn emit_single_message_update(
     room_id: &String,
     message: &UiMessage,
 ) -> Result<(), TauriError> {
-    let payload = HashMap::from([(room_id.clone(), vec![message.clone()])]);
+    let payload = MessagesUpdate {
+       new_messages: HashMap::from([(room_id.clone(), vec![message.clone()])]),
+       updated_messages: HashMap::new(),
+       messages_to_remove: HashSet::new(),
+    };
     emit_messages_update(handle, &payload)
 }
 
+/// Returns a list of event IDs for messages that have been altered in any way (edited, deleted, failed to send) and need to be re-fetched from the server to update the frontend.
+// fn get_events_to_resend(messages: &Vec<UiMessage>) -> Vec<String> {
+//     messages.iter().filter_map(|msg|
+//         let message
+//     );
+// }
 
 pub fn send_messages_update(
     handle: &AppHandle,
@@ -82,17 +92,17 @@ pub fn send_messages_update(
     user_id: &String,
     current_room_id: Option<String>,
     frontend_focused: bool,
-    messages: HashMap<String, Vec<UiMessage>>,
+    payload: MessagesUpdate,
     send_notifications: bool,
 ) -> Result<(), TauriError> {
-    emit_messages_update(handle, &messages)?;
+    emit_messages_update(handle, &payload)?;
 
     if !send_notifications {
         return Ok(());
     }
 
 
-    for (room_id, messages) in messages {
+    for (room_id, messages) in payload.new_messages {
         if messages.is_empty() || (current_room_id == Some(room_id.clone()) && frontend_focused) {
             continue;
         }

@@ -25,10 +25,11 @@ use leptos::{ev, html::Div, leptos_dom::logging::console_error, prelude::*, task
 use leptos_use::{use_event_listener, use_intersection_observer, UseIntersectionObserverReturn};
 use serde_json::json;
 use shared::{
+    api::signals::MessagesUpdate,
     commands::Command,
     messages::{
-        MembershipAction, MessageContent, MessageKind, MessageState, RepliesTo, RichTextSpan,
-        SystemMessage, UiMessage, UserMessage,
+        MembershipAction, MessageContent, MessageKind, MessageState, Reactor, RepliesTo,
+        RichTextSpan, SystemMessage, UiMessage, UserMessage,
     },
     sidebar::{RoomKind, RoomNode, SidebarState},
     user_profile::{PresenceStatus, UserProfile},
@@ -119,7 +120,7 @@ fn render_user_message(
     room_id: String,
 ) -> impl IntoView {
     match &message.content {
-        MessageContent::Text { spans, is_edited } => {
+        MessageContent::Text { spans } => {
             view! {
                 <div class="text-normal leading-relaxed break-words">
                     {spans
@@ -127,7 +128,7 @@ fn render_user_message(
                         .into_iter()
                         .map(|v| v.render(store.clone(), room_id.clone()))
                         .collect_view()}
-                    {if *is_edited {
+                    {if message.is_edited {
                         view! { <span class="text-xs text-muted ml-2 italic">"(edited)"</span> }
                             .into_any()
                     } else {
@@ -201,7 +202,7 @@ fn render_user_message(
 }
 
 fn render_reactions(
-    reactions: &HashMap<String, HashSet<String>>,
+    reactions: &HashMap<String, HashSet<Reactor>>,
     store: MemberStore,
     room_id: &String,
     user_id: &String,
@@ -213,7 +214,7 @@ fn render_reactions(
     let content = reactions
         .iter()
         .map(|(emoji, reactors)| {
-            let reactors_vec: Vec<String> = reactors.iter().cloned().collect();
+            let reactors_vec: Vec<String> = reactors.iter().cloned().map(|v| v.user_id).collect();
             let emoji = emoji.clone();
             let store = store.clone();
             let room_id = room_id.clone();
@@ -245,7 +246,7 @@ fn render_reactions(
                 pics.collect_view()
             };
 
-            let contains_user = reactors.contains(user_id);
+            let contains_user = reactors.iter().any(|v| &v.user_id == user_id);
 
             view! {
                 <div
@@ -645,40 +646,37 @@ fn TimeLine() -> impl IntoView {
 
     let sidebar_update_event: ReadSignal<Option<SidebarState>> = use_tauri_event("sidebar_update");
 
-    let messages_update_event: ReadSignal<Option<HashMap<String, Vec<UiMessage>>>> =
+    let messages_update_event: ReadSignal<Option<MessagesUpdate>> =
         use_tauri_event("messages_update");
 
     Effect::new(move |_| {
-        let Some(update) = messages_update_event.get() else {
+        let Some(mut update) = messages_update_event.get() else {
             return;
         };
 
-        let Some(room_id) = state.active_room_id.get() else {
+        let Some(room_id) = state.active_room_id.get_untracked() else {
             return;
         };
 
-        let Some(new_msgs) = update.get(&room_id) else {
-            return;
-        };
+        let new_msgs = update.new_messages.remove(&room_id).unwrap_or_default();
+        let msg_updates = update.updated_messages.remove(&room_id).unwrap_or_default();
+        let msgs_to_remove = update.messages_to_remove;
+
+        let updates_map: HashMap<String, UiMessage> = msg_updates
+            .into_iter()
+            .map(|m| (m.event_id.clone(), m))
+            .collect();
 
         set_messages.update(|existing| {
-            let mut seen_ids: HashSet<String> =
-                existing.iter().map(|m| m.event_id.clone()).collect();
+            existing.retain(|m| !msgs_to_remove.contains(&m.event_id));
 
-            for msg in new_msgs {
-                match &msg.kind {
-                    MessageKind::SystemMessage(SystemMessage::RemoveMessage { event_id }) => {
-                        existing.retain(|m| &m.event_id != event_id);
-                    }
-                    _ => {
-                        if seen_ids.contains(&msg.event_id) {
-                            existing.retain(|m| m.event_id != msg.event_id);
-                        }
-                        existing.push(msg.clone());
-                        seen_ids.insert(msg.event_id.clone());
-                    }
+            for msg in existing.iter_mut() {
+                if let Some(updated_msg) = updates_map.get(&msg.event_id) {
+                    *msg = updated_msg.clone();
                 }
             }
+
+            existing.extend(new_msgs);
         });
     });
 
@@ -750,65 +748,15 @@ fn TimeLine() -> impl IntoView {
         let marker_id = read_marker_id.get();
         let has_unread = show_unread_indicator.get();
 
-        let mut edits = HashMap::new();
-        let mut redactions = HashSet::new();
-        let mut reactions_map: HashMap<String, HashMap<String, HashSet<String>>> = HashMap::new();
-
-        let mut processed_messages = HashMap::new();
+        let processed_messages = msgs
+            .iter()
+            .map(|m| (m.event_id.clone(), m.clone()))
+            .collect::<HashMap<_, _>>();
 
         let marker_ts = marker_id
             .as_ref()
             .and_then(|mid| msgs.iter().find(|m| m.event_id == *mid))
             .map(|m| m.timestamp);
-
-        msgs = msgs
-            .into_iter()
-            .filter(|msg| match &msg.kind {
-                MessageKind::SystemMessage(SystemMessage::MessageRedacted { event_id, .. }) => {
-                    redactions.insert(event_id.clone());
-                    false
-                }
-                _ => true,
-            })
-            .collect();
-
-        msgs = msgs
-            .into_iter()
-            .filter(|msg| {
-                if redactions.contains(&msg.event_id) {
-                    if matches!(msg.kind, MessageKind::SystemMessage(_)) {
-                        return false;
-                    }
-                }
-
-                let result = match &msg.kind {
-                    MessageKind::SystemMessage(SystemMessage::MessageEdited {
-                        event_id,
-                        new_spans,
-                    }) => {
-                        edits.insert(event_id.clone(), new_spans.clone());
-                        false
-                    }
-                    MessageKind::SystemMessage(SystemMessage::MessageReacted {
-                        event_id,
-                        ref reaction,
-                    }) => {
-                        // Add user id to vec of hashmap at key user id
-                        reactions_map
-                            .entry(event_id.clone())
-                            .or_default()
-                            .entry(reaction.clone())
-                            .or_default()
-                            .insert(msg.sender_id.clone());
-                        false
-                    }
-                    _ => true,
-                };
-
-                processed_messages.insert(msg.event_id.clone(), msg.clone());
-                result
-            })
-            .collect();
 
         let mut seen_marker_id = false;
         let mut inserted_marker = false;
@@ -821,16 +769,6 @@ fn TimeLine() -> impl IntoView {
             ) = &msg.kind
             {
                 continue;
-            }
-
-            if redactions.contains(&msg.event_id) {
-                msg.delete();
-            }
-            if let Some(new_spans) = edits.get(&msg.event_id) {
-                msg.edit(new_spans.clone());
-            }
-            if let Some(reactions) = reactions_map.get(&msg.event_id) {
-                msg.add_reactions(reactions);
             }
 
             let current_date = get_date_from_ts(msg.timestamp as i64);
@@ -971,7 +909,7 @@ fn TimeLine() -> impl IntoView {
                 .min_by_key(|m| m.timestamp)
                 .map(|m| m.event_id.clone());
 
-            let result = fetch_messages(room_id, oldest_id).await;
+            let result = fetch_messages(room_id.clone(), oldest_id).await;
 
             match result {
                 Ok(res) => {

@@ -1,20 +1,17 @@
-use shared::user_profile::UserProfile;
-use std::collections::HashMap;
-use std::collections::HashSet;
-use std::sync::Arc;
-use tauri::{State, command};
-
+use crate::storage::message_extra::delete_reactions_where_event_id_deleted;
+use crate::storage::message_extra::normalize_edits;
+use crate::storage::message_extra::MessageEditRow;
+use crate::storage::message_extra::ReactionRow;
+use crate::storage::rooms::RoomAliasRow;
 use crate::AppState;
 use crate::TauriError;
-use crate::storage::reactions::ReactionRow;
-use crate::storage::rooms::RoomAliasRow;
 use members::MemberRow;
 use messages::MessageRow;
 use receipts::ReadReceiptRow;
 use rooms::{RoomRow, SpaceChildRow, SpaceParentRow};
 use ruma::OwnedRoomId;
-use rusqlite::Connection;
 use rusqlite::params;
+use rusqlite::Connection;
 use shared::sidebar::FlatRoom;
 use shared::user_profile::UserProfile;
 use std::collections::HashMap;
@@ -23,8 +20,8 @@ use std::sync::Arc;
 use tauri::{command, State};
 
 pub(crate) mod members;
+pub(crate) mod message_extra;
 pub(crate) mod messages;
-pub(crate) mod reactions;
 pub(crate) mod receipts;
 pub(crate) mod rooms;
 
@@ -52,6 +49,7 @@ pub async fn init_storage(
     ReadReceiptRow::create_table(&conn)?;
     RoomAliasRow::create_table(&conn)?;
     ReactionRow::create_table(&conn)?;
+    MessageEditRow::create_table(&conn)?;
 
     Ok((db_exists, conn))
 }
@@ -68,26 +66,90 @@ pub struct RedactEvent {
     pub timestamp: u64,
 }
 
-#[derive(Default, Debug, Clone)]
+#[derive(Debug, Clone)]
+pub struct MessageEditInfo {
+    pub room_id: String,
+    pub sender_id: String,
+}
 
+#[derive(Default, Debug, Clone)]
 pub struct SyncChanges {
     pub joined_rooms: Vec<OwnedRoomId>,
+
     pub new_messages: Vec<MessageRow>,
     pub member_updates: HashMap<(String, String), MemberRow>,
+
     pub read_receipts: Vec<ReadReceiptRow>,
 
     pub reactions: Vec<ReactionRow>,
 
     pub direct_rooms: Option<HashSet<OwnedRoomId>>,
+
     pub redacted_events: Vec<RedactEvent>,
+    pub message_edits: Vec<(MessageEditInfo, MessageEditRow)>,
+
     pub room_aliases: HashMap<OwnedRoomId, Vec<RoomAliasRow>>,
     pub room_updates: HashMap<OwnedRoomId, RoomRow>,
+
     pub space_children: Vec<SpaceChildRow>,
     pub space_parents: Vec<SpaceParentRow>,
 }
 
+impl SyncChanges {
+    // Gets all event IDs that are affected by the sync, which should be used to trigger updates in the frontend.
+    pub fn get_affected_event_ids(&self, conn: &Connection) -> HashSet<String> {
+        let mut event_ids = HashSet::new();
+
+        for (_, msg) in &self.message_edits {
+            event_ids.insert(msg.target_event_id.clone());
+        }
+
+        for reaction in &self.reactions {
+            event_ids.insert(reaction.target_event_id.clone());
+        }
+
+        event_ids.extend(
+            get_affected_event_ids(
+                conn,
+                self.redacted_events
+                    .iter()
+                    .map(|e| e.event_id.clone())
+                    .collect(),
+            )
+            .unwrap_or_default(),
+        );
+
+        event_ids
+    }
+}
+
+/// Checks if the given event ID is a reaction or an edit, which would mean that redacting it shouldn't cause the message to be deleted, just the reaction/edit itself.
+pub fn get_affected_event_ids(
+    conn: &Connection,
+    event_ids: Vec<String>,
+) -> Result<Vec<String>, TauriError> {
+    let mut stmt = conn.prepare(
+        "SELECT DISTINCT
+            COALESCE(r.target_event_id, e.target_event_id, input_id.value) AS resolved_id
+         FROM json_each(?) AS input_id
+         LEFT JOIN reactions r ON input_id.value = r.event_id
+         LEFT JOIN message_edits e ON input_id.value = e.event_id",
+    )?;
+
+    let json_array = serde_json::to_string(&event_ids)?;
+    let mut rows = stmt.query(rusqlite::params![json_array])?;
+
+    let mut resolved_ids = Vec::new();
+    while let Some(row) = rows.next()? {
+        let id: String = row.get(0)?;
+        resolved_ids.push(id);
+    }
+
+    Ok(resolved_ids)
+}
+
 pub struct SyncCallsToExecute {
-    pub get_members: Vec<OwnedRoomId>,
+    pub get_members: Vec<String>,
 }
 
 #[derive(Default)]
@@ -106,14 +168,22 @@ pub fn apply_sync_changes(
     let mut stmt_room_exists = tx.prepare("SELECT room_id FROM rooms WHERE room_id = ?")?;
     let mut stmt_ensure_rooms = tx.prepare("INSERT OR IGNORE INTO rooms (room_id) VALUES (?)")?;
 
-    for room_id in &changes.joined_rooms {
+    let rooms_to_ensure: Vec<String> = changes
+        .joined_rooms
+        .iter()
+        .map(|v| v.to_string())
+        .clone()
+        .chain(changes.reactions.iter().map(|v| v.room_id.clone()).clone())
+        .collect();
+
+    for room_id in rooms_to_ensure {
         let exists: bool = stmt_room_exists
-            .query_row(params![room_id.to_string()], |_| Ok(()))
+            .query_row(params![room_id.clone()], |_| Ok(()))
             .is_ok();
         if !exists {
             new_rooms.push(room_id.clone());
         }
-        stmt_ensure_rooms.execute(params![room_id.to_string()])?;
+        stmt_ensure_rooms.execute(params![room_id])?;
     }
 
     drop(stmt_room_exists);
@@ -121,8 +191,8 @@ pub fn apply_sync_changes(
 
     if !changes.redacted_events.is_empty() {
         let mut stmt_redact = tx.prepare(
-            "INSERT INTO messages (event_id, room_id, sender, msg_type, raw_json, timestamp, state)
-                 VALUES (?1, ?2, ?3, 'm.room.message', '{}', ?4, 'deleted')
+            "INSERT INTO messages (event_id, room_id, sender, msg_type, raw_json, timestamp, state, last_edited_id)
+                 VALUES (?1, ?2, ?3, 'm.room.message', '{}', ?4, 'deleted', NULL)
                  ON CONFLICT(event_id) DO UPDATE SET
                     state = 'deleted'",
         )?;
@@ -204,14 +274,45 @@ pub fn apply_sync_changes(
         drop(stmt_update_direct);
     }
 
+    let mut stmt_ensure_edited_messages = tx.prepare(
+        "INSERT INTO messages (event_id, room_id, sender, msg_type, raw_json, timestamp, state, last_edited_id)
+         VALUES (?1, ?2, ?3, 'm.room.message', '{}', ?4, 'unknown', NULL)
+         ON CONFLICT(event_id) DO NOTHING",
+    )?;
+    let mut stmt_edited_messages = tx.prepare(
+        "INSERT INTO message_edits (event_id, target_event_id, new_json, timestamp)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(event_id) DO UPDATE SET
+            new_json = excluded.new_json,
+            timestamp = excluded.timestamp",
+    )?;
+    for (edit_info, edit_row) in &changes.message_edits {
+        stmt_ensure_edited_messages.execute(params![
+            edit_row.target_event_id,
+            edit_info.room_id,
+            edit_info.sender_id,
+            edit_row.timestamp,
+        ])?;
+
+        stmt_edited_messages.execute(params![
+            edit_row.event_id,
+            edit_row.target_event_id,
+            edit_row.new_json,
+            edit_row.timestamp
+        ])?;
+    }
+    drop(stmt_ensure_edited_messages);
+    drop(stmt_edited_messages);
+
     let mut stmt_messages = tx.prepare(
-        "INSERT INTO messages (event_id, room_id, sender, msg_type, raw_json, timestamp, state)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        "INSERT INTO messages (event_id, room_id, sender, msg_type, raw_json, timestamp, state, last_edited_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(event_id) DO UPDATE SET
             msg_type = excluded.msg_type,
             raw_json = excluded.raw_json,
             timestamp = excluded.timestamp,
             sender = excluded.sender,
+            last_edited_id = excluded.last_edited_id,
             state = CASE
                 WHEN messages.state = 'deleted' THEN messages.state
                 ELSE excluded.state
@@ -226,16 +327,19 @@ pub fn apply_sync_changes(
             msg.msg_type,
             msg.raw_json,
             msg.timestamp,
-            msg.state.to_string()
+            msg.state.to_string(),
+            msg.last_edited_id,
         ])?;
     }
 
     drop(stmt_messages);
 
     let mut stmt_ensure_messages = tx.prepare(
-        "INSERT OR IGNORE INTO messages (event_id, room_id, sender, msg_type, raw_json, timestamp, state)
-         VALUES (?, ?, 'unknown', 'm.room.message', '{}', ?, 'stub')"
+        "INSERT INTO messages (event_id, room_id, sender, msg_type, raw_json, timestamp, state)
+         VALUES (?, ?, 'unknown', 'm.room.message', '{}', ?, 'unknown')
+         ON CONFLICT(event_id) DO NOTHING",
     )?;
+
     for reaction in &changes.reactions {
         stmt_ensure_messages.execute(params![
             reaction.target_event_id,
@@ -243,24 +347,27 @@ pub fn apply_sync_changes(
             reaction.timestamp,
         ])?;
     }
+
     drop(stmt_ensure_messages);
 
     let mut stmt_reactions = tx.prepare(
-        "INSERT INTO reactions (event_id, room_id, target_event_id, sender_id, reaction_key, timestamp)
+        "INSERT INTO reactions (event_id, room_id, target_event_id, sender_id, reaction, timestamp)
         VALUES (?, ?, ?, ?, ?, ?)
         ON CONFLICT(event_id) DO UPDATE SET
             timestamp = excluded.timestamp",
     )?;
+
     for reaction in changes.reactions {
         stmt_reactions.execute(params![
             reaction.event_id,
             reaction.room_id,
             reaction.target_event_id,
             reaction.sender_id,
-            reaction.reaction_key,
+            reaction.reaction,
             reaction.timestamp
         ])?;
     }
+
     drop(stmt_reactions);
 
     let mut stmt_members = tx.prepare(
@@ -364,6 +471,7 @@ pub fn apply_sync_changes(
     tx.commit()?;
 
     delete_reactions_where_event_id_deleted(conn)?;
+    normalize_edits(conn)?;
 
     Ok(SyncCallsToExecute {
         get_members: new_rooms,
@@ -456,21 +564,13 @@ pub fn fetch_sidebar(
     let room_iter = stmt.query_map([own_user_id, own_user_id, own_user_id], |row| {
         Ok(FlatRoom {
             room_id: row.get(0)?,
-
             name: row.get(1)?,
-
             topic: row.get(2)?,
-
             avatar_url: row.get(3)?,
-
             room_type: row.get(4)?,
-
             is_direct: row.get(5)?,
-
             last_ts: row.get(6)?,
-
             highlight_count: row.get(7)?,
-
             notification_count: row.get(8)?,
         })
     })?;
@@ -482,33 +582,20 @@ pub fn fetch_sidebar(
     }
 
     // Only respect child links if the child isn't a space, or if it is a space AND has a valid backlink.
-
     // This prevents un-consented spaces from swallowing top-level servers.
-
     let mut stmt_links = conn.prepare(
-
         "SELECT sc.parent_room_id, sc.child_room_id
-
         FROM space_children sc
-
         LEFT JOIN rooms child_room ON sc.child_room_id = child_room.room_id
-
         LEFT JOIN space_parents sp ON sc.child_room_id = sp.child_room_id AND sc.parent_room_id = sp.parent_room_id
-
         WHERE child_room.room_id IS NULL
-
            OR child_room.room_type IS NULL
-
            OR child_room.room_type != 'm.space'
-
            OR sp.parent_room_id IS NOT NULL
-
         ORDER BY sc.order_str"
-
     )?;
 
     let mut parent_to_children: HashMap<String, Vec<String>> = HashMap::new();
-
     let mut all_children: HashSet<String> = HashSet::new();
 
     let link_iter = stmt_links.query_map([], |row| {
@@ -521,7 +608,6 @@ pub fn fetch_sidebar(
                 .entry(parent_id)
                 .or_default()
                 .push(child_id.clone());
-
             all_children.insert(child_id);
         }
     }
@@ -530,27 +616,20 @@ pub fn fetch_sidebar(
 }
 
 #[command(rename_all = "snake_case")]
-
 pub async fn get_members(
     state: State<'_, Arc<AppState>>,
-
     room_id: String,
 ) -> Result<HashMap<String, UserProfile>, TauriError> {
     let conn_guard = state.connection.lock().await;
-
     let conn = conn_guard
         .as_ref()
         .ok_or("Database connection not initialized")?;
 
     let mut stmt = conn.prepare(
         "SELECT room_id, user_id, display_name, avatar_url, membership
-
         FROM members
-
         WHERE room_id = ?
-
         UNION ALL
-
         SELECT ?, ?, 'room', NULL, 'join'",
     )?;
 
@@ -559,30 +638,22 @@ pub async fn get_members(
         |row| {
             Ok(MemberRow {
                 room_id: row.get(0)?,
-
                 user_id: row.get(1)?,
-
                 display_name: row.get(2)?,
-
                 avatar_url: row.get(3)?,
-
                 membership: row.get(4)?,
             })
         },
     )?;
 
     let mut members = HashMap::new();
-
     for member in member_iter {
         let member = member?;
-
         members.insert(
             member.user_id.clone(),
             UserProfile {
                 user_id: member.user_id,
-
                 display_name: member.display_name,
-
                 avatar_url: member.avatar_url,
             },
         );
@@ -596,15 +667,10 @@ pub fn handle_safe_stuff(conn: &mut Connection, stuff: SafeStuff) -> Result<(), 
 
     let mut stmt_members = tx.prepare(
         "INSERT INTO members (room_id, user_id, display_name, avatar_url, membership)
-
         VALUES (?, ?, ?, ?, ?)
-
         ON CONFLICT(room_id, user_id) DO UPDATE SET
-
             display_name = excluded.display_name,
-
             avatar_url = excluded.avatar_url,
-
             membership = excluded.membership",
     )?;
 

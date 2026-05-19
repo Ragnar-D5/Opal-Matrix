@@ -46,17 +46,22 @@ impl RichTextExt for RichTextSpan {
             }
 
             RichTextSpan::Link { url, .. } => {
-                let style =
-                    "color: var(--link-color); text-decoration: underline; cursor: pointer;";
+                let style = "color: var(--accent-color); cursor: pointer;";
                 let url_click = url.clone();
 
                 view! {
-                    <span style=style class="text-token" on:click=move |_| {
-                        let url_async = url_click.clone(); // Clone inside the handler for this specific click execution
-                        spawn_local(async move {
-                            let _ =openUrl(&url_async).await.map_err(|e| log::warn!("Failed to open link: {:?}", e));
-                        });
-                    }>
+                    <span
+                        style=style
+                        class="text-token"
+                        on:click=move |_| {
+                            let url_async = url_click.clone();
+                            spawn_local(async move {
+                                let _ = openUrl(&url_async)
+                                    .await
+                                    .map_err(|e| log::warn!("Failed to open link: {:?}", e));
+                            });
+                        }
+                    >
                         {url}
                     </span>
                 }
