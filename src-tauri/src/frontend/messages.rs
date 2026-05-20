@@ -1,5 +1,5 @@
-use std::{collections::HashMap, str::FromStr, sync::Arc};
 use matrix_sdk::Client as MatrixClient;
+use std::{collections::HashMap, str::FromStr, sync::Arc};
 
 use chrono::Local;
 use ego_tree::NodeRef;
@@ -7,9 +7,10 @@ use log::{error, warn};
 use ruma::{OwnedUserId, RoomId, events::Mentions};
 use scraper::{Html, Node};
 use serde_json::json;
-use shared::{api::FetchMessagesResponse, messages::{
-    MessageContent, MessageKind, MessageState, RichTextSpan, UiMessage, UserMessage,
-}};
+use shared::{
+    api::FetchMessagesResponse,
+    messages::{MessageContent, MessageKind, MessageState, RichTextSpan, UiMessage, UserMessage},
+};
 use tauri::{AppHandle, State, async_runtime::spawn, command};
 use tokio::sync::RwLock;
 use uuid::Uuid;
@@ -284,13 +285,20 @@ pub async fn fetch_messages(
     oldest_id: Option<String>,
 ) -> Result<FetchMessagesResponse, TauriError> {
     let matrix_client = matrix_client.read().await;
-    let room = matrix_client.get_room(&RoomId::parse(room_id)?).ok_or("No room found")?;
+    let room = matrix_client
+        .get_room(&RoomId::parse(&room_id)?)
+        .ok_or("No room found")?;
 
     let timeline = timeline_manager.get_or_create_timeline(&room).await?;
+    timeline.paginate_backwards(30).await?;
+
+    let (messages, _) = timeline.subscribe().await;
+
+    log::info!("Room_id {room_id}, messages: {:?}", messages);
 
     let resp = FetchMessagesResponse {
-        has_more: true,
-        messages: Vec::new()
+        has_more: false,
+        messages: Vec::new(),
     };
 
     Ok(resp)

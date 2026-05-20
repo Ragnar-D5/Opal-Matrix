@@ -10,7 +10,7 @@ use shared::sidebar::{FlatRoom, RoomKind, RoomNode, SidebarState};
 use tauri::AppHandle;
 use tauri::Emitter;
 
-use crate::{storage::members::get_other_member_in_dm, TauriError};
+use crate::{TauriError, storage::members::get_other_member_in_dm};
 
 pub async fn send_sidebar(all_rooms: &[Room], handle: &AppHandle) -> Result<(), TauriError> {
     let mut channels = HashMap::new();
@@ -21,7 +21,8 @@ pub async fn send_sidebar(all_rooms: &[Room], handle: &AppHandle) -> Result<(), 
             let unread_counts = room.unread_notification_counts();
 
             let targets = room.direct_targets();
-            let other_user_ids: Vec<&UserId> = targets.iter().filter_map(|u| u.as_user_id()).collect();
+            let other_user_ids: Vec<&UserId> =
+                targets.iter().filter_map(|u| u.as_user_id()).collect();
 
             let Some(first_id) = other_user_ids.first() else {
                 log::warn!("DM room {} has no direct targets", room.room_id());
@@ -69,7 +70,6 @@ pub async fn send_sidebar(all_rooms: &[Room], handle: &AppHandle) -> Result<(), 
         }
 
         children_to_parents.insert(id, actual_parents);
-
     }
 
     let mut parent_to_children: HashMap<String, Vec<String>> = HashMap::new();
@@ -88,8 +88,6 @@ pub async fn send_sidebar(all_rooms: &[Room], handle: &AppHandle) -> Result<(), 
         }
     }
 
-    log::debug!("Parent to children mapping: {:#?}", parent_to_children);
-
     // 2. Build the top-level servers (Spaces with no parents)
     let mut top_level_servers = Vec::new();
     for room_id in channels.keys() {
@@ -100,8 +98,10 @@ pub async fn send_sidebar(all_rooms: &[Room], handle: &AppHandle) -> Result<(), 
         };
 
         // A server is a space that is not a child of any other space
-        if is_space && !all_children.contains(room_id)
-            && let Some(node) = build_async_node(room_id, &channels, &parent_to_children).await {
+        if is_space
+            && !all_children.contains(room_id)
+            && let Some(node) = build_async_node(room_id, &channels, &parent_to_children).await
+        {
             top_level_servers.push(node);
         }
     }
@@ -131,8 +131,6 @@ pub async fn send_sidebar(all_rooms: &[Room], handle: &AppHandle) -> Result<(), 
         orphaned_rooms: orphaned_channels,
     };
 
-    log::debug!("Emitting sidebar update: {:#?}", sidebar_state);
-
     handle.emit("sidebar_update", sidebar_state)?;
 
     Ok(())
@@ -157,7 +155,9 @@ async fn build_async_node(
 
         if let Some(child_ids) = parent_to_children.get(room_id) {
             for child_id in child_ids {
-                if let Some(child_node) = build_async_node(child_id, channels, parent_to_children).await {
+                if let Some(child_node) =
+                    build_async_node(child_id, channels, parent_to_children).await
+                {
                     highlight_count += child_node.highlight_count;
                     notification_count += child_node.notification_count;
                     children_nodes.push(child_node);
@@ -209,7 +209,10 @@ pub fn build_tree(
                 highlight_count: room.highlight_count,
                 notification_count: room.notification_count,
 
-                kind: RoomKind::Dm { other_user_ids: vec![dm_user_id.unwrap_or_default()], last_ts: room.last_ts },
+                kind: RoomKind::Dm {
+                    other_user_ids: vec![dm_user_id.unwrap_or_default()],
+                    last_ts: room.last_ts,
+                },
             });
             false
         } else {
@@ -219,10 +222,12 @@ pub fn build_tree(
 
     // Find top-level servers
     for (room_id, room) in &all_rooms {
-        if room.room_type.as_deref() == Some("m.space") && !all_children.contains(room_id)
-            && let Some(node) = build_node(room_id, &all_rooms, &parent_to_children) {
-                top_level_servers.push(node);
-            }
+        if room.room_type.as_deref() == Some("m.space")
+            && !all_children.contains(room_id)
+            && let Some(node) = build_node(room_id, &all_rooms, &parent_to_children)
+        {
+            top_level_servers.push(node);
+        }
     }
 
     // Find orphaned channels (those that are not DMs, not spaces, and not children of any space)

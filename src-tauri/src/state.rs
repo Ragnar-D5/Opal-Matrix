@@ -1,7 +1,7 @@
 use log::info;
 use matrix_sdk::Room;
-use matrix_sdk_ui::{timeline::TimelineBuilder, Timeline};
-use ruma::{api::SupportedVersions, OwnedRoomId, UserId};
+use matrix_sdk_ui::{Timeline, timeline::TimelineBuilder};
+use ruma::{OwnedRoomId, UserId, api::SupportedVersions};
 use rusqlite::Connection;
 use std::{
     collections::HashMap,
@@ -10,8 +10,8 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tauri::{
-    async_runtime::{JoinHandle, Mutex, RwLock},
     AppHandle,
+    async_runtime::{JoinHandle, Mutex, RwLock},
 };
 use tauri_plugin_http::reqwest::Client;
 use url::Url;
@@ -20,13 +20,13 @@ use matrix_sdk_crypto::{CrossSigningKeyExport, OlmMachine};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    construct_url,
+    TauriError, construct_url,
     matrix_api::{
         authentication::{self, get_account_data},
         crypto::{self, StoredSession},
-        discovery::{fetch_supported_versions, Authentication},
+        discovery::{Authentication, fetch_supported_versions},
     },
-    storage, TauriError,
+    storage,
 };
 
 #[derive(Default, Clone)]
@@ -155,32 +155,32 @@ impl AppState {
     }
 
     async fn refresh_token(&self) -> Result<(), TauriError> {
-        let refresh_token = {
-            let token_guard = self.token.read().await;
-            let token = token_guard.as_ref().ok_or("Not logged in")?.clone();
+        // let refresh_token = {
+        //     let token_guard = self.token.read().await;
+        //     let token = token_guard.as_ref().ok_or("Not logged in")?.clone();
 
-            if let Some(refresh) = token.refresh_token {
-                refresh
-            } else {
-                return Err("No refresh token available".into());
-            }
-        };
+        //     if let Some(refresh) = token.refresh_token {
+        //         refresh
+        //     } else {
+        //         return Err("No refresh token available".into());
+        //     }
+        // };
 
-        let server_info = self
-            .home_server_info
-            .read()
-            .await
-            .clone()
-            .ok_or("Not logged in")?;
+        // let server_info = self
+        //     .home_server_info
+        //     .read()
+        //     .await
+        //     .clone()
+        //     .ok_or("Not logged in")?;
 
-        let res = authentication::refresh_token(server_info, refresh_token.token).await?;
+        // let res = authentication::refresh_token(server_info, refresh_token.token).await?;
 
-        {
-            let mut write_guard = self.token.write().await;
-            *write_guard = Some(res);
-        }
+        // {
+        //     let mut write_guard = self.token.write().await;
+        //     *write_guard = Some(res);
+        // }
 
-        self.save_session().await?;
+        // self.save_session().await?;
 
         return Ok(());
     }
@@ -248,7 +248,7 @@ impl AppState {
             };
 
             if still_needs_refresh {
-                self.refresh_token().await?;
+                // self.refresh_token().await?;
             }
         }
 
@@ -519,6 +519,14 @@ pub struct TimelineManager {
     pub timelines: RwLock<HashMap<OwnedRoomId, Arc<Timeline>>>,
 }
 
+impl Default for TimelineManager {
+    fn default() -> Self {
+        TimelineManager {
+            timelines: RwLock::new(HashMap::new()),
+        }
+    }
+}
+
 impl TimelineManager {
     pub fn new() -> Self {
         TimelineManager {
@@ -532,6 +540,7 @@ impl TimelineManager {
             return Ok(timeline.clone());
         }
 
+        log::debug!("Creating new timeline for room {}", room.room_id());
         let timeline = TimelineBuilder::new(room)
             .with_date_divider_mode(matrix_sdk_ui::timeline::DateDividerMode::Daily)
             .build()

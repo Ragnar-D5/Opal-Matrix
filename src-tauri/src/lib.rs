@@ -5,8 +5,9 @@ use matrix_sdk::authentication::matrix::MatrixSession;
 use matrix_sdk::config::SyncSettings;
 use matrix_sdk::ruma::{OwnedDeviceId, UserId};
 use matrix_sdk::{AuthSession, Client as MatrixClient, LoopCtrl, SessionMeta, SessionTokens};
-use shared::api::errors::LoginError;
+use matrix_sdk_crypto::{DecryptionSettings, TrustRequirement};
 use shared::api::RestoreResponse;
+use shared::api::errors::LoginError;
 use std::collections::HashMap;
 use std::fs::{read_to_string, write};
 use std::sync::Arc;
@@ -14,14 +15,14 @@ use tauri::async_runtime::block_on;
 use tokio::sync::RwLock;
 use tokio_util::io::simplex::new;
 
-use aes::cipher::{KeyIvInit, StreamCipher};
 use aes::Aes256;
-use base64::engine::general_purpose;
+use aes::cipher::{KeyIvInit, StreamCipher};
 use base64::Engine;
+use base64::engine::general_purpose;
 use bytes::Bytes;
 use chrono::Local;
 use log::info;
-use tauri::{command, App, AppHandle, Url};
+use tauri::{App, AppHandle, Url, command};
 use tauri::{Manager, State};
 
 pub mod frontend;
@@ -38,12 +39,13 @@ type Aes256Ctr = ctr::Ctr64BE<Aes256>;
 
 pub const APP_NAME: &str = "opal-matrix";
 
-use percent_encoding::{utf8_percent_encode, AsciiSet, CONTROLS};
+use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
 use tauri_plugin_log::{Target, TargetKind};
 use tauri_plugin_notification::{NotificationExt, PermissionState};
 
 use crate::frontend::send_sidebar_update;
 use crate::matrix_api::authentication::matrix_login;
+use crate::matrix_api::crypto::{self, StoredSession};
 use crate::state::{AppState, TimelineManager};
 use crate::sync::attach_callbacks;
 
@@ -181,7 +183,6 @@ async fn try_restore(
     state: State<'_, Arc<AppState>>,
     app_handle: AppHandle,
     matrix_client: State<'_, RwLock<MatrixClient>>,
-    handle: AppHandle,
 ) -> Result<RestoreResponse, TauriError> {
     let Some(session) = state.get_last_session().await? else {
         return Ok(RestoreResponse::NoSession);
@@ -190,7 +191,7 @@ async fn try_restore(
     let path = app_handle
         .path()
         .app_data_dir()?
-        .join("sesssions")
+        .join("sessions")
         .join(format!("{}-{}.db", session.user_id, session.device_id));
 
     let new_client = MatrixClient::builder()
@@ -308,6 +309,8 @@ async fn login(
             LoginError::InvalidCredentials
         })?;
 
+    // new_client.encryption().backups()
+
     new_client
         .encryption()
         .get_device(user_id, device_id)
@@ -326,45 +329,66 @@ async fn login(
         LoginError::BackendError
     })?;
 
+    let user_id = new_client.user_id().unwrap().to_string();
     *matrix_client.write().await = new_client;
 
-    let server_info = state
-        .home_server_info
-        .read()
-        .await
-        .as_ref()
-        .ok_or_else(|| {
-            error!("No server info");
-            LoginError::BackendError
-        })?
-        .clone();
+    let session = StoredSession {
+        user_id: user_id.clone(),
+        device_id: device_id.to_string(),
+        access_token: temp_client.session().unwrap().access_token().to_string(),
+        refresh_token: temp_client
+            .session()
+            .unwrap()
+            .get_refresh_token()
+            .map(|t| t.to_string()),
+        homeserver_url: server_url,
+        expires_at: None,
+        next_batch: None,
+        recovery_key: Some(recovery_key),
+    };
 
-    let (client_info, token) = matrix_login(server_info, username, password).await?;
-
-    {
-        let mut client_guard = state.client.write().await;
-        let mut token_guard = state.token.write().await;
-
-        *token_guard = Some(token.clone());
-        *client_guard = Some(client_info.clone());
-    }
-
-    state.save_session().await.map_err(|e| {
+    crypto::save_session(&session).await.map_err(|e| {
         error!("Failed to save session: {:?}", e);
         LoginError::BackendError
     })?;
 
-    state.init_stuff(&handle).await.map_err(|e| {
-        error!("Failed to initialize stuff: {:?}", e);
-        LoginError::BackendError
-    })?;
+    // let server_info = state
+    //     .home_server_info
+    //     .read()
+    //     .await
+    //     .as_ref()
+    //     .ok_or_else(|| {
+    //         error!("No server info");
+    //         LoginError::BackendError
+    //     })?
+    //     .clone();
 
-    state.set_recovery_key(recovery_key).await.map_err(|e| {
-        error!("Failed to set recovery key: {:?}", e);
-        LoginError::BackendError
-    })?;
+    // let (client_info, token) = matrix_login(server_info, username, password).await?;
 
-    Ok(client_info.user_id)
+    // {
+    //     let mut client_guard = state.client.write().await;
+    //     let mut token_guard = state.token.write().await;
+
+    //     *token_guard = Some(token.clone());
+    //     *client_guard = Some(client_info.clone());
+    // }
+
+    // state.save_session().await.map_err(|e| {
+    //     error!("Failed to save session: {:?}", e);
+    //     LoginError::BackendError
+    // })?;
+
+    // state.init_stuff(&handle).await.map_err(|e| {
+    //     error!("Failed to initialize stuff: {:?}", e);
+    //     LoginError::BackendError
+    // })?;
+
+    // state.set_recovery_key(recovery_key).await.map_err(|e| {
+    //     error!("Failed to set recovery key: {:?}", e);
+    //     LoginError::BackendError
+    // })?;
+
+    Ok(user_id)
 }
 
 /// Sets the recovery key for the current user. The key is saved in the keyring.

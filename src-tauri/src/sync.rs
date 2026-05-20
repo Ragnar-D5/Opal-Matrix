@@ -1,13 +1,13 @@
 use matrix_sdk::{
-    config::SyncSettings, ruma::events::space::parent::SyncSpaceParentEvent,
-    Client as MatrixClient, LoopCtrl, SessionChange,
+    Client as MatrixClient, LoopCtrl, SessionChange, config::SyncSettings,
+    ruma::events::space::parent::SyncSpaceParentEvent,
 };
-use tauri::{async_runtime::spawn, AppHandle};
+use tauri::{AppHandle, async_runtime::spawn};
 
 use crate::{
-    frontend::sidebar::send_sidebar,
-    matrix_api::crypto::{save_session, StoredSession},
     TauriError,
+    frontend::sidebar::send_sidebar,
+    matrix_api::crypto::{StoredSession, save_session},
 };
 
 pub async fn attach_callbacks(client: &MatrixClient, handle: &AppHandle) -> Result<(), TauriError> {
@@ -75,11 +75,11 @@ pub async fn attach_callbacks(client: &MatrixClient, handle: &AppHandle) -> Resu
                     let handle_clone = handle_clone.clone();
 
                     log::debug!("Received sync event: {:?}", ev);
-                    send_sidebar(&client_clone_dwa.joined_rooms(), &handle_clone)
-                        .await
-                        .unwrap_or_else(|e| {
-                            log::error!("Failed to send sidebar after initial sync: {:?}", e);
-                        });
+                    // send_sidebar(&client_clone_dwa.joined_rooms(), &handle_clone)
+                    // .await
+                    // .unwrap_or_else(|e| {
+                    // log::error!("Failed to send sidebar after initial sync: {:?}", e);
+                    // });
                     Ok(LoopCtrl::Continue)
                 }
             })
