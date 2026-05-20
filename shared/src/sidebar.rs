@@ -2,8 +2,19 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Clone, Deserialize, PartialEq)]
 pub enum RoomKind {
-    Space { children: Vec<RoomNode> },
-    Channel { last_ts: Option<i64> },
+    Space {
+        children: Vec<RoomNode>,
+    },
+    TextChannel {
+        last_ts: Option<i64>,
+    },
+    VoiceChannel {
+        last_ts: Option<i64>,
+    },
+    Dm {
+        other_user_ids: Vec<String>,
+        last_ts: Option<i64>,
+    },
 }
 
 #[derive(Debug, Serialize, Clone, Deserialize, PartialEq)]
@@ -13,10 +24,8 @@ pub struct RoomNode {
     pub topic: Option<String>,
     pub avatar_url: Option<String>,
 
-    pub dm_user_id: Option<String>,
-
-    pub highlight_count: u32,
-    pub notification_count: u32,
+    pub highlight_count: u64,
+    pub notification_count: u64,
 
     pub kind: RoomKind,
 }
@@ -25,7 +34,9 @@ impl RoomNode {
     pub fn last_ts(&self) -> Option<i64> {
         match self.kind {
             RoomKind::Space { .. } => None,
-            RoomKind::Channel { last_ts, .. } => last_ts,
+            RoomKind::TextChannel { last_ts, .. } => last_ts,
+            RoomKind::Dm { last_ts, .. } => last_ts,
+            RoomKind::VoiceChannel { last_ts, .. } => last_ts,
         }
     }
 
@@ -34,11 +45,15 @@ impl RoomNode {
             return name.clone();
         }
 
-        if let Some(dm_user_id) = &self.dm_user_id {
-            return format!("DM with {}", dm_user_id);
+        self.room_id.clone()
+    }
+
+    pub fn dm_user_id(&self) -> Option<String> {
+        if let RoomKind::Dm { other_user_ids, .. } = &self.kind {
+            return other_user_ids.first().cloned();
         }
 
-        self.room_id.clone()
+        None
     }
 }
 
@@ -57,6 +72,6 @@ pub struct FlatRoom {
     pub room_type: Option<String>,
     pub is_direct: bool,
     pub last_ts: Option<i64>,
-    pub highlight_count: u32,
-    pub notification_count: u32,
+    pub highlight_count: u64,
+    pub notification_count: u64,
 }

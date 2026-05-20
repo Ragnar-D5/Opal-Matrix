@@ -52,7 +52,7 @@ pub fn send_sidebar_update(
         all_children,
     );
 
-    handle.emit("sidebar_update", tree)?;
+    // handle.emit("sidebar_update", tree)?;
 
     Ok(())
 }
@@ -85,7 +85,6 @@ pub fn emit_single_message_update(
 //         let message
 //     );
 // }
-
 pub fn send_messages_update(
     handle: &AppHandle,
     conn: &Connection,

@@ -1,11 +1,17 @@
 use matrix_sdk_crypto::EncryptionSettings;
 use ruma::api::SupportedVersions;
-use ruma::events::{AnyMessageLikeEvent, AnyStateEvent, AnyTimelineEvent, Mentions};
+use ruma::events::{
+    AnyMessageLikeEvent, AnyStateEvent, AnyStateEventContent, AnySyncTimelineEvent,
+    AnyTimelineEvent, Mentions,
+};
 use ruma::serde::Raw;
 use ruma::RoomId;
-use serde_json::json;
+use serde_json::{json, Value};
 use shared::api::FetchMessagesResponse;
-use shared::messages::{MessageKind, Reactor, SystemMessage, UiMessage};
+use shared::messages::{
+    MessageContent, MessageKind, MessageState, Reactor, RichTextSpan, SystemMessage, UiMessage,
+    UserMessage,
+};
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::{str::FromStr, sync::Arc};
@@ -31,7 +37,7 @@ use crate::{
     matrix_api::crypto::process_message,
     state::HomeServerInfo,
     storage::{
-        messages::{get_messsages_to_id, MessageRow},
+        messages::{get_messages, save_messages, MessageRow},
         rooms::save_prev_token,
     },
     AppState,
@@ -94,7 +100,7 @@ fn get_ui_messages_from_rows(
 ) -> Result<Vec<UiMessage>, TauriError> {
     let mut ui_messages: Vec<UiMessage> = messages
         .into_iter()
-        .filter_map(|v| v.try_into_ui_message().ok())
+        .filter_map(|v| v.try_into().ok())
         .collect();
 
     let mut reactions: HashMap<String, HashSet<ReactionRow>> = HashMap::new();
@@ -166,6 +172,11 @@ pub async fn fetch_messages(
     room_id: String,
     oldest_id: Option<String>,
 ) -> Result<FetchMessagesResponse, TauriError> {
+    log::debug!(
+        "Fetching messages for room {}, starting from oldest_id: {:?}",
+        room_id,
+        oldest_id
+    );
     let limit = 20;
 
     let mut conn_guard = state.connection.lock().await;
@@ -173,7 +184,7 @@ pub async fn fetch_messages(
         .as_mut()
         .ok_or("Database connection not available")?;
 
-    let local_messages = get_messsages_to_id(&conn, &room_id, oldest_id.clone(), limit)?;
+    let mut local_messages = get_messages(&conn, &room_id, oldest_id.clone(), limit)?;
 
     if local_messages.len() >= limit {
         return Ok(FetchMessagesResponse {
@@ -206,16 +217,21 @@ pub async fn fetch_messages(
 
     let mut changes = SyncChanges::default();
 
-    let ruma_room_id = RoomId::parse(&room_id)?;
+    let ruma_room_id = RoomId::parse(room_id)?;
 
     let mut hit_room_create = false;
 
     for raw_event in api_messages.into_iter() {
         let decrypted_event =
-            if let Ok(AnyTimelineEvent::MessageLike(AnyMessageLikeEvent::RoomEncrypted(_))) =
+            if let Ok(AnyTimelineEvent::MessageLike(AnyMessageLikeEvent::RoomEncrypted(ev))) =
                 &raw_event.deserialize()
             {
-                match process_message(&state, &room_id, Raw::from_json(raw_event.into_json())).await
+                match process_message(
+                    &state,
+                    &room_id,
+                    Raw::from_json(raw_event.clone().into_json()),
+                )
+                .await
                 {
                     Ok(processed) => processed,
                     Err(e) => {
@@ -224,7 +240,7 @@ pub async fn fetch_messages(
                     }
                 }
             } else {
-                raw_event
+                raw_event.clone()
             };
 
         if let Ok(event) = decrypted_event.deserialize() {
@@ -232,11 +248,11 @@ pub async fn fetch_messages(
                 hit_room_create = true;
             }
 
-            let _ = extract_timeline(
+            extract_timeline(
                 &mut changes,
                 &ruma_room_id,
                 event.into(),
-                decrypted_event.clone().json(),
+                decrypted_event.json(),
                 decrypted_event.cast(),
             )
             .map_err(|e| {
@@ -245,6 +261,7 @@ pub async fn fetch_messages(
         }
     }
 
+    let api_messages = changes.new_messages;
     apply_sync_changes(conn, changes)?;
 
     if let Some(next_token) = next_token.clone() {
@@ -268,8 +285,6 @@ pub async fn backfill_gap(
 
     let (access_token, server_info) = state.get_api().await?;
 
-    let ruma_room_id = RoomId::parse(&room_id)?;
-
     loop {
         let (api_messages, next_token) =
             get_messages_api(&room_id, &current_token, &server_info, &access_token, 50).await?;
@@ -278,56 +293,69 @@ pub async fn backfill_gap(
             break;
         }
 
+        let mut new_rows = Vec::new();
+        let mut hit_existing = false;
+
         {
             let mut conn_guard = state.connection.lock().await;
             let conn = conn_guard.as_mut().ok_or("Database not initialized")?;
 
-            let mut changes = SyncChanges::default();
-
-            for raw_event in api_messages.into_iter() {
-                let decrypted_event = if let Ok(AnyTimelineEvent::MessageLike(
-                    AnyMessageLikeEvent::RoomEncrypted(_),
-                )) = &raw_event.deserialize()
-                {
-                    match process_message(&state, &room_id, Raw::from_json(raw_event.into_json()))
-                        .await
-                    {
-                        Ok(processed) => processed,
-                        Err(e) => {
-                            log::error!("Failed to process encrypted message: {:?}", e);
-                            continue;
-                        }
-                    }
-                } else {
-                    raw_event
+            for msg_val in api_messages {
+                let clone = msg_val.clone();
+                let Some(event_id) = clone.get("event_id").and_then(|v| v.as_str()) else {
+                    continue;
                 };
 
-                if let Ok(event) = decrypted_event.deserialize() {
-                    let _ = extract_timeline(
-                        &mut changes,
-                        &ruma_room_id,
-                        event.into(),
-                        decrypted_event.clone().json(),
-                        decrypted_event.cast(),
-                    )
-                    .map_err(|e| {
-                        log::error!("Failed to extract timeline event: {:?}", e);
-                    });
+                if crate::storage::messages::message_exists(conn, event_id)? {
+                    hit_existing = true;
+                    break;
                 }
 
-                save_prev_token(conn, &room_id, &current_token)?;
+                let Some(msg_type) = msg_val.get("type").and_then(|v| v.as_str()) else {
+                    continue;
+                };
+
+                let processed_msg = if msg_type == "m.room.encrypted" {
+                    match process_message(state, &room_id, msg_val.clone()).await {
+                        Ok(res) => res,
+                        Err(_) => continue,
+                    }
+                } else {
+                    msg_val
+                };
+
+                let Some(final_type) = processed_msg.get("type").and_then(|v| v.as_str()) else {
+                    continue;
+                };
+                let Some(timestamp) = processed_msg
+                    .get("origin_server_ts")
+                    .and_then(|v| v.as_i64())
+                else {
+                    continue;
+                };
+                let Some(sender) = processed_msg.get("sender").and_then(|v| v.as_str()) else {
+                    continue;
+                };
+
+                new_rows.push(MessageRow {
+                    event_id: event_id.to_string(),
+                    room_id: room_id.clone(),
+                    sender: sender.to_string(),
+                    msg_type: final_type.to_string(),
+                    raw_json: processed_msg.to_string(),
+                    timestamp: timestamp as u64 / 1000,
+                    state: MessageState::Sent,
+                    is_edited: false,
+                });
             }
 
-            if crate::storage::messages::any_exists(
-                conn,
-                changes
-                    .new_messages
-                    .iter()
-                    .map(|v| v.event_id.clone())
-                    .collect(),
-            )? {
-                break;
+            if !new_rows.is_empty() {
+                save_messages(conn, new_rows)?;
             }
+        }
+
+        if hit_existing {
+            break;
         }
 
         if let Some(token) = next_token {

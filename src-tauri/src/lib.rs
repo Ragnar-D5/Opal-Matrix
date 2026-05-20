@@ -1,9 +1,18 @@
+#![recursion_limit = "256"]
+
 use log::{error, trace};
+use matrix_sdk::authentication::matrix::MatrixSession;
+use matrix_sdk::config::SyncSettings;
+use matrix_sdk::ruma::{OwnedDeviceId, UserId};
+use matrix_sdk::{AuthSession, Client as MatrixClient, LoopCtrl, SessionMeta, SessionTokens};
 use shared::api::errors::LoginError;
 use shared::api::RestoreResponse;
 use std::collections::HashMap;
 use std::fs::{read_to_string, write};
 use std::sync::Arc;
+use tauri::async_runtime::block_on;
+use tokio::sync::RwLock;
+use tokio_util::io::simplex::new;
 
 use aes::cipher::{KeyIvInit, StreamCipher};
 use aes::Aes256;
@@ -12,13 +21,14 @@ use base64::Engine;
 use bytes::Bytes;
 use chrono::Local;
 use log::info;
-use tauri::{command, AppHandle, Url};
+use tauri::{command, App, AppHandle, Url};
 use tauri::{Manager, State};
 
 pub mod frontend;
 pub mod matrix_api;
 pub mod state;
 pub mod storage;
+pub(crate) mod sync;
 
 use matrix_api::authentication;
 
@@ -34,7 +44,8 @@ use tauri_plugin_notification::{NotificationExt, PermissionState};
 
 use crate::frontend::send_sidebar_update;
 use crate::matrix_api::authentication::matrix_login;
-use crate::state::AppState;
+use crate::state::{AppState, TimelineManager};
+use crate::sync::attach_callbacks;
 
 const MATRIX_ID_SET: &AsciiSet = &CONTROLS.add(b'!').add(b':');
 
@@ -168,20 +179,51 @@ where
 #[command]
 async fn try_restore(
     state: State<'_, Arc<AppState>>,
+    app_handle: AppHandle,
+    matrix_client: State<'_, RwLock<MatrixClient>>,
     handle: AppHandle,
 ) -> Result<RestoreResponse, TauriError> {
     let Some(session) = state.get_last_session().await? else {
         return Ok(RestoreResponse::NoSession);
     };
+
+    let path = app_handle
+        .path()
+        .app_data_dir()?
+        .join("sesssions")
+        .join(format!("{}-{}.db", session.user_id, session.device_id));
+
+    let new_client = MatrixClient::builder()
+        .homeserver_url(session.homeserver_url.clone())
+        .handle_refresh_tokens()
+        .sqlite_store(path, None)
+        .build()
+        .await?;
+
     let Some(user_id) = state.login_or_restore_session(session.clone()).await? else {
         return Ok(RestoreResponse::Failed {
             home_server: session.homeserver_url,
         });
     };
 
-    state.init_stuff(&handle).await?;
+    let session = AuthSession::Matrix(MatrixSession {
+        meta: SessionMeta {
+            device_id: OwnedDeviceId::from(session.device_id.to_string()),
+            user_id: UserId::parse(session.user_id)?,
+        },
+        tokens: SessionTokens {
+            access_token: session.access_token,
+            refresh_token: session.refresh_token,
+        },
+    });
+    new_client.restore_session(session).await?;
+    attach_callbacks(&new_client, &app_handle).await?;
 
-    Ok(RestoreResponse::Success { user_id: user_id })
+    *matrix_client.write().await = new_client;
+
+    // state.init_stuff(&handle).await?;
+
+    Ok(RestoreResponse::Success { user_id })
 }
 
 #[tauri::command(rename_all = "snake_case")]
@@ -190,6 +232,8 @@ async fn login(
     password: String,
     recovery_key: String,
     state: State<'_, Arc<AppState>>,
+    app_handle: AppHandle,
+    matrix_client: State<'_, RwLock<MatrixClient>>,
     handle: AppHandle,
 ) -> Result<String, LoginError> {
     info!("Logging in new");
@@ -198,6 +242,91 @@ async fn login(
         error!("Failed to stop sync: {:?}", e);
         LoginError::BackendError
     })?;
+
+    let server_url = matrix_client.read().await.homeserver().to_string();
+
+    let temp_client = MatrixClient::builder()
+        .homeserver_url(
+            Url::parse(server_url.as_str()).expect("Valid homeserverurl from other client"),
+        )
+        .build()
+        .await
+        .map_err(|e| {
+            error!("Failed to build temporary client: {:?}", e);
+            LoginError::BackendError
+        })?;
+
+    temp_client
+        .matrix_auth()
+        .login_username(username.clone(), password.as_str())
+        .initial_device_display_name("Opal on Linux")
+        .send()
+        .await
+        .map_err(|e| {
+            error!("Login failed: {:?}", e);
+            LoginError::InvalidCredentials
+        })?;
+
+    let user_id = temp_client.user_id().unwrap();
+    let device_id = temp_client.device_id().unwrap();
+
+    let path = app_handle
+        .path()
+        .app_data_dir()
+        .expect("Failed to get app data dir")
+        .join("sessions")
+        .join(format!("{}-{}.db", user_id, device_id));
+
+    let new_client = MatrixClient::builder()
+        .homeserver_url(
+            Url::parse(server_url.as_str()).expect("Valid homeserverurl from other client"),
+        )
+        .handle_refresh_tokens()
+        .sqlite_store(path, None)
+        .build()
+        .await
+        .map_err(|e| {
+            error!("Failed to build new client: {:?}", e);
+            LoginError::BackendError
+        })?;
+
+    new_client
+        .restore_session(temp_client.session().unwrap().clone())
+        .await
+        .map_err(|e| {
+            error!("Failed to restore session on new client: {:?}", e);
+            LoginError::BackendError
+        })?;
+
+    new_client
+        .encryption()
+        .recovery()
+        .recover(recovery_key.as_str())
+        .await
+        .map_err(|e| {
+            error!("Recovery failed: {:?}", e);
+            LoginError::InvalidCredentials
+        })?;
+
+    new_client
+        .encryption()
+        .get_device(user_id, device_id)
+        .await
+        .expect("Failed to get device info after recovery")
+        .unwrap()
+        .verify()
+        .await
+        .map_err(|e| {
+            error!("Failed to verify device: {e}");
+            LoginError::InvalidCredentials
+        })?;
+
+    attach_callbacks(&new_client, &handle).await.map_err(|e| {
+        error!("Failed to start sync loop: {:?}", e);
+        LoginError::BackendError
+    })?;
+
+    *matrix_client.write().await = new_client;
 
     let server_info = state
         .home_server_info
@@ -257,6 +386,7 @@ async fn set_recovery_key(
 #[tauri::command]
 async fn send_frontend(
     state: State<'_, Arc<AppState>>,
+    matrix_client: State<'_, RwLock<MatrixClient>>,
     handle: AppHandle,
 ) -> Result<(), TauriError> {
     let client_guard = state.client.read().await;
@@ -266,6 +396,8 @@ async fn send_frontend(
     let conn = conn_guard.as_ref().ok_or("Database not initialized")?;
 
     send_sidebar_update(conn, &handle, &client_info.user_id.clone())?;
+
+    let matrix_client = matrix_client.read().await.to_owned();
 
     Ok(())
 }
@@ -337,7 +469,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_http::init())
-        .setup(|app| {
+        .setup(|app: &mut App| {
             let config_dir = app.path().app_config_dir().map_err(|e| {
                 std::io::Error::new(
                     std::io::ErrorKind::Other,
@@ -434,6 +566,15 @@ pub fn run() {
 
             app.manage(state);
 
+            let client = block_on(async {
+                MatrixClient::builder()
+                    .handle_refresh_tokens().homeserver_url("https://matrix.org")
+                    .build().await.unwrap()
+            });
+
+            app.manage(RwLock::new(client));
+            app.manage(TimelineManager::new());
+
             #[cfg(not(target_os = "android"))]
             let main_window = app.get_webview_window("main").expect("Failed to get main window");
 
@@ -454,6 +595,7 @@ pub fn run() {
 
             // frontend commands
             frontend::messages::commit_message,
+            frontend::messages::fetch_messages,
             frontend::commands::get_commands,
 
             // storage commands
@@ -463,7 +605,7 @@ pub fn run() {
 
             // matrix API commands
             matrix_api::discovery::choose_home_server,
-            matrix_api::messages::fetch_messages,
+            // matrix_api::messages::fetch_messages,
             matrix_api::rooms::send_read_marker,
             matrix_api::account_data::set_account_data,
             matrix_api::account_data::get_account_data,

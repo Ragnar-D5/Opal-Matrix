@@ -107,19 +107,23 @@ impl AppState {
 
         match &server.kind {
             RoomKind::Space { children } => Self::find_first_channel(children),
-            RoomKind::Channel { .. } => Some(server.room_id.clone()),
+            RoomKind::TextChannel { .. } => Some(server.room_id.clone()),
+            RoomKind::Dm { .. } => Some(server.room_id.clone()),
+            RoomKind::VoiceChannel { .. } => Some(server.room_id.clone()),
         }
     }
 
     fn find_first_channel(nodes: &[RoomNode]) -> Option<String> {
         for node in nodes {
             match &node.kind {
-                RoomKind::Channel { .. } => return Some(node.room_id.clone()),
+                RoomKind::TextChannel { .. } => return Some(node.room_id.clone()),
                 RoomKind::Space { children } => {
                     if let Some(room_id) = Self::find_first_channel(children) {
                         return Some(room_id);
                     }
                 }
+                RoomKind::Dm { .. } => return Some(node.room_id.clone()),
+                RoomKind::VoiceChannel { .. } => return Some(node.room_id.clone()),
             }
         }
 
@@ -180,7 +184,7 @@ impl AppState {
             .iter()
             .filter(|d| d.room_id == current_room_id)
         {
-            if let Some(user_id) = &dm.dm_user_id {
+            if let Some(user_id) = &dm.dm_user_id() {
                 if user_id.is_empty() {
                     continue;
                 }

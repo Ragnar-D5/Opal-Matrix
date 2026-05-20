@@ -9,10 +9,10 @@ pub(crate) mod account_data;
 pub(crate) mod authentication;
 pub(crate) mod crypto;
 pub(crate) mod discovery;
-pub(crate) mod messages;
+// pub(crate) mod messages;
 pub(crate) mod previews;
 pub(crate) mod rooms;
-pub(crate) mod sync;
+// pub(crate) mod sync;
 
 pub async fn handle_sync_calls(
     server_info: HomeServerInfo,

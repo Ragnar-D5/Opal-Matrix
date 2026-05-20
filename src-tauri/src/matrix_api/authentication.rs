@@ -12,7 +12,7 @@ use ruma::api::{
             login::v3::{LoginInfo, Password, Request as LoginRequest, Response as LoginResponse},
             refresh_token::v3::{Request as RefrefreshRequest, Response as RefreshResponse},
         },
-        uiaa::UserIdentifier,
+        uiaa::{MatrixUserIdentifier, UserIdentifier},
     },
     IncomingResponse, OutgoingRequest,
 };
@@ -31,7 +31,7 @@ pub async fn matrix_login(
     let client = Client::new();
 
     let mut req = LoginRequest::new(LoginInfo::Password(Password::new(
-        UserIdentifier::UserIdOrLocalpart(username),
+        UserIdentifier::Matrix(MatrixUserIdentifier::new(username)),
         password,
     )));
 

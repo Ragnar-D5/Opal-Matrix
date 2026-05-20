@@ -614,7 +614,7 @@ fn get_date_from_ts(ts: i64) -> DateTime<Local> {
 }
 
 fn room_has_notifications(state: &SidebarState, room_id: &str) -> bool {
-    fn find_in_nodes(nodes: &[RoomNode], room_id: &str) -> Option<u32> {
+    fn find_in_nodes(nodes: &[RoomNode], room_id: &str) -> Option<u64> {
         for node in nodes {
             if node.room_id == room_id {
                 return Some(node.notification_count);

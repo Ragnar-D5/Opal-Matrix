@@ -15,14 +15,15 @@ fn DmDiv(dm: RoomNode) -> impl IntoView {
     let members: MemberStore = expect_context();
 
     let id = dm.room_id.to_string();
-    let avatar_url = dm.avatar_url;
+    let avatar_url = dm.avatar_url.clone();
     let name = dm.name.clone().unwrap_or_else(|| "Unnamed".to_string());
     let initial = name.chars().next().unwrap_or('?').to_string();
 
     let is_active = Memo::new(move |_| state.active_room_id.get() == Some(id.clone()));
-    let color = get_color(dm.dm_user_id.clone().unwrap_or_default());
 
-    let user_id = dm.dm_user_id.clone().unwrap_or_default();
+    let color = get_color(dm.dm_user_id().unwrap_or_default());
+
+    let user_id = dm.dm_user_id().clone().unwrap_or_default();
 
     let members = members.clone();
     let presence = members.get_presence(&user_id);
@@ -42,9 +43,7 @@ fn DmDiv(dm: RoomNode) -> impl IntoView {
                 class=("hover:bg-[var(--color-item-hover)]", move || !is_active.get())
                 class=("text-dim", move || !is_active.get())
             >
-                <PresenceBadge presence=presence>
-                    { avatar_content }
-                </PresenceBadge>
+                <PresenceBadge presence=presence>{avatar_content}</PresenceBadge>
                 <span class="inline-block align-center pl-2">{name}</span>
                 {if dm.notification_count > 0 {
                     view! {
@@ -84,7 +83,7 @@ pub fn IndicatorPill(
 
 #[component]
 pub fn CutoutBadge(
-    count: u32,
+    count: u64,
     children: Children,
     #[prop(into, optional)] class: String,
 ) -> impl IntoView {

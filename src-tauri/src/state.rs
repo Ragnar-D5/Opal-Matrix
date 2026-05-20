@@ -1,5 +1,7 @@
 use log::info;
-use ruma::{api::SupportedVersions, UserId};
+use matrix_sdk::Room;
+use matrix_sdk_ui::{timeline::TimelineBuilder, Timeline};
+use ruma::{api::SupportedVersions, OwnedRoomId, UserId};
 use rusqlite::Connection;
 use std::{
     collections::HashMap,
@@ -21,9 +23,8 @@ use crate::{
     construct_url,
     matrix_api::{
         authentication::{self, get_account_data},
-        crypto::{self, decrypt_ssss_aes_hmac_sha2, StoredSession},
+        crypto::{self, StoredSession},
         discovery::{fetch_supported_versions, Authentication},
-        sync::run_sync_loop,
     },
     storage, TauriError,
 };
@@ -265,16 +266,16 @@ impl AppState {
 
         let db_passphrase = crypto::get_or_create_passphrase(client_info.user_id.clone()).await?;
 
-        let machine = crypto::init_crypto_machine(
-            self.app_data_dir.clone(),
-            client_info.user_id.clone(),
-            client_info.device_id.clone(),
-            db_passphrase.clone(),
-        )
-        .await?;
+        // let machine = crypto::init_crypto_machine(
+        //     self.app_data_dir.clone(),
+        //     client_info.user_id.clone(),
+        //     client_info.device_id.clone(),
+        //     db_passphrase.clone(),
+        // )
+        // .await?;
 
         let mut machine_guard = self.crypto_machine.lock().await;
-        *machine_guard = Some(machine);
+        // *machine_guard = Some(machine);
 
         let (already_loaded, conn) = storage::init_storage(
             self.app_data_dir.clone(),
@@ -317,20 +318,20 @@ impl AppState {
 
         let token = self.check_token().await?;
 
-        crypto::set_room_keys(&olm_machine, &matrix_url, &token, &recovery_key).await?;
+        // crypto::set_room_keys(&olm_machine, &matrix_url, &token, &recovery_key).await?;
 
         let client_info = self.client.read().await.clone().ok_or("Not logged in")?;
 
-        let device = olm_machine
-            .get_device(
-                &UserId::parse(client_info.user_id.as_str()).expect("Failted to parse user id"),
-                client_info.device_id.as_str().into(),
-                Some(Duration::from_secs(10)),
-            )
-            .await?
-            .ok_or("No device for some reason")?;
+        // let device = olm_machine
+        //     .get_device(
+        //         &UserId::parse(client_info.user_id.as_str()).expect("Failted to parse user id"),
+        //         client_info.device_id.as_str().into(),
+        //         Some(Duration::from_secs(10)),
+        //     )
+        //     .await?
+        //     .ok_or("No device for some reason")?;
 
-        info!("Device {:?}", device);
+        // info!("Device {:?}", device);
 
         let res = get_account_data(
             &token,
@@ -363,31 +364,31 @@ impl AppState {
             .as_str()
             .ok_or("Missing ephemeral in encrypted key data")?;
 
-        let self_signing_key = decrypt_ssss_aes_hmac_sha2(
-            recovery_key.as_str(),
-            "m.cross_signing.self_signing",
-            ciphertext,
-            iv,
-            mac,
-        )?;
+        // let self_signing_key = decrypt_ssss_aes_hmac_sha2(
+        //     recovery_key.as_str(),
+        //     "m.cross_signing.self_signing",
+        //     ciphertext,
+        //     iv,
+        //     mac,
+        // )?;
 
-        let import = CrossSigningKeyExport {
-            self_signing_key: Some(self_signing_key),
-            master_key: None,
-            user_signing_key: None,
-        };
+        // let import = CrossSigningKeyExport {
+        //     self_signing_key: Some(self_signing_key),
+        //     master_key: None,
+        //     user_signing_key: None,
+        // };
 
-        olm_machine.import_cross_signing_keys(import).await?;
+        // olm_machine.import_cross_signing_keys(import).await?;
 
-        let upload_request = device.verify().await?;
-        let url = format!("{matrix_url}/_matrix/client/v3/keys/signatures/upload");
+        // let upload_request = device.verify().await?;
+        // let url = format!("{matrix_url}/_matrix/client/v3/keys/signatures/upload");
 
-        Client::new()
-            .post(url)
-            .bearer_auth(token)
-            .json(&serde_json::to_value(upload_request.signed_keys).unwrap())
-            .send()
-            .await?;
+        // Client::new()
+        //     .post(url)
+        //     .bearer_auth(token)
+        //     .json(&serde_json::to_value(upload_request.signed_keys).unwrap())
+        //     .send()
+        //     .await?;
 
         Ok(())
     }
@@ -444,13 +445,13 @@ impl AppState {
 
         let state = self.clone();
         let app_handle = app_handle.clone();
-        let handle = tauri::async_runtime::spawn(async move {
-            if let Err(e) = run_sync_loop(state, app_handle, resync).await {
-                log::error!("Sync loop error: {:?}", e);
-            }
-        });
+        // let handle = tauri::async_runtime::spawn(async move {
+        //     if let Err(e) = run_sync_loop(state, app_handle, resync).await {
+        //         log::error!("Sync loop error: {:?}", e);
+        //     }
+        // });
 
-        *task_guard = Some(handle);
+        // *task_guard = Some(handle);
         Ok(())
     }
 
@@ -511,5 +512,34 @@ impl AppState {
     pub async fn room_id(self: &Arc<Self>) -> Result<Option<String>, TauriError> {
         let room_id_guard = self.frontend_current_room_id.read().await;
         Ok(room_id_guard.clone())
+    }
+}
+
+pub struct TimelineManager {
+    pub timelines: RwLock<HashMap<OwnedRoomId, Arc<Timeline>>>,
+}
+
+impl TimelineManager {
+    pub fn new() -> Self {
+        TimelineManager {
+            timelines: RwLock::new(HashMap::new()),
+        }
+    }
+
+    pub async fn get_or_create_timeline(&self, room: &Room) -> Result<Arc<Timeline>, TauriError> {
+        let mut guard = self.timelines.write().await;
+        if let Some(timeline) = guard.get(room.room_id()) {
+            return Ok(timeline.clone());
+        }
+
+        let timeline = TimelineBuilder::new(room)
+            .with_date_divider_mode(matrix_sdk_ui::timeline::DateDividerMode::Daily)
+            .build()
+            .await?;
+
+        let timeline = Arc::new(timeline);
+
+        guard.insert(room.room_id().to_owned(), timeline.clone());
+        Ok(timeline)
     }
 }

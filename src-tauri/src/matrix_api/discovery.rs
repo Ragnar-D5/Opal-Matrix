@@ -1,13 +1,17 @@
 use std::sync::Arc;
 
+use matrix_sdk::{Client as MatrixClient, ClientBuilder};
+
 use log::trace;
 use ruma::api::auth_scheme::SendAccessToken;
 use serde::Deserialize;
 use tauri::State;
 use tauri_plugin_http::reqwest::{self, Client};
+use tokio::sync::RwLock;
+use url::Url;
 
 use crate::state::HomeServerInfo;
-use crate::{AppState, AsInfo, TauriError, reqwest_response_to_http_response};
+use crate::{reqwest_response_to_http_response, AppState, AsInfo, TauriError};
 
 #[derive(Debug, Deserialize)]
 pub struct WellKnown {
@@ -41,6 +45,7 @@ pub struct Authentication {
 #[tauri::command]
 pub async fn choose_home_server(
     state: State<'_, Arc<AppState>>,
+    matrix_client: State<'_, RwLock<MatrixClient>>,
     url: String,
 ) -> Result<String, TauriError> {
     let client = reqwest::Client::new();
@@ -56,6 +61,16 @@ pub async fn choose_home_server(
         let well_known: WellKnown = res.json().await.map_err(|e| {
             format!("Failed to parse .well-known response (does the server support OIDC?): {e}",)
         })?;
+
+        *matrix_client.write().await = MatrixClient::builder()
+            .homeserver_url(
+                Url::parse(&well_known.homeserver.base_url)
+                    .map_err(|e| format!("Failed to parse homeserver URL: {e}").as_info())?,
+            )
+            .handle_refresh_tokens()
+            .build()
+            .await
+            .map_err(|e| format!("Failed to build Matrix client: {e}").as_info())?;
 
         let versions = fetch_supported_versions(&well_known.homeserver.base_url).await?;
         *state.home_server_info.write().await = Some(HomeServerInfo {

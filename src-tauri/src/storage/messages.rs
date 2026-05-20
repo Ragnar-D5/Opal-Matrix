@@ -444,11 +444,11 @@ impl MessageRow {
                             or.content.clone()
                         };
 
-                        if let Some(Relation::Reply { in_reply_to }) = &or.content.relates_to {
-                            user_message.set_replies_to(in_reply_to.event_id.to_string());
+                        if let Some(Relation::Reply(reply)) = &or.content.relates_to {
+                            user_message.set_replies_to(reply.in_reply_to.event_id.to_string());
                         };
 
-                        user_message.mentions = content.mentions.unwrap_or_default();
+                        // user_message.mentions = content.mentions.unwrap_or_default();
 
                         user_message.content = match content.msgtype {
                             MessageType::Text(text_content) => {
@@ -561,15 +561,15 @@ impl MessageRow {
                         return Err(TauriError::silent());
                     }
                 }
-                AnySyncMessageLikeEvent::RoomEncrypted(_) => {
-                    MessageKind::UserMessage(UserMessage {
-                        mentions: Mentions::default(),
-                        reactions: HashMap::new(),
-                        replies_to: None,
-                        is_edited: false,
-                        content: MessageContent::Encrypted,
-                    })
-                }
+                // AnySyncMessageLikeEvent::RoomEncrypted(_) => {
+                //     MessageKind::UserMessage(UserMessage {
+                //         mentions: Mentions::default(),
+                //         reactions: HashMap::new(),
+                //         replies_to: None,
+                //         is_edited: false,
+                //         content: MessageContent::Encrypted,
+                //     })
+                // }
                 AnySyncMessageLikeEvent::RtcNotification(_)
                 | AnySyncMessageLikeEvent::CallInvite(_)
                 | AnySyncMessageLikeEvent::CallNotify(_)
@@ -652,21 +652,21 @@ impl MessageRow {
                         AnyStateEventContent::RoomName(name_ev) => SystemMessage::RoomNameChange {
                             new_name: name_ev.name.clone(),
                         },
-                        AnyStateEventContent::RoomJoinRules(join_ev) => {
-                            SystemMessage::JoinRuleChange {
-                                new_rule: join_ev.join_rule,
-                            }
-                        }
-                        AnyStateEventContent::RoomHistoryVisibility(vis_ev) => {
-                            SystemMessage::HistoryVisibilityChange {
-                                new_visibility: vis_ev.history_visibility,
-                            }
-                        }
-                        AnyStateEventContent::RoomGuestAccess(guest_ev) => {
-                            SystemMessage::GuestAccessChange {
-                                new_access: guest_ev.guest_access,
-                            }
-                        }
+                        // AnyStateEventContent::RoomJoinRules(join_ev) => {
+                        //     SystemMessage::JoinRuleChange {
+                        //         new_rule: join_ev.join_rule,
+                        //     }
+                        // }
+                        // AnyStateEventContent::RoomHistoryVisibility(vis_ev) => {
+                        //     SystemMessage::HistoryVisibilityChange {
+                        //         new_visibility: vis_ev.history_visibility,
+                        //     }
+                        // }
+                        // AnyStateEventContent::RoomGuestAccess(guest_ev) => {
+                        //     SystemMessage::GuestAccessChange {
+                        //         new_access: guest_ev.guest_access,
+                        //     }
+                        // }
                         AnyStateEventContent::RoomCreate(_) => SystemMessage::RoomCreated {
                             creator_id: ev.sender().to_string(),
                         },
