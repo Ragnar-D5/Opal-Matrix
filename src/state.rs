@@ -1,3 +1,4 @@
+use serde_json::json;
 use std::collections::{HashMap, HashSet};
 
 use leptos::task::spawn_local;
@@ -9,7 +10,7 @@ use shared::{
     user_profile::{PresenceInfo, UserProfile},
 };
 
-use crate::app::{call_tauri, CurrentWindow};
+use crate::app::{CurrentWindow, call_tauri};
 use leptos::prelude::*;
 
 #[derive(Clone, Debug, Copy)]
@@ -173,9 +174,7 @@ impl AppState {
     }
 
     pub fn get_active_profile(&self, member_store: MemberStore) -> Option<MemberProfileHandle> {
-        let Some(current_room_id) = self.active_room_id.get() else {
-            return None;
-        };
+        let current_room_id = self.active_room_id.get()?;
 
         for dm in self
             .sidebar_state
@@ -196,7 +195,7 @@ impl AppState {
             }
         }
 
-        return None;
+        None
     }
 
     pub fn get_room_header(&self, member_store: MemberStore) -> RoomHeader {
@@ -289,22 +288,21 @@ impl MemberStore {
             let rid = room_id.to_string();
 
             spawn_local(async move {
-                let args = serde_wasm_bindgen::to_value(&GetMembersArgs {
-                    room_id: rid.to_string(),
-                })
+                let args = serde_wasm_bindgen::to_value(&json!({
+                    "room_id": rid.to_string()
+                }))
                 .unwrap();
 
-                if let Ok(js_val) = call_tauri("get_members", args).await {
-                    let updates: HashMap<String, UserProfile> =
-                        serde_wasm_bindgen::from_value(js_val).unwrap();
+                if let Ok(js_val) = call_tauri("get_members_for_room", args).await {
+                    let updates: Vec<UserProfile> = serde_wasm_bindgen::from_value(js_val).unwrap();
 
                     batch(move || {
                         store.rooms.update(|rooms| {
                             let room_entry = rooms.entry(rid.to_string()).or_default();
 
-                            for (user_id, profile) in updates.into_iter() {
+                            for (profile) in updates.into_iter() {
                                 let profile_signal = room_entry
-                                    .entry(user_id.clone())
+                                    .entry(profile.user_id.clone())
                                     .or_insert_with(|| ArcRwSignal::new(Some(profile.clone())));
 
                                 profile_signal.set(Some(profile));

@@ -1,11 +1,14 @@
 use std::{fmt::Debug, sync::Arc};
 
 use crate::{AppState, TauriError};
+use matrix_sdk::{Client as MatrixClient, RoomMemberships};
 
 use super::DataBaseModel;
-use ruma::events::room::member::MembershipState as RumaMembershipState;
+use ruma::{RoomId, events::room::member::MembershipState as RumaMembershipState};
 use rusqlite::{Connection, ToSql, types::FromSql};
+use shared::user_profile::UserProfile;
 use tauri::{State, command};
+use tokio::sync::RwLock;
 
 #[derive(Debug, Clone)]
 pub enum MembershipState {
@@ -127,12 +130,28 @@ pub fn get_members_for_room_api(
 ///```
 #[command(rename_all = "snake_case")]
 pub async fn get_members_for_room(
-    state: State<'_, Arc<AppState>>,
+    matrix_client: State<'_, RwLock<MatrixClient>>,
     room_id: String,
-) -> Result<Vec<(String, Option<String>, Option<String>)>, TauriError> {
-    let members = state
-        .with_connection(|conn| get_members_for_room_api(conn, &room_id))
-        .await?;
+) -> Result<Vec<UserProfile>, TauriError> {
+    log::info!("Fetching members for room: {}", room_id);
+    let matrix_client = matrix_client.read().await;
+
+    let Some(room) = matrix_client.get_room(&RoomId::parse(&room_id)?) else {
+        return Ok(vec![]);
+    };
+
+    room.sync_members().await?;
+
+    let members: Vec<UserProfile> = room
+        .members(RoomMemberships::ACTIVE)
+        .await?
+        .into_iter()
+        .map(|member| UserProfile {
+            user_id: member.user_id().to_string(),
+            display_name: member.display_name().map(|v| v.to_string()),
+            avatar_url: member.avatar_url().map(|v| v.to_string()),
+        })
+        .collect();
 
     Ok(members)
 }
