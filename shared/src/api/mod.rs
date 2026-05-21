@@ -2,8 +2,6 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::messages::UiMessage;
-
 pub mod errors;
 pub mod signals;
 
@@ -36,7 +34,7 @@ pub struct LinkPreviewResponse {
 }
 
 impl LinkPreviewResponse {
-    pub fn resolve_color(&mut self, original_url: &str, color_map: HashMap<String, String>) {
+    pub fn resolve_color(&mut self, original_url: &str, color_map: &HashMap<String, String>) {
         if self.color.is_some() {
             return;
         }
@@ -50,15 +48,9 @@ impl LinkPreviewResponse {
         };
 
         for (domain, color) in color_map {
-            if host.ends_with(&domain) {
-                self.color = Some(color);
+            if host.ends_with(domain) {
+                self.color = Some(color.clone());
             }
         }
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FetchMessagesResponse {
-    pub messages: Vec<UiMessage>,
-    pub has_more: bool,
 }

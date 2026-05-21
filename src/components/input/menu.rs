@@ -3,15 +3,16 @@ use crate::{
         input::{get_caret_position, get_node_and_offset},
         presence::PresenceBadge,
         text::RichTextExt,
+        user_profile::UserProfileExt,
     },
     state::{AppState, MemberStore},
-    tauri_functions::{get_commands, get_members, MemberShip},
+    tauri_functions::{get_commands, get_members},
 };
 use leptos::html::Div;
 use leptos::prelude::*;
 use log::error;
 use nucleo_matcher::{Config, Matcher, Utf32Str};
-use shared::commands::Command;
+use shared::{commands::Command, user_profile::UserProfile};
 use web_sys::{Document, HtmlDivElement, HtmlElement, Node, Range};
 
 use crate::components::user_profile::UserProfileMaybeExt;
@@ -30,13 +31,13 @@ impl MenuType {
 }
 
 pub enum SelectedItem {
-    User(MemberShip),
+    User(UserProfile),
     Command(Command),
 }
 
-impl From<MemberShip> for SelectedItem {
-    fn from(membership: MemberShip) -> Self {
-        SelectedItem::User(membership)
+impl From<UserProfile> for SelectedItem {
+    fn from(user_profile: UserProfile) -> Self {
+        SelectedItem::User(user_profile)
     }
 }
 
@@ -65,7 +66,7 @@ fn render_command(command: Command) -> impl IntoView {
 
 fn commit_command(command: Command, doc: &Document, range: Range) -> (Node, u32) {
     if let Some((replacement, caret_position)) = &command.is_macro() {
-        let text_node = doc.create_text_node(&replacement);
+        let text_node = doc.create_text_node(replacement);
         let text_len = text_node.length();
         range.insert_node(&text_node).unwrap();
         return (Node::from(text_node), caret_position.unwrap_or(text_len));
@@ -137,7 +138,7 @@ pub fn commit_selection(
     let (focus_node, focus_offset) = match selected {
         SelectedItem::User(membership) => {
             let room_id = state.active_room_id.get_untracked().unwrap_or_default();
-            let mention_view = membership.to_span(state.clone()).render(store, room_id);
+            let mention_view = membership.to_span().render(store, room_id);
             let any_view: AnyView = mention_view.into_any();
             let mut render_state = any_view.build();
 
@@ -195,7 +196,7 @@ fn filter_items<T: RenderMenuRow>(filter: String, items: Vec<T>, matcher: &mut M
                     let bonus = ((fields.len() - 1 - idx) * 10) as u16;
                     let final_score = score + bonus;
 
-                    if best_score.map_or(true, |current| final_score > current) {
+                    if best_score.is_none_or(|current| final_score > current) {
                         best_score = Some(final_score);
                     }
                 }
@@ -207,7 +208,7 @@ fn filter_items<T: RenderMenuRow>(filter: String, items: Vec<T>, matcher: &mut M
         }
     }
 
-    matched.sort_by(|a, b| b.0.cmp(&a.0));
+    matched.sort_by_key(|b| std::cmp::Reverse(b.0));
     matched.into_iter().map(|(_, item)| item).collect()
 }
 
@@ -217,7 +218,7 @@ trait RenderMenuRow {
     fn match_fields() -> Vec<fn(&Self) -> Option<String>>;
 }
 
-impl RenderMenuRow for MemberShip {
+impl RenderMenuRow for UserProfile {
     fn id(&self) -> String {
         self.user_id.clone()
     }
@@ -326,7 +327,7 @@ impl RenderMenuRow for Command {
 pub fn SelectionMenu(menu: RwSignal<MenuType>, input_ref: NodeRef<Div>) -> impl IntoView {
     let state: AppState = expect_context();
 
-    let mention_matches: RwSignal<Vec<MemberShip>> = expect_context();
+    let mention_matches: RwSignal<Vec<UserProfile>> = expect_context();
     let command_matches: RwSignal<Vec<Command>> = expect_context();
 
     let matcher = StoredValue::new(Matcher::new(Config::DEFAULT));
@@ -336,8 +337,8 @@ pub fn SelectionMenu(menu: RwSignal<MenuType>, input_ref: NodeRef<Div>) -> impl 
         async move {
             if let Some(id) = room_id {
                 let mut res = get_members(id.clone()).await.unwrap_or_default();
-                res.insert(0, MemberShip::room(id));
-                res.sort_by(|a, b| a.get_name().cmp(&b.get_name()));
+                res.insert(0, UserProfile::room(id));
+                res.sort_by_key(|a| a.get_name());
 
                 res
             } else {
@@ -400,7 +401,7 @@ pub fn SelectionMenu(menu: RwSignal<MenuType>, input_ref: NodeRef<Div>) -> impl 
 
     let content = move || {
         let Some(el) = input_ref.get() else {
-            return view! {}.into_any();
+            return ().into_any();
         };
         let room_id = state.active_room_id.get().unwrap_or_default();
         let room_id_command = room_id.clone();

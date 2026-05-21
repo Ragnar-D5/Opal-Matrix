@@ -1,5 +1,5 @@
 use crate::{
-    app::{call_tauri, CurrentWindow},
+    app::{CurrentWindow, call_tauri},
     components::SingleFloatingTile,
     state::AppState,
 };
@@ -153,7 +153,7 @@ pub fn LoginPage(window: RwSignal<CurrentWindow>) -> impl IntoView {
                     let user_id: String = serde_wasm_bindgen::from_value(js_val).unwrap();
 
                     state.user_id.set(user_id);
-                    window.set(CurrentWindow::LoadingPage);
+                    window.set(CurrentWindow::Loading);
                 }
                 Err(js_val) => {
                     let err: LoginError =
@@ -169,7 +169,7 @@ pub fn LoginPage(window: RwSignal<CurrentWindow>) -> impl IntoView {
         <div class="relative flex items-center justify-center w-full text-(--accent-color) text-3xl font-bold pb-5">
             <button
                 class="absolute left-0 -translate-y-1/2 hover:underline text-sm text-(--dim-text-color) cursor-pointer select-none"
-                on:click=move |_| window.set(CurrentWindow::HomeserverDiscoveryPage)
+                on:click=move |_| window.set(CurrentWindow::HomeserverDiscovery)
             >
                 "⟵ back"
             </button>
@@ -350,7 +350,7 @@ pub fn HomeserverDiscoveryPage(window: RwSignal<CurrentWindow>) -> impl IntoView
             on:click=move |_| {
                 spawn_local(async move {
                     choose_home_server().await;
-                    window.set(CurrentWindow::LoginPage);
+                    window.set(CurrentWindow::Login);
                 })
             }
         >
@@ -368,10 +368,10 @@ pub fn Authentication() -> impl IntoView {
         <SingleFloatingTile class="p-5">
             <div class="min-w-100 flex flex-col">
                 {move || match window.get() {
-                    CurrentWindow::HomeserverDiscoveryPage => {
+                    CurrentWindow::HomeserverDiscovery => {
                         view! { <HomeserverDiscoveryPage window=window /> }.into_any()
                     }
-                    CurrentWindow::LoginPage => view! { <LoginPage window=window /> }.into_any(),
+                    CurrentWindow::Login => view! { <LoginPage window=window /> }.into_any(),
                     _ => view! { <LoginPage window=window /> }.into_any(),
                 }}
             </div>

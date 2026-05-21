@@ -5,6 +5,7 @@ use matrix_sdk::authentication::matrix::MatrixSession;
 use matrix_sdk::media::{MediaFormat, MediaRequestParameters, MediaThumbnailSettings};
 use matrix_sdk::ruma::{OwnedDeviceId, UserId};
 use matrix_sdk::{AuthSession, Client as MatrixClient, SessionMeta, SessionTokens};
+use ruma::OwnedMxcUri;
 use ruma::events::room::MediaSource;
 use ruma::media::Method;
 use shared::api::RestoreResponse;
@@ -28,10 +29,7 @@ use tauri::{Manager, State};
 pub mod frontend;
 pub mod matrix_api;
 pub mod state;
-pub mod storage;
 pub(crate) mod sync;
-
-use matrix_api::authentication;
 
 use tauri_plugin_http::reqwest::{self, Response};
 
@@ -43,7 +41,6 @@ use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
 use tauri_plugin_log::{Target, TargetKind};
 use tauri_plugin_notification::{NotificationExt, PermissionState};
 
-use crate::frontend::send_sidebar_update;
 use crate::matrix_api::crypto::{self, StoredSession};
 use crate::state::{AppState, TaskManager, TimelineManager};
 use crate::sync::attach_callbacks;
@@ -66,7 +63,7 @@ where
         url_str.push_str(&encoded);
     }
 
-    return Url::parse(&url_str).map_err(|e| format!("Invalid URL: {}", e).into());
+    Url::parse(&url_str).map_err(|e| format!("Invalid URL: {}", e).into())
 }
 
 /// Helper function to convert a reqwest::Response into an http::Response<Bytes>.
@@ -93,7 +90,7 @@ async fn reqwest_response_to_http_response(
 }
 
 /// Sends a notification with the apphandle if the user has granted permission.
-fn send_notification(handle: &AppHandle, title: String, body: String) -> Result<(), TauriError> {
+fn _send_notification(handle: &AppHandle, title: String, body: String) -> Result<(), TauriError> {
     if handle.notification().permission_state()? != PermissionState::Granted {
         trace!("Notification permission not granted, skipping notification");
         return Ok(());
@@ -112,14 +109,14 @@ pub enum TauriError {
 }
 
 pub trait AsInfo {
-    fn as_info(self) -> TauriError;
+    fn as_info(&self) -> TauriError;
 }
 
 impl<T> AsInfo for T
 where
     T: ToString,
 {
-    fn as_info(self) -> TauriError {
+    fn as_info(&self) -> TauriError {
         TauriError::as_info(self.to_string())
     }
 }
@@ -179,11 +176,10 @@ where
 
 #[command]
 async fn try_restore(
-    state: State<'_, Arc<AppState>>,
     app_handle: AppHandle,
     matrix_client: State<'_, RwLock<MatrixClient>>,
 ) -> Result<RestoreResponse, TauriError> {
-    let Some(session) = state.get_last_session().await? else {
+    let Some(session) = crypto::get_last_active_session().await? else {
         return Ok(RestoreResponse::NoSession);
     };
 
@@ -200,12 +196,6 @@ async fn try_restore(
         .build()
         .await?;
 
-    let Some(user_id) = state.login_or_restore_session(session.clone()).await? else {
-        return Ok(RestoreResponse::Failed {
-            home_server: session.homeserver_url,
-        });
-    };
-
     let session = AuthSession::Matrix(MatrixSession {
         meta: SessionMeta {
             device_id: OwnedDeviceId::from(session.device_id.to_string()),
@@ -219,6 +209,8 @@ async fn try_restore(
     new_client.restore_session(session).await?;
     attach_callbacks(&new_client, &app_handle).await?;
 
+    let user_id = new_client.user_id().unwrap().to_string();
+
     *matrix_client.write().await = new_client;
 
     // state.init_stuff(&handle).await?;
@@ -231,17 +223,11 @@ async fn login(
     username: String,
     password: String,
     recovery_key: String,
-    state: State<'_, Arc<AppState>>,
     app_handle: AppHandle,
     matrix_client: State<'_, RwLock<MatrixClient>>,
     handle: AppHandle,
 ) -> Result<String, LoginError> {
     info!("Logging in new");
-
-    state.stop_sync().await.map_err(|e| {
-        error!("Failed to stop sync: {:?}", e);
-        LoginError::BackendError
-    })?;
 
     let server_url = matrix_client.read().await.homeserver().to_string();
 
@@ -351,75 +337,7 @@ async fn login(
         LoginError::BackendError
     })?;
 
-    // let server_info = state
-    //     .home_server_info
-    //     .read()
-    //     .await
-    //     .as_ref()
-    //     .ok_or_else(|| {
-    //         error!("No server info");
-    //         LoginError::BackendError
-    //     })?
-    //     .clone();
-
-    // let (client_info, token) = matrix_login(server_info, username, password).await?;
-
-    // {
-    //     let mut client_guard = state.client.write().await;
-    //     let mut token_guard = state.token.write().await;
-
-    //     *token_guard = Some(token.clone());
-    //     *client_guard = Some(client_info.clone());
-    // }
-
-    // state.save_session().await.map_err(|e| {
-    //     error!("Failed to save session: {:?}", e);
-    //     LoginError::BackendError
-    // })?;
-
-    // state.init_stuff(&handle).await.map_err(|e| {
-    //     error!("Failed to initialize stuff: {:?}", e);
-    //     LoginError::BackendError
-    // })?;
-
-    // state.set_recovery_key(recovery_key).await.map_err(|e| {
-    //     error!("Failed to set recovery key: {:?}", e);
-    //     LoginError::BackendError
-    // })?;
-
     Ok(user_id)
-}
-
-/// Sets the recovery key for the current user. The key is saved in the keyring.
-#[command(rename_all = "snake_case")]
-async fn set_recovery_key(
-    state: State<'_, Arc<AppState>>,
-    handle: AppHandle,
-    recovery_key: String,
-) -> Result<(), TauriError> {
-    info!("Setting recovery key");
-
-    state.set_recovery_key(recovery_key).await?;
-
-    state.restart_sync(&handle).await?;
-
-    Ok(())
-}
-
-#[tauri::command]
-async fn send_frontend(
-    state: State<'_, Arc<AppState>>,
-    handle: AppHandle,
-) -> Result<(), TauriError> {
-    let client_guard = state.client.read().await;
-    let client_info = client_guard.as_ref().ok_or("Not logged in")?;
-
-    let conn_guard = state.connection.lock().await;
-    let conn = conn_guard.as_ref().ok_or("Database not initialized")?;
-
-    send_sidebar_update(conn, &handle, &client_info.user_id.clone())?;
-
-    Ok(())
 }
 
 #[command]
@@ -491,10 +409,7 @@ pub fn run() {
         .plugin(tauri_plugin_http::init())
         .setup(|app: &mut App| {
             let config_dir = app.path().app_config_dir().map_err(|e| {
-                std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("Failed to resolve app config dir: {e}"),
-                )
+                std::io::Error::other(format!("Failed to resolve app config dir: {e}"))
             })?;
 
             std::fs::create_dir_all(&config_dir)?;
@@ -526,10 +441,7 @@ pub fn run() {
             app.manage(BrandColorsMap(color_map));
 
             let data_dir = app.path().app_data_dir().map_err(|e| {
-                std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("Failed to resolve app data dir: {e}"),
-                )
+                std::io::Error::other(format!("Failed to resolve app data dir: {e}"))
             })?;
 
             std::fs::create_dir_all(&data_dir)?;
@@ -614,8 +526,6 @@ pub fn run() {
             login,
             fetch_raw_html,
             try_restore,
-            set_recovery_key,
-            send_frontend,
             backend_log,
             set_room_id,
             set_frontend_focused,
@@ -624,14 +534,9 @@ pub fn run() {
             frontend::messages::get_timeline,
             frontend::messages::scroll_up,
             frontend::commands::get_commands,
-            // storage commands
-            storage::get_members,
-            storage::members::get_members_for_room,
-            storage::receipts::get_receipt,
             // matrix API commands
             matrix_api::discovery::choose_home_server,
             // matrix_api::messages::fetch_messages,
-            matrix_api::rooms::send_read_marker,
             matrix_api::account_data::set_account_data,
             matrix_api::account_data::get_account_data,
             matrix_api::account_data::get_breadcrumbs,
@@ -664,17 +569,7 @@ pub fn run() {
 
                     // 2. Reconstruct to a pure MXC string and parse into Ruma's OwnedMxcUri
                     let mxc_string = format!("mxc://{}/{}", server_name, media_id);
-                    let Ok(owned_mxc_uri): Result<ruma::OwnedMxcUri, std::convert::Infallible> =
-                        matrix_sdk::ruma::OwnedMxcUri::try_from(mxc_string)
-                    else {
-                        responder.respond(
-                            tauri::http::Response::builder()
-                                .status(400)
-                                .body(Vec::new())
-                                .unwrap(),
-                        );
-                        return;
-                    };
+                    let owned_mxc_uri: OwnedMxcUri = OwnedMxcUri::from(mxc_string);
 
                     let mut is_thumbnail = false;
                     let mut width: u32 = 800;

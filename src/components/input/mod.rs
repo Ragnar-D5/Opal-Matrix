@@ -3,14 +3,15 @@ use leptos::{html::Div, prelude::*, tachys::dom::document};
 use log::warn;
 use regex::Regex;
 use shared::commands::Command;
+use shared::user_profile::UserProfile;
 use wasm_bindgen::JsCast;
-use web_sys::{window, Node};
 use web_sys::{HtmlDivElement, HtmlElement, KeyboardEvent};
+use web_sys::{Node, window};
 
 use crate::components::input::menu::MenuType;
-use crate::components::input::menu::{commit_selection, SelectedItem};
+use crate::components::input::menu::{SelectedItem, commit_selection};
 use crate::state::{AppState, MemberStore};
-use crate::tauri_functions::{commit_message, MemberShip};
+use crate::tauri_functions::commit_message;
 
 pub(crate) mod menu;
 
@@ -156,10 +157,10 @@ pub fn get_active_filter(
 ) -> Option<String> {
     let (node, local_offset) = get_node_and_offset(el, caret_pos)?;
 
-    if let Some(parent) = node.parent_element() {
-        if parent.tag_name().to_uppercase() == "SPAN" {
-            return None;
-        }
+    if let Some(parent) = node.parent_element()
+        && parent.tag_name().to_uppercase() == "SPAN"
+    {
+        return None;
     }
 
     let text = node.text_content().unwrap_or_default();
@@ -206,7 +207,7 @@ pub fn handle_keydown(
     input_ref: NodeRef<Div>,
     menu: RwSignal<MenuType>,
     selected_index: RwSignal<usize>,
-    mention_matches: RwSignal<Vec<MemberShip>>,
+    mention_matches: RwSignal<Vec<UserProfile>>,
     command_matches: RwSignal<Vec<Command>>,
     state: AppState,
     store: MemberStore,
@@ -340,7 +341,7 @@ pub fn get_caret_position(el: &HtmlElement) -> u32 {
 
     pre_caret_range
         .select_node_contents(el)
-        .unwrap_or_else(|_| return);
+        .unwrap_or_else(|_| {});
     pre_caret_range
         .set_end(&range.end_container().unwrap(), range.end_offset().unwrap())
         .unwrap();

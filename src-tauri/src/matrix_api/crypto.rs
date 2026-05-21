@@ -1,33 +1,9 @@
-use bytes::Bytes;
-use log::warn;
-use matrix_sdk_crypto::types::events::room::encrypted::EncryptedEvent;
-use std::{collections::BTreeMap, path::PathBuf, str::FromStr};
+use crate::{APP_NAME, TauriError};
 
-use crate::{authentication::get_account_data, construct_url, AppState, TauriError, APP_NAME};
-
-use http::Response as HttpResponse;
-use matrix_sdk_crypto::{
-    olm::ExportedRoomKey, store::types::BackupDecryptionKey, types::requests::AnyOutgoingRequest,
-    DecryptionSettings, EncryptionSyncChanges, OlmMachine,
-};
-use matrix_sdk_sqlite::SqliteCryptoStore;
-use tauri_plugin_http::reqwest::{self, Client};
-
-use log::{error, info};
-
-use ruma::{
-    api::{
-        client::{backup::EncryptedSessionData, sync::sync_events::v3::Response as SyncResponse},
-        IncomingResponse,
-    },
-    events::AnyTimelineEvent,
-    serde::Raw,
-    DeviceId, OwnedDeviceId, OwnedRoomId, RoomId, UserId,
-};
+use log::info;
 
 use keyring::Entry;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
 
 const LAST_USER_KEY: &str = "__last_active_user__";
 
@@ -72,9 +48,7 @@ pub async fn get_session(user_id: String) -> Result<Option<StoredSession>, Tauri
             Ok(Some(session))
         }
         Err(keyring::Error::NoEntry) => Ok(None),
-        Err(e) => {
-            return Err(format!("Keyring error: {}", e).into());
-        }
+        Err(e) => Err(format!("Keyring error: {}", e).into()),
     }
 }
 
@@ -94,27 +68,8 @@ pub async fn save_session(session: &StoredSession) -> Result<(), TauriError> {
     Ok(())
 }
 
-/// Initializes the OlmMachine for the given user and device, using a secure passphrase to encrypt the local database. The machine is set up with a SqliteCryptoStore located at the specified path.
-// pub async fn init_crypto_machine(
-//     path: PathBuf,
-//     user_id: String,
-//     device_id: String,
-//     db_passphrase: String,
-// ) -> Result<OlmMachine, TauriError> {
-//     let ruma_user = UserId::parse(user_id)?.into();
-//     let ruma_device: DeviceId = DeviceId::from(device_id);
-
-//     let path = path.join(format!("crypto_store_{}", device_id));
-
-//     let store = SqliteCryptoStore::open(path.clone(), Some(&db_passphrase)).await?;
-
-//     let machine = OlmMachine::with_store(&ruma_user, &ruma_device, store, None).await?;
-
-//     return Ok(machine);
-// }
-
 /// Retrieves the existing passphrase for the given user ID from the keyring, or generates a new random passphrase using the `getrandom` crate if none exists.
-pub async fn get_or_create_passphrase(user_id: String) -> Result<String, TauriError> {
+pub async fn _get_or_create_passphrase(user_id: String) -> Result<String, TauriError> {
     let entry = Entry::new(APP_NAME, &format!("passphrase:{}", user_id))?;
 
     match entry.get_password() {

@@ -38,10 +38,10 @@ pub async fn call_tauri_no_args(cmd: &str) -> Result<JsValue, JsValue> {
 
 #[derive(Clone, Debug, Copy, PartialEq)]
 pub enum CurrentWindow {
-    HomeserverDiscoveryPage,
-    LoginPage,
-    HomePage,
-    LoadingPage,
+    HomeserverDiscovery,
+    Login,
+    Home,
+    Loading,
 }
 
 #[component]
@@ -143,7 +143,7 @@ pub fn App() -> impl IntoView {
         if let Some(mut new_state) = sidebar_update_event.get() {
             new_state
                 .dms
-                .sort_by(|a, b| b.last_ts().unwrap_or(0).cmp(&a.last_ts().unwrap_or(0)));
+                .sort_by_key(|b| std::cmp::Reverse(b.last_ts().unwrap_or(0)));
 
             let current_order = state.server_order.get_untracked();
 
@@ -179,8 +179,8 @@ pub fn App() -> impl IntoView {
 
             state.sidebar_state.set(new_state);
 
-            if state.current_window.get() == CurrentWindow::LoadingPage {
-                state.current_window.set(CurrentWindow::HomePage);
+            if state.current_window.get() == CurrentWindow::Loading {
+                state.current_window.set(CurrentWindow::Home);
             }
         }
     });
@@ -193,16 +193,14 @@ pub fn App() -> impl IntoView {
 
                     match response {
                         RestoreResponse::NoSession => {
-                            state
-                                .current_window
-                                .set(CurrentWindow::HomeserverDiscoveryPage);
+                            state.current_window.set(CurrentWindow::HomeserverDiscovery);
                         }
                         RestoreResponse::Success { user_id } => {
                             state.user_id.set(user_id);
-                            state.current_window.set(CurrentWindow::HomePage);
+                            state.current_window.set(CurrentWindow::Home);
                         }
                         RestoreResponse::Failed { home_server: _ } => {
-                            state.current_window.set(CurrentWindow::LoginPage);
+                            state.current_window.set(CurrentWindow::Login);
                         }
                     }
                 }
@@ -258,11 +256,11 @@ pub fn App() -> impl IntoView {
     view! {
         <BackgroundShader />
         {move || match state.current_window.get() {
-            CurrentWindow::HomeserverDiscoveryPage | CurrentWindow::LoginPage => {
+            CurrentWindow::HomeserverDiscovery | CurrentWindow::Login => {
                 view! { <Authentication /> }.into_any()
             }
-            CurrentWindow::HomePage => view! { <HomePage /> }.into_any(),
-            CurrentWindow::LoadingPage => Loading().into_any(),
+            CurrentWindow::Home => view! { <HomePage /> }.into_any(),
+            CurrentWindow::Loading => Loading().into_any(),
         }}
     }
 }
@@ -282,11 +280,7 @@ fn HomePage() -> impl IntoView {
     });
 
     let root_css_vars = move || {
-        let base = format!(
-            "cursor: default;
-
-            line-height: 22px",
-        );
+        let base = "cursor: default; line-height: 22px".to_string();
 
         if bg_loaded.get() {
             format!(

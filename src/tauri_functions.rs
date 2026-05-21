@@ -1,76 +1,12 @@
-use leptos::{prelude::Get, task::spawn_local};
-use serde::Serialize;
 use serde_json::json;
 use shared::{
-    api::{FetchMessagesResponse, LinkPreviewResponse},
-    commands::Command,
-    timeline::RichTextSpan,
-    timeline::UiTimelineItem,
+    api::LinkPreviewResponse, commands::Command, timeline::UiTimelineItem,
+    user_profile::UserProfile,
 };
 
-use crate::{
-    app::{call_tauri, call_tauri_no_args},
-    state::AppState,
-};
+use crate::app::{call_tauri, call_tauri_no_args};
 
-#[derive(Serialize)]
-struct ReadMarkerArgs {
-    room_id: String,
-    event_id: String,
-}
-
-pub fn send_marker(room_id: String, event_id: String) {
-    spawn_local(async move {
-        let args = match serde_wasm_bindgen::to_value(&ReadMarkerArgs { room_id, event_id }) {
-            Ok(a) => a,
-            Err(_) => return,
-        };
-        let _ = call_tauri("send_read_marker", args).await;
-    });
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct MemberShip {
-    pub user_id: String,
-    pub display_name: Option<String>,
-    pub avatar_url: Option<String>,
-}
-
-impl MemberShip {
-    pub fn room(room_id: String) -> Self {
-        Self {
-            user_id: room_id,
-            display_name: Some("room".into()),
-            avatar_url: None,
-        }
-    }
-
-    fn is_room(&self, state: AppState) -> bool {
-        let Some(rid) = state.active_room_id.get() else {
-            return false;
-        };
-        rid == self.user_id
-    }
-
-    pub fn get_name(&self) -> String {
-        self.display_name
-            .clone()
-            .unwrap_or_else(|| self.user_id.clone())
-    }
-
-    pub fn to_span(&self, state: AppState) -> RichTextSpan {
-        if self.is_room(state) {
-            return RichTextSpan::RoomMention;
-        }
-
-        RichTextSpan::UserMention {
-            user_id: self.user_id.clone(),
-            display_name: self.get_name(),
-        }
-    }
-}
-
-pub async fn get_members(room_id: String) -> Result<Vec<MemberShip>, String> {
+pub async fn get_members(room_id: String) -> Result<Vec<UserProfile>, String> {
     let args = serde_wasm_bindgen::to_value(&json!(
             {
         "room_id": room_id
@@ -82,18 +18,10 @@ pub async fn get_members(room_id: String) -> Result<Vec<MemberShip>, String> {
         .await
         .map_err(|e| format!("Failed to get members: {:?}", e))?;
 
-    let members: Vec<(String, Option<String>, Option<String>)> =
-        serde_wasm_bindgen::from_value(js_val)
-            .map_err(|e| format!("Failed to deserialize answer: {:?}", e))?;
+    let members: Vec<UserProfile> = serde_wasm_bindgen::from_value(js_val)
+        .map_err(|e| format!("Failed to deserialize answer: {:?}", e))?;
 
-    Ok(members
-        .iter()
-        .map(|(u, d, a)| MemberShip {
-            user_id: u.into(),
-            display_name: d.clone(),
-            avatar_url: a.clone(),
-        })
-        .collect())
+    Ok(members)
 }
 
 pub async fn commit_message(message: String, room_id: String) -> Result<(), String> {

@@ -1,7 +1,7 @@
-use phosphor_leptos::{Icon, IconWeight, HASH, MATRIX_LOGO};
+use phosphor_leptos::{HASH, Icon, IconWeight, MATRIX_LOGO};
 
 use crate::components::presence::PresenceBadge;
-use crate::components::{get_color, FloatingTile};
+use crate::components::{FloatingTile, get_color};
 use crate::state::{AppState, MemberStore};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -364,7 +364,7 @@ pub fn Sidebar() -> impl IntoView {
                                         move |e| {
                                             if let Some(data_transfer) = e.data_transfer() {
                                                 let _ = data_transfer.set_data("text/plain", &drag_id);
-                                                let _ = data_transfer.set_drag_image(&img, 0, 0);
+                                                data_transfer.set_drag_image(&img, 0, 0);
                                             }
                                             set_dragged_server_id.set(Some(drag_id.clone()));
                                         }

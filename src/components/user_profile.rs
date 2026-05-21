@@ -1,6 +1,6 @@
 use colorsys::Hsl;
 use leptos::prelude::*;
-use shared::user_profile::UserProfile;
+use shared::{timeline::RichTextSpan, user_profile::UserProfile};
 
 use crate::components::get_color;
 
@@ -55,13 +55,35 @@ pub trait UserProfileExt {
     fn render_icon(self, size: usize) -> impl IntoView;
     fn render_name(self, font_size: usize) -> impl IntoView;
     fn get_name(&self) -> String;
-
-    fn get_color(&self) -> Hsl;
+    fn to_span(&self) -> RichTextSpan;
 
     fn is_room(&self) -> bool;
+
+    fn room(room_id: String) -> Self;
+
+    fn get_color(&self) -> Hsl;
 }
 
 impl UserProfileExt for UserProfile {
+    fn to_span(&self) -> RichTextSpan {
+        if self.is_room() {
+            return RichTextSpan::RoomMention;
+        }
+
+        RichTextSpan::UserMention {
+            user_id: self.user_id.clone(),
+            display_name: self.get_name(),
+        }
+    }
+
+    fn room(room_id: String) -> Self {
+        Self {
+            user_id: room_id,
+            display_name: Some("room".into()),
+            avatar_url: None,
+        }
+    }
+
     fn is_room(&self) -> bool {
         self.user_id.starts_with("!")
     }

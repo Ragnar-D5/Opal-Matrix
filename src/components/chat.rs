@@ -14,30 +14,24 @@ use crate::{
     },
     hooks::use_tauri_event,
     state::{AppState, MemberProfileHandle, MemberStore, RoomHeader},
-    tauri_functions::{MemberShip, get_members, get_timeline, scroll_up},
+    tauri_functions::{get_members, get_timeline, scroll_up},
 };
 
 use colorsys::Hsl;
-use matrix_sdk::ruma::api::client::room;
 use phosphor_leptos::{HASH, INFO, Icon, IconWeight, PHONE, TRASH, UPLOAD_SIMPLE, WARNING_CIRCLE};
 
 use chrono::{DateTime, Local, TimeZone};
-use leptos::{ev, html::Div, leptos_dom::logging::console_error, prelude::*, task::spawn_local};
+use leptos::{ev, html::Div, prelude::*, task::spawn_local};
 use leptos_use::{UseIntersectionObserverReturn, use_event_listener, use_intersection_observer};
-use serde_json::json;
 use shared::{
     commands::Command,
-    sidebar::{RoomKind, RoomNode, SidebarState},
     timeline::{
         Change, DetailState, EventContent, MessageContent, SystemMessage, TimelineEvent,
         UiMessageType, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind,
     },
     user_profile::{PresenceStatus, UserProfile},
 };
-use std::{
-    collections::{HashMap, HashSet},
-    hash::Hash,
-};
+use std::collections::HashMap;
 use web_sys::IntersectionObserverEntry;
 
 fn format_date(date: DateTime<Local>) -> String {
@@ -747,7 +741,7 @@ fn TimeLine() -> impl IntoView {
     let sentinel_ref = NodeRef::<Div>::new();
 
     let fetch_more = move || {
-        let Some(room_id) = state.active_room_id.get() else {
+        let Some(room_id) = state.active_room_id.get_untracked() else {
             log::error!("No active room ID, cannot fetch more messages");
             return;
         };
@@ -799,7 +793,7 @@ fn TimeLine() -> impl IntoView {
             spawn_local(async move {
                 match get_timeline(&current_room_id).await {
                     Ok(tl) => {
-                        if state.active_room_id.get() == Some(current_room_id.clone()) {
+                        if state.active_room_id.get_untracked() == Some(current_room_id.clone()) {
                             log::info!("Effect: Received {} items", tl.len());
                             messages.set(tl);
                             initial_loaded.set(true);
@@ -815,7 +809,7 @@ fn TimeLine() -> impl IntoView {
                             );
                         } else {
                             log::error!("Failed to load timeline: {}", e);
-                            if state.active_room_id.get() == Some(current_room_id) {
+                            if state.active_room_id.get_untracked() == Some(current_room_id) {
                                 is_loading.set(false);
                             }
                         }
@@ -972,7 +966,7 @@ fn ChatInput() -> impl IntoView {
 
     provide_context(selected_index);
 
-    let mention_matches = RwSignal::new(Vec::<MemberShip>::new());
+    let mention_matches = RwSignal::new(Vec::<UserProfile>::new());
     let command_matches = RwSignal::new(Vec::<Command>::new());
 
     provide_context(mention_matches);
@@ -1035,15 +1029,15 @@ fn ChatInput() -> impl IntoView {
         let win = window();
         let doc = document();
 
-        if let Ok(Some(sel)) = win.get_selection() {
-            if let Ok(range) = doc.create_range() {
-                let _ = range.select_node_contents(&el);
-                // collapse_with_to_start(false) collapses the selection to the END
-                range.collapse_with_to_start(false);
+        if let Ok(Some(sel)) = win.get_selection()
+            && let Ok(range) = doc.create_range()
+        {
+            let _ = range.select_node_contents(&el);
+            // collapse_with_to_start(false) collapses the selection to the END
+            range.collapse_with_to_start(false);
 
-                let _ = sel.remove_all_ranges();
-                let _ = sel.add_range(&range);
-            }
+            let _ = sel.remove_all_ranges();
+            let _ = sel.add_range(&range);
         }
 
         let _ = el.focus();

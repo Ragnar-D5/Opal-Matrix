@@ -1,4 +1,4 @@
-use std::{collections::HashMap, hash::Hash, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 
 use matrix_sdk::ruma::{
     MilliSecondsSinceUnixEpoch,
@@ -25,20 +25,20 @@ use uuid::Uuid;
 
 use crate::parsing::{parse_html_to_spans, parse_plain_text_to_spans};
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct AbstractProgress {
     pub current: usize,
     pub total: usize,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct MediaUploadProgress {
     pub index: u64,
     pub progress: AbstractProgress,
 }
 
 /// State for messages which haven't been sent yet, or failed to send. This is used to show progress indicators for media uploads, and error messages for failed sends.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub enum EventState {
     NotSentYet {
         progress: Option<MediaUploadProgress>,
@@ -78,14 +78,14 @@ impl From<&EventSendState> for EventState {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct Sender {
     pub id: String,
     pub display_name: Option<String>,
     pub avatar_url: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct EventFlags {
     pub is_editable: bool,
     pub is_highlighted: bool,
@@ -93,13 +93,13 @@ pub struct EventFlags {
     pub contains_only_emojis: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct Change<T> {
     pub old: T,
     pub new: T,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub enum UiMembershipChange {
     None,
     Error,
@@ -184,7 +184,7 @@ pub struct InReplyToDetails {
     pub content: Box<EventContent>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum RichTextSpan {
     Plain(String),
     UserMention {
@@ -199,7 +199,7 @@ pub enum RichTextSpan {
     Newline,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum UiMediaSource {
     Plain(String),
     Encrypted { url: String, k: String, iv: String },
@@ -254,7 +254,7 @@ impl From<StickerMediaSource> for UiMediaSource {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
 pub enum UiPollKind {
     #[default]
     Undisclosed,
@@ -282,24 +282,7 @@ pub struct UiPollResult {
     pub has_been_edited: bool,
 }
 
-impl Hash for UiPollResult {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.question.hash(state);
-        self.kind.hash(state);
-        self.max_selections.hash(state);
-        self.end_time.hash(state);
-        self.has_been_edited.hash(state);
-
-        for (answer_id, voters) in &self.votes {
-            answer_id.hash(state);
-            for voter in voters {
-                voter.hash(state);
-            }
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct UiBeaconInfo {
     pub geo_uri: String,
     pub description: Option<String>,
@@ -316,7 +299,7 @@ impl From<BeaconInfo> for UiBeaconInfo {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum UiMessageType {
     Audio {
         source: UiMediaSource,
@@ -389,24 +372,6 @@ pub struct MessageContent {
     pub msg_type: UiMessageType,
 }
 
-impl Hash for MessageContent {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.in_reply_to.hash(state);
-        self.thread_root.hash(state);
-        self.is_edited.hash(state);
-        self.is_redacted.hash(state);
-        self.body.hash(state);
-        self.msg_type.hash(state);
-
-        for (emoji, reactors) in &self.reactions {
-            emoji.hash(state);
-            for reactor in reactors {
-                reactor.hash(state);
-            }
-        }
-    }
-}
-
 fn get_reactions(reactions: ReactionsByKeyBySender) -> HashMap<String, Vec<String>> {
     reactions
         .iter()
@@ -439,46 +404,7 @@ pub enum SystemMessage {
     OtherEvent,
 }
 
-impl Hash for SystemMessage {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        match self {
-            SystemMessage::MembershipChange { user_id, change } => {
-                user_id.hash(state);
-                change.hash(state);
-            }
-            SystemMessage::ProfileChange {
-                user_id,
-                display_name_change,
-                avatar_url_changed,
-            } => {
-                user_id.hash(state);
-                display_name_change.hash(state);
-                avatar_url_changed.hash(state);
-            }
-            SystemMessage::CallInvite => {
-                "CallInvite".hash(state);
-            }
-            SystemMessage::RtcNotification {
-                call_intent,
-                declined_by,
-            } => {
-                call_intent
-                    .clone()
-                    .map(|v| v.to_string())
-                    .unwrap_or_default()
-                    .hash(state);
-                for user in declined_by {
-                    user.hash(state);
-                }
-            }
-            SystemMessage::OtherEvent => {
-                "OtherEvent".hash(state);
-            }
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub enum EventContent {
     MsgLike(Box<MessageContent>),
     FailedToParseMessageLike {
@@ -738,7 +664,7 @@ impl From<&TimelineItemContent> for EventContent {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub enum DetailState<T> {
     Unavailable,
     Pending,
@@ -746,7 +672,7 @@ pub enum DetailState<T> {
     Error(String),
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct TimelineEvent {
     pub state: Option<EventState>,
     pub timestamp: u64,
@@ -831,7 +757,7 @@ impl From<&EventTimelineItem> for TimelineEvent {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub enum UiTimelineItemKind {
     Event(Box<TimelineEvent>),
     DateDivider(u64),
@@ -839,7 +765,7 @@ pub enum UiTimelineItemKind {
     TimelineStart,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct UiTimelineItem {
     pub id: String,
     pub render_key: Uuid,

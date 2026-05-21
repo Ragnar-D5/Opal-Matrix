@@ -1310,7 +1310,7 @@
   --text-color: hsl(220, 25%, 60%);
   --bright-text-color: hsl(220, 25%, 70%);
   --tile-border-color: rgba(255, 255, 255, 0.175);
-  --muted-text-color: hsl(220, 15%, 25%);
+  --muted-text-color: hsl(220, 15%, 30%);
   --gap: 5px;
   --mention-color: rgb(255, 100, 100);
   --presence-online-color: rgb(100, 255, 100);

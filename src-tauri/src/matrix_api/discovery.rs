@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use matrix_sdk::{Client as MatrixClient, ClientBuilder};
+use matrix_sdk::Client as MatrixClient;
 
 use log::trace;
 use ruma::api::auth_scheme::SendAccessToken;
@@ -11,7 +11,7 @@ use tokio::sync::RwLock;
 use url::Url;
 
 use crate::state::HomeServerInfo;
-use crate::{reqwest_response_to_http_response, AppState, AsInfo, TauriError};
+use crate::{AppState, AsInfo, TauriError, reqwest_response_to_http_response};
 
 #[derive(Debug, Deserialize)]
 pub struct WellKnown {
@@ -80,7 +80,7 @@ pub async fn choose_home_server(
         *state.auth_provider.write().await = Some(well_known.authentication);
         Ok(url)
     } else {
-        return Err(format!("Failed to get .well_known: {}", res.status()).as_info());
+        Err(format!("Failed to get .well_known: {}", res.status()).as_info())
     }
 }
 
@@ -88,9 +88,9 @@ use ruma::api::client::discovery::get_supported_versions::{
     Request as VersionsRequest, Response as VersionsResponse,
 };
 use ruma::api::{IncomingResponse, OutgoingRequest, SupportedVersions};
-pub async fn fetch_supported_versions(base_url: &String) -> Result<SupportedVersions, TauriError> {
+pub async fn fetch_supported_versions(base_url: &str) -> Result<SupportedVersions, TauriError> {
     let req = VersionsRequest::new().try_into_http_request::<Vec<u8>>(
-        base_url.as_str(),
+        base_url,
         SendAccessToken::None,
         (),
     )?;

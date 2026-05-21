@@ -3,7 +3,6 @@ use std::collections::{HashMap, HashSet};
 
 use leptos::task::spawn_local;
 use log::error;
-use serde::Serialize;
 use shared::{
     account_data::{AccountDataArgs, AccountDataPayload, Breadcrumbs, ServerOrder},
     sidebar::{RoomKind, RoomNode, SidebarState},
@@ -49,8 +48,8 @@ pub enum RoomHeader {
 impl AppState {
     pub fn new() -> Self {
         Self {
-            current_window: RwSignal::new(CurrentWindow::LoadingPage),
-            previous_window: RwSignal::new(CurrentWindow::LoadingPage),
+            current_window: RwSignal::new(CurrentWindow::Loading),
+            previous_window: RwSignal::new(CurrentWindow::Loading),
             last_changed_time: RwSignal::new(0.0),
             user_id: RwSignal::new(String::new()),
             active_room_id: RwSignal::new(None),
@@ -222,10 +221,10 @@ fn find_node_in_nodes<'a>(nodes: &'a [RoomNode], room_id: &str) -> Option<&'a Ro
             return Some(node);
         }
 
-        if let RoomKind::Space { children } = &node.kind {
-            if let Some(found) = find_node_in_nodes(children, room_id) {
-                return Some(found);
-            }
+        if let RoomKind::Space { children } = &node.kind
+            && let Some(found) = find_node_in_nodes(children, room_id)
+        {
+            return Some(found);
         }
     }
 
@@ -238,11 +237,6 @@ pub struct MemberStore {
     pub presences: RwSignal<HashMap<String, ArcRwSignal<PresenceInfo>>>,
 
     pub fetching: RwSignal<HashSet<String>>,
-}
-
-#[derive(Serialize, Debug)]
-struct GetMembersArgs {
-    room_id: String,
 }
 
 impl MemberStore {
@@ -300,7 +294,7 @@ impl MemberStore {
                         store.rooms.update(|rooms| {
                             let room_entry = rooms.entry(rid.to_string()).or_default();
 
-                            for (profile) in updates.into_iter() {
+                            for profile in updates.into_iter() {
                                 let profile_signal = room_entry
                                     .entry(profile.user_id.clone())
                                     .or_insert_with(|| ArcRwSignal::new(Some(profile.clone())));

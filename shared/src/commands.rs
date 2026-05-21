@@ -86,7 +86,7 @@ impl Command {
             caret_position,
         } = &self.execution
         {
-            Some((replacement.clone(), caret_position.clone()))
+            Some((replacement.clone(), *caret_position))
         } else {
             None
         }

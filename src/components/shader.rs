@@ -3,7 +3,7 @@ use std::{cell::RefCell, rc::Rc};
 use leptos::{html::Canvas, prelude::*};
 
 use crate::state::AppState;
-use wasm_bindgen::{prelude::Closure, JsCast};
+use wasm_bindgen::{JsCast, prelude::Closure};
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{Response, WebGl2RenderingContext};
 
@@ -90,19 +90,19 @@ pub fn BackgroundShader() -> impl IntoView {
 
                 let state_loc = gl_rc.get_uniform_location(&program_rc, "u_state");
                 let state_value = match state.current_window.get_untracked() {
-                    crate::app::CurrentWindow::LoadingPage => 0.0,
-                    crate::app::CurrentWindow::HomeserverDiscoveryPage => 1.0,
-                    crate::app::CurrentWindow::LoginPage => 2.0,
-                    crate::app::CurrentWindow::HomePage => 3.0,
+                    crate::app::CurrentWindow::Loading => 0.0,
+                    crate::app::CurrentWindow::HomeserverDiscovery => 1.0,
+                    crate::app::CurrentWindow::Login => 2.0,
+                    crate::app::CurrentWindow::Home => 3.0,
                 };
                 gl_rc.uniform1f(state_loc.as_ref(), state_value);
 
                 let prev_state_loc = gl_rc.get_uniform_location(&program_rc, "u_prev_state");
                 let prev_state_value = match state.previous_window.get_untracked() {
-                    crate::app::CurrentWindow::LoadingPage => 0.0,
-                    crate::app::CurrentWindow::HomeserverDiscoveryPage => 1.0,
-                    crate::app::CurrentWindow::LoginPage => 2.0,
-                    crate::app::CurrentWindow::HomePage => 3.0,
+                    crate::app::CurrentWindow::Loading => 0.0,
+                    crate::app::CurrentWindow::HomeserverDiscovery => 1.0,
+                    crate::app::CurrentWindow::Login => 2.0,
+                    crate::app::CurrentWindow::Home => 3.0,
                 };
                 gl_rc.uniform1f(prev_state_loc.as_ref(), prev_state_value);
 

@@ -1,22 +1,22 @@
 use std::sync::Arc;
 
-use crate::{construct_url, AppState, TauriError};
-use serde::{de::DeserializeOwned, Serialize};
+use crate::{AppState, TauriError, construct_url};
+use serde::{Serialize, de::DeserializeOwned};
 use shared::account_data::{AccountData, AccountDataPayload, AccountDataType};
-use tauri::{command, State};
+use tauri::{State, command};
 use tauri_plugin_http::reqwest::Client;
 
 /// Generic function to set account data for a given type T that implements the `AccountData` trait.
 async fn set_account_data_api<T: Serialize + AccountData>(
-    matrix_url: &String,
-    user_id: &String,
-    access_token: &String,
+    matrix_url: &str,
+    user_id: &str,
+    access_token: &str,
     data: T,
 ) -> Result<(), TauriError> {
     let client = Client::new();
 
     let url = construct_url(vec![
-        matrix_url.as_str(),
+        matrix_url,
         "_matrix",
         "client",
         "v3",
@@ -39,14 +39,14 @@ async fn set_account_data_api<T: Serialize + AccountData>(
 
 /// Generic function to get account data for a given type T that implements the `AccountData` trait.
 async fn get_account_data_api<T: DeserializeOwned + Serialize + AccountData + Default>(
-    matrix_url: &String,
-    user_id: &String,
-    access_token: &String,
+    matrix_url: &str,
+    user_id: &str,
+    access_token: &str,
 ) -> Result<T, TauriError> {
     let client = Client::new();
 
     let url = construct_url(vec![
-        matrix_url.as_str(),
+        matrix_url,
         "_matrix",
         "client",
         "v3",
