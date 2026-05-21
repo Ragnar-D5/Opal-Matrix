@@ -150,28 +150,6 @@ pub async fn get_commands() -> Result<Vec<Command>, String> {
     }
 }
 
-pub async fn fetch_messages(
-    room_id: String,
-    oldest_id: Option<String>,
-) -> Result<FetchMessagesResponse, String> {
-    let args = serde_wasm_bindgen::to_value(&json!({
-        "room_id": room_id,
-        "oldest_id": oldest_id
-    }))
-    .map_err(|e| format!("Failed to serialize request: {:?}", e))?;
-
-    let res = call_tauri("fetch_messages", args)
-        .await
-        .map_err(|e| format!("Tauri call failed: {:?}", e))?;
-
-    let json_string: String = js_sys::JSON::stringify(&res)
-        .map_err(|e| format!("Failed to convert response to string: {:?}", e))?
-        .into();
-
-    serde_json::from_str(&json_string)
-        .map_err(|e| format!("Failed to parse JSON response: {:?}", e))
-}
-
 pub async fn get_timeline(room_id: &str) -> Result<Vec<UiTimelineItem>, String> {
     let args = serde_wasm_bindgen::to_value(&json!({ "room_id": room_id }))
         .map_err(|e| format!("Failed to serialize request: {:?}", e))?;
@@ -184,6 +162,8 @@ pub async fn get_timeline(room_id: &str) -> Result<Vec<UiTimelineItem>, String> 
         .map_err(|e| format!("Failed to convert response to string: {:?}", e))?
         .into();
 
-    serde_json::from_str(&json_string)
-        .map_err(|e| format!("Failed to parse JSON response: {:?}", e))
+    let res: Vec<UiTimelineItem> = serde_json::from_str(&json_string)
+        .map_err(|e| format!("Failed to parse JSON response: {:?}", e))?;
+
+    Ok(res)
 }

@@ -1,3 +1,4 @@
+use futures::StreamExt;
 use matrix_sdk::Client as MatrixClient;
 use std::{collections::HashMap, str::FromStr, sync::Arc};
 
@@ -9,9 +10,9 @@ use scraper::{Html, Node};
 use serde_json::json;
 use shared::{
     api::FetchMessagesResponse,
-    messages::{MessageContent, MessageKind, MessageState, RichTextSpan, UiMessage, UserMessage}, timeline::UiTimelineItem,
+    messages::{MessageContent, MessageKind, MessageState, RichTextSpan, UiMessage, UserMessage}, timeline::{UiTimelineDiff, UiTimelineItem},
 };
-use tauri::{AppHandle, State, async_runtime::spawn, command};
+use tauri::{AppHandle, Emitter, State, async_runtime::spawn, command};
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
@@ -281,17 +282,38 @@ fn extract_text(node: NodeRef<'_, Node>) -> String {
 pub async fn get_timeline(
     matrix_client: State<'_, RwLock<MatrixClient>>,
     timeline_manager: State<'_, TimelineManager>,
+    handle: AppHandle,
     room_id: String,
 ) -> Result<Vec<UiTimelineItem>, TauriError> {
+    log::debug!("Fetching timeline for room {}", room_id);
     let matrix_client = matrix_client.read().await;
     let room = matrix_client
         .get_room(&RoomId::parse(&room_id)?)
         .ok_or("No room found")?;
 
+    timeline_manager.abort_stream().await;
+
     let timeline = timeline_manager.get_or_create_timeline(&room).await?;
     timeline.paginate_backwards(30).await?;
 
-    let (messages, _) = timeline.subscribe().await;
+    let (messages, stream) = timeline.subscribe().await;
+
+    timeline_manager.set_stream_handle(spawn(async move {
+        tokio::pin!(stream);
+
+        while let Some(update) = stream.next().await {
+            send_timeline_diffs(handle.clone(), update.iter().map(|d| d.into()).collect()).await;
+        }
+    })).await;
+
+    log::debug!("Fetched {} messages for room {}", messages.len(), room_id);
 
     Ok(messages.iter().map(|v| v.into()).collect())
+}
+
+async fn send_timeline_diffs(handle: AppHandle, diffs: Vec<UiTimelineDiff>) {
+    log::debug!("Emitting timeline update with {} diffs", diffs.len());
+    if let Err(e) = handle.emit("timeline_update", diffs) {
+        error!("Failed to emit timeline update: {:?}", e);
+    }
 }

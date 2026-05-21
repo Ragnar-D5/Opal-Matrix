@@ -573,7 +573,7 @@ pub fn run() {
                             level,
                             time,
                             record.file().unwrap_or("Unknown"),
-                            record.line().unwrap_or(0).to_string(),
+                            record.line().unwrap_or(0),
                             message
                         ));
                     })
@@ -597,7 +597,7 @@ pub fn run() {
             });
 
             app.manage(RwLock::new(client));
-            app.manage(TimelineManager::new());
+            app.manage(TimelineManager::default());
 
             #[cfg(not(target_os = "android"))]
             let main_window = app

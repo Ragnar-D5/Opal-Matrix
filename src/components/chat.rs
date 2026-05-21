@@ -4,9 +4,7 @@ use crate::{
             get_active_filter, get_caret_position, handle_input, handle_keydown,
             menu::{MenuType, SelectionMenu},
         }, presence::PresenceBadge, previews::render_link, text::RichTextExt, user_profile::{UserProfileExt, UserProfileMaybeExt, render_profile_icon, render_profile_name}
-    },
-    state::{AppState, MemberProfileHandle, MemberStore, RoomHeader},
-    tauri_functions::{MemberShip, get_members, get_timeline},
+    }, hooks::use_tauri_event, state::{AppState, MemberProfileHandle, MemberStore, RoomHeader}, tauri_functions::{MemberShip, get_members, get_timeline}
 };
 
 use colorsys::Hsl;
@@ -19,7 +17,7 @@ use serde_json::json;
 use shared::{
     commands::Command,
     sidebar::{RoomKind, RoomNode, SidebarState},
-    timeline::{Change, DetailState, EventContent, MessageContent, SystemMessage, TimelineEvent, UiMessageType, UiTimelineItem, UiTimelineItemKind},
+    timeline::{Change, DetailState, EventContent, MessageContent, SystemMessage, TimelineEvent, UiMessageType, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind},
     user_profile::{PresenceStatus, UserProfile},
 };
 use std::{
@@ -111,24 +109,22 @@ fn render_message_content(
             }
                 .into_any()
         }
-        UiMessageType::Emote => {
-            view! {
-                <div class="text-normal leading-relaxed break-words italic">
-                    {spans
-                        .clone()
-                        .into_iter()
-                        .map(|v| v.render(store.clone(), room_id.clone()))
-                        .collect_view()}
-                </div>
-            }
-                .into_any()
+        UiMessageType::Emote => view! {
+            <div class="text-normal leading-relaxed break-words italic">
+                {spans
+                    .clone()
+                    .into_iter()
+                    .map(|v| v.render(store.clone(), room_id.clone()))
+                    .collect_view()}
+            </div>
         }
+            .into_any(),
         UiMessageType::FailedToDecrypt => view! {
             <div class="text-red-300 bold leading-relaxed break-words text-muted">
                 "Encrypted message"
             </div>
         }
-                        .into_any(),
+            .into_any(),
         UiMessageType::File { filename, size, source, .. } =>  view! {
             <div class="flex items-center gap-2 mt-1 p-2 rounded-md bg-white/5 border border-[var(--tile-border-color)] inline-flex">
                 <span class="text-xl">"📄"</span>
@@ -144,7 +140,7 @@ fn render_message_content(
                 </span>
             </div>
         }
-                .into_any(),
+            .into_any(),
         // Not implemented yet
         UiMessageType::Gallery => view! {
             <div class="text-normal leading-relaxed break-words italic">
@@ -155,7 +151,7 @@ fn render_message_content(
                     .collect_view()}["Gallery message not supported yet"]
             </div>
         }
-                .into_any(),
+            .into_any(),
         UiMessageType::Image {
             filename,
             source,
@@ -169,7 +165,7 @@ fn render_message_content(
                 />
             </div>
         }
-                .into_any(),
+            .into_any(),
         // Not implemented yet
         UiMessageType::Location(_) => view! {
             <div class="text-normal leading-relaxed break-words italic">
@@ -180,7 +176,7 @@ fn render_message_content(
                     .collect_view()}["Location message not supported yet"]
             </div>
         }
-                .into_any(),
+            .into_any(),
         // Not implemented yet
         UiMessageType::LiveLocation { .. } => view! {
             <div class="text-normal leading-relaxed break-words italic">
@@ -191,7 +187,7 @@ fn render_message_content(
                     .collect_view()}["Live location sharing not supported yet"]
             </div>
         }
-                .into_any(),
+            .into_any(),
         // Not implemented yet
         UiMessageType::Notice => view! {
             <div class="text-normal leading-relaxed break-words italic text-muted">
@@ -202,7 +198,7 @@ fn render_message_content(
                     .collect_view()}["Notice messages are not supported yet"]
             </div>
         }
-                .into_any(),
+            .into_any(),
         // Not implemented yet
         UiMessageType::Poll { .. } => view! {
             <div class="text-normal leading-relaxed break-words italic text-muted">
@@ -213,7 +209,14 @@ fn render_message_content(
                     .collect_view()}["Polls are not supported yet"]
             </div>
         }
-                .into_any(),
+            .into_any(),
+        UiMessageType::Redacted => view! {
+            <div class="text-muted italic leading-relaxed break-words flex flex-row items-center gap-1">
+                <Icon icon=TRASH size="20px" />
+                "This message was deleted"
+            </div>
+        }
+            .into_any(),
         // Not implemented yet
         UiMessageType::ServerNotice { .. } =>  view! {
             <div class="text-normal leading-relaxed break-words italic text-muted">
@@ -224,7 +227,7 @@ fn render_message_content(
                     .collect_view()}["Server notice messages are not supported yet"]
             </div>
         }
-                .into_any(),
+            .into_any(),
         UiMessageType::Sticker { source, .. } => view! {
             <div class="mt-1">
                 <img
@@ -233,50 +236,44 @@ fn render_message_content(
                 />
             </div>
         }
-                .into_any(),
-        UiMessageType::Text => {
-            view! {
-                <div class="text-normal leading-relaxed break-words">
-                    {spans
-                        .clone()
-                        .into_iter()
-                        .map(|v| v.render(store.clone(), room_id.clone()))
-                        .collect_view()}
-                    {if content.is_edited {
-                        view! { <span class="text-xs text-muted ml-2 italic">"(edited)"</span> }
-                            .into_any()
-                    } else {
-                        ().into_any()
-                    }} {spans.clone().into_iter().map(render_link).collect_view()}
-                </div>
-            }
-                .into_any()
+            .into_any(),
+        UiMessageType::Text => view! {
+            <div class="text-normal leading-relaxed break-words">
+                {spans
+                    .clone()
+                    .into_iter()
+                    .map(|v| v.render(store.clone(), room_id.clone()))
+                    .collect_view()}
+                {if content.is_edited {
+                    view! { <span class="text-xs text-muted ml-2 italic">"(edited)"</span> }
+                        .into_any()
+                } else {
+                    ().into_any()
+                }} {spans.clone().into_iter().map(render_link).collect_view()}
+            </div>
         }
-        UiMessageType::Video { source, .. } => {
-            view! {
-                <div class="mt-1">
-                    <video
-                        src=source.url()
-                        controls=true
-                        class="max-w-sm rounded-md border border-[var(--tile-border-color)]"
-                    >
-                        {format!(
-                            "Your browser does not support the video tag. You can download the video here: {}",
-                            source.url(),
-                        )}
-                    </video>
-                </div>
-            }
-                .into_any()
+            .into_any(),
+        UiMessageType::Video { source, .. } => view! {
+            <div class="mt-1">
+                <video
+                    src=source.url()
+                    controls=true
+                    class="max-w-sm rounded-md border border-[var(--tile-border-color)]"
+                >
+                    {format!(
+                        "Your browser does not support the video tag. You can download the video here: {}",
+                        source.url(),
+                    )}
+                </video>
+            </div>
         }
-        UiMessageType::VerificationRequest => {
-            view! {
-                <div class="text-normal leading-relaxed break-words italic text-muted">
-                    "Verification request messages are not supported yet"
-                </div>
-            }
-                .into_any()
+            .into_any(),
+        UiMessageType::VerificationRequest => view! {
+            <div class="text-normal leading-relaxed break-words italic text-muted">
+                "Verification request messages are not supported yet"
+            </div>
         }
+            .into_any()
     }
 }
 
@@ -624,91 +621,96 @@ fn render_timeline_item(item: UiTimelineItem, show_header: bool) -> impl IntoVie
 
 #[component]
 fn TimeLine() -> impl IntoView {
-    let messages = RwSignal::new(Vec::<UiTimelineItem>::new());
-
     let state: AppState = expect_context();
 
-    // let messages_update_event: ReadSignal<Option<MessagesUpdate>> =
-    // use_tauri_event("messages_update");
+    let messages_update_event: ReadSignal<Option<Vec<UiTimelineDiff>>> =
+    use_tauri_event("timeline_update");
 
-    // Effect::new(move |_| {
-    //     let Some(mut update) = messages_update_event.get() else {
-    //         return;
-    //     };
+    let messages: RwSignal<Vec<RwSignal<UiTimelineItem>>> = RwSignal::new(Vec::new());
 
-    //     let Some(room_id) = state.active_room_id.get_untracked() else {
-    //         return;
-    //     };
+    Effect::new(move |_| {
+        let Some(diffs) = messages_update_event.get() else { return; };
 
-    //     let new_msgs = update.new_messages.remove(&room_id).unwrap_or_default();
-    //     let msg_updates = update.updated_messages.remove(&room_id).unwrap_or_default();
-    //     let msgs_to_remove = update.messages_to_remove;
+        messages.update(|msgs| {
+            for diff in diffs {
+                match diff {
+                    UiTimelineDiff::Append { values } => {
+                        msgs.extend(values.into_iter().map(RwSignal::new));
+                    }
+                    UiTimelineDiff::Set { index, value } => {
+                        if let Some(sig) = msgs.get(index) {
+                            sig.set(value);
+                        }
+                    }
+                    UiTimelineDiff::PushBack { value } => msgs.push(RwSignal::new(value)),
+                    UiTimelineDiff::Remove { index } => {
+                        if index < msgs.len() { msgs.remove(index); }
+                    }
+                    UiTimelineDiff::Clear => msgs.clear(),
+                    UiTimelineDiff::Insert { index, value } => {
+                        if index <= msgs.len() {
+                            msgs.insert(index, RwSignal::new(value));
+                        }
+                    }
+                    UiTimelineDiff::PopBack => { msgs.pop(); },
+                    UiTimelineDiff::PopFront => if !msgs.is_empty() { msgs.remove(0); },
+                    UiTimelineDiff::PushFront { value } => msgs.insert(0, RwSignal::new(value)),
+                    UiTimelineDiff::Reset { values } => {
+                        msgs.clear();
+                        msgs.extend(values.into_iter().map(RwSignal::new));
+                    }
+                    UiTimelineDiff::Truncate { length } => msgs.truncate(length),
+                }
+            }
+        });
+    });
 
-    //     let updates_map: HashMap<String, UiMessage> = msg_updates
-    //         .into_iter()
-    //         .map(|m| (m.event_id.clone(), m))
-    //         .collect();
+    let timeline = Memo::new(move |_| {
+        let msgs = messages.get();
+        let mut processed_items = Vec::with_capacity(msgs.len());
 
-    //     messages.update(|existing| {
-    //         existing.retain(|m| !msgs_to_remove.contains(&m.event_id));
-
-    //         for msg in existing.iter_mut() {
-    //             if let Some(updated_msg) = updates_map.get(&msg.event_id) {
-    //                 *msg = updated_msg.clone();
-    //             }
-    //         }
-
-    //         existing.extend(new_msgs);
-    //     });
-    // });
-    //
-    let flattened_items = Memo::new(move |_| {
         let mut last_sender: Option<String> = None;
         let mut last_timestamp: Option<u64> = None;
 
-        let new_msgs: Vec<UiTimelineItem> = messages.read().clone();
-        let mut processed_items = Vec::with_capacity(new_msgs.len());
-
-        for (idx, item) in new_msgs.iter().enumerate() {
+        for (idx, sig) in msgs.iter().enumerate() {
             let mut show_header = true;
 
-            // Check if the previous chronological item was a divider
-            if idx > 0
-                && let UiTimelineItemKind::DateDivider(_) | UiTimelineItemKind::ReadMarker = new_msgs[idx - 1].kind {
-                    processed_items.push((item.clone(), true));
-                    if let UiTimelineItemKind::Event(event) = &item.kind
-                        && let DetailState::Ready(sender) = &event.sender {
-                            last_sender = Some(sender.id.to_string());
-                            last_timestamp = Some(event.timestamp);
-                        }
-                    continue;
-                }
-
-            if let UiTimelineItemKind::Event(event) = &item.kind {
-                if let EventContent::MsgLike(msg) = &event.content && msg.in_reply_to.is_some() {
-                    show_header = true;
-                } else if let DetailState::Ready(sender) = &event.sender {
-                    if let Some(last_sender_id) = &last_sender
-                        && last_sender_id == &sender.id && let Some(last_ts) = last_timestamp {
-                            // If this message is within 5 minutes of the previous message, hide header
-                            if event.timestamp.saturating_sub(last_ts) < 5 * 60 {
-                                show_header = false;
+            sig.with_untracked(|item| {
+                // Check if the previous chronological item was a divider
+                if idx > 0
+                    && let UiTimelineItemKind::DateDivider(_) | UiTimelineItemKind::ReadMarker = msgs[idx - 1].read_untracked().kind {
+                        show_header = true;
+                        if let UiTimelineItemKind::Event(event) = &item.kind
+                            && let DetailState::Ready(sender) = &event.sender {
+                                last_sender = Some(sender.id.to_string());
+                                last_timestamp = Some(event.timestamp);
                             }
-                        }
-                    last_sender = Some(sender.id.to_string());
-                    last_timestamp = Some(event.timestamp);
+                    } else if let UiTimelineItemKind::Event(event) = &item.kind {
+                    if let EventContent::MsgLike(msg) = &event.content && msg.in_reply_to.is_some() {
+                        show_header = true;
+                    } else if let DetailState::Ready(sender) = &event.sender {
+                        if let Some(last_sender_id) = &last_sender
+                            && last_sender_id == &sender.id && let Some(last_ts) = last_timestamp {
+                                // If this message is within 5 minutes of the previous message, hide header
+                                if event.timestamp.saturating_sub(last_ts) < 5 * 60 {
+                                    show_header = false;
+                                }
+                            }
+                        last_sender = Some(sender.id.to_string());
+                        last_timestamp = Some(event.timestamp);
+                    } else {
+                        show_header = true;
+                        last_sender = None;
+                        last_timestamp = None;
+                    }
                 } else {
                     show_header = true;
                     last_sender = None;
                     last_timestamp = None;
                 }
-            } else {
-                show_header = true;
-                last_sender = None;
-                last_timestamp = None;
-            }
+            });
 
-            processed_items.push((item.clone(), show_header));
+            processed_items.push((*sig, show_header));
         }
 
         processed_items.reverse();
@@ -732,22 +734,29 @@ fn TimeLine() -> impl IntoView {
             }
         });
 
-    Effect::new(move |_| {
-        if let Some(room_id) = state.active_room_id.get() {
-            messages.set(Vec::new());
+    let timeline_resource = LocalResource::new(move || {
+        let room_id = state.active_room_id.get();
 
-            spawn_local(async move {
-                match get_timeline(&room_id).await {
-                    Ok(tl) => {
-                        messages.set(tl);
-                        set_has_more.set(false);
-                        set_initial_loaded.set(true);
+        async move {
+            if let Some(rid) = room_id {
+                match get_timeline(&rid).await {
+                    Ok(events) => {
+                        events
                     }
-                    Err(e) => {
-                        console_error(&format!("Failed to get timeline: {:?}", e));
+                    Err(err) => {
+                        log::error!("Failed to load timeline: {}", err);
+                        Vec::new()
                     }
                 }
-            });
+            } else {
+                Vec::new()
+            }
+        }
+    });
+
+    Effect::new(move |_| {
+        if let Some(tl) = timeline_resource.get() {
+            messages.set(tl.into_iter().map(RwSignal::new).collect());
         }
     });
 
@@ -755,9 +764,11 @@ fn TimeLine() -> impl IntoView {
         <div class="flex-1 w-full w-full overflow-y-auto flex flex-col-reverse py-2 overflow-anchor-auto">
             <div class="mb-5"></div>
             <For
-                each=move || flattened_items.get()
-                key=|(item, _)| item.id.clone()
-                children=move |(item, show_header)| { render_timeline_item(item, show_header) }
+                each=move || timeline.get()
+                key=|(sig, _)| sig.with_untracked(|m| m.id.clone())
+                children=move |(item_signal, show_header)| {
+                    view! { <MessageRow item=item_signal show_header=show_header /> }
+                }
             />
 
             <Show
@@ -767,6 +778,16 @@ fn TimeLine() -> impl IntoView {
                 <div node_ref=sentinel_ref class="h-2 w-full shrink-0" />
             </Show>
         </div>
+    }
+}
+
+#[component]
+pub fn MessageRow(item: RwSignal<UiTimelineItem>, show_header: bool) -> impl IntoView {
+    view! {
+        {move || {
+            let data = item.get();
+            render_timeline_item(data, show_header).into_any()
+        }}
     }
 }
 
@@ -893,8 +914,8 @@ fn ChatInput() -> impl IntoView {
         };
 
         let win = window();
-        if let Ok(Some(sel)) = win.get_selection() {
-            if let Some(focus_node) = sel.focus_node() {
+        if let Ok(Some(sel)) = win.get_selection()
+            && let Some(focus_node) = sel.focus_node() {
                 if el.contains(Some(&focus_node)) {
                     let caret_pos = get_caret_position(&el);
 
@@ -904,7 +925,6 @@ fn ChatInput() -> impl IntoView {
                     }
                     if let Some(filter) = get_active_filter(&el, caret_pos, '/') {
                         menu.set(MenuType::CommandAutocomplete { filter });
-                        return;
                     } else {
                         menu.set(MenuType::None);
                     }
@@ -914,7 +934,6 @@ fn ChatInput() -> impl IntoView {
                     }
                 }
             }
-        }
     });
 
     // Focus the input when the component mounts or when the active room changes

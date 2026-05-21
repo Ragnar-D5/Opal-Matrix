@@ -1,7 +1,7 @@
 use log::info;
 use matrix_sdk::Room;
-use matrix_sdk_ui::{Timeline, timeline::TimelineBuilder};
-use ruma::{OwnedRoomId, UserId, api::SupportedVersions};
+use matrix_sdk_ui::{timeline::TimelineBuilder, Timeline};
+use ruma::{api::SupportedVersions, OwnedRoomId, UserId};
 use rusqlite::Connection;
 use std::{
     collections::HashMap,
@@ -10,8 +10,8 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tauri::{
-    AppHandle,
     async_runtime::{JoinHandle, Mutex, RwLock},
+    AppHandle,
 };
 use tauri_plugin_http::reqwest::Client;
 use url::Url;
@@ -20,13 +20,13 @@ use matrix_sdk_crypto::{CrossSigningKeyExport, OlmMachine};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    TauriError, construct_url,
+    construct_url,
     matrix_api::{
         authentication::{self, get_account_data},
         crypto::{self, StoredSession},
-        discovery::{Authentication, fetch_supported_versions},
+        discovery::{fetch_supported_versions, Authentication},
     },
-    storage,
+    storage, TauriError,
 };
 
 #[derive(Default, Clone)]
@@ -517,23 +517,19 @@ impl AppState {
 
 pub struct TimelineManager {
     pub timelines: RwLock<HashMap<OwnedRoomId, Arc<Timeline>>>,
+    pub stream_handle: Mutex<Option<JoinHandle<()>>>,
 }
 
 impl Default for TimelineManager {
     fn default() -> Self {
         TimelineManager {
             timelines: RwLock::new(HashMap::new()),
+            stream_handle: Mutex::new(None),
         }
     }
 }
 
 impl TimelineManager {
-    pub fn new() -> Self {
-        TimelineManager {
-            timelines: RwLock::new(HashMap::new()),
-        }
-    }
-
     pub async fn get_or_create_timeline(&self, room: &Room) -> Result<Arc<Timeline>, TauriError> {
         let mut guard = self.timelines.write().await;
         if let Some(timeline) = guard.get(room.room_id()) {
@@ -550,5 +546,17 @@ impl TimelineManager {
 
         guard.insert(room.room_id().to_owned(), timeline.clone());
         Ok(timeline)
+    }
+
+    pub async fn set_stream_handle(&self, handle: JoinHandle<()>) {
+        let mut guard = self.stream_handle.lock().await;
+        *guard = Some(handle);
+    }
+
+    pub async fn abort_stream(&self) {
+        let mut guard = self.stream_handle.lock().await;
+        if let Some(handle) = guard.take() {
+            handle.abort();
+        }
     }
 }

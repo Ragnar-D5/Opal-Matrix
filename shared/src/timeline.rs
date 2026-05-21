@@ -9,10 +9,13 @@ use matrix_sdk::ruma::{
     },
     MilliSecondsSinceUnixEpoch,
 };
-use matrix_sdk_ui::timeline::{
-    BeaconInfo, EventSendState, EventTimelineItem, MembershipChange, MsgLikeKind,
-    ReactionsByKeyBySender, TimelineDetails, TimelineItem, TimelineItemContent, TimelineItemKind,
-    VirtualTimelineItem,
+use matrix_sdk_ui::{
+    eyeball_im::VectorDiff,
+    timeline::{
+        BeaconInfo, EventSendState, EventTimelineItem, MembershipChange, MsgLikeKind,
+        ReactionsByKeyBySender, TimelineDetails, TimelineItem, TimelineItemContent,
+        TimelineItemKind, VirtualTimelineItem,
+    },
 };
 use serde::{Deserialize, Serialize};
 
@@ -324,6 +327,7 @@ pub enum UiMessageType {
         result: UiPollResult,
         is_edit: bool,
     },
+    Redacted,
     ServerNotice {
         admin_contact: Option<String>,
         limit_msg: Option<String>,
@@ -540,7 +544,7 @@ impl From<&TimelineItemContent> for EventContent {
                         is_redacted = true;
                         (
                             vec![RichTextSpan::Plain("[redacted]".to_string())],
-                            UiMessageType::Text,
+                            UiMessageType::Redacted,
                         )
                     }
                     MsgLikeKind::UnableToDecrypt(_) => (
@@ -736,8 +740,8 @@ pub struct UiTimelineItem {
     pub kind: UiTimelineItemKind,
 }
 
-impl From<&Arc<TimelineItem>> for UiTimelineItem {
-    fn from(item: &Arc<TimelineItem>) -> Self {
+impl From<&TimelineItem> for UiTimelineItem {
+    fn from(item: &TimelineItem) -> Self {
         let kind = match item.kind() {
             TimelineItemKind::Virtual(event) => match event {
                 VirtualTimelineItem::ReadMarker => UiTimelineItemKind::ReadMarker,
@@ -753,6 +757,66 @@ impl From<&Arc<TimelineItem>> for UiTimelineItem {
             id: item.unique_id().clone().0,
 
             kind,
+        }
+    }
+}
+
+impl From<&Arc<TimelineItem>> for UiTimelineItem {
+    fn from(value: &Arc<TimelineItem>) -> Self {
+        UiTimelineItem::from(value.as_ref())
+    }
+}
+
+impl From<TimelineItem> for UiTimelineItem {
+    fn from(value: TimelineItem) -> Self {
+        UiTimelineItem::from(&value)
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "type", content = "data")]
+pub enum UiTimelineDiff {
+    Append { values: Vec<UiTimelineItem> },
+    Clear,
+    PushFront { value: UiTimelineItem },
+    PushBack { value: UiTimelineItem },
+    PopFront,
+    PopBack,
+    Insert { index: usize, value: UiTimelineItem },
+    Set { index: usize, value: UiTimelineItem },
+    Remove { index: usize },
+    Truncate { length: usize },
+    Reset { values: Vec<UiTimelineItem> },
+}
+
+impl From<&VectorDiff<Arc<TimelineItem>>> for UiTimelineDiff {
+    fn from(diff: &VectorDiff<Arc<TimelineItem>>) -> Self {
+        match diff {
+            VectorDiff::Append { values } => UiTimelineDiff::Append {
+                values: values.iter().map(|v| v.into()).collect(),
+            },
+            VectorDiff::Clear => UiTimelineDiff::Clear,
+            VectorDiff::PushFront { value } => UiTimelineDiff::PushFront {
+                value: value.into(),
+            },
+            VectorDiff::PushBack { value } => UiTimelineDiff::PushBack {
+                value: value.into(),
+            },
+            VectorDiff::PopFront => UiTimelineDiff::PopFront,
+            VectorDiff::PopBack => UiTimelineDiff::PopBack,
+            VectorDiff::Insert { index, value } => UiTimelineDiff::Insert {
+                index: *index,
+                value: value.into(),
+            },
+            VectorDiff::Set { index, value } => UiTimelineDiff::Set {
+                index: *index,
+                value: value.into(),
+            },
+            VectorDiff::Remove { index } => UiTimelineDiff::Remove { index: *index },
+            VectorDiff::Truncate { length } => UiTimelineDiff::Truncate { length: *length },
+            VectorDiff::Reset { values } => UiTimelineDiff::Reset {
+                values: values.iter().map(|v| v.into()).collect(),
+            },
         }
     }
 }
