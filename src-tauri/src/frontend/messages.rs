@@ -10,7 +10,8 @@ use scraper::{Html, Node};
 use serde_json::json;
 use shared::{
     api::FetchMessagesResponse,
-    messages::{MessageContent, MessageKind, MessageState, RichTextSpan, UiMessage, UserMessage}, timeline::{UiTimelineDiff, UiTimelineItem},
+    messages::{MessageContent, MessageKind, MessageState, RichTextSpan, UiMessage, UserMessage},
+    timeline::{UiTimelineDiff, UiTimelineItem},
 };
 use tauri::{AppHandle, Emitter, State, async_runtime::spawn, command};
 use tokio::sync::RwLock;
@@ -176,11 +177,11 @@ pub async fn commit_message(
 }
 
 fn process_string_to_message(
-    html: &String,
+    html: &str,
     mentions: &mut Mentions,
     spans: &mut Vec<RichTextSpan>,
 ) -> (String, String) {
-    let fragment = Html::parse_fragment(&html);
+    let fragment = Html::parse_fragment(html);
 
     let mut body = String::new();
     let mut formatted_body = String::new();
@@ -279,6 +280,27 @@ fn extract_text(node: NodeRef<'_, Node>) -> String {
 }
 
 #[command(rename_all = "snake_case")]
+pub async fn scroll_up(
+    matrix_client: State<'_, RwLock<MatrixClient>>,
+    timeline_manager: State<'_, TimelineManager>,
+    room_id: String,
+) -> Result<bool, TauriError> {
+    log::debug!("Scrolling up");
+    let room = matrix_client
+        .read()
+        .await
+        .get_room(&RoomId::parse(&room_id)?)
+        .ok_or("No room found")?;
+
+    let timeline_manager = timeline_manager.inner();
+    let timeline = timeline_manager.get_or_create_timeline(&room).await?;
+
+    let has_more = timeline.paginate_backwards(30).await?;
+
+    Ok(has_more)
+}
+
+#[command(rename_all = "snake_case")]
 pub async fn get_timeline(
     matrix_client: State<'_, RwLock<MatrixClient>>,
     timeline_manager: State<'_, TimelineManager>,
@@ -286,25 +308,28 @@ pub async fn get_timeline(
     room_id: String,
 ) -> Result<Vec<UiTimelineItem>, TauriError> {
     log::debug!("Fetching timeline for room {}", room_id);
-    let matrix_client = matrix_client.read().await;
     let room = matrix_client
+        .read()
+        .await
         .get_room(&RoomId::parse(&room_id)?)
         .ok_or("No room found")?;
 
     timeline_manager.abort_stream().await;
 
     let timeline = timeline_manager.get_or_create_timeline(&room).await?;
-    timeline.paginate_backwards(30).await?;
 
     let (messages, stream) = timeline.subscribe().await;
 
-    timeline_manager.set_stream_handle(spawn(async move {
-        tokio::pin!(stream);
+    timeline_manager
+        .set_stream_handle(spawn(async move {
+            tokio::pin!(stream);
 
-        while let Some(update) = stream.next().await {
-            send_timeline_diffs(handle.clone(), update.iter().map(|d| d.into()).collect()).await;
-        }
-    })).await;
+            while let Some(update) = stream.next().await {
+                send_timeline_diffs(handle.clone(), update.iter().map(|d| d.into()).collect())
+                    .await;
+            }
+        }))
+        .await;
 
     log::debug!("Fetched {} messages for room {}", messages.len(), room_id);
 

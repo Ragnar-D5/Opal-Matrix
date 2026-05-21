@@ -1,7 +1,7 @@
 use log::info;
 use matrix_sdk::Room;
-use matrix_sdk_ui::{timeline::TimelineBuilder, Timeline};
-use ruma::{api::SupportedVersions, OwnedRoomId, UserId};
+use matrix_sdk_ui::{Timeline, timeline::TimelineBuilder};
+use ruma::{OwnedRoomId, UserId, api::SupportedVersions};
 use rusqlite::Connection;
 use std::{
     collections::HashMap,
@@ -10,8 +10,8 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tauri::{
-    async_runtime::{JoinHandle, Mutex, RwLock},
     AppHandle,
+    async_runtime::{JoinHandle, Mutex, RwLock},
 };
 use tauri_plugin_http::reqwest::Client;
 use url::Url;
@@ -20,13 +20,13 @@ use matrix_sdk_crypto::{CrossSigningKeyExport, OlmMachine};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    construct_url,
+    TauriError, construct_url,
     matrix_api::{
         authentication::{self, get_account_data},
         crypto::{self, StoredSession},
-        discovery::{fetch_supported_versions, Authentication},
+        discovery::{Authentication, fetch_supported_versions},
     },
-    storage, TauriError,
+    storage,
 };
 
 #[derive(Default, Clone)]
@@ -541,6 +541,7 @@ impl TimelineManager {
             .with_date_divider_mode(matrix_sdk_ui::timeline::DateDividerMode::Daily)
             .build()
             .await?;
+        timeline.paginate_backwards(30).await?;
 
         let timeline = Arc::new(timeline);
 

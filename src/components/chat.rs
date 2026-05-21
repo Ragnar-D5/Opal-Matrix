@@ -14,12 +14,12 @@ use crate::{
     },
     hooks::use_tauri_event,
     state::{AppState, MemberProfileHandle, MemberStore, RoomHeader},
-    tauri_functions::{MemberShip, get_members, get_timeline},
+    tauri_functions::{MemberShip, get_members, get_timeline, scroll_up},
 };
 
 use colorsys::Hsl;
 use matrix_sdk::ruma::api::client::room;
-use phosphor_leptos::{HASH, INFO, Icon, IconWeight, TRASH, UPLOAD_SIMPLE, WARNING_CIRCLE};
+use phosphor_leptos::{HASH, INFO, Icon, IconWeight, PHONE, TRASH, UPLOAD_SIMPLE, WARNING_CIRCLE};
 
 use chrono::{DateTime, Local, TimeZone};
 use leptos::{ev, html::Div, leptos_dom::logging::console_error, prelude::*, task::spawn_local};
@@ -38,6 +38,7 @@ use std::{
     collections::{HashMap, HashSet},
     hash::Hash,
 };
+use web_sys::IntersectionObserverEntry;
 
 fn format_date(date: DateTime<Local>) -> String {
     match (date.date_naive() - Local::now().date_naive()).num_days() {
@@ -570,7 +571,6 @@ fn render_timeline_event(
 }
 
 fn render_timeline_item(item: UiTimelineItem, show_header: bool) -> impl IntoView {
-    log::info!("Rendering timeline item");
     let state: AppState = expect_context();
     let store: MemberStore = expect_context();
 
@@ -637,13 +637,11 @@ fn TimeLine() -> impl IntoView {
     let messages: RwSignal<Vec<UiTimelineItem>> = RwSignal::new(Vec::new());
 
     Effect::new(move |_| {
-        log::info!("Effect re-running...");
         let Some(diffs) = messages_update_event.get() else {
             return;
         };
 
         messages.update(|msgs| {
-            log::info!("Received timeline diffs: {:?}", diffs);
             for diff in diffs {
                 match diff {
                     UiTimelineDiff::Append { values } => {
@@ -687,7 +685,6 @@ fn TimeLine() -> impl IntoView {
 
     let timeline = Memo::new(move |_| {
         let msgs = messages.get();
-        log::info!("Memo: messages signal size is {}", msgs.len());
         let mut processed_items = Vec::with_capacity(msgs.len());
 
         let mut last_sender: Option<String> = None;
@@ -743,32 +740,48 @@ fn TimeLine() -> impl IntoView {
         processed_items
     });
 
-    let (is_loading, set_is_loading) = signal(false);
-    let (has_more, set_has_more) = signal(true);
-    let (initial_loaded, set_initial_loaded) = signal(false);
+    let is_loading = RwSignal::new(false);
+    let has_more = RwSignal::new(true);
+    let initial_loaded = RwSignal::new(false);
 
     let sentinel_ref = NodeRef::<Div>::new();
 
-    // let scroll_up = move || {
-    //     let room_id = state.active_room_id.get();
+    let fetch_more = move || {
+        let Some(room_id) = state.active_room_id.get() else {
+            log::error!("No active room ID, cannot fetch more messages");
+            return;
+        };
 
-    //     spawn_local(async move {
-    //         if let Some(rid) = room_id {
+        is_loading.set(true);
+        spawn_local(async move {
+            match scroll_up(&room_id).await {
+                Ok(new_has_more) => {
+                    log::info!("Fetched more messages");
+                    has_more.set(new_has_more);
+                    if !new_has_more {
+                        log::info!("No more messages to load");
+                    }
+                }
+                Err(e) => {
+                    log::error!("Failed to fetch more messages: {}", e);
+                }
+            };
+        });
+        is_loading.set(false);
+    };
 
-    //         }
-    //     });
-    // };
-
-    let UseIntersectionObserverReturn { .. } =
-        use_intersection_observer(sentinel_ref, move |entries, _| {
+    let UseIntersectionObserverReturn { .. } = use_intersection_observer(
+        sentinel_ref,
+        move |entries: Vec<IntersectionObserverEntry>, _| {
             if entries[0].is_intersecting()
                 && initial_loaded.get()
-                && !is_loading.get()
                 && has_more.get()
+                && !is_loading.get()
             {
-                // scroll_up();
-            }
-        });
+                fetch_more();
+            };
+        },
+    );
 
     Effect::new(move |_| {
         if let Some(room_id) = state.active_room_id.get() {
@@ -777,6 +790,9 @@ fn TimeLine() -> impl IntoView {
                 room_id
             );
             messages.set(Vec::new());
+            initial_loaded.set(false);
+            has_more.set(true);
+            is_loading.set(true);
 
             spawn_local(async move {
                 match get_timeline(&room_id).await {
@@ -789,6 +805,8 @@ fn TimeLine() -> impl IntoView {
                     }
                 }
             });
+            initial_loaded.set(true);
+            is_loading.set(false);
         }
     });
 
@@ -797,9 +815,16 @@ fn TimeLine() -> impl IntoView {
             <div class="mb-5"></div>
             <For
                 each=move || timeline.get()
-                key=|(item, _)| item.render_key.clone()
+                key=|(item, _)| item.render_key
                 children=|(item, show_header)| render_timeline_item(item.clone(), show_header)
             />
+
+            <Show
+                when=move || !is_loading.get()
+                fallback=|| view! { <div class="text-center p-4 text-muted">"Loading..."</div> }
+            >
+                <div node_ref=sentinel_ref class="h-2 w-full shrink-0" />
+            </Show>
         </div>
     }
 }
@@ -886,6 +911,31 @@ fn ChatHeader(
                     <div class="h-full justify-center items-center flex cursor-pointer">
                         <Icon
                             icon=INFO
+                            size="80%"
+                            color="currentColor"
+                            weight=move || {
+                                if chat_sidebar_open.get() {
+                                    IconWeight::Fill
+                                } else {
+                                    IconWeight::Light
+                                }
+                            }
+                        />
+                    </div>
+                </button>
+            </div>
+            <div class="self-center h-full">
+                <button
+                    class="transition-opacity h-full mr-1"
+                    class=("text-(--ui-hover-color)", move || info_hovered.get())
+                    class=("text-(--ui-base-color)", move || !info_hovered.get())
+                    on:click=move |_| log::info!("John Pork is calling...")
+                    // on:mouseenter=move |_| set_info_hovered.set(true)
+                    // on:mouseleave=move |_| set_info_hovered.set(false)
+                >
+                    <div class="h-full justify-center items-center flex cursor-pointer">
+                        <Icon
+                            icon=PHONE
                             size="80%"
                             color="currentColor"
                             weight=move || {

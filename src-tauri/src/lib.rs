@@ -7,22 +7,22 @@ use matrix_sdk::ruma::{OwnedDeviceId, UserId};
 use matrix_sdk::{AuthSession, Client as MatrixClient, SessionMeta, SessionTokens};
 use ruma::events::room::MediaSource;
 use ruma::media::Method;
-use shared::api::errors::LoginError;
 use shared::api::RestoreResponse;
+use shared::api::errors::LoginError;
 use std::collections::HashMap;
 use std::fs::{read_to_string, write};
 use std::sync::Arc;
 use tauri::async_runtime::block_on;
 use tokio::sync::RwLock;
 
-use aes::cipher::{KeyIvInit, StreamCipher};
 use aes::Aes256;
-use base64::engine::general_purpose;
+use aes::cipher::{KeyIvInit, StreamCipher};
 use base64::Engine;
+use base64::engine::general_purpose;
 use bytes::Bytes;
 use chrono::Local;
 use log::info;
-use tauri::{command, App, AppHandle, Url};
+use tauri::{App, AppHandle, Url, command};
 use tauri::{Manager, State};
 
 pub mod frontend;
@@ -39,7 +39,7 @@ type Aes256Ctr = ctr::Ctr64BE<Aes256>;
 
 pub const APP_NAME: &str = "opal-matrix";
 
-use percent_encoding::{utf8_percent_encode, AsciiSet, CONTROLS};
+use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
 use tauri_plugin_log::{Target, TargetKind};
 use tauri_plugin_notification::{NotificationExt, PermissionState};
 
@@ -621,6 +621,7 @@ pub fn run() {
             // frontend commands
             frontend::messages::commit_message,
             frontend::messages::get_timeline,
+            frontend::messages::scroll_up,
             frontend::commands::get_commands,
             // storage commands
             storage::get_members,
@@ -722,22 +723,22 @@ pub fn run() {
                                 && let (Ok(key_bytes), Ok(iv_bytes)) = (
                                     general_purpose::URL_SAFE_NO_PAD.decode(&k),
                                     general_purpose::STANDARD_NO_PAD.decode(&iv),
-                                ) {
-                                    if key_bytes.len() == 32 && iv_bytes.len() >= 8 {
-                                        let mut padded_iv = [0u8; 16];
-                                        let copy_len = std::cmp::min(iv_bytes.len(), 16);
-                                        padded_iv[..copy_len]
-                                            .copy_from_slice(&iv_bytes[..copy_len]);
+                                )
+                            {
+                                if key_bytes.len() == 32 && iv_bytes.len() >= 8 {
+                                    let mut padded_iv = [0u8; 16];
+                                    let copy_len = std::cmp::min(iv_bytes.len(), 16);
+                                    padded_iv[..copy_len].copy_from_slice(&iv_bytes[..copy_len]);
 
-                                        if let Ok(mut cipher) =
-                                            Aes256Ctr::new_from_slices(&key_bytes, &padded_iv)
-                                        {
-                                            cipher.apply_keystream(&mut bytes);
-                                        }
-                                    } else {
-                                        log::error!("Invalid key/iv length for decryption");
+                                    if let Ok(mut cipher) =
+                                        Aes256Ctr::new_from_slices(&key_bytes, &padded_iv)
+                                    {
+                                        cipher.apply_keystream(&mut bytes);
                                     }
+                                } else {
+                                    log::error!("Invalid key/iv length for decryption");
                                 }
+                            }
 
                             responder.respond(
                                 tauri::http::Response::builder()

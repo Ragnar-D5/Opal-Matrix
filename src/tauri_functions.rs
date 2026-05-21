@@ -167,3 +167,17 @@ pub async fn get_timeline(room_id: &str) -> Result<Vec<UiTimelineItem>, String> 
 
     Ok(res)
 }
+
+pub async fn scroll_up(room_id: &str) -> Result<bool, String> {
+    let args = serde_wasm_bindgen::to_value(&json!({ "room_id": room_id }))
+        .map_err(|e| format!("Failed to serialize request: {:?}", e))?;
+
+    let res = call_tauri("scroll_up", args)
+        .await
+        .map_err(|e| format!("Tauri call failed: {:?}", e))?;
+
+    let has_more: bool = serde_wasm_bindgen::from_value(res)
+        .map_err(|e| format!("Failed to parse response: {:?}", e))?;
+
+    Ok(has_more)
+}
