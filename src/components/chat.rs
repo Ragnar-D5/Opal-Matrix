@@ -938,13 +938,7 @@ fn ChatHeader(
                             icon=PHONE
                             size="80%"
                             color="currentColor"
-                            weight=move || {
-                                if chat_sidebar_open.get() {
-                                    IconWeight::Fill
-                                } else {
-                                    IconWeight::Light
-                                }
-                            }
+                            weight=IconWeight::Duotone
                         />
                     </div>
                 </button>
