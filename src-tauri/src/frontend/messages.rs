@@ -9,7 +9,7 @@ use scraper::{Html, Node};
 use serde_json::json;
 use shared::{
     api::FetchMessagesResponse,
-    messages::{MessageContent, MessageKind, MessageState, RichTextSpan, UiMessage, UserMessage},
+    messages::{MessageContent, MessageKind, MessageState, RichTextSpan, UiMessage, UserMessage}, timeline::UiTimelineItem,
 };
 use tauri::{AppHandle, State, async_runtime::spawn, command};
 use tokio::sync::RwLock;
@@ -278,12 +278,11 @@ fn extract_text(node: NodeRef<'_, Node>) -> String {
 }
 
 #[command(rename_all = "snake_case")]
-pub async fn fetch_messages(
+pub async fn get_timeline(
     matrix_client: State<'_, RwLock<MatrixClient>>,
     timeline_manager: State<'_, TimelineManager>,
     room_id: String,
-    oldest_id: Option<String>,
-) -> Result<FetchMessagesResponse, TauriError> {
+) -> Result<Vec<UiTimelineItem>, TauriError> {
     let matrix_client = matrix_client.read().await;
     let room = matrix_client
         .get_room(&RoomId::parse(&room_id)?)
@@ -294,12 +293,5 @@ pub async fn fetch_messages(
 
     let (messages, _) = timeline.subscribe().await;
 
-    log::info!("Room_id {room_id}, messages: {:?}", messages);
-
-    let resp = FetchMessagesResponse {
-        has_more: false,
-        messages: Vec::new(),
-    };
-
-    Ok(resp)
+    Ok(messages.iter().map(|v| v.into()).collect())
 }

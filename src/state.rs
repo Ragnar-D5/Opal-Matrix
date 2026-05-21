@@ -247,15 +247,11 @@ struct GetMembersArgs {
 }
 
 impl MemberStore {
-    pub fn get_profile(
-        &self,
-        room_id: &String,
-        user_id: &String,
-    ) -> ArcRwSignal<Option<UserProfile>> {
+    pub fn get_profile(&self, room_id: &str, user_id: &str) -> ArcRwSignal<Option<UserProfile>> {
         if room_id == user_id {
             return ArcRwSignal::new(Some(UserProfile {
                 display_name: Some("room".into()),
-                user_id: room_id.clone(),
+                user_id: room_id.to_string(),
                 avatar_url: None,
             }));
         }
@@ -275,9 +271,9 @@ impl MemberStore {
 
         self.rooms.update(|rooms| {
             rooms
-                .entry(room_id.clone())
+                .entry(room_id.to_string())
                 .or_default()
-                .insert(user_id.clone(), new_signal.clone());
+                .insert(user_id.to_string(), new_signal.clone());
         });
 
         let is_fetching = self
@@ -286,15 +282,15 @@ impl MemberStore {
 
         if !is_fetching {
             self.fetching.update(|f| {
-                f.insert(room_id.clone());
+                f.insert(room_id.to_string());
             });
 
             let store = self.clone();
-            let rid = room_id.clone();
+            let rid = room_id.to_string();
 
             spawn_local(async move {
                 let args = serde_wasm_bindgen::to_value(&GetMembersArgs {
-                    room_id: rid.clone(),
+                    room_id: rid.to_string(),
                 })
                 .unwrap();
 
@@ -304,7 +300,7 @@ impl MemberStore {
 
                     batch(move || {
                         store.rooms.update(|rooms| {
-                            let room_entry = rooms.entry(rid.clone()).or_default();
+                            let room_entry = rooms.entry(rid.to_string()).or_default();
 
                             for (user_id, profile) in updates.into_iter() {
                                 let profile_signal = room_entry

@@ -1,7 +1,7 @@
 use crate::openUrl;
 use colorsys::ColorAlpha;
 use leptos::{prelude::*, task::spawn_local};
-use shared::messages::RichTextSpan;
+use shared::timeline::RichTextSpan;
 
 use crate::{components::user_profile::UserProfileExt, state::MemberStore};
 

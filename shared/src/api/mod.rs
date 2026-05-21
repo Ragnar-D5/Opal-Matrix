@@ -36,7 +36,7 @@ pub struct LinkPreviewResponse {
 }
 
 impl LinkPreviewResponse {
-    pub fn resolve_color(&mut self, original_url: &String, color_map: HashMap<String, String>) {
+    pub fn resolve_color(&mut self, original_url: &str, color_map: HashMap<String, String>) {
         if self.color.is_some() {
             return;
         }

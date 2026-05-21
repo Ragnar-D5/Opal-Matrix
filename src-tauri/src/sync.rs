@@ -1,13 +1,13 @@
 use matrix_sdk::{
-    Client as MatrixClient, LoopCtrl, SessionChange, config::SyncSettings,
-    ruma::events::space::parent::SyncSpaceParentEvent,
+    config::SyncSettings, ruma::events::space::parent::SyncSpaceParentEvent,
+    Client as MatrixClient, LoopCtrl, SessionChange,
 };
-use tauri::{AppHandle, async_runtime::spawn};
+use tauri::{async_runtime::spawn, AppHandle};
 
 use crate::{
-    TauriError,
     frontend::sidebar::send_sidebar,
-    matrix_api::crypto::{StoredSession, save_session},
+    matrix_api::crypto::{save_session, StoredSession},
+    TauriError,
 };
 
 pub async fn attach_callbacks(client: &MatrixClient, handle: &AppHandle) -> Result<(), TauriError> {
@@ -74,7 +74,7 @@ pub async fn attach_callbacks(client: &MatrixClient, handle: &AppHandle) -> Resu
                     let client_clone_dwa = client_sync_clone.clone();
                     let handle_clone = handle_clone.clone();
 
-                    log::debug!("Received sync event: {:?}", ev);
+                    log::debug!("Received sync event");
                     // send_sidebar(&client_clone_dwa.joined_rooms(), &handle_clone)
                     // .await
                     // .unwrap_or_else(|e| {

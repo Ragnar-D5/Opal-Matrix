@@ -1,68 +1,30 @@
 use crate::{
-    app::call_tauri,
     components::{
-        input::{
+        FloatingTile, TextCircle, TextCircleProps, get_color, input::{
             get_active_filter, get_caret_position, handle_input, handle_keydown,
             menu::{MenuType, SelectionMenu},
-        },
-        presence::PresenceBadge,
-        previews::render_link,
-        text::RichTextExt,
-        user_profile::{UserProfileExt, UserProfileMaybeExt},
-        FloatingTile, TextCircle, TextCircleProps,
+        }, presence::PresenceBadge, previews::render_link, text::RichTextExt, user_profile::{UserProfileExt, UserProfileMaybeExt, render_profile_icon, render_profile_name}
     },
-    hooks::use_tauri_event,
     state::{AppState, MemberProfileHandle, MemberStore, RoomHeader},
-    tauri_functions::{fetch_messages, get_members, send_marker, MemberShip},
+    tauri_functions::{MemberShip, get_members, get_timeline},
 };
 
 use colorsys::Hsl;
-use log::error;
 use phosphor_leptos::{Icon, IconWeight, HASH, INFO, TRASH, UPLOAD_SIMPLE, WARNING_CIRCLE};
 
-use chrono::{DateTime, Local, NaiveDate, TimeZone};
+use chrono::{DateTime, Local, TimeZone};
 use leptos::{ev, html::Div, leptos_dom::logging::console_error, prelude::*, task::spawn_local};
 use leptos_use::{use_event_listener, use_intersection_observer, UseIntersectionObserverReturn};
 use serde_json::json;
 use shared::{
-    api::signals::MessagesUpdate,
     commands::Command,
-    messages::{
-        MembershipAction, MessageContent, MessageKind, MessageState, Reactor, RepliesTo,
-        SystemMessage, UiMessage, UserMessage,
-    },
     sidebar::{RoomKind, RoomNode, SidebarState},
+    timeline::{Change, DetailState, EventContent, MessageContent, SystemMessage, TimelineEvent, UiMessageType, UiTimelineItem, UiTimelineItemKind},
     user_profile::{PresenceStatus, UserProfile},
 };
 use std::{
     collections::{HashMap, HashSet},
-    hash::{DefaultHasher, Hash, Hasher},
 };
-
-#[derive(PartialEq, Clone, Hash)]
-struct GroupedMessage {
-    message: UserMessage,
-    state: MessageState,
-    event_id: String,
-    date: DateTime<Local>,
-}
-
-#[derive(PartialEq, Clone)]
-enum TimelineItemKind {
-    MessageGroup(Vec<GroupedMessage>),
-    DateSeparator,
-    SystemMessage(SystemMessage),
-    NewMessageIndicator,
-}
-
-#[derive(PartialEq, Clone)]
-struct TimelineItem {
-    date: DateTime<Local>,
-    sender: String,
-    id: String,
-
-    kind: TimelineItemKind,
-}
 
 fn format_date(date: DateTime<Local>) -> String {
     match (date.date_naive() - Local::now().date_naive()).num_days() {
@@ -72,56 +34,207 @@ fn format_date(date: DateTime<Local>) -> String {
     }
 }
 
-#[component]
-fn ReplyPreview(replies_to: Option<RepliesTo>) -> impl IntoView {
-    let state: AppState = expect_context();
-    let store: MemberStore = expect_context();
+// #[component]
+// fn ReplyPreview(replies_to: Option<RepliesTo>) -> impl IntoView {
+//     let state: AppState = expect_context();
+//     let store: MemberStore = expect_context();
 
-    let Some(room_id) = state.active_room_id.get_untracked() else {
-        return view! {}.into_any();
-    };
+//     let Some(room_id) = state.active_room_id.get_untracked() else {
+//         return ().into_any();
+//     };
 
-    if let Some(replies_to) = replies_to {
-        if let Some(sender_id) = &replies_to.sender_id {
-            let profile_sig = store.get_profile(&room_id, sender_id);
-            let sig_clone = profile_sig.clone();
+//     if let Some(replies_to) = replies_to {
+//         if let Some(sender_id) = &replies_to.sender_id {
+//             let profile_sig = store.get_profile(&room_id, sender_id);
+//             let sig_clone = profile_sig.clone();
 
-            let text = replies_to.text.clone().unwrap_or_default();
+//             let text = replies_to.text.clone().unwrap_or_default();
 
-            view! {
-                <div class="flex items-center gap-1 ml-[52px] mb-1 cursor-pointer text-xs relative group/reply">
-                    <div class="absolute -left-[32px] top-[calc(50%-1px)] w-[28px] h-4.5 border-l-2 border-t-2 border-white/20 rounded-tl-md"></div>
+//             view! {
+//                 <div class="flex items-center gap-1 ml-[52px] mb-1 cursor-pointer text-xs relative group/reply">
+//                     <div class="absolute -left-[32px] top-[calc(50%-1px)] w-[28px] h-4.5 border-l-2 border-t-2 border-white/20 rounded-tl-md"></div>
 
-                    <div class="shrink-0">{move || profile_sig.get().render_icon(16)}</div>
+//                     <div class="shrink-0">{move || profile_sig.get().render_icon(16)}</div>
 
-                    <span class="font-semibold text-bright hover:underline">
-                        {move || sig_clone.get().render_name(12)}
-                    </span>
+//                     <span class="font-semibold text-bright hover:underline">
+//                         {move || sig_clone.get().render_name(12)}
+//                     </span>
 
-                    <span class="truncate text-bright line-clamp-1">
-                        {text
-                            .into_iter()
-                            .map(|v| v.render(store.clone(), room_id.clone()))
-                            .collect_view()}
-                    </span>
-                </div>
-            }
-            .into_any()
-        } else {
-            view! {}.into_any()
-        }
-    } else {
-        view! {}.into_any()
-    }
-}
+//                     <span class="truncate text-bright line-clamp-1">
+//                         {text
+//                             .into_iter()
+//                             .map(|v| v.render(store.clone(), room_id.clone()))
+//                             .collect_view()}
+//                     </span>
+//                 </div>
+//             }
+//             .into_any()
+//         } else {
+//             ().into_any()
+//         }
+//     } else {
+//         ().into_any()
+//     }
+// }
 
-fn render_user_message(
-    message: &UserMessage,
+fn render_message_content(
+    content: MessageContent,
     store: MemberStore,
     room_id: String,
 ) -> impl IntoView {
-    match &message.content {
-        MessageContent::Text { spans } => {
+    let spans = content.body;
+
+    match content.msg_type {
+        UiMessageType::Audio { source, filename, duration } => {
+            view! {
+                <div class="flex items-center gap-2 mt-1 p-2 rounded-md bg-white/5 border border-[var(--tile-border-color)] inline-flex">
+                    <span class="text-xl">"🎵"</span>
+                    <a
+                        href=source.url()
+                        target="_blank"
+                        class="text-blue-400 hover:underline truncate max-w-xs"
+                    >
+                        {filename.clone()}
+                    </a>
+                    {duration
+                        .map(|d| {
+                            let mins = d / 60;
+                            let secs = d % 60;
+                            view! {
+                                <span class="text-xs text-muted">
+                                    {format!("{}:{:02}", mins, secs)}
+                                </span>
+                            }
+                                .into_any()
+                        })}
+                </div>
+            }
+                .into_any()
+        }
+        UiMessageType::Emote => {
+            view! {
+                <div class="text-normal leading-relaxed break-words italic">
+                    {spans
+                        .clone()
+                        .into_iter()
+                        .map(|v| v.render(store.clone(), room_id.clone()))
+                        .collect_view()}
+                </div>
+            }
+                .into_any()
+        }
+        UiMessageType::FailedToDecrypt => view! {
+            <div class="text-red-300 bold leading-relaxed break-words text-muted">
+                "Encrypted message"
+            </div>
+        }
+                        .into_any(),
+        UiMessageType::File { filename, size, source, .. } =>  view! {
+            <div class="flex items-center gap-2 mt-1 p-2 rounded-md bg-white/5 border border-[var(--tile-border-color)] inline-flex">
+                <span class="text-xl">"📄"</span>
+                <a
+                    href=source.url()
+                    target="_blank"
+                    class="text-blue-400 hover:underline truncate max-w-xs"
+                >
+                    {filename.clone()}
+                </a>
+                <span class="text-xs text-muted">
+                    {format!("{:.1} KB", size.unwrap_or_default() as f64 / 1024.0)}
+                </span>
+            </div>
+        }
+                .into_any(),
+        // Not implemented yet
+        UiMessageType::Gallery => view! {
+            <div class="text-normal leading-relaxed break-words italic">
+                {spans
+                    .clone()
+                    .into_iter()
+                    .map(|v| v.render(store.clone(), room_id.clone()))
+                    .collect_view()}["Gallery message not supported yet"]
+            </div>
+        }
+                .into_any(),
+        UiMessageType::Image {
+            filename,
+            source,
+            ..
+        } => view! {
+            <div class="mt-1">
+                <img
+                    src=source.url()
+                    alt=filename.clone()
+                    class="max-w-sm rounded-md border border-[var(--tile-border-color)]"
+                />
+            </div>
+        }
+                .into_any(),
+        // Not implemented yet
+        UiMessageType::Location(_) => view! {
+            <div class="text-normal leading-relaxed break-words italic">
+                {spans
+                    .clone()
+                    .into_iter()
+                    .map(|v| v.render(store.clone(), room_id.clone()))
+                    .collect_view()}["Location message not supported yet"]
+            </div>
+        }
+                .into_any(),
+        // Not implemented yet
+        UiMessageType::LiveLocation { .. } => view! {
+            <div class="text-normal leading-relaxed break-words italic">
+                {spans
+                    .clone()
+                    .into_iter()
+                    .map(|v| v.render(store.clone(), room_id.clone()))
+                    .collect_view()}["Live location sharing not supported yet"]
+            </div>
+        }
+                .into_any(),
+        // Not implemented yet
+        UiMessageType::Notice => view! {
+            <div class="text-normal leading-relaxed break-words italic text-muted">
+                {spans
+                    .clone()
+                    .into_iter()
+                    .map(|v| v.render(store.clone(), room_id.clone()))
+                    .collect_view()}["Notice messages are not supported yet"]
+            </div>
+        }
+                .into_any(),
+        // Not implemented yet
+        UiMessageType::Poll { .. } => view! {
+            <div class="text-normal leading-relaxed break-words italic text-muted">
+                {spans
+                    .clone()
+                    .into_iter()
+                    .map(|v| v.render(store.clone(), room_id.clone()))
+                    .collect_view()}["Polls are not supported yet"]
+            </div>
+        }
+                .into_any(),
+        // Not implemented yet
+        UiMessageType::ServerNotice { .. } =>  view! {
+            <div class="text-normal leading-relaxed break-words italic text-muted">
+                {spans
+                    .clone()
+                    .into_iter()
+                    .map(|v| v.render(store.clone(), room_id.clone()))
+                    .collect_view()}["Server notice messages are not supported yet"]
+            </div>
+        }
+                .into_any(),
+        UiMessageType::Sticker { source, .. } => view! {
+            <div class="mt-1">
+                <img
+                    src=source.url()
+                    class="max-w-sm rounded-md border border-[var(--tile-border-color)]"
+                />
+            </div>
+        }
+                .into_any(),
+        UiMessageType::Text => {
             view! {
                 <div class="text-normal leading-relaxed break-words">
                     {spans
@@ -129,72 +242,37 @@ fn render_user_message(
                         .into_iter()
                         .map(|v| v.render(store.clone(), room_id.clone()))
                         .collect_view()}
-                    {if message.is_edited {
+                    {if content.is_edited {
                         view! { <span class="text-xs text-muted ml-2 italic">"(edited)"</span> }
                             .into_any()
                     } else {
-                        view! {}.into_any()
+                        ().into_any()
                     }} {spans.clone().into_iter().map(render_link).collect_view()}
                 </div>
             }
                 .into_any()
         }
-        MessageContent::Image {
-            url,
-            name,
-            encryption_info,
-            ..
-        } => {
-            let final_url = if let Some(enc) = encryption_info {
-                let encoded_key = urlencoding::encode(&enc.key);
-                let encoded_iv = urlencoding::encode(&enc.iv);
-                format!("{}?key={}&iv={}", url, encoded_key, encoded_iv)
-            } else {
-                url.clone()
-            };
-
+        UiMessageType::Video { source, .. } => {
             view! {
                 <div class="mt-1">
-                    <img
-                        src=final_url
-                        alt=name.clone()
+                    <video
+                        src=source.url()
+                        controls=true
                         class="max-w-sm rounded-md border border-[var(--tile-border-color)]"
-                    />
-                </div>
-            }
-                .into_any()
-        }
-        MessageContent::File { url, filename, size } => {
-            view! {
-                <div class="flex items-center gap-2 mt-1 p-2 rounded-md bg-white/5 border border-[var(--tile-border-color)] inline-flex">
-                    <span class="text-xl">"📄"</span>
-                    <a
-                        href=url.clone()
-                        target="_blank"
-                        class="text-blue-400 hover:underline truncate max-w-xs"
                     >
-                        {filename.clone()}
-                    </a>
-                    <span class="text-xs text-muted">
-                        {format!("{:.1} KB", *size as f64 / 1024.0)}
-                    </span>
+                        {format!(
+                            "Your browser does not support the video tag. You can download the video here: {}",
+                            source.url(),
+                        )}
+                    </video>
                 </div>
             }
                 .into_any()
         }
-        MessageContent::Encrypted => {
+        UiMessageType::VerificationRequest => {
             view! {
-                <div class="text-red-300 bold leading-relaxed break-words text-muted">
-                    "Encrypted message"
-                </div>
-            }
-                .into_any()
-        }
-        MessageContent::Deleted => {
-            view! {
-                <div class="text-muted italic leading-relaxed break-words flex flex-row items-center gap-1">
-                    <Icon icon=TRASH size="20px" />
-                    "This message was deleted"
+                <div class="text-normal leading-relaxed break-words italic text-muted">
+                    "Verification request messages are not supported yet"
                 </div>
             }
                 .into_any()
@@ -202,32 +280,70 @@ fn render_user_message(
     }
 }
 
+// fn render_message(
+    // content: EventContent,
+    // store: MemberStore,
+    // room_id: String,
+// ) -> impl IntoView {
+    // match content {
+        // EventContent::MsgLike(msg) => render_message_content(*msg, store, room_id).into_any(),
+        // EventContent::CallInvite => view! { <div class="text-muted italic">"Call started"</div> }.into_any(),
+        // EventContent::FailedToParseMessageLike { event_type, error } => {
+        //     console_error(&format!("Failed to parse message content of type {}: {}", event_type, error));
+        //     view! { <div class="text-red-500 italic">"Failed to render message"</div> }.into_any()
+        // },
+        // EventContent::FailedToParseState { event_type, state_key, error } => {
+        //     console_error(&format!("Failed to parse state content of type {} with state key {}: {}", event_type, state_key, error));
+        //     view! { <div class="text-red-500 italic">"Failed to render state event"</div> }.into_any()
+        // },
+        // EventContent::MembershipChange { user_id, change } => view! {
+        //     <div class="text-muted italic">
+        //         {format!(
+        //             "{user_id} {}",
+        //             change
+        //                 .map(|v| v.display_string())
+        //                 .unwrap_or_else(|| "changed membership".to_string()),
+        //         )}
+        //     </div>
+        // }.into_any(),
+        // EventContent::OtherEvent => ().into_any(),
+        // EventContent::ProfileChange(change) => view! { <div class="text-muted italic">{change.display_string()}</div> }.into_any(),
+        // EventContent::RtcNotification { call_intent, declined_by } => {
+        //     let text = format!("{} Call declined by {})", call_intent.map(|v| v.to_string()).unwrap_or("".to_string()), declined_by.join(", "));
+
+        //     view! { <div class="text-muted italic">{text}</div> }.into_any()
+        // },
+//     }
+// }
+
 fn render_reactions(
-    reactions: &HashMap<String, HashSet<Reactor>>,
+    reactions: Option<HashMap<String, Vec<String>>>,
     store: MemberStore,
-    room_id: &String,
-    user_id: &String,
+    room_id: &str,
+    user_id: &str,
 ) -> impl IntoView {
+    let Some(reactions) = reactions else {
+        return ().into_any();
+    };
+
     if reactions.is_empty() {
-        return view! {}.into_any();
+        return ().into_any();
     }
 
     let content = reactions
         .iter()
         .map(|(emoji, reactors)| {
-            let reactors_vec: Vec<String> = reactors.iter().cloned().map(|v| v.user_id).collect();
             let emoji = emoji.clone();
             let store = store.clone();
-            let room_id = room_id.clone();
 
             let reactor_pics = move || {
                 let mut pics = Vec::new();
 
-                let mut all_pics: Vec<(String, _)> = reactors_vec
+                let mut all_pics: Vec<(String, _)> = reactors
                     .iter()
                     .filter_map(|user_id| {
                         store
-                            .get_profile(&room_id, user_id)
+                            .get_profile(room_id, user_id)
                             .get()
                             .map(|p| (p.get_name(), p.render_icon(20).into_any()))
                     })
@@ -247,7 +363,7 @@ fn render_reactions(
                 pics.collect_view()
             };
 
-            let contains_user = reactors.iter().any(|v| &v.user_id == user_id);
+            let contains_user = reactors.iter().any(|v| v == user_id);
 
             view! {
                 <div
@@ -277,335 +393,6 @@ fn render_reactions(
     view! { <div class="flex flex-wrap gap-1 mt-1 mb-2">{content}</div> }.into_any()
 }
 
-fn render_message_group(
-    group: Vec<GroupedMessage>,
-    store: MemberStore,
-    room_id: String,
-    own_user_id: String,
-    profile_sig: ArcRwSignal<Option<UserProfile>>,
-) -> impl IntoView {
-    let first_msg = group.first();
-    let first_message_mentions_user = first_msg
-        .map(|msg| msg.message.mentions_user(&own_user_id))
-        .unwrap_or(false);
-
-    let first_reply_data = first_msg.and_then(|m| m.message.replies_to.clone());
-    let highlight_reply_preview = first_message_mentions_user && first_reply_data.is_some();
-
-    let name_sig = profile_sig.clone();
-
-    group
-    .iter()
-    .enumerate()
-    .map(|(idx, grouped_msg)| {
-        let msg = &grouped_msg.message;
-        let state = &grouped_msg.state;
-        let is_first = idx == 0;
-        let message_mentions_user = msg.mentions_user(&own_user_id)
-            || msg.mentions.room;
-        let reply_data = if is_first {
-            first_reply_data.clone()
-        } else {
-            None
-        };
-        let show_highlight = message_mentions_user
-            || (is_first && highlight_reply_preview);
-        let hovered = RwSignal::new(false);
-        let content = render_user_message(
-            msg,
-            store.clone(),
-            room_id.clone(),
-        );
-        let failed = state == &MessageState::Failed;
-        let reactions = msg.reactions.clone();
-
-        let store = store.clone();
-        let date = grouped_msg.date;
-
-        view! {
-            <div
-                class="group/msg relative flex flex-col gap-[var(--gap)] hover:bg-black/20 ml-1 pl-4 py-[2px] rounded-md"
-                style:background=move || {
-                    let hovered = hovered.get();
-                    if show_highlight {
-                        format!(
-                            "linear-gradient(in oklch to right, oklch(from var(--accent-color) l c h / {}) 20%, oklch(from var(--accent-color) l c h / 0) 100%)",
-                            if hovered { "0.10" } else { "0.15" },
-                        )
-                    } else if hovered {
-                        "rgba(0, 0, 0, 0.2)".to_string()
-                    } else {
-                        "transparent".to_string()
-                    }
-                }
-                on:mouseenter=move |_| hovered.set(true)
-                on:mouseleave=move |_| hovered.set(false)
-            >
-                {if show_highlight {
-                    view! {
-                        <div class="absolute left-1 top-1 bottom-1 w-1 rounded-full bg-[var(--accent-color)] pointer-events-none"></div>
-                    }
-                        .into_any()
-                } else {
-                    view! {}.into_any()
-                }}
-
-                {move || {
-                    if hovered.get() && !is_first {
-                        view! {
-                            <div class="absolute text-xs text-muted mt-[5px] ml-[5px]">
-                                {date.format("%H:%M").to_string()}
-                            </div>
-                        }
-                            .into_any()
-                    } else {
-                        view! {}.into_any()
-                    }
-                }}
-
-                {if is_first {
-                    view! { <ReplyPreview replies_to=reply_data.clone() /> }.into_any()
-                } else {
-                    view! {}.into_any()
-                }}
-
-                <div class="flex gap-[var(--gap)]">
-                    <div class="shrink-0 mr-2 w-[40px] mt-[5px]">
-                        {if is_first {
-                            let profile_sig = profile_sig.clone();
-                            view! {
-                                {move || {
-                                    let profile = profile_sig.get();
-                                    profile.render_icon(40)
-                                }}
-                            }
-                                .into_any()
-                        } else {
-                            view! {}.into_any()
-                        }}
-                    </div>
-
-                    <div class="flex flex-col min-w-0 flex-1">
-                        {if is_first {
-                            let name_sig = name_sig.clone();
-                            view! {
-                                <div class="flex items-baseline gap-2">
-                                    <span class="text-bright truncate cursor-pointer">
-                                        {move || name_sig.get().render_name(16)}
-                                    </span>
-                                    <span class="text-muted text-xs">{format_date(date)}</span>
-                                </div>
-                            }
-                                .into_any()
-                        } else {
-                            view! {}.into_any()
-                        }} <div>
-                            <div class=("opacity-50", state != &MessageState::Sent)>{content}</div>
-                            <Show when=move || failed>
-                                <div class="flex items-center gap-1 mt-1 text-red-500 text-xs">
-                                    <Icon
-                                        icon=WARNING_CIRCLE
-                                        weight=IconWeight::Duotone
-                                        size="16px"
-                                    />
-                                    "Failed to send"
-                                </div>
-                            </Show>
-                            {render_reactions(&reactions, store, &room_id, &own_user_id)}
-                        </div>
-                    </div>
-                </div>
-            </div>
-        }
-    })
-    .collect_view()
-}
-
-impl TimelineItem {
-    fn render_key(&self) -> String {
-        match &self.kind {
-            TimelineItemKind::MessageGroup(group) => {
-                let mut hasher = DefaultHasher::new();
-                for msg in group {
-                    msg.hash(&mut hasher);
-                }
-
-                format!("{}-{:x}", self.id, hasher.finish())
-            }
-            _ => self.id.clone(),
-        }
-    }
-
-    fn render(&self) -> impl IntoView {
-        let state: AppState = expect_context();
-        let store: MemberStore = expect_context();
-
-        let Some(room_id) = state.active_room_id.get() else {
-            return view! {}.into_any();
-        };
-
-        let profile_sig = store.get_profile(&room_id, &self.sender);
-
-        let sender_id = self.sender.clone();
-
-        let own_user_id = state.user_id.get();
-
-        match &self.kind {
-            TimelineItemKind::MessageGroup(group) => {
-                view! {
-                    <div class="flex flex-col gap-1 py-3 rounded-md">
-                        <div class="flex flex-col w-full">
-                            {render_message_group(
-                                group.clone(),
-                                store.clone(),
-                                room_id.clone(),
-                                own_user_id.clone(),
-                                profile_sig.clone(),
-                            )}
-                        </div>
-                    </div>
-                }
-                .into_any()
-            }
-            TimelineItemKind::DateSeparator => {
-                let is_today = self.date.date_naive() == Local::now().date_naive();
-                let is_yesterday = self.date.date_naive()
-                    == (Local::now().date_naive() - chrono::Duration::days(1));
-
-                let label = if is_today {
-                    "Today".to_string()
-                } else if is_yesterday {
-                    "Yesterday".to_string()
-                } else {
-                    self.date.format("%d %B %Y").to_string()
-                };
-
-                view! {
-                    <div class="flex items-center gap-2 my-4 drop-shadow">
-                        <div class="flex-1 border-t-1 border-[var(--muted-text-color)] bdf"></div>
-                        <span class="text-muted text-sm bdf-text">{label}</span>
-                        <div class="flex-1 border-t-1 border-[var(--muted-text-color)] bdf"></div>
-                    </div>
-                }
-            }
-            .into_any(),
-            TimelineItemKind::NewMessageIndicator => view! {
-                <div class="flex items-center w-full pr-4">
-                    <div class="flex-1 border-2 border-[#00ffff] rounded-full"></div>
-
-                    <span class="relative flex items-center h-[20px] bg-[#00ffff] text-[var(--bg-color)] text-[10px] font-bold px-2 rounded-r-[3px] ml-1 uppercase tracking-wider select-none">
-                        <div class="absolute -left-[6px] top-0 w-0 h-0 border-y-[10px] border-y-transparent border-r-[6px] border-r-[#00ffff]"></div>
-                        "New"
-                    </span>
-                </div>
-            }
-            .into_any(),
-            TimelineItemKind::SystemMessage(sys_msg) => {
-                let sys_msg = sys_msg.clone();
-                let sender_id = sender_id.clone();
-                let room_id = room_id.clone();
-                let store = store.clone();
-
-                let text = move || {
-                    let display_name = profile_sig.get()
-                        .unwrap_or_default()
-                        .display_name
-                        .unwrap_or_else(|| sender_id.clone());
-
-                    match &sys_msg {
-                        SystemMessage::RoomCreated { .. } => format!("{} created the room", display_name),
-                        SystemMessage::RoomNameChange { new_name } => {
-                            format!("{} changed the room name to '{}'", display_name, new_name)
-                        }
-                        SystemMessage::TopicChange { new_topic } => {
-                            format!("{} changed the topic to '{}'", display_name, new_topic)
-                        }
-                        SystemMessage::MembershipChange(action) => match action {
-                            MembershipAction::Joined => format!("{} joined the room", display_name),
-                            MembershipAction::Left => format!("{} left the room", display_name),
-                            MembershipAction::Invited { .. } => {
-                                format!("{} was invited to the room", display_name)
-                            }
-                            MembershipAction::Kicked { target_id, reason } => format!(
-                                "{} kicked {}{}",
-                                display_name,
-                                target_id,
-                                if let Some(r) = reason {
-                                    format!(": {}", r)
-                                } else {
-                                    "".to_string()
-                                }
-                            ),
-                            MembershipAction::Banned { target_id, reason } => format!(
-                                "{} banned {}{}",
-                                display_name,
-                                target_id,
-                                if let Some(r) = reason {
-                                    format!(": {}", r)
-                                } else {
-                                    "".to_string()
-                                }
-                            ),
-                        },
-                        SystemMessage::EncryptionEnabled { algorithm } => {
-                            format!("{} enabled encryption ({})", display_name, algorithm)
-                        }
-                        SystemMessage::PowerlevelChange => {
-                            format!("{} changed the power levels", display_name)
-                        }
-                        SystemMessage::JoinRuleChange { new_rule } => {
-                            format!("{} changed the join rules to '{}'", display_name, new_rule.as_str())
-                        }
-                        SystemMessage::HistoryVisibilityChange { new_visibility } => format!(
-                            "{} changed the history visibility to '{}'",
-                            display_name, new_visibility
-                        ),
-                        SystemMessage::GuestAccessChange { new_access } => format!(
-                            "{} changed the guest access to '{}'",
-                            display_name, new_access
-                        ),
-                        SystemMessage::CallJoined { intent } => {
-                            format!("{} joined a call ({})", display_name, intent)
-                        }
-                        SystemMessage::CallLeft => format!("{} left a call", display_name),
-                        SystemMessage::MessageEdited { .. } => format!("{} edited a message", display_name),
-                        SystemMessage::MessageReacted { .. } => format!("{} reacted to a message", display_name),
-                        SystemMessage::MessageRedacted { .. } => format!("{} redacted a message", display_name),
-                        SystemMessage::RemoveMessage { .. } => format!("{} removed a message", display_name),
-                        SystemMessage::RoomAvatarChange { new_avatar_url } => {
-                            if new_avatar_url.is_some() {
-                                format!("{} changed the room avatar", display_name)
-                            } else {
-                                format!("{} removed the room avatar", display_name)
-                            }
-                        }
-                        SystemMessage::VerificationRequest { from_user_id, .. } => {
-                            let from_display_name = store
-                                .get_profile(&room_id, from_user_id)
-                                .get()
-                                .and_then(|p| p.display_name)
-                                .unwrap_or_else(|| from_user_id.clone());
-
-                            format!(
-                                "{} sent a verification request to {}",
-                                display_name, from_display_name,
-                            )
-                        }
-                        SystemMessage::Unknown => format!("{} sent an unknown message", display_name),
-                    }
-                };
-
-                view! {
-                    <div class="flex items-center justify-center my-2">
-                        <span class="text-muted text-xxl bdf-text">{text}</span>
-                    </div>
-                }
-                .into_any()
-            }
-        }
-    }
-}
-
 fn get_date_from_ts(ts: i64) -> DateTime<Local> {
     Local
         .timestamp_opt(ts, 0)
@@ -613,315 +400,324 @@ fn get_date_from_ts(ts: i64) -> DateTime<Local> {
         .unwrap_or_else(|| DateTime::UNIX_EPOCH.with_timezone(&Local))
 }
 
-fn room_has_notifications(state: &SidebarState, room_id: &str) -> bool {
-    fn find_in_nodes(nodes: &[RoomNode], room_id: &str) -> Option<u64> {
-        for node in nodes {
-            if node.room_id == room_id {
-                return Some(node.notification_count);
-            }
+fn render_system_message(content: SystemMessage, _store: MemberStore, _room_id: String) -> impl IntoView {
+    let text = match content {
+        SystemMessage::MembershipChange { user_id, change } => format!(
+            "{} {}",
+            user_id,
+            change
+                .map(|v| v.display_string())
+                .unwrap_or_else(|| "changed membership".to_string()),
+        ),
+        SystemMessage::ProfileChange { user_id, display_name_change, avatar_url_changed } => {
+            let mut changes = Vec::new();
 
-            if let RoomKind::Space { children } = &node.kind {
-                if let Some(count) = find_in_nodes(children, room_id) {
-                    return Some(count);
+            if let Some(Change {old, new}) = display_name_change {
+                if let Some(new) = new {
+                    if let Some(old) = old {
+                        changes.push(format!("changed their display name from '{}' to '{}'", old, new));
+                    } else {
+                        changes.push(format!("set their display name to '{}'", new));
+                    }
+                } else {
+                    changes.push("removed their display name".to_string());
                 }
             }
+
+            if let Some(Change { old, new }) = avatar_url_changed {
+                if new.is_some() && old.is_none() {
+                    changes.push("set a profile picture".to_string());
+                } else if new.is_none() && old.is_some() {
+                    changes.push("removed their profile picture".to_string());
+                } else {
+                    changes.push("changed their profile picture".to_string());
+                }
+            }
+
+            format!("{} {}", user_id, changes.join(" and "))
         }
+        SystemMessage::RtcNotification { call_intent, declined_by } => format!("{} Call declined by {})", call_intent.map(|v| v.to_string()).unwrap_or("".to_string()), declined_by.join(", ")),
+        SystemMessage::OtherEvent => "[unsupported message]".to_string(),
+        SystemMessage::CallInvite => "Call started".to_string(),
+    };
 
-        None
+    view! {
+        <div class="flex items-center justify-center my-2">
+            <span class="text-muted text-xxl bdf-text">{text}</span>
+        </div>
     }
+}
 
-    find_in_nodes(&state.dms, room_id)
-        .or_else(|| find_in_nodes(&state.orphaned_rooms, room_id))
-        .or_else(|| find_in_nodes(&state.servers, room_id))
-        .unwrap_or(0)
-        > 0
+fn render_timeline_event(store: MemberStore, room_id: &str, own_user_id: &str, event: TimelineEvent, show_header: bool) -> impl IntoView {
+    let hovered = RwSignal::new(false);
+    let show_highlight = event.flags.is_highlighted;
+
+    let failed_message = event.get_failed_message();
+    let pending = event.is_sending();
+
+    let date = get_date_from_ts(event.timestamp as i64);
+    let reactions = event.get_reactions();
+
+    let sender_id = event.get_sender_id();
+    let name = event.get_sender_name().unwrap_or(sender_id.clone().unwrap_or("Unknown".to_string()));
+    let avatar_url = event.get_sender_avatar_url();
+
+    let color = sender_id.map(get_color).unwrap_or(Hsl::new(0.0, 0.0, 70.0, None));
+
+    let content = match event.content{
+        EventContent::MsgLike(ev) => render_message_content(*ev, store.clone(), room_id.to_string()),
+        EventContent::FailedToParseMessageLike { event_type, error } => return view! { <div class="text-red-500 italic">{format!("Failed to render {event_type}: {error}")}</div> }.into_any(),
+        EventContent::FailedToParseState { event_type, state_key, error } => return view! {
+            <div class="text-red-500 italic">
+                {format!("Failed to render {event_type} with state key {state_key}: {error}")}
+            </div>
+        }.into_any(),
+        EventContent::SystemMessage(ev) => return render_system_message(ev, store, room_id.to_string()).into_any(),
+    };
+
+    view! {
+        <div
+            class="group/msg relative flex flex-col gap-[var(--gap)] hover:bg-black/20 ml-1 pl-4 py-[2px] rounded-md"
+            class=("mt-5", show_header)
+            style:background=move || {
+                let hovered = hovered.get();
+                if show_highlight {
+                    format!(
+                        "linear-gradient(in oklch to right, oklch(from var(--accent-color) l c h / {}) 20%, oklch(from var(--accent-color) l c h / 0) 100%)",
+                        if hovered { "0.10" } else { "0.15" },
+                    )
+                } else if hovered {
+                    "rgba(0, 0, 0, 0.2)".to_string()
+                } else {
+                    "transparent".to_string()
+                }
+            }
+            on:mouseenter=move |_| hovered.set(true)
+            on:mouseleave=move |_| hovered.set(false)
+        >
+            {if show_highlight {
+                view! {
+                    <div class="absolute left-1 top-1 bottom-1 w-1 rounded-full bg-[var(--accent-color)] pointer-events-none"></div>
+                }
+                    .into_any()
+            } else {
+                ().into_any()
+            }}
+
+            {move || {
+                if hovered.get() && !show_header {
+                    view! {
+                        <div class="absolute text-xs text-muted mt-[5px] ml-[5px]">
+                            {date.format("%H:%M").to_string()}
+                        </div>
+                    }
+                        .into_any()
+                } else {
+                    ().into_any()
+                }
+            }}
+
+            // <ReplyPreview replies_to=reply_data.clone() />
+
+            <div class="flex gap-[var(--gap)]">
+                <div class="shrink-0 mr-2 w-[40px] mt-[5px]">
+                    {if show_header {
+                        render_profile_icon(avatar_url, name.clone(), 40, color.clone()).into_any()
+                    } else {
+                        ().into_any()
+                    }}
+                </div>
+
+                <div class="flex flex-col min-w-0 flex-1">
+                    {if show_header {
+                        view! {
+                            <div class="flex items-baseline gap-2">
+                                <span class="text-bright truncate cursor-pointer">
+                                    {render_profile_name(name, color, 16)}
+                                </span>
+                                <span class="text-muted text-xs">{format_date(date)}</span>
+                            </div>
+                        }
+                            .into_any()
+                    } else {
+                        ().into_any()
+                    }} <div>
+                        <div class=("opacity-50", pending)>{content}</div>
+                        {failed_message
+                            .map(|msg| {
+                                view! {
+                                    <div class="flex items-center gap-1 mt-1 text-red-500 text-xs">
+                                        <Icon
+                                            icon=WARNING_CIRCLE
+                                            weight=IconWeight::Duotone
+                                            size="16px"
+                                        />
+                                        "Failed to send: "
+                                        {msg}
+                                    </div>
+                                }
+                            })}
+                        {render_reactions(reactions, store, room_id, own_user_id)}
+                    </div>
+                </div>
+            </div>
+        </div>
+    }.into_any()
+}
+
+fn render_timeline_item(item: UiTimelineItem, show_header: bool) -> impl IntoView {
+    let state: AppState = expect_context();
+    let store: MemberStore = expect_context();
+
+    let Some(room_id) = state.active_room_id.get_untracked() else {
+        return ().into_any();
+    };
+
+    let user_id = state.user_id.get_untracked();
+
+    match item.kind {
+        UiTimelineItemKind::DateDivider(date)=> {
+            let date = get_date_from_ts(date as i64);
+
+            let is_today = date.date_naive() == Local::now().date_naive();
+            let is_yesterday = date.date_naive()
+                == (Local::now().date_naive() - chrono::Duration::days(1));
+
+            let label = if is_today {
+                "Today".to_string()
+            } else if is_yesterday {
+                "Yesterday".to_string()
+            } else {
+                date.format("%d %B %Y").to_string()
+            };
+
+            view! {
+                <div class="flex items-center gap-2 mt-4 drop-shadow">
+                    <div class="flex-1 border-t-1 border-[var(--muted-text-color)] bdf"></div>
+                    <span class="text-muted text-sm bdf-text">{label}</span>
+                    <div class="flex-1 border-t-1 border-[var(--muted-text-color)] bdf"></div>
+                </div>
+            }
+        }
+        .into_any(),
+        UiTimelineItemKind::ReadMarker => view! {
+            <div class="flex items-center w-full pr-4">
+                <div class="flex-1 border-2 border-[#00ffff] rounded-full"></div>
+
+                <span class="relative flex items-center h-[20px] bg-[#00ffff] text-[var(--bg-color)] text-[10px] font-bold px-2 rounded-r-[3px] ml-1 uppercase tracking-wider select-none">
+                    <div class="absolute -left-[6px] top-0 w-0 h-0 border-y-[10px] border-y-transparent border-r-[6px] border-r-[#00ffff]"></div>
+                    "New"
+                </span>
+            </div>
+        }
+        .into_any(),
+        UiTimelineItemKind::TimelineStart => view! {
+            <div class="flex items-center gap-2 my-4 drop-shadow">
+                <div class="flex-1 border-t-1 border-[var(--muted-text-color)] bdf"></div>
+                <span class="text-muted text-sm bdf-text">"Start of Timeline"</span>
+                <div class="flex-1 border-t-1 border-[var(--muted-text-color)] bdf"></div>
+            </div>
+        }.into_any(),
+        UiTimelineItemKind::Event(event) => render_timeline_event(store, &room_id, &user_id, *event, show_header).into_any()
+    }
 }
 
 #[component]
 fn TimeLine() -> impl IntoView {
-    let (messages, set_messages) = signal(Vec::<UiMessage>::new());
-    let (read_marker_id, set_read_marker_id) = signal::<Option<String>>(None);
+    let messages = RwSignal::new(Vec::<UiTimelineItem>::new());
 
     let state: AppState = expect_context();
 
-    let sidebar_update_event: ReadSignal<Option<SidebarState>> = use_tauri_event("sidebar_update");
+    // let messages_update_event: ReadSignal<Option<MessagesUpdate>> =
+    // use_tauri_event("messages_update");
 
-    let messages_update_event: ReadSignal<Option<MessagesUpdate>> =
-        use_tauri_event("messages_update");
+    // Effect::new(move |_| {
+    //     let Some(mut update) = messages_update_event.get() else {
+    //         return;
+    //     };
 
-    Effect::new(move |_| {
-        let Some(mut update) = messages_update_event.get() else {
-            return;
-        };
+    //     let Some(room_id) = state.active_room_id.get_untracked() else {
+    //         return;
+    //     };
 
-        let Some(room_id) = state.active_room_id.get_untracked() else {
-            return;
-        };
+    //     let new_msgs = update.new_messages.remove(&room_id).unwrap_or_default();
+    //     let msg_updates = update.updated_messages.remove(&room_id).unwrap_or_default();
+    //     let msgs_to_remove = update.messages_to_remove;
 
-        let new_msgs = update.new_messages.remove(&room_id).unwrap_or_default();
-        let msg_updates = update.updated_messages.remove(&room_id).unwrap_or_default();
-        let msgs_to_remove = update.messages_to_remove;
+    //     let updates_map: HashMap<String, UiMessage> = msg_updates
+    //         .into_iter()
+    //         .map(|m| (m.event_id.clone(), m))
+    //         .collect();
 
-        let updates_map: HashMap<String, UiMessage> = msg_updates
-            .into_iter()
-            .map(|m| (m.event_id.clone(), m))
-            .collect();
+    //     messages.update(|existing| {
+    //         existing.retain(|m| !msgs_to_remove.contains(&m.event_id));
 
-        set_messages.update(|existing| {
-            existing.retain(|m| !msgs_to_remove.contains(&m.event_id));
+    //         for msg in existing.iter_mut() {
+    //             if let Some(updated_msg) = updates_map.get(&msg.event_id) {
+    //                 *msg = updated_msg.clone();
+    //             }
+    //         }
 
-            for msg in existing.iter_mut() {
-                if let Some(updated_msg) = updates_map.get(&msg.event_id) {
-                    *msg = updated_msg.clone();
-                }
-            }
-
-            existing.extend(new_msgs);
-        });
-    });
-
-    let has_unread_notifications = Memo::new(move |_| {
-        let Some(room_id) = state.active_room_id.get() else {
-            return false;
-        };
-
-        let Some(sidebar_state) = sidebar_update_event.get() else {
-            return false;
-        };
-
-        room_has_notifications(&sidebar_state, &room_id)
-    });
-
-    let (last_sent_event_id, set_last_sent_event_id) = signal::<Option<String>>(None);
-
-    Effect::new(move |_| {
-        if !state.is_focused.get() {
-            return;
-        }
-
-        let Some(rid) = state.active_room_id.get() else {
-            return;
-        };
-        let Some(newest) = messages
-            .get()
-            .iter()
-            .filter_map(|m| {
-                if m.state != MessageState::Sent {
-                    None
-                } else {
-                    Some((m.timestamp, m.event_id.clone()))
-                }
-            })
-            .max_by_key(|m| m.0)
-            .map(|m| m.1)
-        else {
-            return;
-        };
-
-        if last_sent_event_id.get_untracked().as_deref() == Some(&newest) {
-            return;
-        }
-
-        set_last_sent_event_id.set(Some(newest.clone()));
-        send_marker(rid, newest);
-    });
-
-    let (show_unread_indicator, set_show_unread_indicator) = signal(false);
-
-    Effect::new(move |_| {
-        state.active_room_id.get();
-        set_show_unread_indicator.set(false);
-    });
-
-    Effect::new(move |_| {
-        if has_unread_notifications.get() {
-            set_show_unread_indicator.set(true);
-        }
-    });
-
+    //         existing.extend(new_msgs);
+    //     });
+    // });
+    //
     let flattened_items = Memo::new(move |_| {
-        let mut msgs = messages.get();
-        msgs.sort_by_key(|m| m.timestamp);
+        let mut last_sender: Option<String> = None;
+        let mut last_timestamp: Option<u64> = None;
 
-        let mut items: Vec<TimelineItem> = Vec::new();
-        let mut last_day: Option<NaiveDate> = None;
-        let marker_id = read_marker_id.get();
-        let has_unread = show_unread_indicator.get();
+        let new_msgs: Vec<UiTimelineItem> = messages.read().clone();
+        let mut processed_items = Vec::with_capacity(new_msgs.len());
 
-        let marker_ts = marker_id
-            .as_ref()
-            .and_then(|mid| msgs.iter().find(|m| m.event_id == *mid))
-            .map(|m| m.timestamp);
+        for (idx, item) in new_msgs.iter().enumerate() {
+            let mut show_header = true;
 
-        let mut seen_marker_id = false;
-        let mut inserted_marker = false;
-
-        for msg in msgs.iter_mut() {
-            if let MessageKind::SystemMessage(
-                SystemMessage::MessageEdited { .. }
-                | SystemMessage::MessageRedacted { .. }
-                | SystemMessage::MessageReacted { .. },
-            ) = &msg.kind
-            {
-                continue;
-            }
-
-            let current_date = get_date_from_ts(msg.timestamp as i64);
-            let current_day = current_date.date_naive();
-
-            if Some(current_day) != last_day {
-                items.push(TimelineItem {
-                    date: current_date,
-                    sender: String::new(),
-                    id: format!("date-sep-{}", current_day),
-                    kind: TimelineItemKind::DateSeparator,
-                });
-                last_day = Some(current_day);
-            }
-
-            if let Some(m_id) = &marker_id {
-                if !inserted_marker && has_unread {
-                    let is_after_marker =
-                        seen_marker_id || marker_ts.is_some_and(|ts| msg.timestamp > ts);
-
-                    if is_after_marker {
-                        items.push(TimelineItem {
-                            date: current_date,
-                            sender: String::new(),
-                            id: "new-message-indicator".to_string(),
-                            kind: TimelineItemKind::NewMessageIndicator,
-                        });
-                        inserted_marker = true;
-                    }
-
-                    if msg.event_id == *m_id {
-                        seen_marker_id = true;
-                    }
+            // Check if the previous chronological item was a divider
+            if idx > 0
+                && let UiTimelineItemKind::DateDivider(_) | UiTimelineItemKind::ReadMarker = new_msgs[idx - 1].kind {
+                    processed_items.push((item.clone(), true));
+                    if let UiTimelineItemKind::Event(event) = &item.kind
+                        && let DetailState::Ready(sender) = &event.sender {
+                            last_sender = Some(sender.id.to_string());
+                            last_timestamp = Some(event.timestamp);
+                        }
+                    continue;
                 }
-            }
 
-            let maybe_item = match msg.kind.clone() {
-                MessageKind::UserMessage(user_msg) => {
-                    let mut grouped = false;
-                    if let Some(last_item) = items.last_mut() {
-                        if let TimelineItemKind::MessageGroup(ref mut group) = last_item.kind {
-                            let same_sender = last_item.sender == msg.sender_id;
-
-                            let time_diff_seconds =
-                                current_date.timestamp() - last_item.date.timestamp();
-                            let within_time_window = time_diff_seconds < (5 * 60);
-
-                            let current_is_reply = user_msg.replies_to.is_some();
-                            let last_is_reply = group
-                                .last()
-                                .map(|m| m.message.replies_to.is_some())
-                                .unwrap_or(false);
-
-                            if same_sender
-                                && within_time_window
-                                && !current_is_reply
-                                && !last_is_reply
-                            {
-                                group.push(GroupedMessage {
-                                    message: user_msg.clone(),
-                                    state: msg.state.clone(),
-                                    event_id: msg.event_id.clone(),
-                                    date: current_date,
-                                });
-                                last_item.id = format!("{}_{}", last_item.id, msg.event_id);
-                                grouped = true;
+            if let UiTimelineItemKind::Event(event) = &item.kind {
+                if let EventContent::MsgLike(msg) = &event.content && msg.in_reply_to.is_some() {
+                    show_header = true;
+                } else if let DetailState::Ready(sender) = &event.sender {
+                    if let Some(last_sender_id) = &last_sender
+                        && last_sender_id == &sender.id && let Some(last_ts) = last_timestamp {
+                            // If this message is within 5 minutes of the previous message, hide header
+                            if event.timestamp.saturating_sub(last_ts) < 5 * 60 {
+                                show_header = false;
                             }
                         }
-                    }
-
-                    if !grouped {
-                        Some(TimelineItem {
-                            date: current_date,
-                            sender: msg.sender_id.clone(),
-                            id: msg.event_id.clone(),
-                            kind: TimelineItemKind::MessageGroup(vec![GroupedMessage {
-                                message: user_msg.clone(),
-                                state: msg.state.clone(),
-                                event_id: msg.event_id.clone(),
-                                date: current_date,
-                            }]),
-                        })
-                    } else {
-                        None
-                    }
+                    last_sender = Some(sender.id.to_string());
+                    last_timestamp = Some(event.timestamp);
+                } else {
+                    show_header = true;
+                    last_sender = None;
+                    last_timestamp = None;
                 }
-                MessageKind::SystemMessage(sys_msg) => Some(TimelineItem {
-                    date: current_date,
-                    sender: msg.sender_id.clone(),
-                    id: msg.event_id.clone(),
-                    kind: TimelineItemKind::SystemMessage(sys_msg.clone()),
-                }),
-            };
-
-            if let Some(item) = maybe_item {
-                items.push(item);
+            } else {
+                show_header = true;
+                last_sender = None;
+                last_timestamp = None;
             }
-        }
-        items.reverse();
 
-        items
+            processed_items.push((item.clone(), show_header));
+        }
+
+        processed_items.reverse();
+        processed_items
     });
 
     let (is_loading, set_is_loading) = signal(false);
     let (has_more, set_has_more) = signal(true);
     let (initial_loaded, set_initial_loaded) = signal(false);
-
-    let fetch_more = move |_: ()| {
-        if is_loading.get_untracked() {
-            return;
-        }
-        if !has_more.get_untracked() {
-            return;
-        }
-
-        let Some(room_id) = state.active_room_id.get_untracked() else {
-            return;
-        };
-
-        set_is_loading.set(true);
-
-        spawn_local(async move {
-            let oldest_id = messages
-                .get_untracked()
-                .iter()
-                .min_by_key(|m| m.timestamp)
-                .map(|m| m.event_id.clone());
-
-            let result = fetch_messages(room_id.clone(), oldest_id).await;
-
-            match result {
-                Ok(res) => {
-                    set_has_more.set(res.has_more);
-
-                    set_messages.update(|existing| {
-                        let mut seen_ids: HashSet<String> =
-                            existing.iter().map(|m| m.event_id.clone()).collect();
-
-                        let mut unique_new: Vec<UiMessage> = res
-                            .messages
-                            .into_iter()
-                            .filter(|m| seen_ids.insert(m.event_id.clone()))
-                            .collect();
-
-                        unique_new.append(existing);
-                        *existing = unique_new;
-                    });
-
-                    set_initial_loaded.set(true);
-                }
-                Err(e) => {
-                    error!("Failed to fetch messages: {}", e);
-                }
-            }
-
-            set_is_loading.set(false);
-        });
-    };
 
     let sentinel_ref = NodeRef::<Div>::new();
 
@@ -932,51 +728,27 @@ fn TimeLine() -> impl IntoView {
                 && !is_loading.get()
                 && has_more.get()
             {
-                fetch_more(());
+                // fetch_more(());
             }
         });
 
     Effect::new(move |_| {
-        if state.active_room_id.get().is_some() {
-            set_messages.set(Vec::new());
-            set_is_loading.set(false);
-            set_has_more.set(true);
-            set_initial_loaded.set(false);
-            set_read_marker_id.set(None);
+        if let Some(room_id) = state.active_room_id.get() {
+            messages.set(Vec::new());
 
-            set_timeout(
-                move || {
-                    fetch_more(());
-                },
-                std::time::Duration::from_millis(1),
-            );
-        }
-    });
-
-    Effect::new(move |_| {
-        let rid = state.active_room_id.get();
-        set_read_marker_id.set(None);
-
-        let Some(room_id) = rid else {
-            return;
-        };
-
-        spawn_local(async move {
-            let args = serde_wasm_bindgen::to_value(&json!({
-                "room_id": room_id
-            }))
-            .expect("Failed to serialize args");
-
-            match call_tauri("get_receipt", args).await {
-                Ok(marker) => match serde_wasm_bindgen::from_value::<Option<String>>(marker) {
-                    Ok(parsed_marker) => {
-                        set_read_marker_id.set(parsed_marker);
+            spawn_local(async move {
+                match get_timeline(&room_id).await {
+                    Ok(tl) => {
+                        messages.set(tl);
+                        set_has_more.set(false);
+                        set_initial_loaded.set(true);
                     }
-                    Err(e) => console_error(&format!("Failed to parse receipt: {:?}", e)),
-                },
-                Err(e) => console_error(&format!("Tauri get_receipt call failed: {:?}", e)),
-            }
-        });
+                    Err(e) => {
+                        console_error(&format!("Failed to get timeline: {:?}", e));
+                    }
+                }
+            });
+        }
     });
 
     view! {
@@ -984,8 +756,8 @@ fn TimeLine() -> impl IntoView {
             <div class="mb-5"></div>
             <For
                 each=move || flattened_items.get()
-                key=|item| item.render_key()
-                children=|item| item.render()
+                key=|(item, _)| item.id.clone()
+                children=move |(item, show_header)| { render_timeline_item(item, show_header) }
             />
 
             <Show
@@ -1036,7 +808,7 @@ fn ChatHeader(
                                         }
                                             .into_any()
                                     } else {
-                                        view! {}.into_any()
+                                        ().into_any()
                                     }
                                 }}
                             }
@@ -1306,7 +1078,7 @@ fn ChatInfo(header: Memo<RoomHeader>) -> impl IntoView {
                                         }
                                             .into_any()
                                     } else {
-                                        view! {}.into_any()
+                                        ().into_any()
                                     }
                                 }}
                             </div>
@@ -1405,7 +1177,7 @@ fn MemberList(room_id: RwSignal<Option<String>>) -> impl IntoView {
                                                 }
                                                     .into_any()
                                             } else {
-                                                view! {}.into_any()
+                                                ().into_any()
                                             }
                                         }}
                                         <span class="text-bright">
@@ -1420,7 +1192,7 @@ fn MemberList(room_id: RwSignal<Option<String>>) -> impl IntoView {
                     }
                         .into_any()
                 } else {
-                    view! {}.into_any()
+                    ().into_any()
                 };
                 let offline_view = if offline_i > 0 {
 
@@ -1450,7 +1222,7 @@ fn MemberList(room_id: RwSignal<Option<String>>) -> impl IntoView {
                                                 }
                                                     .into_any()
                                             } else {
-                                                view! {}.into_any()
+                                                ().into_any()
                                             }
                                         }}
                                         <span class="text-bright">
@@ -1463,7 +1235,7 @@ fn MemberList(room_id: RwSignal<Option<String>>) -> impl IntoView {
                     }
                         .into_any()
                 } else {
-                    view! {}.into_any()
+                    ().into_any()
                 };
 
                 view! {

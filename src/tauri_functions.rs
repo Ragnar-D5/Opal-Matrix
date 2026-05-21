@@ -4,7 +4,8 @@ use serde_json::json;
 use shared::{
     api::{FetchMessagesResponse, LinkPreviewResponse},
     commands::Command,
-    messages::RichTextSpan,
+    timeline::RichTextSpan,
+    timeline::UiTimelineItem,
 };
 
 use crate::{
@@ -48,7 +49,7 @@ impl MemberShip {
         let Some(rid) = state.active_room_id.get() else {
             return false;
         };
-        &rid == &self.user_id
+        rid == self.user_id
     }
 
     pub fn get_name(&self) -> String {
@@ -89,8 +90,8 @@ pub async fn get_members(room_id: String) -> Result<Vec<MemberShip>, String> {
         .iter()
         .map(|(u, d, a)| MemberShip {
             user_id: u.into(),
-            display_name: d.clone().map(|v| v.into()),
-            avatar_url: a.clone().map(|v| v.into()),
+            display_name: d.clone(),
+            avatar_url: a.clone(),
         })
         .collect())
 }
@@ -160,6 +161,22 @@ pub async fn fetch_messages(
     .map_err(|e| format!("Failed to serialize request: {:?}", e))?;
 
     let res = call_tauri("fetch_messages", args)
+        .await
+        .map_err(|e| format!("Tauri call failed: {:?}", e))?;
+
+    let json_string: String = js_sys::JSON::stringify(&res)
+        .map_err(|e| format!("Failed to convert response to string: {:?}", e))?
+        .into();
+
+    serde_json::from_str(&json_string)
+        .map_err(|e| format!("Failed to parse JSON response: {:?}", e))
+}
+
+pub async fn get_timeline(room_id: &str) -> Result<Vec<UiTimelineItem>, String> {
+    let args = serde_wasm_bindgen::to_value(&json!({ "room_id": room_id }))
+        .map_err(|e| format!("Failed to serialize request: {:?}", e))?;
+
+    let res = call_tauri("get_timeline", args)
         .await
         .map_err(|e| format!("Tauri call failed: {:?}", e))?;
 

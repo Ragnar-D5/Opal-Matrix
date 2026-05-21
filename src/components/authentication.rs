@@ -13,6 +13,7 @@ fn ArgSpan(text: impl ToString) -> impl IntoView {
     view! { <span class="text-dim text-xl self-start pb-2 select-none">{text.to_string()}</span> }
 }
 
+#[derive(Clone)]
 enum LoginInputStatus {
     Loading,
     Valid,
@@ -24,7 +25,7 @@ enum LoginInputStatus {
 }
 
 impl LoginInputStatus {
-    fn render(&self) -> impl IntoView {
+    fn render(self) -> impl IntoView {
         match self {
             LoginInputStatus::Valid => {
                 view! { <p class="text-green-600 select-none">"All inputs look good"</p> }
@@ -209,7 +210,7 @@ pub fn LoginPage(window: RwSignal<CurrentWindow>) -> impl IntoView {
                 />
             </div>
 
-            <div class="p-2">{move || status.read().render()}</div>
+            <div class="p-2">{move || status.get().render()}</div>
 
             <button
                 type="submit"
@@ -229,6 +230,7 @@ pub fn LoginPage(window: RwSignal<CurrentWindow>) -> impl IntoView {
     }
 }
 
+#[derive(Clone)]
 enum DiscoveryStatus {
     Idle,
     Checking,
@@ -237,7 +239,7 @@ enum DiscoveryStatus {
 }
 
 impl DiscoveryStatus {
-    fn render(&self) -> impl IntoView {
+    fn render(self) -> impl IntoView {
         match self {
             DiscoveryStatus::Idle => {
                 view! { <p class="text-gray-600 select-none">"Enter a homeserver URL"</p> }
@@ -333,7 +335,7 @@ pub fn HomeserverDiscoveryPage(window: RwSignal<CurrentWindow>) -> impl IntoView
             prop:value=text
         />
 
-        <div class="p-2">{move || status_message.read().render()}</div>
+        <div class="p-2">{move || status_message.get().render()}</div>
 
         <button
             class="px-5 py-2.5 rounded-md border-none select-none transition-colors w-full"

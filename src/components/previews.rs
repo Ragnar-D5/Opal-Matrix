@@ -1,11 +1,11 @@
 use leptos::prelude::*;
-use shared::messages::RichTextSpan;
+use shared::timeline::RichTextSpan;
 
 use crate::tauri_functions::fetch_preview_data;
 
 pub fn render_link(span: RichTextSpan) -> impl IntoView {
     let RichTextSpan::Link { url, .. } = span else {
-        return view! {}.into_any();
+        return ().into_any();
     };
 
     let fetch_url = url.clone();
@@ -30,7 +30,7 @@ pub fn render_link(span: RichTextSpan) -> impl IntoView {
             {move || {
                 match preview.get() {
                     None => None,
-                    Some(None) => Some(view! {}.into_any()),
+                    Some(None) => Some(().into_any()),
                     Some(Some(data)) => {
                         let link_url = data.url.clone().unwrap_or(url.clone());
                         let app_color = data.color.clone().unwrap_or_else(|| "#ffffff".to_string());

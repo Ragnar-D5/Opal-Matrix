@@ -1,9 +1,11 @@
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 
-use ruma::events::room::{guest_access::GuestAccess, history_visibility::HistoryVisibility};
-use ruma::events::Mentions;
-use ruma::room::JoinRule;
+use matrix_sdk::ruma::events::room::{
+    guest_access::GuestAccess, history_visibility::HistoryVisibility,
+};
+use matrix_sdk::ruma::events::Mentions;
+use matrix_sdk::ruma::room::JoinRule;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Hash)]
@@ -225,16 +227,14 @@ impl UserMessage {
         match &self.content {
             MessageContent::Text { spans, .. } => spans
                 .iter()
-                .filter_map(|span| match span {
-                    RichTextSpan::Plain(text) => Some(text.clone()),
-                    RichTextSpan::Link { url, text } => {
-                        Some(text.clone().unwrap_or_else(|| url.clone()))
-                    }
-                    RichTextSpan::RoomMention => Some("@room".to_string()),
+                .map(|span| match span {
+                    RichTextSpan::Plain(text) => text.clone(),
+                    RichTextSpan::Link { url, text } => text.clone().unwrap_or_else(|| url.clone()),
+                    RichTextSpan::RoomMention => "@room".to_string(),
                     RichTextSpan::UserMention { display_name, .. } => {
-                        Some(format!("@{}", display_name.clone()))
+                        format!("@{}", display_name.clone())
                     }
-                    RichTextSpan::Newline => Some("\n".to_string()),
+                    RichTextSpan::Newline => "\n".to_string(),
                 })
                 .collect(),
             MessageContent::File { filename, size, .. } => {

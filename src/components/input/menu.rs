@@ -48,7 +48,7 @@ impl From<Command> for SelectedItem {
 
 fn render_command(command: Command) -> impl IntoView {
     if command.is_macro().is_some() {
-        return view! {}.into_any();
+        return ().into_any();
     };
 
     view! {

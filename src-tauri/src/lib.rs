@@ -2,27 +2,27 @@
 
 use log::{error, trace};
 use matrix_sdk::authentication::matrix::MatrixSession;
-use matrix_sdk::config::SyncSettings;
+use matrix_sdk::media::{MediaFormat, MediaRequestParameters, MediaThumbnailSettings};
 use matrix_sdk::ruma::{OwnedDeviceId, UserId};
-use matrix_sdk::{AuthSession, Client as MatrixClient, LoopCtrl, SessionMeta, SessionTokens};
-use matrix_sdk_crypto::{DecryptionSettings, TrustRequirement};
-use shared::api::RestoreResponse;
+use matrix_sdk::{AuthSession, Client as MatrixClient, SessionMeta, SessionTokens};
+use ruma::events::room::MediaSource;
+use ruma::media::Method;
 use shared::api::errors::LoginError;
+use shared::api::RestoreResponse;
 use std::collections::HashMap;
 use std::fs::{read_to_string, write};
 use std::sync::Arc;
 use tauri::async_runtime::block_on;
 use tokio::sync::RwLock;
-use tokio_util::io::simplex::new;
 
-use aes::Aes256;
 use aes::cipher::{KeyIvInit, StreamCipher};
-use base64::Engine;
+use aes::Aes256;
 use base64::engine::general_purpose;
+use base64::Engine;
 use bytes::Bytes;
 use chrono::Local;
 use log::info;
-use tauri::{App, AppHandle, Url, command};
+use tauri::{command, App, AppHandle, Url};
 use tauri::{Manager, State};
 
 pub mod frontend;
@@ -39,12 +39,11 @@ type Aes256Ctr = ctr::Ctr64BE<Aes256>;
 
 pub const APP_NAME: &str = "opal-matrix";
 
-use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
+use percent_encoding::{utf8_percent_encode, AsciiSet, CONTROLS};
 use tauri_plugin_log::{Target, TargetKind};
 use tauri_plugin_notification::{NotificationExt, PermissionState};
 
 use crate::frontend::send_sidebar_update;
-use crate::matrix_api::authentication::matrix_login;
 use crate::matrix_api::crypto::{self, StoredSession};
 use crate::state::{AppState, TimelineManager};
 use crate::sync::attach_callbacks;
@@ -410,7 +409,6 @@ async fn set_recovery_key(
 #[tauri::command]
 async fn send_frontend(
     state: State<'_, Arc<AppState>>,
-    matrix_client: State<'_, RwLock<MatrixClient>>,
     handle: AppHandle,
 ) -> Result<(), TauriError> {
     let client_guard = state.client.read().await;
@@ -420,8 +418,6 @@ async fn send_frontend(
     let conn = conn_guard.as_ref().ok_or("Database not initialized")?;
 
     send_sidebar_update(conn, &handle, &client_info.user_id.clone())?;
-
-    let matrix_client = matrix_client.read().await.to_owned();
 
     Ok(())
 }
@@ -521,7 +517,8 @@ pub fn run() {
                 });
 
                 let pretty_json = serde_json::to_string_pretty(&default_json).unwrap();
-                write(&brand_colors_file_path, pretty_json).expect("Failed to write default brands.json");
+                write(&brand_colors_file_path, pretty_json)
+                    .expect("Failed to write default brands.json");
 
                 serde_json::from_value(default_json).unwrap()
             };
@@ -592,15 +589,20 @@ pub fn run() {
 
             let client = block_on(async {
                 MatrixClient::builder()
-                    .handle_refresh_tokens().homeserver_url("https://matrix.org")
-                    .build().await.unwrap()
+                    .handle_refresh_tokens()
+                    .homeserver_url("https://matrix.org")
+                    .build()
+                    .await
+                    .unwrap()
             });
 
             app.manage(RwLock::new(client));
             app.manage(TimelineManager::new());
 
             #[cfg(not(target_os = "android"))]
-            let main_window = app.get_webview_window("main").expect("Failed to get main window");
+            let main_window = app
+                .get_webview_window("main")
+                .expect("Failed to get main window");
 
             #[cfg(not(target_os = "android"))]
             main_window.maximize().ok();
@@ -616,17 +618,14 @@ pub fn run() {
             backend_log,
             set_room_id,
             set_frontend_focused,
-
             // frontend commands
             frontend::messages::commit_message,
-            frontend::messages::fetch_messages,
+            frontend::messages::get_timeline,
             frontend::commands::get_commands,
-
             // storage commands
             storage::get_members,
             storage::members::get_members_for_room,
             storage::receipts::get_receipt,
-
             // matrix API commands
             matrix_api::discovery::choose_home_server,
             // matrix_api::messages::fetch_messages,
@@ -644,17 +643,7 @@ pub fn run() {
                 let uri = request.uri().to_string();
 
                 tauri::async_runtime::spawn(async move {
-                    let state = app_handle.state::<Arc<AppState>>().clone();
-                    let Ok(token) = state.check_token().await else {
-                        responder.respond(
-                            tauri::http::Response::builder()
-                                .status(401)
-                                .body(Vec::<u8>::new())
-                                .unwrap(),
-                        );
-                        return;
-                    };
-
+                    // 1. Parse the requested URI [cite: 221]
                     let parsed_url = match Url::parse(&uri) {
                         Ok(u) => u,
                         Err(_) => {
@@ -671,96 +660,114 @@ pub fn run() {
                     let server_name = parsed_url.host_str().unwrap_or("");
                     let media_id = parsed_url.path().trim_start_matches('/');
 
+                    // 2. Reconstruct to a pure MXC string and parse into Ruma's OwnedMxcUri
+                    let mxc_string = format!("mxc://{}/{}", server_name, media_id);
+                    let Ok(owned_mxc_uri): Result<ruma::OwnedMxcUri, std::convert::Infallible> =
+                        matrix_sdk::ruma::OwnedMxcUri::try_from(mxc_string)
+                    else {
+                        responder.respond(
+                            tauri::http::Response::builder()
+                                .status(400)
+                                .body(Vec::new())
+                                .unwrap(),
+                        );
+                        return;
+                    };
+
                     let mut is_thumbnail = false;
-                    let mut width = "800";
-                    let mut height = "800";
+                    let mut width: u32 = 800;
+                    let mut height: u32 = 800;
                     let mut enc_key = None;
                     let mut enc_iv = None;
 
+                    let mut is_encrypted = false;
+
+                    // Parse frontend parameters
                     for (k, v) in parsed_url.query_pairs() {
                         match k.as_ref() {
                             "thumbnail" => is_thumbnail = v == "true",
-                            "width" => width = v.into_owned().leak(),
-                            "height" => height = v.into_owned().leak(),
-                            "key" => enc_key = Some(v.into_owned()),
-                            "iv" => enc_iv = Some(v.into_owned()),
+                            "width" => width = v.parse().unwrap_or(800),
+                            "height" => height = v.parse().unwrap_or(800),
+                            "key" => {
+                                is_encrypted = true;
+                                enc_key = Some(v.into_owned())
+                            }
+                            "iv" => {
+                                is_encrypted = true;
+                                enc_iv = Some(v.into_owned())
+                            }
                             _ => {}
                         }
                     }
 
-                    let matrix_url = if let Some(server) = state.home_server_info.read().await.as_ref() {
-                        server.base_url.clone()
-                    } else {
-                        "https://matrix-client.matrix.org".to_string()
-                    };
-
-                    let fetch_url = if enc_key.is_some() {
-                        format!("{}/_matrix/client/v1/media/download/{}/{}", matrix_url, server_name, media_id)
-                    } else if is_thumbnail {
-                        format!(
-                            "{}/_matrix/client/v1/media/thumbnail/{}/{}?width={}&height={}&method=scale",
-                            matrix_url, server_name, media_id, width, height
-                        )
-                    } else {
-                        format!("{}/_matrix/client/v1/media/download/{}/{}", matrix_url, server_name, media_id)
-                    };
-
-                    let response = match reqwest::Client::new()
-                        .get(&fetch_url)
-                        .bearer_auth(token)
-                        .send()
+                    // 3. Retrieve MatrixClient directly from Tauri state [cite: 128, 212]
+                    let client = app_handle
+                        .state::<tokio::sync::RwLock<matrix_sdk::Client>>()
+                        .read()
                         .await
-                    {
-                        Ok(res) if res.status().is_success() => {
-                            let mut bytes = res.bytes().await.unwrap_or_default().to_vec();
+                        .clone();
 
-                            if let (Some(k), Some(iv)) = (enc_key, enc_iv) {
-                                // Key uses URL_SAFE_NO_PAD, IV uses STANDARD_NO_PAD
-                                if let (Ok(key_bytes), Ok(iv_bytes)) = (
+                    // 4. Build the MediaRequest
+                    let source = MediaSource::Plain(owned_mxc_uri);
+                    let format = if is_thumbnail {
+                        MediaFormat::Thumbnail(MediaThumbnailSettings {
+                            method: Method::Scale,
+                            width: width.into(),
+                            height: height.into(),
+                            animated: false,
+                        })
+                    } else {
+                        MediaFormat::File
+                    };
+
+                    let media_request = MediaRequestParameters { source, format };
+
+                    // 5. Fetch using the Matrix SDK (handles tokens and caching natively)
+                    match client.media().get_media_content(&media_request, true).await {
+                        Ok(mut bytes) => {
+                            // Custom AES-256-CTR Decryption logic [cite: 237, 238, 241, 242]
+                            if let (Some(k), Some(iv)) = (enc_key, enc_iv)
+                                && let (Ok(key_bytes), Ok(iv_bytes)) = (
                                     general_purpose::URL_SAFE_NO_PAD.decode(&k),
                                     general_purpose::STANDARD_NO_PAD.decode(&iv),
                                 ) {
                                     if key_bytes.len() == 32 && iv_bytes.len() >= 8 {
-                                        // Pad IV to 16 bytes (Matrix uses 8 bytes of random data + 8 bytes of 0s for counter)
                                         let mut padded_iv = [0u8; 16];
                                         let copy_len = std::cmp::min(iv_bytes.len(), 16);
-                                        padded_iv[..copy_len].copy_from_slice(&iv_bytes[..copy_len]);
+                                        padded_iv[..copy_len]
+                                            .copy_from_slice(&iv_bytes[..copy_len]);
 
-                                        // Apply AES-256-CTR keystream
-                                        if let Ok(mut cipher) = Aes256Ctr::new_from_slices(&key_bytes, &padded_iv) {
+                                        if let Ok(mut cipher) =
+                                            Aes256Ctr::new_from_slices(&key_bytes, &padded_iv)
+                                        {
                                             cipher.apply_keystream(&mut bytes);
                                         }
                                     } else {
                                         log::error!("Invalid key/iv length for decryption");
                                     }
                                 }
+
+                            if is_encrypted {
+                                log::info!("Decrypted media content with provided key and iv");
                             }
 
-                            tauri::http::Response::builder()
-                                .header("Access-Control-Allow-Origin", "*")
-                                .body(bytes)
-                                .unwrap()
-                        }
-                        Ok(res) => {
-                            log::error!(
-                                "Matrix Server rejected media request: HTTP {}",
-                                res.status()
+                            responder.respond(
+                                tauri::http::Response::builder()
+                                    .header("Access-Control-Allow-Origin", "*")
+                                    .body(bytes)
+                                    .unwrap(),
                             );
-                            tauri::http::Response::builder()
-                                .status(res.status().as_u16())
-                                .body(Vec::<u8>::new())
-                                .unwrap()
                         }
                         Err(e) => {
-                            log::error!("Reqwest failed to connect: {}", e);
-                            tauri::http::Response::builder()
-                                .status(500)
-                                .body(Vec::<u8>::new())
-                                .unwrap()
+                            log::error!("Matrix SDK rejected media request: {}", e);
+                            responder.respond(
+                                tauri::http::Response::builder()
+                                    .status(500)
+                                    .body(Vec::<u8>::new())
+                                    .unwrap(),
+                            );
                         }
-                    };
-
-                    responder.respond(response);
+                    }
                 });
             },
         )
