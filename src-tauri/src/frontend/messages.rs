@@ -297,7 +297,7 @@ pub async fn scroll_up(
 
     let has_more = timeline.paginate_backwards(30).await?;
 
-    Ok(has_more)
+    Ok(!has_more)
 }
 
 #[command(rename_all = "snake_case")]

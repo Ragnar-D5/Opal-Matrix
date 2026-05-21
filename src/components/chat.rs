@@ -766,8 +766,8 @@ fn TimeLine() -> impl IntoView {
                     log::error!("Failed to fetch more messages: {}", e);
                 }
             };
+            is_loading.set(false);
         });
-        is_loading.set(false);
     };
 
     let UseIntersectionObserverReturn { .. } = use_intersection_observer(
@@ -804,9 +804,9 @@ fn TimeLine() -> impl IntoView {
                         log::error!("Failed to load timeline: {}", e);
                     }
                 }
+                initial_loaded.set(true);
+                is_loading.set(false);
             });
-            initial_loaded.set(true);
-            is_loading.set(false);
         }
     });
 
