@@ -1,14 +1,13 @@
-use std::{
-    collections::HashMap,
-    hash::{DefaultHasher, Hash, Hasher},
-    sync::Arc,
-};
+use std::{collections::HashMap, hash::Hash, sync::Arc};
 
 use matrix_sdk::ruma::{
     MilliSecondsSinceUnixEpoch,
     events::{
         poll::start::PollKind,
-        room::{EncryptedFileInfo, MediaSource, message::MessageType},
+        room::{
+            EncryptedFileInfo, MediaSource,
+            message::{MessageFormat, MessageType},
+        },
         rtc::notification::CallIntent,
         sticker::StickerMediaSource,
     },
@@ -23,6 +22,8 @@ use matrix_sdk_ui::{
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+
+use crate::parsing::{parse_html_to_spans, parse_plain_text_to_spans};
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Hash)]
 pub struct AbstractProgress {
@@ -505,7 +506,7 @@ impl From<&TimelineItemContent> for EventContent {
 
                         match msg.msgtype().clone() {
                             MessageType::Audio(content) => (
-                                vec![RichTextSpan::Plain(content.body.clone())],
+                                parse_plain_text_to_spans(&content.body),
                                 UiMessageType::Audio {
                                     source: content.source.clone().into(),
                                     filename: content.filename().to_string(),
@@ -516,14 +517,14 @@ impl From<&TimelineItemContent> for EventContent {
                                 },
                             ),
                             MessageType::Emote(content) => (
-                                vec![RichTextSpan::Plain(content.body.clone())],
+                                parse_plain_text_to_spans(&content.body),
                                 UiMessageType::Emote,
                             ),
                             MessageType::File(content) => {
                                 let info = content.info.clone().unwrap_or_default();
 
                                 (
-                                    vec![RichTextSpan::Plain(content.body.clone())],
+                                    parse_plain_text_to_spans(&content.body),
                                     UiMessageType::File {
                                         source: content.source.clone().into(),
                                         filename: content.filename().to_string(),
@@ -536,7 +537,7 @@ impl From<&TimelineItemContent> for EventContent {
                                 let info = content.info.clone().unwrap_or_default();
 
                                 (
-                                    vec![RichTextSpan::Plain(content.body.clone())],
+                                    parse_plain_text_to_spans(&content.body),
                                     UiMessageType::Image {
                                         filename: content.filename().to_string(),
                                         source: content.source.into(),
@@ -548,7 +549,7 @@ impl From<&TimelineItemContent> for EventContent {
                                 )
                             }
                             MessageType::Location(content) => (
-                                vec![RichTextSpan::Plain(content.body.clone())],
+                                parse_plain_text_to_spans(&content.body),
                                 UiMessageType::Location(UiBeaconInfo {
                                     geo_uri: content.geo_uri,
                                     description: content.message.map(|v| {
@@ -562,40 +563,50 @@ impl From<&TimelineItemContent> for EventContent {
                                 }),
                             ),
                             MessageType::Notice(content) => (
-                                vec![RichTextSpan::Plain(content.body)],
+                                parse_plain_text_to_spans(&content.body),
                                 UiMessageType::Notice,
                             ),
                             MessageType::ServerNotice(content) => (
-                                vec![RichTextSpan::Plain(content.body)],
+                                parse_plain_text_to_spans(&content.body),
                                 UiMessageType::ServerNotice {
                                     admin_contact: content.admin_contact.map(|c| c.to_string()),
                                     limit_msg: content.limit_type.map(|m| m.to_string()),
                                 },
                             ),
-                            MessageType::Text(content) => (
-                                vec![RichTextSpan::Plain(content.body.clone())],
-                                UiMessageType::Text,
-                            ),
+                            MessageType::Text(content) => {
+                                let formatted = content.formatted;
+
+                                let spans = if let Some(formatted) = formatted {
+                                    match formatted.format {
+                                        MessageFormat::Html => {
+                                            parse_html_to_spans(&formatted.body, &content.body)
+                                        }
+                                        _ => parse_plain_text_to_spans(&content.body),
+                                    }
+                                } else {
+                                    parse_plain_text_to_spans(&content.body)
+                                };
+
+                                (spans, UiMessageType::Text)
+                            }
                             MessageType::Video(content) => {
                                 let info = content.info.clone().unwrap_or_default();
 
                                 (
-                                    vec![RichTextSpan::Plain(content.body.clone())],
+                                    parse_plain_text_to_spans(&content.body),
                                     UiMessageType::Video {
                                         source: content.source.clone().into(),
                                         filename: content.filename().to_string(),
                                         width: info.width.map(|w| w.into()),
                                         height: info.height.map(|h| h.into()),
-                                        duration: info.duration.map(|d| d.as_secs().into()),
+                                        duration: info.duration.map(|d| d.as_secs()),
                                         size: info.size.map(|s| s.into()),
                                         mime_type: info.mimetype.map(|m| m.to_string()),
                                     },
                                 )
                             }
                             _ => (
-                                vec![RichTextSpan::Plain(
-                                    content.as_message().unwrap().body().to_string(),
-                                )],
+                                parse_plain_text_to_spans(content.as_message().unwrap().body()),
                                 UiMessageType::Text,
                             ),
                         }
