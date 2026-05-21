@@ -1,28 +1,42 @@
 use crate::{
     components::{
-        FloatingTile, TextCircle, TextCircleProps, get_color, input::{
+        FloatingTile, TextCircle, TextCircleProps, get_color,
+        input::{
             get_active_filter, get_caret_position, handle_input, handle_keydown,
             menu::{MenuType, SelectionMenu},
-        }, presence::PresenceBadge, previews::render_link, text::RichTextExt, user_profile::{UserProfileExt, UserProfileMaybeExt, render_profile_icon, render_profile_name}
-    }, hooks::use_tauri_event, state::{AppState, MemberProfileHandle, MemberStore, RoomHeader}, tauri_functions::{MemberShip, get_members, get_timeline}
+        },
+        presence::PresenceBadge,
+        previews::render_link,
+        text::RichTextExt,
+        user_profile::{
+            UserProfileExt, UserProfileMaybeExt, render_profile_icon, render_profile_name,
+        },
+    },
+    hooks::use_tauri_event,
+    state::{AppState, MemberProfileHandle, MemberStore, RoomHeader},
+    tauri_functions::{MemberShip, get_members, get_timeline},
 };
 
 use colorsys::Hsl;
 use matrix_sdk::ruma::api::client::room;
-use phosphor_leptos::{Icon, IconWeight, HASH, INFO, TRASH, UPLOAD_SIMPLE, WARNING_CIRCLE};
+use phosphor_leptos::{HASH, INFO, Icon, IconWeight, TRASH, UPLOAD_SIMPLE, WARNING_CIRCLE};
 
 use chrono::{DateTime, Local, TimeZone};
 use leptos::{ev, html::Div, leptos_dom::logging::console_error, prelude::*, task::spawn_local};
-use leptos_use::{use_event_listener, use_intersection_observer, UseIntersectionObserverReturn};
+use leptos_use::{UseIntersectionObserverReturn, use_event_listener, use_intersection_observer};
 use serde_json::json;
 use shared::{
     commands::Command,
     sidebar::{RoomKind, RoomNode, SidebarState},
-    timeline::{Change, DetailState, EventContent, MessageContent, SystemMessage, TimelineEvent, UiMessageType, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind},
+    timeline::{
+        Change, DetailState, EventContent, MessageContent, SystemMessage, TimelineEvent,
+        UiMessageType, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind,
+    },
     user_profile::{PresenceStatus, UserProfile},
 };
 use std::{
-    collections::{HashMap, HashSet}, hash::Hash,
+    collections::{HashMap, HashSet},
+    hash::Hash,
 };
 
 fn format_date(date: DateTime<Local>) -> String {
@@ -362,7 +376,11 @@ fn get_date_from_ts(ts: i64) -> DateTime<Local> {
         .unwrap_or_else(|| DateTime::UNIX_EPOCH.with_timezone(&Local))
 }
 
-fn render_system_message(content: SystemMessage, _store: MemberStore, _room_id: String) -> impl IntoView {
+fn render_system_message(
+    content: SystemMessage,
+    _store: MemberStore,
+    _room_id: String,
+) -> impl IntoView {
     let text = match content {
         SystemMessage::MembershipChange { user_id, change } => format!(
             "{} {}",
@@ -371,13 +389,20 @@ fn render_system_message(content: SystemMessage, _store: MemberStore, _room_id: 
                 .map(|v| v.display_string())
                 .unwrap_or_else(|| "changed membership".to_string()),
         ),
-        SystemMessage::ProfileChange { user_id, display_name_change, avatar_url_changed } => {
+        SystemMessage::ProfileChange {
+            user_id,
+            display_name_change,
+            avatar_url_changed,
+        } => {
             let mut changes = Vec::new();
 
-            if let Some(Change {old, new}) = display_name_change {
+            if let Some(Change { old, new }) = display_name_change {
                 if let Some(new) = new {
                     if let Some(old) = old {
-                        changes.push(format!("changed their display name from '{}' to '{}'", old, new));
+                        changes.push(format!(
+                            "changed their display name from '{}' to '{}'",
+                            old, new
+                        ));
                     } else {
                         changes.push(format!("set their display name to '{}'", new));
                     }
@@ -398,7 +423,14 @@ fn render_system_message(content: SystemMessage, _store: MemberStore, _room_id: 
 
             format!("{} {}", user_id, changes.join(" and "))
         }
-        SystemMessage::RtcNotification { call_intent, declined_by } => format!("{} Call declined by {})", call_intent.map(|v| v.to_string()).unwrap_or("".to_string()), declined_by.join(", ")),
+        SystemMessage::RtcNotification {
+            call_intent,
+            declined_by,
+        } => format!(
+            "{} Call declined by {})",
+            call_intent.map(|v| v.to_string()).unwrap_or("".to_string()),
+            declined_by.join(", ")
+        ),
         SystemMessage::OtherEvent => "[unsupported message]".to_string(),
         SystemMessage::CallInvite => "Call started".to_string(),
     };
@@ -410,7 +442,13 @@ fn render_system_message(content: SystemMessage, _store: MemberStore, _room_id: 
     }
 }
 
-fn render_timeline_event(store: MemberStore, room_id: &str, own_user_id: &str, event: TimelineEvent, show_header: bool) -> impl IntoView {
+fn render_timeline_event(
+    store: MemberStore,
+    room_id: &str,
+    own_user_id: &str,
+    event: TimelineEvent,
+    show_header: bool,
+) -> impl IntoView {
     let hovered = RwSignal::new(false);
     let show_highlight = event.flags.is_highlighted;
 
@@ -421,10 +459,14 @@ fn render_timeline_event(store: MemberStore, room_id: &str, own_user_id: &str, e
     let reactions = event.get_reactions();
 
     let sender_id = event.get_sender_id();
-    let name = event.get_sender_name().unwrap_or(sender_id.clone().unwrap_or("Unknown".to_string()));
+    let name = event
+        .get_sender_name()
+        .unwrap_or(sender_id.clone().unwrap_or("Unknown".to_string()));
     let avatar_url = event.get_sender_avatar_url();
 
-    let color = sender_id.map(get_color).unwrap_or(Hsl::new(0.0, 0.0, 70.0, None));
+    let color = sender_id
+        .map(get_color)
+        .unwrap_or(Hsl::new(0.0, 0.0, 70.0, None));
 
     let content = match event.content{
         EventContent::MsgLike(ev) => render_message_content(*ev, store.clone(), room_id.to_string()),
@@ -590,13 +632,15 @@ fn TimeLine() -> impl IntoView {
     let state: AppState = expect_context();
 
     let messages_update_event: ReadSignal<Option<Vec<UiTimelineDiff>>> =
-    use_tauri_event("timeline_update");
+        use_tauri_event("timeline_update");
 
     let messages: RwSignal<Vec<UiTimelineItem>> = RwSignal::new(Vec::new());
 
     Effect::new(move |_| {
         log::info!("Effect re-running...");
-        let Some(diffs) = messages_update_event.get() else { return; };
+        let Some(diffs) = messages_update_event.get() else {
+            return;
+        };
 
         messages.update(|msgs| {
             log::info!("Received timeline diffs: {:?}", diffs);
@@ -612,7 +656,9 @@ fn TimeLine() -> impl IntoView {
                     }
                     UiTimelineDiff::PushBack { value } => msgs.push(value),
                     UiTimelineDiff::Remove { index } => {
-                        if index < msgs.len() { msgs.remove(index); }
+                        if index < msgs.len() {
+                            msgs.remove(index);
+                        }
                     }
                     UiTimelineDiff::Clear => msgs.clear(),
                     UiTimelineDiff::Insert { index, value } => {
@@ -620,8 +666,14 @@ fn TimeLine() -> impl IntoView {
                             msgs.insert(index, value);
                         }
                     }
-                    UiTimelineDiff::PopBack => { msgs.pop(); },
-                    UiTimelineDiff::PopFront => if !msgs.is_empty() { msgs.remove(0); },
+                    UiTimelineDiff::PopBack => {
+                        msgs.pop();
+                    }
+                    UiTimelineDiff::PopFront => {
+                        if !msgs.is_empty() {
+                            msgs.remove(0);
+                        }
+                    }
                     UiTimelineDiff::PushFront { value } => msgs.insert(0, value),
                     UiTimelineDiff::Reset { values } => {
                         msgs.clear();
@@ -646,24 +698,31 @@ fn TimeLine() -> impl IntoView {
 
             // Check if the previous chronological item was a divider
             if idx > 0
-                && let UiTimelineItemKind::DateDivider(_) | UiTimelineItemKind::ReadMarker = msgs[idx - 1].kind {
-                    show_header = true;
-                    if let UiTimelineItemKind::Event(event) = &item.kind
-                        && let DetailState::Ready(sender) = &event.sender {
-                            last_sender = Some(sender.id.to_string());
-                            last_timestamp = Some(event.timestamp);
-                        }
-                } else if let UiTimelineItemKind::Event(event) = &item.kind {
-                if let EventContent::MsgLike(msg) = &event.content && msg.in_reply_to.is_some() {
+                && let UiTimelineItemKind::DateDivider(_) | UiTimelineItemKind::ReadMarker =
+                    msgs[idx - 1].kind
+            {
+                show_header = true;
+                if let UiTimelineItemKind::Event(event) = &item.kind
+                    && let DetailState::Ready(sender) = &event.sender
+                {
+                    last_sender = Some(sender.id.to_string());
+                    last_timestamp = Some(event.timestamp);
+                }
+            } else if let UiTimelineItemKind::Event(event) = &item.kind {
+                if let EventContent::MsgLike(msg) = &event.content
+                    && msg.in_reply_to.is_some()
+                {
                     show_header = true;
                 } else if let DetailState::Ready(sender) = &event.sender {
                     if let Some(last_sender_id) = &last_sender
-                        && last_sender_id == &sender.id && let Some(last_ts) = last_timestamp {
-                            // If this message is within 5 minutes of the previous message, hide header
-                            if event.timestamp.saturating_sub(last_ts) < 5 * 60 {
-                                show_header = false;
-                            }
+                        && last_sender_id == &sender.id
+                        && let Some(last_ts) = last_timestamp
+                    {
+                        // If this message is within 5 minutes of the previous message, hide header
+                        if event.timestamp.saturating_sub(last_ts) < 5 * 60 {
+                            show_header = false;
                         }
+                    }
                     last_sender = Some(sender.id.to_string());
                     last_timestamp = Some(event.timestamp);
                 } else {
@@ -713,7 +772,10 @@ fn TimeLine() -> impl IntoView {
 
     Effect::new(move |_| {
         if let Some(room_id) = state.active_room_id.get() {
-            log::info!("Effect: Loading room {}, resetting messages to empty", room_id);
+            log::info!(
+                "Effect: Loading room {}, resetting messages to empty",
+                room_id
+            );
             messages.set(Vec::new());
 
             spawn_local(async move {
@@ -735,7 +797,7 @@ fn TimeLine() -> impl IntoView {
             <div class="mb-5"></div>
             <For
                 each=move || timeline.get()
-                key=|(item, _)| item.render_key()
+                key=|(item, _)| item.render_key.clone()
                 children=|(item, show_header)| render_timeline_item(item.clone(), show_header)
             />
         </div>
@@ -866,25 +928,26 @@ fn ChatInput() -> impl IntoView {
 
         let win = window();
         if let Ok(Some(sel)) = win.get_selection()
-            && let Some(focus_node) = sel.focus_node() {
-                if el.contains(Some(&focus_node)) {
-                    let caret_pos = get_caret_position(&el);
+            && let Some(focus_node) = sel.focus_node()
+        {
+            if el.contains(Some(&focus_node)) {
+                let caret_pos = get_caret_position(&el);
 
-                    if let Some(filter) = get_active_filter(&el, caret_pos, '@') {
-                        menu.set(MenuType::UserAutocomplete { filter });
-                        return;
-                    }
-                    if let Some(filter) = get_active_filter(&el, caret_pos, '/') {
-                        menu.set(MenuType::CommandAutocomplete { filter });
-                    } else {
-                        menu.set(MenuType::None);
-                    }
+                if let Some(filter) = get_active_filter(&el, caret_pos, '@') {
+                    menu.set(MenuType::UserAutocomplete { filter });
+                    return;
+                }
+                if let Some(filter) = get_active_filter(&el, caret_pos, '/') {
+                    menu.set(MenuType::CommandAutocomplete { filter });
                 } else {
-                    if menu.get_untracked() != MenuType::None {
-                        menu.set(MenuType::None);
-                    }
+                    menu.set(MenuType::None);
+                }
+            } else {
+                if menu.get_untracked() != MenuType::None {
+                    menu.set(MenuType::None);
                 }
             }
+        }
     });
 
     // Focus the input when the component mounts or when the active room changes

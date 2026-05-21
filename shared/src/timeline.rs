@@ -5,13 +5,13 @@ use std::{
 };
 
 use matrix_sdk::ruma::{
+    MilliSecondsSinceUnixEpoch,
     events::{
         poll::start::PollKind,
-        room::{message::MessageType, EncryptedFileInfo, MediaSource},
+        room::{EncryptedFileInfo, MediaSource, message::MessageType},
         rtc::notification::CallIntent,
         sticker::StickerMediaSource,
     },
-    MilliSecondsSinceUnixEpoch,
 };
 use matrix_sdk_ui::{
     eyeball_im::VectorDiff,
@@ -22,6 +22,7 @@ use matrix_sdk_ui::{
     },
 };
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Hash)]
 pub struct AbstractProgress {
@@ -830,17 +831,9 @@ pub enum UiTimelineItemKind {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Hash)]
 pub struct UiTimelineItem {
     pub id: String,
+    pub render_key: Uuid,
 
     pub kind: UiTimelineItemKind,
-}
-
-impl UiTimelineItem {
-    pub fn render_key(&self) -> String {
-        let mut hasher = DefaultHasher::new();
-        self.hash(&mut hasher);
-
-        format!("{}-{:x}", self.id, hasher.finish())
-    }
 }
 
 impl From<&TimelineItem> for UiTimelineItem {
@@ -858,6 +851,7 @@ impl From<&TimelineItem> for UiTimelineItem {
 
         UiTimelineItem {
             id: item.unique_id().clone().0,
+            render_key: Uuid::new_v4(),
 
             kind,
         }
