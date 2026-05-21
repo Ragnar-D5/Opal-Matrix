@@ -8,6 +8,7 @@ use crate::{
 };
 
 use colorsys::Hsl;
+use matrix_sdk::ruma::api::client::room;
 use phosphor_leptos::{Icon, IconWeight, HASH, INFO, TRASH, UPLOAD_SIMPLE, WARNING_CIRCLE};
 
 use chrono::{DateTime, Local, TimeZone};
@@ -21,7 +22,7 @@ use shared::{
     user_profile::{PresenceStatus, UserProfile},
 };
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashMap, HashSet}, hash::Hash,
 };
 
 fn format_date(date: DateTime<Local>) -> String {
@@ -277,42 +278,6 @@ fn render_message_content(
     }
 }
 
-// fn render_message(
-    // content: EventContent,
-    // store: MemberStore,
-    // room_id: String,
-// ) -> impl IntoView {
-    // match content {
-        // EventContent::MsgLike(msg) => render_message_content(*msg, store, room_id).into_any(),
-        // EventContent::CallInvite => view! { <div class="text-muted italic">"Call started"</div> }.into_any(),
-        // EventContent::FailedToParseMessageLike { event_type, error } => {
-        //     console_error(&format!("Failed to parse message content of type {}: {}", event_type, error));
-        //     view! { <div class="text-red-500 italic">"Failed to render message"</div> }.into_any()
-        // },
-        // EventContent::FailedToParseState { event_type, state_key, error } => {
-        //     console_error(&format!("Failed to parse state content of type {} with state key {}: {}", event_type, state_key, error));
-        //     view! { <div class="text-red-500 italic">"Failed to render state event"</div> }.into_any()
-        // },
-        // EventContent::MembershipChange { user_id, change } => view! {
-        //     <div class="text-muted italic">
-        //         {format!(
-        //             "{user_id} {}",
-        //             change
-        //                 .map(|v| v.display_string())
-        //                 .unwrap_or_else(|| "changed membership".to_string()),
-        //         )}
-        //     </div>
-        // }.into_any(),
-        // EventContent::OtherEvent => ().into_any(),
-        // EventContent::ProfileChange(change) => view! { <div class="text-muted italic">{change.display_string()}</div> }.into_any(),
-        // EventContent::RtcNotification { call_intent, declined_by } => {
-        //     let text = format!("{} Call declined by {})", call_intent.map(|v| v.to_string()).unwrap_or("".to_string()), declined_by.join(", "));
-
-        //     view! { <div class="text-muted italic">{text}</div> }.into_any()
-        // },
-//     }
-// }
-
 fn render_reactions(
     reactions: Option<HashMap<String, Vec<String>>>,
     store: MemberStore,
@@ -563,6 +528,7 @@ fn render_timeline_event(store: MemberStore, room_id: &str, own_user_id: &str, e
 }
 
 fn render_timeline_item(item: UiTimelineItem, show_header: bool) -> impl IntoView {
+    log::info!("Rendering timeline item");
     let state: AppState = expect_context();
     let store: MemberStore = expect_context();
 
@@ -626,38 +592,40 @@ fn TimeLine() -> impl IntoView {
     let messages_update_event: ReadSignal<Option<Vec<UiTimelineDiff>>> =
     use_tauri_event("timeline_update");
 
-    let messages: RwSignal<Vec<RwSignal<UiTimelineItem>>> = RwSignal::new(Vec::new());
+    let messages: RwSignal<Vec<UiTimelineItem>> = RwSignal::new(Vec::new());
 
     Effect::new(move |_| {
+        log::info!("Effect re-running...");
         let Some(diffs) = messages_update_event.get() else { return; };
 
         messages.update(|msgs| {
+            log::info!("Received timeline diffs: {:?}", diffs);
             for diff in diffs {
                 match diff {
                     UiTimelineDiff::Append { values } => {
-                        msgs.extend(values.into_iter().map(RwSignal::new));
+                        msgs.extend(values);
                     }
                     UiTimelineDiff::Set { index, value } => {
-                        if let Some(sig) = msgs.get(index) {
-                            sig.set(value);
+                        if let Some(item) = msgs.get_mut(index) {
+                            *item = value;
                         }
                     }
-                    UiTimelineDiff::PushBack { value } => msgs.push(RwSignal::new(value)),
+                    UiTimelineDiff::PushBack { value } => msgs.push(value),
                     UiTimelineDiff::Remove { index } => {
                         if index < msgs.len() { msgs.remove(index); }
                     }
                     UiTimelineDiff::Clear => msgs.clear(),
                     UiTimelineDiff::Insert { index, value } => {
                         if index <= msgs.len() {
-                            msgs.insert(index, RwSignal::new(value));
+                            msgs.insert(index, value);
                         }
                     }
                     UiTimelineDiff::PopBack => { msgs.pop(); },
                     UiTimelineDiff::PopFront => if !msgs.is_empty() { msgs.remove(0); },
-                    UiTimelineDiff::PushFront { value } => msgs.insert(0, RwSignal::new(value)),
+                    UiTimelineDiff::PushFront { value } => msgs.insert(0, value),
                     UiTimelineDiff::Reset { values } => {
                         msgs.clear();
-                        msgs.extend(values.into_iter().map(RwSignal::new));
+                        msgs.extend(values);
                     }
                     UiTimelineDiff::Truncate { length } => msgs.truncate(length),
                 }
@@ -667,50 +635,49 @@ fn TimeLine() -> impl IntoView {
 
     let timeline = Memo::new(move |_| {
         let msgs = messages.get();
+        log::info!("Memo: messages signal size is {}", msgs.len());
         let mut processed_items = Vec::with_capacity(msgs.len());
 
         let mut last_sender: Option<String> = None;
         let mut last_timestamp: Option<u64> = None;
 
-        for (idx, sig) in msgs.iter().enumerate() {
+        for (idx, item) in msgs.iter().enumerate() {
             let mut show_header = true;
 
-            sig.with_untracked(|item| {
-                // Check if the previous chronological item was a divider
-                if idx > 0
-                    && let UiTimelineItemKind::DateDivider(_) | UiTimelineItemKind::ReadMarker = msgs[idx - 1].read_untracked().kind {
-                        show_header = true;
-                        if let UiTimelineItemKind::Event(event) = &item.kind
-                            && let DetailState::Ready(sender) = &event.sender {
-                                last_sender = Some(sender.id.to_string());
-                                last_timestamp = Some(event.timestamp);
+            // Check if the previous chronological item was a divider
+            if idx > 0
+                && let UiTimelineItemKind::DateDivider(_) | UiTimelineItemKind::ReadMarker = msgs[idx - 1].kind {
+                    show_header = true;
+                    if let UiTimelineItemKind::Event(event) = &item.kind
+                        && let DetailState::Ready(sender) = &event.sender {
+                            last_sender = Some(sender.id.to_string());
+                            last_timestamp = Some(event.timestamp);
+                        }
+                } else if let UiTimelineItemKind::Event(event) = &item.kind {
+                if let EventContent::MsgLike(msg) = &event.content && msg.in_reply_to.is_some() {
+                    show_header = true;
+                } else if let DetailState::Ready(sender) = &event.sender {
+                    if let Some(last_sender_id) = &last_sender
+                        && last_sender_id == &sender.id && let Some(last_ts) = last_timestamp {
+                            // If this message is within 5 minutes of the previous message, hide header
+                            if event.timestamp.saturating_sub(last_ts) < 5 * 60 {
+                                show_header = false;
                             }
-                    } else if let UiTimelineItemKind::Event(event) = &item.kind {
-                    if let EventContent::MsgLike(msg) = &event.content && msg.in_reply_to.is_some() {
-                        show_header = true;
-                    } else if let DetailState::Ready(sender) = &event.sender {
-                        if let Some(last_sender_id) = &last_sender
-                            && last_sender_id == &sender.id && let Some(last_ts) = last_timestamp {
-                                // If this message is within 5 minutes of the previous message, hide header
-                                if event.timestamp.saturating_sub(last_ts) < 5 * 60 {
-                                    show_header = false;
-                                }
-                            }
-                        last_sender = Some(sender.id.to_string());
-                        last_timestamp = Some(event.timestamp);
-                    } else {
-                        show_header = true;
-                        last_sender = None;
-                        last_timestamp = None;
-                    }
+                        }
+                    last_sender = Some(sender.id.to_string());
+                    last_timestamp = Some(event.timestamp);
                 } else {
                     show_header = true;
                     last_sender = None;
                     last_timestamp = None;
                 }
-            });
+            } else {
+                show_header = true;
+                last_sender = None;
+                last_timestamp = None;
+            }
 
-            processed_items.push((*sig, show_header));
+            processed_items.push((item.clone(), show_header));
         }
 
         processed_items.reverse();
@@ -723,6 +690,16 @@ fn TimeLine() -> impl IntoView {
 
     let sentinel_ref = NodeRef::<Div>::new();
 
+    // let scroll_up = move || {
+    //     let room_id = state.active_room_id.get();
+
+    //     spawn_local(async move {
+    //         if let Some(rid) = room_id {
+
+    //         }
+    //     });
+    // };
+
     let UseIntersectionObserverReturn { .. } =
         use_intersection_observer(sentinel_ref, move |entries, _| {
             if entries[0].is_intersecting()
@@ -730,33 +707,26 @@ fn TimeLine() -> impl IntoView {
                 && !is_loading.get()
                 && has_more.get()
             {
-                // fetch_more(());
+                // scroll_up();
             }
         });
 
-    let timeline_resource = LocalResource::new(move || {
-        let room_id = state.active_room_id.get();
+    Effect::new(move |_| {
+        if let Some(room_id) = state.active_room_id.get() {
+            log::info!("Effect: Loading room {}, resetting messages to empty", room_id);
+            messages.set(Vec::new());
 
-        async move {
-            if let Some(rid) = room_id {
-                match get_timeline(&rid).await {
-                    Ok(events) => {
-                        events
+            spawn_local(async move {
+                match get_timeline(&room_id).await {
+                    Ok(tl) => {
+                        log::info!("Effect: Received {} items", tl.len());
+                        messages.set(tl);
                     }
-                    Err(err) => {
-                        log::error!("Failed to load timeline: {}", err);
-                        Vec::new()
+                    Err(e) => {
+                        log::error!("Failed to load timeline: {}", e);
                     }
                 }
-            } else {
-                Vec::new()
-            }
-        }
-    });
-
-    Effect::new(move |_| {
-        if let Some(tl) = timeline_resource.get() {
-            messages.set(tl.into_iter().map(RwSignal::new).collect());
+            });
         }
     });
 
@@ -765,29 +735,10 @@ fn TimeLine() -> impl IntoView {
             <div class="mb-5"></div>
             <For
                 each=move || timeline.get()
-                key=|(sig, _)| sig.with_untracked(|m| m.id.clone())
-                children=move |(item_signal, show_header)| {
-                    view! { <MessageRow item=item_signal show_header=show_header /> }
-                }
+                key=|(item, _)| item.render_key()
+                children=|(item, show_header)| render_timeline_item(item.clone(), show_header)
             />
-
-            <Show
-                when=move || !is_loading.get()
-                fallback=|| view! { <div class="text-center p-4 text-muted">"Loading..."</div> }
-            >
-                <div node_ref=sentinel_ref class="h-2 w-full shrink-0" />
-            </Show>
         </div>
-    }
-}
-
-#[component]
-pub fn MessageRow(item: RwSignal<UiTimelineItem>, show_header: bool) -> impl IntoView {
-    view! {
-        {move || {
-            let data = item.get();
-            render_timeline_item(data, show_header).into_any()
-        }}
     }
 }
 

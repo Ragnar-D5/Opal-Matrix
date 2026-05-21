@@ -680,22 +680,14 @@ pub fn run() {
                     let mut enc_key = None;
                     let mut enc_iv = None;
 
-                    let mut is_encrypted = false;
-
                     // Parse frontend parameters
                     for (k, v) in parsed_url.query_pairs() {
                         match k.as_ref() {
                             "thumbnail" => is_thumbnail = v == "true",
                             "width" => width = v.parse().unwrap_or(800),
                             "height" => height = v.parse().unwrap_or(800),
-                            "key" => {
-                                is_encrypted = true;
-                                enc_key = Some(v.into_owned())
-                            }
-                            "iv" => {
-                                is_encrypted = true;
-                                enc_iv = Some(v.into_owned())
-                            }
+                            "key" => enc_key = Some(v.into_owned()),
+                            "iv" => enc_iv = Some(v.into_owned()),
                             _ => {}
                         }
                     }
@@ -746,10 +738,6 @@ pub fn run() {
                                         log::error!("Invalid key/iv length for decryption");
                                     }
                                 }
-
-                            if is_encrypted {
-                                log::info!("Decrypted media content with provided key and iv");
-                            }
 
                             responder.respond(
                                 tauri::http::Response::builder()
