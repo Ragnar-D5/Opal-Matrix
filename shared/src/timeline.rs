@@ -1,29 +1,33 @@
 use std::{collections::HashMap, sync::Arc};
 
+use colorsys::Hsl;
 use matrix_sdk::ruma::{
-    MilliSecondsSinceUnixEpoch,
     events::{
         poll::start::PollKind,
         room::{
-            EncryptedFileInfo, MediaSource,
             message::{MessageFormat, MessageType},
+            EncryptedFileInfo, MediaSource,
         },
         rtc::notification::CallIntent,
         sticker::StickerMediaSource,
     },
+    MilliSecondsSinceUnixEpoch,
 };
 use matrix_sdk_ui::{
     eyeball_im::VectorDiff,
     timeline::{
-        BeaconInfo, EventSendState, EventTimelineItem, MembershipChange, MsgLikeKind,
-        ReactionsByKeyBySender, TimelineDetails, TimelineItem, TimelineItemContent,
-        TimelineItemKind, VirtualTimelineItem,
+        BeaconInfo, EmbeddedEvent, EventSendState, EventTimelineItem, InReplyToDetails,
+        MemberProfileChange, MembershipChange, MsgLikeKind, ReactionsByKeyBySender,
+        TimelineDetails, TimelineItem, TimelineItemContent, TimelineItemKind, VirtualTimelineItem,
     },
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::parsing::{parse_html_to_spans, parse_plain_text_to_spans};
+use crate::{
+    get_color,
+    parsing::{parse_html_to_spans, parse_plain_text_to_spans},
+};
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct AbstractProgress {
@@ -175,13 +179,6 @@ impl From<MembershipChange> for UiMembershipChange {
             MembershipChange::NotImplemented => UiMembershipChange::NotImplemented,
         }
     }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
-pub struct InReplyToDetails {
-    pub event_id: String,
-    pub sender: Sender,
-    pub content: Box<EventContent>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -359,9 +356,134 @@ pub enum UiMessageType {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct ReplyPreview {
+    pub sender: DetailState<Sender>,
+    pub content: Vec<RichTextSpan>,
+}
+
+impl From<Box<EmbeddedEvent>> for ReplyPreview {
+    fn from(value: Box<EmbeddedEvent>) -> Self {
+        let content = match value.content {
+            TimelineItemContent::CallInvite => vec![RichTextSpan::Plain("Call invite".to_string())],
+            TimelineItemContent::FailedToParseMessageLike { event_type, error } => vec![RichTextSpan::Plain(format!(
+                "Failed to parse message like content of type {event_type}: {error}"
+            ))],
+            TimelineItemContent::FailedToParseState { event_type, state_key, error } => vec![RichTextSpan::Plain(format!(
+                "Failed to parse state content of type {event_type} with state key {state_key}: {error}"
+            ))],
+            TimelineItemContent::MembershipChange(change) => vec![RichTextSpan::Plain(format!(
+                "Membership change: {}",
+                change.change().map(|c| c.into()).unwrap_or(UiMembershipChange::None).display_string()
+            ))],
+            TimelineItemContent::OtherState(state) => vec![RichTextSpan::Plain(format!(
+                "State event of type {:?}", state
+            ))],
+            TimelineItemContent::MsgLike(msglike) => match msglike.kind {
+                MsgLikeKind::Message(msg) => match msg.msgtype() {
+                    MessageType::Audio(_) => vec![RichTextSpan::Plain("Audio message".to_string())],
+                    MessageType::Emote(content) => parse_plain_text_to_spans(&content.body),
+                    MessageType::File(content) => vec![RichTextSpan::Plain(content.filename().to_string())],
+                    MessageType::Image(content) => vec![RichTextSpan::Plain(content.filename().to_string())],
+                    MessageType::Location(content) => vec![RichTextSpan::Plain(content.body.clone())],
+                    MessageType::Notice(content) => parse_plain_text_to_spans(&content.body),
+                    MessageType::ServerNotice(content) => parse_plain_text_to_spans(&content.body),
+                    MessageType::Text(content) => {
+                        let formatted = content.formatted.clone();
+
+                        if let Some(formatted) = formatted {
+                            match formatted.format {
+                                MessageFormat::Html => {
+                                    parse_html_to_spans(&formatted.body, &content.body)
+                                }
+                                _ => parse_plain_text_to_spans(&content.body),
+                            }
+                        } else {
+                            parse_plain_text_to_spans(&content.body)
+                        }
+                    }
+                    MessageType::Video(content) => vec![RichTextSpan::Plain(content.filename().to_string())],
+                    _ => parse_plain_text_to_spans(msg.body())
+                },
+                MsgLikeKind::Sticker(sticker) => parse_plain_text_to_spans(sticker.content().body.as_str()),
+                MsgLikeKind::Poll(poll) => vec![RichTextSpan::Plain(
+                    poll.fallback_text().unwrap_or("Poll".to_string())
+                )],
+                MsgLikeKind::Redacted => vec![RichTextSpan::Plain("[redacted]".to_string())],
+                MsgLikeKind::UnableToDecrypt(_) => vec![RichTextSpan::Plain("[unable to decrypt]".to_string())],
+                MsgLikeKind::Other(_) => vec![RichTextSpan::Plain(
+                    "Other event type".to_string()
+                )],
+                MsgLikeKind::LiveLocation(loc) => vec![RichTextSpan::Plain(
+                    loc.latest_location()
+                        .map(|l| l.description().unwrap_or("a location update").to_string())
+                        .unwrap_or("Live location".to_string()),
+                )],
+            },
+            TimelineItemContent::ProfileChange(change) => {
+                let change: ProfileChange = change.into();
+
+                vec![RichTextSpan::Plain(change.display_string())]
+            },
+            TimelineItemContent::RtcNotification { call_intent, declined_by } => {
+                let intent_str = match call_intent {
+                    Some(intent) => format!("Call intent: {:?}", intent),
+                    None => "Call intent: None".to_string(),
+                };
+
+                let declined_by_str = if declined_by.is_empty() {
+                    "Declined by: None".to_string()
+                } else {
+                    format!(
+                        "Declined by: {}",
+                        declined_by
+                            .iter()
+                            .map(|u| u.to_string())
+                            .collect::<Vec<String>>()
+                            .join(", ")
+                    )
+                };
+
+                vec![RichTextSpan::Plain(format!(
+                    "RTC Notification - {}. {}",
+                    intent_str, declined_by_str
+                ))]
+            },
+        };
+
+        let sender = match value.sender_profile {
+            TimelineDetails::Ready(profile) => DetailState::Ready(Sender {
+                id: value.sender.to_string(),
+                display_name: profile.display_name,
+                avatar_url: profile.avatar_url.map(|u| u.to_string()),
+            }),
+            TimelineDetails::Error(e) => DetailState::Error(e.to_string()),
+            TimelineDetails::Pending => DetailState::Pending,
+            TimelineDetails::Unavailable => DetailState::Unavailable,
+        };
+
+        ReplyPreview { sender, content }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct ReplyInfo {
+    pub event_id: String,
+    pub event: DetailState<ReplyPreview>,
+}
+
+impl From<InReplyToDetails> for ReplyInfo {
+    fn from(value: InReplyToDetails) -> Self {
+        ReplyInfo {
+            event_id: value.event_id.to_string(),
+            event: value.event.into(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct MessageContent {
     pub reactions: HashMap<String, Vec<String>>,
-    pub in_reply_to: Option<String>,
+    pub in_reply_to: Option<ReplyInfo>,
     pub thread_root: Option<String>,
     pub is_edited: bool,
 
@@ -386,16 +508,68 @@ fn get_reactions(reactions: ReactionsByKeyBySender) -> HashMap<String, Vec<Strin
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct ProfileChange {
+    pub user_id: String,
+    pub display_name_change: Option<Change<Option<String>>>,
+    pub avatar_url_change: Option<Change<Option<String>>>,
+}
+
+impl ProfileChange {
+    pub fn display_string(&self) -> String {
+        let mut changes = Vec::new();
+
+        if let Some(Change { old, new }) = &self.display_name_change {
+            if let Some(new) = new {
+                if let Some(old) = old {
+                    changes.push(format!(
+                        "changed their display name from '{}' to '{}'",
+                        old, new
+                    ));
+                } else {
+                    changes.push(format!("set their display name to '{}'", new));
+                }
+            } else {
+                changes.push("removed their display name".to_string());
+            }
+        }
+
+        if let Some(Change { old, new }) = &self.avatar_url_change {
+            if new.is_some() && old.is_none() {
+                changes.push("set a profile picture".to_string());
+            } else if new.is_none() && old.is_some() {
+                changes.push("removed their profile picture".to_string());
+            } else {
+                changes.push("changed their profile picture".to_string());
+            }
+        }
+
+        format!("{} {}", self.user_id, changes.join(" and "))
+    }
+}
+
+impl From<MemberProfileChange> for ProfileChange {
+    fn from(value: MemberProfileChange) -> Self {
+        ProfileChange {
+            user_id: value.user_id().to_string(),
+            display_name_change: value.displayname_change().map(|c| Change {
+                old: c.old.clone().map(|v| v.to_string()),
+                new: c.new.clone().map(|v| v.to_string()),
+            }),
+            avatar_url_change: value.avatar_url_change().map(|c| Change {
+                old: c.old.clone().map(|v| v.to_string()),
+                new: c.new.clone().map(|v| v.to_string()),
+            }),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub enum SystemMessage {
     MembershipChange {
         user_id: String,
         change: Option<UiMembershipChange>,
     },
-    ProfileChange {
-        user_id: String,
-        display_name_change: Option<Change<Option<String>>>,
-        avatar_url_changed: Option<Change<Option<String>>>,
-    },
+    ProfileChange(ProfileChange),
     CallInvite,
     RtcNotification {
         call_intent: Option<CallIntent>,
@@ -603,7 +777,7 @@ impl From<&TimelineItemContent> for EventContent {
 
                 EventContent::MsgLike(Box::new(MessageContent {
                     reactions: get_reactions(content.clone().reactions),
-                    in_reply_to: content.clone().in_reply_to.map(|v| v.event_id.to_string()),
+                    in_reply_to: content.clone().in_reply_to.map(|v| v.into()),
                     thread_root: content.clone().thread_root.map(|v| v.to_string()),
                     is_edited,
 
@@ -630,17 +804,7 @@ impl From<&TimelineItemContent> for EventContent {
                 declined_by: declined_by.iter().map(|v| v.to_string()).collect(),
             }),
             TimelineItemContent::ProfileChange(change) => {
-                EventContent::SystemMessage(SystemMessage::ProfileChange {
-                    user_id: change.user_id().to_string(),
-                    display_name_change: change.displayname_change().map(|c| Change {
-                        old: c.old.clone().map(|v| v.to_string()),
-                        new: c.new.clone().map(|v| v.to_string()),
-                    }),
-                    avatar_url_changed: change.avatar_url_change().map(|c| Change {
-                        old: c.old.clone().map(|v| v.to_string()),
-                        new: c.new.clone().map(|v| v.to_string()),
-                    }),
-                })
+                EventContent::SystemMessage(SystemMessage::ProfileChange(change.into()))
             }
             TimelineItemContent::FailedToParseMessageLike { event_type, error } => {
                 EventContent::FailedToParseMessageLike {
@@ -672,6 +836,44 @@ pub enum DetailState<T> {
     Error(String),
 }
 
+impl DetailState<Sender> {
+    pub fn display_name(&self) -> String {
+        match self {
+            DetailState::Unavailable | DetailState::Pending | DetailState::Error(_) => {
+                "Unknown".to_string()
+            }
+            DetailState::Ready(sender) => sender.display_name.clone().unwrap_or(sender.id.clone()),
+        }
+    }
+
+    pub fn avatar_url(&self) -> Option<String> {
+        match self {
+            DetailState::Ready(sender) => sender.avatar_url.clone(),
+            _ => None,
+        }
+    }
+
+    pub fn color(&self) -> Hsl {
+        match self {
+            DetailState::Ready(sender) => get_color(&sender.id),
+            DetailState::Error(_) => Hsl::new(0.0, 100.0, 70.0, None),
+            DetailState::Pending => Hsl::new(0.0, 0.0, 50.0, None),
+            DetailState::Unavailable => Hsl::new(50.0, 100.0, 80.0, None),
+        }
+    }
+}
+
+impl<T, S: From<T>> From<TimelineDetails<T>> for DetailState<S> {
+    fn from(value: TimelineDetails<T>) -> Self {
+        match value {
+            TimelineDetails::Unavailable => DetailState::Unavailable,
+            TimelineDetails::Pending => DetailState::Pending,
+            TimelineDetails::Ready(t) => DetailState::Ready(t.into()),
+            TimelineDetails::Error(e) => DetailState::Error(e.to_string()),
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct TimelineEvent {
     pub state: Option<EventState>,
@@ -685,6 +887,13 @@ pub struct TimelineEvent {
 impl TimelineEvent {
     pub fn is_sending(&self) -> bool {
         matches!(self.state, Some(EventState::NotSentYet { .. }))
+    }
+
+    pub fn in_reply_to(&self) -> Option<ReplyInfo> {
+        match &self.content {
+            EventContent::MsgLike(content) => content.in_reply_to.clone(),
+            _ => None,
+        }
     }
 
     /// Returns Some(error_message) if the message failed to send, None otherwise.

@@ -1,7 +1,8 @@
-use phosphor_leptos::{HASH, Icon, IconWeight, MATRIX_LOGO};
+use phosphor_leptos::{Icon, IconWeight, HASH, MATRIX_LOGO};
+use shared::get_color;
 
 use crate::components::presence::PresenceBadge;
-use crate::components::{FloatingTile, get_color};
+use crate::components::FloatingTile;
 use crate::state::{AppState, MemberStore};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -21,7 +22,7 @@ fn DmDiv(dm: RoomNode) -> impl IntoView {
 
     let is_active = Memo::new(move |_| state.active_room_id.get() == Some(id.clone()));
 
-    let color = get_color(dm.dm_user_id().unwrap_or_default());
+    let color = get_color(&dm.dm_user_id().unwrap_or_default());
 
     let user_id = dm.dm_user_id().clone().unwrap_or_default();
 
@@ -151,7 +152,7 @@ pub fn ServerIcon(server_id: String) -> impl IntoView {
                 };
                 let name = server.name.clone().unwrap_or("?".to_string());
                 let initial = name.chars().next().unwrap_or('?').to_string();
-                let color = get_color(server.get_name());
+                let color = get_color(&server_id);
 
                 view! {
                     <div class="relative w-10 h-10">
@@ -328,7 +329,7 @@ pub fn Sidebar() -> impl IntoView {
                                                 }
                                                 None => {
                                                     let color = get_color(
-                                                        dm.topic.clone().unwrap_or_else(|| "Unnamed".to_string()),
+                                                        &dm.topic.unwrap_or_else(|| "Unnamed".to_string()),
                                                     );
                                                     view! {
                                                         <TextCircle

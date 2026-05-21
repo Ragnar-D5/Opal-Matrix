@@ -1,8 +1,6 @@
 use colorsys::Hsl;
 use leptos::prelude::*;
-use shared::{timeline::RichTextSpan, user_profile::UserProfile};
-
-use crate::components::get_color;
+use shared::{get_color, timeline::RichTextSpan, user_profile::UserProfile};
 
 use super::TextCircle;
 
@@ -110,7 +108,7 @@ impl UserProfileExt for UserProfile {
             return Hsl::new(0.0, 0.0, 70.0, None);
         }
 
-        get_color(self.user_id.clone())
+        get_color(&self.user_id)
     }
 }
 

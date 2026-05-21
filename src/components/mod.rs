@@ -12,17 +12,6 @@ pub(crate) mod sidebar;
 pub(crate) mod text;
 pub(crate) mod user_profile;
 
-pub fn get_color(string: String) -> Hsl {
-    let mut hash: u32 = 0;
-    for c in string.chars() {
-        hash = (c as u32).wrapping_add(hash.wrapping_shl(5).wrapping_sub(hash));
-    }
-
-    let hue = hash % 360;
-
-    Hsl::new(hue as f64, 90.0, 70.0, None)
-}
-
 #[component]
 pub fn FloatingTile(#[prop(into, optional)] class: String, children: Children) -> impl IntoView {
     view! {

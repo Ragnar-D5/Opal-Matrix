@@ -1,6 +1,6 @@
 use crate::{
     components::{
-        FloatingTile, TextCircle, TextCircleProps, get_color,
+        FloatingTile, TextCircle, TextCircleProps,
         input::{
             get_active_filter, get_caret_position, handle_input, handle_keydown,
             menu::{MenuType, SelectionMenu},
@@ -24,12 +24,9 @@ use chrono::{DateTime, Local, TimeZone};
 use leptos::{ev, html::Div, prelude::*, task::spawn_local};
 use leptos_use::{UseIntersectionObserverReturn, use_event_listener, use_intersection_observer};
 use shared::{
-    commands::Command,
-    timeline::{
-        Change, DetailState, EventContent, MessageContent, SystemMessage, TimelineEvent,
-        UiMessageType, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind,
-    },
-    user_profile::{PresenceStatus, UserProfile},
+    commands::Command, get_color, timeline::{
+        Change, DetailState, EventContent, MessageContent, ReplyInfo, RichTextSpan, SystemMessage, TimelineEvent, UiMessageType, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind
+    }, user_profile::{PresenceStatus, UserProfile}
 };
 use std::collections::HashMap;
 use web_sys::IntersectionObserverEntry;
@@ -42,48 +39,51 @@ fn format_date(date: DateTime<Local>) -> String {
     }
 }
 
-// #[component]
-// fn ReplyPreview(replies_to: Option<RepliesTo>) -> impl IntoView {
-//     let state: AppState = expect_context();
-//     let store: MemberStore = expect_context();
+#[component]
+fn ReplyPreview(reply_info: Option<ReplyInfo>) -> impl IntoView {
+    let Some(reply_info) = reply_info else {
+        return ().into_any();
+    };
 
-//     let Some(room_id) = state.active_room_id.get_untracked() else {
-//         return ().into_any();
-//     };
+    let store: MemberStore = expect_context();
 
-//     if let Some(replies_to) = replies_to {
-//         if let Some(sender_id) = &replies_to.sender_id {
-//             let profile_sig = store.get_profile(&room_id, sender_id);
-//             let sig_clone = profile_sig.clone();
+    let mut content = vec![RichTextSpan::Plain("click to go to event".to_string())];
 
-//             let text = replies_to.text.clone().unwrap_or_default();
+    let (sender_name, avatar_url, color) = match reply_info.event {
+        DetailState::Error(e) => (format!("! {e}"), None, Hsl::new(0.0, 0.0, 70.0, None)),
+        DetailState::Pending => ("Loading...".to_string(), None, Hsl::new(0.0, 0.0, 70.0, None)),
+        DetailState::Ready(preview) => {
+            let sender = preview.sender;
 
-//             view! {
-//                 <div class="flex items-center gap-1 ml-[52px] mb-1 cursor-pointer text-xs relative group/reply">
-//                     <div class="absolute -left-[32px] top-[calc(50%-1px)] w-[28px] h-4.5 border-l-2 border-t-2 border-white/20 rounded-tl-md"></div>
+            content = preview.content;
 
-//                     <div class="shrink-0">{move || profile_sig.get().render_icon(16)}</div>
+            (sender.display_name(), sender.avatar_url(), sender.color())
+        }
+        DetailState::Unavailable => ("Event not found".to_string(), None, Hsl::new(0.0, 0.0, 70.0, None)),
+    };
 
-//                     <span class="font-semibold text-bright hover:underline">
-//                         {move || sig_clone.get().render_name(12)}
-//                     </span>
+    view! {
+        <div class="flex items-center gap-1 ml-[52px] mb-1 cursor-pointer text-xs relative group/reply">
+            <div class="absolute -left-[32px] top-[calc(50%-1px)] w-[28px] h-4.5 border-l-2 border-t-2 border-white/20 rounded-tl-md"></div>
 
-//                     <span class="truncate text-bright line-clamp-1">
-//                         {text
-//                             .into_iter()
-//                             .map(|v| v.render(store.clone(), room_id.clone()))
-//                             .collect_view()}
-//                     </span>
-//                 </div>
-//             }
-//             .into_any()
-//         } else {
-//             ().into_any()
-//         }
-//     } else {
-//         ().into_any()
-//     }
-// }
+            <div class="shrink-0">
+                {render_profile_icon(avatar_url, sender_name.clone(), 16, color.clone())}
+            </div>
+
+            <span class="font-semibold text-bright hover:underline">
+                {render_profile_name(sender_name, color, 12)}
+            </span>
+
+            <span class="truncate text-bright line-clamp-1">
+                {content
+                    .into_iter()
+                    .map(|v| v.render(store.clone(), "".to_string()))
+                    .collect_view()}
+            </span>
+        </div>
+    }
+    .into_any()
+}
 
 fn render_message_content(
     content: MessageContent,
@@ -384,40 +384,7 @@ fn render_system_message(
                 .map(|v| v.display_string())
                 .unwrap_or_else(|| "changed membership".to_string()),
         ),
-        SystemMessage::ProfileChange {
-            user_id,
-            display_name_change,
-            avatar_url_changed,
-        } => {
-            let mut changes = Vec::new();
-
-            if let Some(Change { old, new }) = display_name_change {
-                if let Some(new) = new {
-                    if let Some(old) = old {
-                        changes.push(format!(
-                            "changed their display name from '{}' to '{}'",
-                            old, new
-                        ));
-                    } else {
-                        changes.push(format!("set their display name to '{}'", new));
-                    }
-                } else {
-                    changes.push("removed their display name".to_string());
-                }
-            }
-
-            if let Some(Change { old, new }) = avatar_url_changed {
-                if new.is_some() && old.is_none() {
-                    changes.push("set a profile picture".to_string());
-                } else if new.is_none() && old.is_some() {
-                    changes.push("removed their profile picture".to_string());
-                } else {
-                    changes.push("changed their profile picture".to_string());
-                }
-            }
-
-            format!("{} {}", user_id, changes.join(" and "))
-        }
+        SystemMessage::ProfileChange(change) => change.display_string(),
         SystemMessage::RtcNotification {
             call_intent,
             declined_by,
@@ -460,10 +427,10 @@ fn render_timeline_event(
     let avatar_url = event.get_sender_avatar_url();
 
     let color = sender_id
-        .map(get_color)
+        .map(|v| get_color(&v))
         .unwrap_or(Hsl::new(0.0, 0.0, 70.0, None));
 
-    let content = match event.content{
+    let content = match event.content.clone() {
         EventContent::MsgLike(ev) => render_message_content(*ev, store.clone(), room_id.to_string()),
         EventContent::FailedToParseMessageLike { event_type, error } => return view! { <div class="text-red-500 italic">{format!("Failed to render {event_type}: {error}")}</div> }.into_any(),
         EventContent::FailedToParseState { event_type, state_key, error } => return view! {
@@ -516,7 +483,7 @@ fn render_timeline_event(
                 }
             }}
 
-            // <ReplyPreview replies_to=reply_data.clone() />
+            <ReplyPreview reply_info=event.in_reply_to() />
 
             <div class="flex gap-[var(--gap)]">
                 <div class="shrink-0 mr-2 w-[40px] mt-[5px]">
@@ -939,9 +906,9 @@ fn ChatHeader(
                     class=("text-(--ui-hover-color)", move || info_hovered.get())
                     class=("text-(--ui-base-color)", move || !info_hovered.get())
                     on:click=move |_| log::info!("John Pork is calling...")
+                >
                     // on:mouseenter=move |_| set_info_hovered.set(true)
                     // on:mouseleave=move |_| set_info_hovered.set(false)
-                >
                     <div class="h-full justify-center items-center flex cursor-pointer">
                         <Icon
                             icon=PHONE
