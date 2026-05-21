@@ -1,31 +1,24 @@
 use futures::StreamExt;
 use matrix_sdk::Client as MatrixClient;
-use std::{collections::HashMap, str::FromStr, sync::Arc};
+use std::{str::FromStr, sync::Arc};
+use tokio_util::sync::CancellationToken;
 
 use chrono::Local;
 use ego_tree::NodeRef;
 use log::{error, warn};
 use ruma::{OwnedUserId, RoomId, events::Mentions};
 use scraper::{Html, Node};
-use serde_json::json;
 use shared::{
-    api::FetchMessagesResponse,
-    messages::{MessageContent, MessageKind, MessageState, RichTextSpan, UiMessage, UserMessage},
+    messages::RichTextSpan,
     timeline::{UiTimelineDiff, UiTimelineItem},
 };
-use tauri::{AppHandle, Emitter, State, async_runtime::spawn, command};
+use tauri::{AppHandle, Emitter, State, command};
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use crate::{
     TauriError,
-    frontend::emit_single_message_update,
-    state::{AppState, HomeServerInfo, TimelineManager},
-    storage::{
-        members::get_members_for_room_api,
-        messages::{MessageRow, delete_message, save_messages, set_message_state},
-        rooms::get_room_encryption,
-    },
+    state::{AppState, TaskManager, TimelineManager},
 };
 
 #[command(rename_all = "snake_case")]
@@ -304,36 +297,54 @@ pub async fn scroll_up(
 pub async fn get_timeline(
     matrix_client: State<'_, RwLock<MatrixClient>>,
     timeline_manager: State<'_, TimelineManager>,
+    task_manager: State<'_, TaskManager>,
     handle: AppHandle,
     room_id: String,
 ) -> Result<Vec<UiTimelineItem>, TauriError> {
     log::debug!("Fetching timeline for room {}", room_id);
-    let room = matrix_client
-        .read()
-        .await
-        .get_room(&RoomId::parse(&room_id)?)
-        .ok_or("No room found")?;
 
-    timeline_manager.abort_stream().await;
+    let token = CancellationToken::new();
+    task_manager.replace_task("get_timeline", token.clone());
 
-    let timeline = timeline_manager.get_or_create_timeline(&room).await?;
+    tokio::select! {
+        _ = token.cancelled() => {
+            log::debug!("Timeline fetch for room {} was cancelled by a newer request", room_id);
+            Err(TauriError::from("Cancelled by newer request"))
+        }
 
-    let (messages, stream) = timeline.subscribe().await;
+        result = async {
+            log::debug!("Fetching timeline for room {}", room_id);
 
-    timeline_manager
-        .set_stream_handle(spawn(async move {
-            tokio::pin!(stream);
+            let room = matrix_client
+                .read()
+                .await
+                .get_room(&RoomId::parse(&room_id)?)
+                .ok_or("No room found")?;
 
-            while let Some(update) = stream.next().await {
-                send_timeline_diffs(handle.clone(), update.iter().map(|d| d.into()).collect())
-                    .await;
-            }
-        }))
-        .await;
+            timeline_manager.abort_stream().await;
 
-    log::debug!("Fetched {} messages for room {}", messages.len(), room_id);
+            let timeline = timeline_manager.get_or_create_timeline(&room).await?;
 
-    Ok(messages.iter().map(|v| v.into()).collect())
+            let (messages, stream) = timeline.subscribe().await;
+
+            timeline_manager
+                .set_stream_handle(tokio::spawn(async move {
+                    tokio::pin!(stream);
+
+                    while let Some(update) = stream.next().await {
+                        send_timeline_diffs(handle.clone(), update.iter().map(|d| d.into()).collect())
+                            .await;
+                    }
+                }))
+                .await;
+
+            log::debug!("Fetched {} messages for room {}", messages.len(), room_id);
+
+            Ok(messages.iter().map(|v| v.into()).collect())
+        } => {
+            result
+        }
+    }
 }
 
 async fn send_timeline_diffs(handle: AppHandle, diffs: Vec<UiTimelineDiff>) {

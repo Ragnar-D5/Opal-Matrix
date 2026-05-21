@@ -45,7 +45,7 @@ use tauri_plugin_notification::{NotificationExt, PermissionState};
 
 use crate::frontend::send_sidebar_update;
 use crate::matrix_api::crypto::{self, StoredSession};
-use crate::state::{AppState, TimelineManager};
+use crate::state::{AppState, TaskManager, TimelineManager};
 use crate::sync::attach_callbacks;
 
 const MATRIX_ID_SET: &AsciiSet = &CONTROLS.add(b'!').add(b':');
@@ -598,6 +598,7 @@ pub fn run() {
 
             app.manage(RwLock::new(client));
             app.manage(TimelineManager::default());
+            app.manage(TaskManager::default());
 
             #[cfg(not(target_os = "android"))]
             let main_window = app

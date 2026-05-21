@@ -794,18 +794,33 @@ fn TimeLine() -> impl IntoView {
             has_more.set(true);
             is_loading.set(true);
 
+            let current_room_id = room_id.clone();
+
             spawn_local(async move {
-                match get_timeline(&room_id).await {
+                match get_timeline(&current_room_id).await {
                     Ok(tl) => {
-                        log::info!("Effect: Received {} items", tl.len());
-                        messages.set(tl);
+                        if state.active_room_id.get() == Some(current_room_id.clone()) {
+                            log::info!("Effect: Received {} items", tl.len());
+                            messages.set(tl);
+                            initial_loaded.set(true);
+                            is_loading.set(false);
+                        }
                     }
                     Err(e) => {
-                        log::error!("Failed to load timeline: {}", e);
+                        let err_str = e.to_string();
+                        if err_str.contains("Cancelled by newer request") {
+                            log::debug!(
+                                "Frontend ignored cancelled request for room {}",
+                                current_room_id
+                            );
+                        } else {
+                            log::error!("Failed to load timeline: {}", e);
+                            if state.active_room_id.get() == Some(current_room_id) {
+                                is_loading.set(false);
+                            }
+                        }
                     }
                 }
-                initial_loaded.set(true);
-                is_loading.set(false);
             });
         }
     });

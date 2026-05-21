@@ -1,28 +1,27 @@
-use log::info;
 use matrix_sdk::Room;
 use matrix_sdk_ui::{Timeline, timeline::TimelineBuilder};
-use ruma::{OwnedRoomId, UserId, api::SupportedVersions};
+use ruma::{OwnedRoomId, api::SupportedVersions};
 use rusqlite::Connection;
 use std::{
     collections::HashMap,
     path::PathBuf,
     sync::Arc,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{SystemTime, UNIX_EPOCH},
 };
 use tauri::{
     AppHandle,
-    async_runtime::{JoinHandle, Mutex, RwLock},
+    async_runtime::{Mutex, RwLock},
 };
-use tauri_plugin_http::reqwest::Client;
+use tokio::task::JoinHandle;
+use tokio_util::sync::CancellationToken;
 use url::Url;
 
-use matrix_sdk_crypto::{CrossSigningKeyExport, OlmMachine};
-use tokio_util::sync::CancellationToken;
+use matrix_sdk_crypto::OlmMachine;
 
 use crate::{
     TauriError, construct_url,
     matrix_api::{
-        authentication::{self, get_account_data},
+        authentication::get_account_data,
         crypto::{self, StoredSession},
         discovery::{Authentication, fetch_supported_versions},
     },
@@ -558,6 +557,28 @@ impl TimelineManager {
         let mut guard = self.stream_handle.lock().await;
         if let Some(handle) = guard.take() {
             handle.abort();
+        }
+    }
+}
+
+pub struct TaskManager {
+    pub tasks: Mutex<HashMap<String, CancellationToken>>,
+}
+
+impl Default for TaskManager {
+    fn default() -> Self {
+        TaskManager {
+            tasks: Mutex::new(HashMap::new()),
+        }
+    }
+}
+
+impl TaskManager {
+    pub async fn replace_task(&self, command_name: &str, new_token: CancellationToken) {
+        let mut tasks = self.tasks.lock().await;
+
+        if let Some(old_token) = tasks.insert(command_name.to_string(), new_token) {
+            old_token.cancel();
         }
     }
 }
