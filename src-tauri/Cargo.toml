@@ -29,9 +29,6 @@ chrono = "0.4.44"
 url = "2.5.8"
 percent-encoding = "2.3.2"
 version-compare = "0.2.1"
-matrix-sdk-crypto = { version = "0.17.0", features = ["js"] }
-matrix-sdk-sqlite = { version = "0.16.0", features = ["crypto-store", "bundled"] }
-keyring = { version = "3.6.3", default-features = false, features = ["async-secret-service", "async-io", "crypto-rust"] }
 ruma = { version = "0.15.1", features = ["client-api-c"] }
 hex = "0.4.3"
 http = "1.4.0"
@@ -61,3 +58,17 @@ futures = "0.3.32"
 async-recursion = "1.1.1"
 matrix-sdk-ui = "0.17.0"
 tracing-log = "0.2.0"
+keyring-core = "1.0.0"
+const_format = "0.2.36"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+zbus-secret-service-keyring-store = {version = "1.0",features = ["rt-tokio-crypto-rust"] }
+
+[target.'cfg(target_os = "android")'.dependencies]
+android-native-keyring-store = "1.0"
+
+[target.'cfg(windows)'.dependencies]
+windows-native-keyring-store = "1.0"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+apple-native-keyring-store = { version = "1.0", features = ["keychain"] }

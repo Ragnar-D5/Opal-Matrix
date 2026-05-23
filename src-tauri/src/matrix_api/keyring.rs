@@ -1,8 +1,8 @@
-use crate::{APP_NAME, TauriError};
+use crate::{TauriError, APP_NAME};
 
+use keyring_core::Entry;
 use log::info;
 
-use keyring::Entry;
 use serde::{Deserialize, Serialize};
 
 const LAST_USER_KEY: &str = "__last_active_user__";
@@ -20,19 +20,41 @@ pub struct StoredSession {
     pub homeserver_url: String,
 }
 
+pub fn init_keyring() {
+    #[cfg(target_os = "linux")]
+    keyring_core::set_default_store(
+        zbus_secret_service_keyring_store::Store::new().expect("Failed to init Linux keyring"),
+    );
+
+    #[cfg(target_os = "android")]
+    keyring_core::set_default_store(
+        android_native_keyring_store::Store::new().expect("Failed to init Android keyring"),
+    );
+
+    #[cfg(target_os = "windows")]
+    keyring_core::set_default_store(
+        windows_native_keyring_store::Store::new().expect("Failed to init Windows keyring"),
+    );
+
+    #[cfg(target_os = "macos")]
+    keyring_core::set_default_store(
+        apple_native_keyring_store::keychain::Store::new().expect("Failed to init macOS keyring"),
+    );
+}
+
 /// Retrieves the last active session from the keyring, if it exists, and returns it as a `StoredSession` struct.
-pub async fn get_last_active_session() -> Result<Option<StoredSession>, TauriError> {
+pub fn get_last_active_session() -> Result<Option<StoredSession>, TauriError> {
     let entry = Entry::new(APP_NAME, LAST_USER_KEY)?;
 
     match entry.get_password() {
-        Ok(user_id) => get_session(user_id).await,
-        Err(keyring::Error::NoEntry) => Ok(None),
+        Ok(user_id) => get_session(user_id),
+        Err(keyring_core::Error::NoEntry) => Ok(None),
         Err(e) => Err(format!("Keyring error: {}", e).into()),
     }
 }
 
 /// Retrieves the session for a specific user ID from the keyring, if it exists, and returns it as a `StoredSession` struct.
-pub async fn get_session(user_id: String) -> Result<Option<StoredSession>, TauriError> {
+pub fn get_session(user_id: String) -> Result<Option<StoredSession>, TauriError> {
     let entry_key = format!("{}:session", user_id);
     let entry = Entry::new(APP_NAME, &entry_key)?;
 
@@ -42,13 +64,13 @@ pub async fn get_session(user_id: String) -> Result<Option<StoredSession>, Tauri
                 .map_err(|e| format!("Failed to parse session data: {}", e))?;
             Ok(Some(session))
         }
-        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(keyring_core::Error::NoEntry) => Ok(None),
         Err(e) => Err(format!("Keyring error: {}", e).into()),
     }
 }
 
 /// Saves the provided `StoredSession` struct securely in the system keyring, associating it with the user ID and marking it as the last active session.
-pub async fn save_session(session: &StoredSession) -> Result<(), TauriError> {
+pub fn save_session(session: &StoredSession) -> Result<(), TauriError> {
     let entry_key = format!("{}:session", session.user_id);
     let entry = Entry::new(APP_NAME, &entry_key)?;
 
@@ -69,7 +91,7 @@ pub async fn _get_or_create_passphrase(user_id: String) -> Result<String, TauriE
 
     match entry.get_password() {
         Ok(passphrase) => Ok(passphrase),
-        Err(keyring::Error::NoEntry) => {
+        Err(keyring_core::Error::NoEntry) => {
             info!(
                 "No existing passphrase found for user {}, generating a new one",
                 user_id

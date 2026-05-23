@@ -9,16 +9,15 @@ use matrix_sdk_ui::{
     },
 };
 use ruma::{
-    MilliSecondsSinceUnixEpoch,
     events::{
         poll::start::PollKind,
         room::{
-            EncryptedFileInfo, MediaSource,
             message::{MessageFormat, MessageType},
+            EncryptedFileInfo, MediaSource,
         },
         rtc::notification::CallIntent,
-        sticker::StickerMediaSource,
     },
+    MilliSecondsSinceUnixEpoch,
 };
 use shared::{
     parsing::{parse_html_to_spans, parse_plain_text_to_spans},

@@ -1,13 +1,13 @@
 use matrix_sdk::{
-    Client as MatrixClient, LoopCtrl, SessionChange, config::SyncSettings,
-    ruma::events::space::parent::SyncSpaceParentEvent,
+    config::SyncSettings, ruma::events::space::parent::SyncSpaceParentEvent,
+    Client as MatrixClient, LoopCtrl, SessionChange,
 };
-use tauri::{AppHandle, async_runtime::spawn};
+use tauri::{async_runtime::spawn, AppHandle};
 
 use crate::{
-    TauriError,
     frontend::{members::on_member_update, sidebar::send_sidebar},
-    matrix_api::crypto::{StoredSession, save_session},
+    matrix_api::keyring::{save_session, StoredSession},
+    TauriError,
 };
 
 pub async fn attach_callbacks(client: &MatrixClient, handle: &AppHandle) -> Result<(), TauriError> {
@@ -29,8 +29,11 @@ pub async fn attach_callbacks(client: &MatrixClient, handle: &AppHandle) -> Resu
                     refresh_token: session.get_refresh_token().map(|t| t.to_string()),
                     homeserver_url: client_clone.homeserver().to_string(),
                 };
-                save_session(&kr_session).await.unwrap_or_else(|e| {
-                    log::error!("Failed to save session after token refresh: {:?}", e);
+
+                tokio::task::spawn_blocking(move || {
+                    save_session(&kr_session).unwrap_or_else(|e| {
+                        log::error!("Failed to save session after token refresh: {:?}", e);
+                    })
                 });
             }
         }

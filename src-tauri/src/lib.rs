@@ -1,5 +1,6 @@
 #![recursion_limit = "256"]
 
+use const_format::formatcp;
 use log::{error, trace};
 use matrix_sdk::authentication::matrix::MatrixSession;
 use matrix_sdk::media::{MediaFormat, MediaRequestParameters, MediaThumbnailSettings};
@@ -40,12 +41,26 @@ pub const APP_NAME: &str = "opal-matrix";
 use tauri_plugin_log::{Target, TargetKind};
 use tauri_plugin_notification::{NotificationExt, PermissionState};
 
-use crate::matrix_api::crypto::{self, StoredSession};
+use crate::matrix_api::keyring::{self, StoredSession, init_keyring};
 use crate::state::{AppState, TaskManager, TimelineManager};
 use crate::sync::attach_callbacks;
 
 pub type MatrixClientState<'a> = State<'a, RwLock<MatrixClient>>;
 pub type TimelineManagerState<'a> = State<'a, TimelineManager>;
+
+#[cfg(target_os = "linux")]
+const PLATFORM: &str = "linux";
+#[cfg(target_os = "windows")]
+const PLATFORM: &str = "windows";
+#[cfg(target_os = "macos")]
+const PLATFORM: &str = "macos";
+#[cfg(target_os = "android")]
+const PLATFORM: &str = "android";
+#[cfg(target_os = "ios")]
+const PLATFORM: &str = "ios";
+
+// Set initial display name for new devices to "Opal on <Platform>".
+const DEVICE_DISPLAY_NAME: &str = formatcp!("Opal matrix on {PLATFORM}");
 
 /// Helper function to convert a reqwest::Response into an http::Response<Bytes>.
 ///
@@ -160,7 +175,13 @@ async fn try_restore(
     app_handle: AppHandle,
     matrix_client: State<'_, RwLock<MatrixClient>>,
 ) -> Result<RestoreResponse, TauriError> {
-    let Some(session) = crypto::get_last_active_session().await? else {
+    let session_result = tokio::task::spawn_blocking(|| {
+            keyring::get_last_active_session()
+        })
+        .await
+        .expect("Keyring blocking task panicked");
+
+    let Some(session) = session_result? else {
         return Ok(RestoreResponse::NoSession);
     };
 
@@ -194,8 +215,6 @@ async fn try_restore(
 
     *matrix_client.write().await = new_client;
 
-    // state.init_stuff(&handle).await?;
-
     Ok(RestoreResponse::Success { user_id })
 }
 
@@ -226,7 +245,7 @@ async fn login(
     temp_client
         .matrix_auth()
         .login_username(username.clone(), password.as_str())
-        .initial_device_display_name("Opal on Linux")
+        .initial_device_display_name(DEVICE_DISPLAY_NAME)
         .send()
         .await
         .map_err(|e| {
@@ -313,10 +332,11 @@ async fn login(
         homeserver_url: server_url,
     };
 
-    crypto::save_session(&session).await.map_err(|e| {
-        error!("Failed to save session: {:?}", e);
-        LoginError::BackendError
-    })?;
+    tokio::task::spawn_blocking(move || {
+        keyring::save_session(&session).map_err(|_| {
+            LoginError::BackendError
+        })
+    });
 
     Ok(user_id)
 }
@@ -384,6 +404,8 @@ pub struct BrandColorsMap(pub HashMap<String, String>);
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    init_keyring();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
@@ -444,7 +466,6 @@ pub fn run() {
                         }),
                     ])
                     .level_for("reqwest", log::LevelFilter::Off)
-                    .level_for("keyring", log::LevelFilter::Off)
                     .level_for("rustls_platform_verifier", log::LevelFilter::Off)
                     .level_for("html5ever", log::LevelFilter::Off)
                     .level_for("matrix_sdk", log::LevelFilter::Debug)
