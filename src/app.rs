@@ -136,9 +136,9 @@ pub fn App() -> impl IntoView {
 
     Effect::new(move |_| {
         if let Some(mut new_state) = sidebar_update_event.get() {
-            new_state
-                .dms
-                .sort_by_key(|b| std::cmp::Reverse(b.last_ts().unwrap_or(0)));
+            // new_state
+            //     .dms
+            //     .sort_by_key(|b| std::cmp::Reverse(b.last_ts().unwrap_or(0)));
 
             let current_order = state.server_order.get_untracked();
 
