@@ -1,13 +1,13 @@
 use matrix_sdk::{
-    config::SyncSettings, ruma::events::space::parent::SyncSpaceParentEvent,
-    Client as MatrixClient, LoopCtrl, SessionChange,
+    Client as MatrixClient, LoopCtrl, SessionChange, config::SyncSettings,
+    ruma::events::space::parent::SyncSpaceParentEvent,
 };
-use tauri::{async_runtime::spawn, AppHandle};
+use tauri::{AppHandle, async_runtime::spawn};
 
 use crate::{
-    frontend::sidebar::send_sidebar,
-    matrix_api::crypto::{save_session, StoredSession},
     TauriError,
+    frontend::{members::on_member_update, sidebar::send_sidebar},
+    matrix_api::crypto::{StoredSession, save_session},
 };
 
 pub async fn attach_callbacks(client: &MatrixClient, handle: &AppHandle) -> Result<(), TauriError> {
@@ -27,9 +27,6 @@ pub async fn attach_callbacks(client: &MatrixClient, handle: &AppHandle) -> Resu
                     device_id: session.meta().device_id.to_string(),
                     access_token: session.access_token().to_string(),
                     refresh_token: session.get_refresh_token().map(|t| t.to_string()),
-                    expires_at: None,
-                    next_batch: None,
-                    recovery_key: None,
                     homeserver_url: client_clone.homeserver().to_string(),
                 };
                 save_session(&kr_session).await.unwrap_or_else(|e| {
@@ -67,7 +64,7 @@ pub async fn attach_callbacks(client: &MatrixClient, handle: &AppHandle) -> Resu
             });
 
         let sync_result = client_sync_clone
-            .sync_with_result_callback(sync_settings, |ev| {
+            .sync_with_result_callback(sync_settings, |_| {
                 let client_sync_clone = client_sync_clone.clone();
                 let handle_clone = handle_clone.clone();
                 async move {
@@ -75,11 +72,11 @@ pub async fn attach_callbacks(client: &MatrixClient, handle: &AppHandle) -> Resu
                     let handle_clone = handle_clone.clone();
 
                     log::debug!("Received sync event");
-                    // send_sidebar(&client_clone_dwa.joined_rooms(), &handle_clone)
-                    // .await
-                    // .unwrap_or_else(|e| {
-                    // log::error!("Failed to send sidebar after initial sync: {:?}", e);
-                    // });
+                    send_sidebar(&client_clone_dwa.joined_rooms(), &handle_clone)
+                        .await
+                        .unwrap_or_else(|e| {
+                            log::error!("Failed to send sidebar after initial sync: {:?}", e);
+                        });
                     Ok(LoopCtrl::Continue)
                 }
             })
@@ -90,6 +87,8 @@ pub async fn attach_callbacks(client: &MatrixClient, handle: &AppHandle) -> Resu
         }
     });
 
-    log::info!("Sync loop started");
+    client.add_event_handler_context(handle.clone());
+    client.add_event_handler(on_member_update);
+
     Ok(())
 }

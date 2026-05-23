@@ -1,148 +1,19 @@
 use matrix_sdk::Room;
 use matrix_sdk_ui::{Timeline, timeline::TimelineBuilder};
-use ruma::{OwnedRoomId, api::SupportedVersions};
-use std::{
-    collections::HashMap,
-    path::PathBuf,
-    sync::Arc,
-    time::{SystemTime, UNIX_EPOCH},
-};
+use ruma::OwnedRoomId;
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use tauri::async_runtime::{Mutex, RwLock};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
-use matrix_sdk_crypto::OlmMachine;
-
-use crate::{
-    TauriError,
-    matrix_api::discovery::{Authentication, fetch_supported_versions},
-};
-
-#[derive(Default, Clone)]
-pub struct RefreshToken {
-    token: String,
-    expires_at: u64,
-}
-
-impl RefreshToken {
-    pub fn new(token: String, ms: u64) -> Self {
-        RefreshToken {
-            token,
-            expires_at: SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .expect("Failed to get time")
-                .as_secs()
-                + ms,
-        }
-    }
-}
-
-#[derive(Default, Clone)]
-pub struct Token {
-    pub access_token: String,
-
-    pub refresh_token: Option<RefreshToken>,
-}
-
-impl Token {
-    fn is_stale(&self) -> bool {
-        let expires_at = if let Some(refresh) = &self.refresh_token {
-            refresh.expires_at
-        } else {
-            return false;
-        };
-
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("Failed to get time")
-            .as_secs();
-
-        now + 30 >= expires_at
-    }
-}
-
-#[derive(Default, Clone)]
-pub struct ClientInfo {
-    pub user_id: String,
-    pub device_id: String,
-}
-
-#[derive(Clone)]
-pub struct HomeServerInfo {
-    pub base_url: String,
-    pub supported_versions: SupportedVersions,
-}
-
-impl HomeServerInfo {
-    pub async fn try_new(base_url: String) -> Result<Self, TauriError> {
-        Ok(HomeServerInfo {
-            base_url: base_url.clone(),
-            supported_versions: fetch_supported_versions(&base_url).await?,
-        })
-    }
-}
+use crate::TauriError;
 
 #[derive(Default)]
 pub struct AppState {
     pub app_data_dir: PathBuf,
 
-    pub token: RwLock<Option<Token>>,
-    pub client: RwLock<Option<ClientInfo>>,
-
-    pub next_batch: RwLock<Option<String>>,
-
-    pub home_server_info: RwLock<Option<HomeServerInfo>>,
-    pub auth_provider: RwLock<Option<Authentication>>,
-
-    pub refresh_lock: Mutex<()>,
-
-    pub crypto_machine: Mutex<Option<OlmMachine>>,
-    pub recovery_key: RwLock<Option<String>>,
-
-    pub sync_task: Mutex<Option<JoinHandle<()>>>,
-    pub sync_cancel_token: Mutex<Option<CancellationToken>>,
-
-    pub connection: Mutex<Option<rusqlite::Connection>>,
-
     pub frontend_current_room_id: RwLock<Option<String>>,
     pub frontend_is_focused: RwLock<bool>,
-
-    pub messages_to_delete: RwLock<HashMap<String, String>>,
-}
-
-impl AppState {
-    /// Checks if the current token is valid and refreshes it if necessary, returning the access token.
-    pub async fn check_token(&self) -> Result<String, TauriError> {
-        let needs_refresh = {
-            let token_guard = self.token.read().await;
-            let t = token_guard.as_ref().ok_or("Not logged in")?;
-            t.is_stale()
-        };
-
-        if needs_refresh {
-            let _lock = self.refresh_lock.lock().await;
-
-            // Check if another thread already refreshed it
-            let still_needs_refresh = {
-                let token_guard = self.token.read().await;
-                token_guard.as_ref().map(|t| t.is_stale()).unwrap_or(false)
-            };
-
-            if still_needs_refresh {
-                // self.refresh_token().await?;
-            }
-        }
-
-        let token_guard = self.token.read().await;
-        let token = token_guard.as_ref().ok_or("Not logged in")?;
-
-        Ok(token.access_token.clone())
-    }
-
-    pub async fn room_id(self: &Arc<Self>) -> Result<Option<String>, TauriError> {
-        let room_id_guard = self.frontend_current_room_id.read().await;
-        Ok(room_id_guard.clone())
-    }
 }
 
 pub struct TimelineManager {

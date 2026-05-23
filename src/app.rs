@@ -70,8 +70,7 @@ pub fn App() -> impl IntoView {
         }
     });
 
-    let profile_update =
-        use_tauri_event::<HashMap<String, HashMap<String, UserProfile>>>("member_update");
+    let profile_update = use_tauri_event::<(String, UserProfile)>("member_update");
 
     Effect::new(move |_| {
         let room_id = state.active_room_id.get();
@@ -84,14 +83,10 @@ pub fn App() -> impl IntoView {
     });
 
     Effect::new(move |_| {
-        if let Some(updates) = profile_update.get() {
-            for (room_id, users) in updates.iter() {
-                for (user_id, profile) in users.iter() {
-                    store_for_profiles
-                        .get_profile(room_id, user_id)
-                        .set(Some(profile.clone()));
-                }
-            }
+        if let Some((room_id, profile)) = profile_update.get() {
+            store_for_profiles
+                .get_profile(&room_id, &profile.user_id)
+                .set(Some(profile.clone()));
         }
     });
 

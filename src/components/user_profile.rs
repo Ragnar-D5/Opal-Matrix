@@ -52,7 +52,6 @@ pub fn render_profile_name(name: String, color: Hsl, font_size: usize) -> impl I
 pub trait UserProfileExt {
     fn render_icon(self, size: usize) -> impl IntoView;
     fn render_name(self, font_size: usize) -> impl IntoView;
-    fn get_name(&self) -> String;
     fn to_span(&self) -> RichTextSpan;
 
     fn is_room(&self) -> bool;
@@ -84,10 +83,6 @@ impl UserProfileExt for UserProfile {
 
     fn is_room(&self) -> bool {
         self.user_id.starts_with("!")
-    }
-
-    fn get_name(&self) -> String {
-        self.display_name.clone().unwrap_or(self.user_id.clone())
     }
 
     fn render_icon(self, size: usize) -> impl IntoView {

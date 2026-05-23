@@ -16,6 +16,7 @@ use tokio::sync::RwLock;
 
 use crate::{
     TauriError,
+    frontend::timeline::{timeline_diff_to_ui, timeline_item_to_ui},
     state::{TaskManager, TimelineManager},
 };
 
@@ -212,7 +213,7 @@ pub async fn get_timeline(
                     tokio::pin!(stream);
 
                     while let Some(update) = stream.next().await {
-                        send_timeline_diffs(handle.clone(), update.iter().map(|d| d.into()).collect())
+                        send_timeline_diffs(handle.clone(), update.iter().map(timeline_diff_to_ui).collect())
                             .await;
                     }
                 }))
@@ -220,7 +221,7 @@ pub async fn get_timeline(
 
             log::debug!("Fetched {} messages for room {}", messages.len(), room_id);
 
-            Ok(messages.iter().map(|v| v.into()).collect())
+            Ok(messages.iter().map(|v| timeline_item_to_ui(v)).collect())
         } => {
             result
         }

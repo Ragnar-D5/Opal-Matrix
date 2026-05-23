@@ -24,9 +24,13 @@ use chrono::{DateTime, Local, TimeZone};
 use leptos::{ev, html::Div, prelude::*, task::spawn_local};
 use leptos_use::{UseIntersectionObserverReturn, use_event_listener, use_intersection_observer};
 use shared::{
-    commands::Command, get_color, timeline::{
-        Change, DetailState, EventContent, MessageContent, ReplyInfo, RichTextSpan, SystemMessage, TimelineEvent, UiMessageType, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind
-    }, user_profile::{PresenceStatus, UserProfile}
+    commands::Command,
+    get_color,
+    timeline::{
+        DetailState, EventContent, MessageContent, ReplyInfo, RichTextSpan, SystemMessage,
+        TimelineEvent, UiMessageType, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind,
+    },
+    user_profile::{PresenceStatus, UserProfile},
 };
 use std::collections::HashMap;
 use web_sys::IntersectionObserverEntry;
@@ -51,7 +55,11 @@ fn ReplyPreview(reply_info: Option<ReplyInfo>) -> impl IntoView {
 
     let (sender_name, avatar_url, color) = match reply_info.event {
         DetailState::Error(e) => (format!("! {e}"), None, Hsl::new(0.0, 0.0, 70.0, None)),
-        DetailState::Pending => ("Loading...".to_string(), None, Hsl::new(0.0, 0.0, 70.0, None)),
+        DetailState::Pending => (
+            "Loading...".to_string(),
+            None,
+            Hsl::new(0.0, 0.0, 70.0, None),
+        ),
         DetailState::Ready(preview) => {
             let sender = preview.sender;
 
@@ -59,7 +67,11 @@ fn ReplyPreview(reply_info: Option<ReplyInfo>) -> impl IntoView {
 
             (sender.display_name(), sender.avatar_url(), sender.color())
         }
-        DetailState::Unavailable => ("Event not found".to_string(), None, Hsl::new(0.0, 0.0, 70.0, None)),
+        DetailState::Unavailable => (
+            "Event not found".to_string(),
+            None,
+            Hsl::new(0.0, 0.0, 70.0, None),
+        ),
     };
 
     view! {

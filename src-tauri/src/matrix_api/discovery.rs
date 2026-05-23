@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use matrix_sdk::Client as MatrixClient;
 
 use log::trace;
@@ -10,15 +8,12 @@ use tauri_plugin_http::reqwest::{self, Client};
 use tokio::sync::RwLock;
 use url::Url;
 
-use crate::state::HomeServerInfo;
-use crate::{AppState, AsInfo, TauriError, reqwest_response_to_http_response};
+use crate::{AsInfo, TauriError, reqwest_response_to_http_response};
 
 #[derive(Debug, Deserialize)]
 pub struct WellKnown {
     #[serde(rename = "m.homeserver")]
     pub homeserver: HomeServer,
-    #[serde(rename = "org.matrix.msc2965.authentication")]
-    pub authentication: Authentication,
 }
 
 #[derive(Debug, Deserialize)]
@@ -44,7 +39,6 @@ pub struct Authentication {
 /// This is largely duplicate code from `try_home_server`, but is used to actually alter the state of the app.
 #[tauri::command]
 pub async fn choose_home_server(
-    state: State<'_, Arc<AppState>>,
     matrix_client: State<'_, RwLock<MatrixClient>>,
     url: String,
 ) -> Result<String, TauriError> {
@@ -72,12 +66,7 @@ pub async fn choose_home_server(
             .await
             .map_err(|e| format!("Failed to build Matrix client: {e}").as_info())?;
 
-        let versions = fetch_supported_versions(&well_known.homeserver.base_url).await?;
-        *state.home_server_info.write().await = Some(HomeServerInfo {
-            base_url: well_known.homeserver.base_url,
-            supported_versions: versions,
-        });
-        *state.auth_provider.write().await = Some(well_known.authentication);
+        let _ = fetch_supported_versions(&well_known.homeserver.base_url).await?;
         Ok(url)
     } else {
         Err(format!("Failed to get .well_known: {}", res.status()).as_info())

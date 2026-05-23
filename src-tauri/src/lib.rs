@@ -37,7 +37,6 @@ type Aes256Ctr = ctr::Ctr64BE<Aes256>;
 
 pub const APP_NAME: &str = "opal-matrix";
 
-use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
 use tauri_plugin_log::{Target, TargetKind};
 use tauri_plugin_notification::{NotificationExt, PermissionState};
 
@@ -45,26 +44,8 @@ use crate::matrix_api::crypto::{self, StoredSession};
 use crate::state::{AppState, TaskManager, TimelineManager};
 use crate::sync::attach_callbacks;
 
-const MATRIX_ID_SET: &AsciiSet = &CONTROLS.add(b'!').add(b':');
-
-fn construct_url<S>(parts: Vec<S>) -> Result<Url, TauriError>
-where
-    S: AsRef<str>,
-{
-    let mut iter = parts.into_iter();
-
-    let first = iter.next().ok_or_else(|| "Empty path".to_string())?;
-    let mut url_str = first.as_ref().trim_end_matches('/').to_string();
-
-    for part in iter {
-        let encoded = utf8_percent_encode(part.as_ref(), MATRIX_ID_SET).to_string();
-
-        url_str.push('/');
-        url_str.push_str(&encoded);
-    }
-
-    Url::parse(&url_str).map_err(|e| format!("Invalid URL: {}", e).into())
-}
+pub type MatrixClientState<'a> = State<'a, RwLock<MatrixClient>>;
+pub type TimelineManagerState<'a> = State<'a, TimelineManager>;
 
 /// Helper function to convert a reqwest::Response into an http::Response<Bytes>.
 ///
@@ -252,6 +233,7 @@ async fn login(
             error!("Login failed: {:?}", e);
             LoginError::InvalidCredentials
         })?;
+    log::debug!("Logged in with temporary client, fetching session info");
 
     let user_id = temp_client.user_id().unwrap();
     let device_id = temp_client.device_id().unwrap();
@@ -283,6 +265,7 @@ async fn login(
             error!("Failed to restore session on new client: {:?}", e);
             LoginError::BackendError
         })?;
+    log::debug!("Restored session on new client, starting recovery");
 
     new_client
         .encryption()
@@ -293,8 +276,7 @@ async fn login(
             error!("Recovery failed: {:?}", e);
             LoginError::InvalidCredentials
         })?;
-
-    // new_client.encryption().backups()
+    log::debug!("Recovery successful, verifying device");
 
     new_client
         .encryption()
@@ -308,11 +290,13 @@ async fn login(
             error!("Failed to verify device: {e}");
             LoginError::InvalidCredentials
         })?;
+    log::debug!("Device verified, starting sync loop");
 
     attach_callbacks(&new_client, &handle).await.map_err(|e| {
         error!("Failed to start sync loop: {:?}", e);
         LoginError::BackendError
     })?;
+    log::debug!("Sync loop started");
 
     let user_id = new_client.user_id().unwrap().to_string();
     *matrix_client.write().await = new_client;
@@ -327,9 +311,6 @@ async fn login(
             .get_refresh_token()
             .map(|t| t.to_string()),
         homeserver_url: server_url,
-        expires_at: None,
-        next_batch: None,
-        recovery_key: Some(recovery_key),
     };
 
     crypto::save_session(&session).await.map_err(|e| {
@@ -464,9 +445,10 @@ pub fn run() {
                     ])
                     .level_for("reqwest", log::LevelFilter::Off)
                     .level_for("keyring", log::LevelFilter::Off)
-                    .level_for("matrix_sdk_crypto", log::LevelFilter::Off)
                     .level_for("rustls_platform_verifier", log::LevelFilter::Off)
                     .level_for("html5ever", log::LevelFilter::Off)
+                    .level_for("matrix_sdk", log::LevelFilter::Debug)
+                    .level_for("matrix_sdk_base", log::LevelFilter::Debug)
                     .format(|out, message, record| {
                         let level = match record.level() {
                             log::Level::Error => "ERROR",
@@ -534,13 +516,14 @@ pub fn run() {
             frontend::messages::get_timeline,
             frontend::messages::scroll_up,
             frontend::commands::get_commands,
+            frontend::members::get_members_for_room,
             // matrix API commands
             matrix_api::discovery::choose_home_server,
             // matrix_api::messages::fetch_messages,
-            matrix_api::account_data::set_account_data,
-            matrix_api::account_data::get_account_data,
-            matrix_api::account_data::get_breadcrumbs,
-            matrix_api::account_data::get_server_order,
+            // matrix_api::account_data::set_account_data,
+            // matrix_api::account_data::get_account_data,
+            // matrix_api::account_data::get_breadcrumbs,
+            // matrix_api::account_data::get_server_order,
             matrix_api::previews::get_url_preview,
         ])
         .register_asynchronous_uri_scheme_protocol(

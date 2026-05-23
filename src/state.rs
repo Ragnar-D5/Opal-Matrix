@@ -1,4 +1,3 @@
-use serde_json::json;
 use std::collections::{HashMap, HashSet};
 
 use leptos::task::spawn_local;
@@ -9,7 +8,10 @@ use shared::{
     user_profile::{PresenceInfo, UserProfile},
 };
 
-use crate::app::{CurrentWindow, call_tauri};
+use crate::{
+    app::{CurrentWindow, call_tauri},
+    tauri_functions::get_members_for_room,
+};
 use leptos::prelude::*;
 
 #[derive(Clone, Debug, Copy)]
@@ -282,19 +284,12 @@ impl MemberStore {
             let rid = room_id.to_string();
 
             spawn_local(async move {
-                let args = serde_wasm_bindgen::to_value(&json!({
-                    "room_id": rid.to_string()
-                }))
-                .unwrap();
-
-                if let Ok(js_val) = call_tauri("get_members_for_room", args).await {
-                    let updates: Vec<UserProfile> = serde_wasm_bindgen::from_value(js_val).unwrap();
-
-                    batch(move || {
+                match get_members_for_room(&rid).await {
+                    Ok(members) => {
                         store.rooms.update(|rooms| {
                             let room_entry = rooms.entry(rid.to_string()).or_default();
 
-                            for profile in updates.into_iter() {
+                            for profile in members.into_iter() {
                                 let profile_signal = room_entry
                                     .entry(profile.user_id.clone())
                                     .or_insert_with(|| ArcRwSignal::new(Some(profile.clone())));
@@ -302,14 +297,10 @@ impl MemberStore {
                                 profile_signal.set(Some(profile));
                             }
                         });
-                        store.fetching.update(|f| {
-                            f.remove(&rid);
-                        });
-                    });
-                } else {
-                    store.fetching.update(|f| {
-                        f.remove(&rid);
-                    });
+                    }
+                    Err(err) => {
+                        error!("Failed to fetch members for room {}: {:?}", rid, err);
+                    }
                 }
             });
         }

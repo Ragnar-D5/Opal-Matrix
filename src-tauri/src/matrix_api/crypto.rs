@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 const LAST_USER_KEY: &str = "__last_active_user__";
 
-/// Represents a stored session for a user, containing all necessary information to restore the session and initialize the crypto machine.
+/// Represents a stored session for a user, containing all necessary information to restore the session.
 /// This struct is serialized and stored securely in the system keyring.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StoredSession {
@@ -16,11 +16,6 @@ pub struct StoredSession {
 
     pub access_token: String,
     pub refresh_token: Option<String>,
-    pub expires_at: Option<u64>,
-
-    pub next_batch: Option<String>,
-
-    pub recovery_key: Option<String>,
 
     pub homeserver_url: String,
 }
