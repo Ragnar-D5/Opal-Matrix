@@ -404,6 +404,10 @@ pub struct BrandColorsMap(pub HashMap<String, String>);
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("Failed to install rustls crypto provider");
+
     init_keyring();
 
     tauri::Builder::default()
