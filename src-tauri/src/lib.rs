@@ -540,6 +540,7 @@ pub fn run() {
             frontend::messages::commit_message,
             frontend::messages::get_timeline,
             frontend::messages::scroll_up,
+            frontend::messages::toggle_reaction,
             frontend::commands::get_commands,
             frontend::members::get_members_for_room,
             // matrix API commands

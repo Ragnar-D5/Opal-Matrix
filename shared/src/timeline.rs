@@ -381,6 +381,8 @@ pub struct TimelineEvent {
     pub flags: EventFlags,
     pub sender: DetailState<Sender>,
 
+    pub event_id: Option<String>,
+
     pub content: EventContent,
 }
 

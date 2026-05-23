@@ -529,6 +529,9 @@ fn event_timeline_item_to_ui(item: &EventTimelineItem) -> TimelineEvent {
             can_be_replied_to: item.can_be_replied_to(),
             contains_only_emojis: item.contains_only_emojis(),
         },
+
+        event_id: item.event_id().map(|e| e.to_string()),
+
         sender: match item.sender_profile().clone() {
             TimelineDetails::Error(e) => DetailState::Error(e.to_string()),
             TimelineDetails::Pending => DetailState::Pending,

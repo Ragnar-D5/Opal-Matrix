@@ -6,7 +6,7 @@ use crate::{
         user_profile::UserProfileExt,
     },
     state::{AppState, MemberStore},
-    tauri_functions::{get_commands, get_members},
+    tauri_functions::{get_commands, get_members_for_room},
 };
 use leptos::html::Div;
 use leptos::prelude::*;
@@ -335,9 +335,9 @@ pub fn SelectionMenu(menu: RwSignal<MenuType>, input_ref: NodeRef<Div>) -> impl 
     let members_resource = LocalResource::new(move || {
         let room_id = state.active_room_id.get();
         async move {
-            if let Some(id) = room_id {
-                let mut res = get_members(id.clone()).await.unwrap_or_default();
-                res.insert(0, UserProfile::room(id));
+            if let Some(rid) = room_id {
+                let mut res = get_members_for_room(&rid).await.unwrap_or_default();
+                res.insert(0, UserProfile::room(rid));
                 res.sort_by_key(|a| a.get_name());
 
                 res

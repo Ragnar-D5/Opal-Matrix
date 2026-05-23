@@ -14,7 +14,7 @@ use crate::{
     },
     hooks::use_tauri_event,
     state::{AppState, MemberProfileHandle, MemberStore, RoomHeader},
-    tauri_functions::{get_members, get_timeline, scroll_up},
+    tauri_functions::{get_members_for_room, get_timeline, scroll_up, toggle_reaction},
 };
 
 use colorsys::Hsl;
@@ -304,6 +304,7 @@ fn render_reactions(
     store: MemberStore,
     room_id: &str,
     user_id: &str,
+    event_id: Option<String>,
 ) -> impl IntoView {
     let Some(reactions) = reactions else {
         return ().into_any();
@@ -318,6 +319,9 @@ fn render_reactions(
         .map(|(emoji, reactors)| {
             let emoji = emoji.clone();
             let store = store.clone();
+
+            let btn_room_id = room_id.to_string();
+            let btn_event_id = event_id.clone();
 
             let reactor_pics = move || {
                 let mut pics = Vec::new();
@@ -349,13 +353,27 @@ fn render_reactions(
             let contains_user = reactors.iter().any(|v| v == user_id);
 
             view! {
-                <div
+                <button
                     class="flex items-center p-0.5 pr-1 rounded-lg border cursor-pointer transition-colors select-none"
                     class=("bg-(--ui-solid-bg)", !contains_user)
                     class=("hover:bg-(--ui-solid-hover-bg)", !contains_user)
                     class=("border-(--tile-border-color)", !contains_user)
                     class=("bg-(--accent-bg-color)", contains_user)
                     class=("border-(--accent-color)", contains_user)
+                    on:click=move |_| {
+                        let Some(e_id) = btn_event_id.clone() else {
+                            return;
+                        };
+                        let r_id = btn_room_id.clone();
+                        let async_emoji = emoji.clone();
+                        leptos::task::spawn_local(async move {
+                            let _ = toggle_reaction(&r_id, &e_id, &async_emoji)
+                                .await
+                                .map_err(|e| {
+                                    log::error!("Failed to toggle reaction: {}", e);
+                                });
+                        });
+                    }
                 >
                     <span class="text-sm leading-none pl-1">{emoji.clone()}</span>
 
@@ -368,7 +386,7 @@ fn render_reactions(
                     </span>
 
                     <div class="flex flex-row items-center pl-0.5">{reactor_pics()}</div>
-                </div>
+                </button>
             }
         })
         .collect_view();
@@ -535,7 +553,7 @@ fn render_timeline_event(
                                     </div>
                                 }
                             })}
-                        {render_reactions(reactions, store, room_id, own_user_id)}
+                        {render_reactions(reactions, store, room_id, own_user_id, event.event_id)}
                     </div>
                 </div>
             </div>
@@ -729,10 +747,10 @@ fn TimeLine() -> impl IntoView {
         spawn_local(async move {
             match scroll_up(&room_id).await {
                 Ok(new_has_more) => {
-                    log::info!("Fetched more messages");
+                    log::debug!("Fetched more messages");
                     has_more.set(new_has_more);
                     if !new_has_more {
-                        log::info!("No more messages to load");
+                        log::debug!("No more messages to load");
                     }
                 }
                 Err(e) => {
@@ -758,8 +776,8 @@ fn TimeLine() -> impl IntoView {
 
     Effect::new(move |_| {
         if let Some(room_id) = state.active_room_id.get() {
-            log::info!(
-                "Effect: Loading room {}, resetting messages to empty",
+            log::debug!(
+                "Loading room {}, resetting messages to empty",
                 room_id
             );
             messages.set(Vec::new());
@@ -773,7 +791,6 @@ fn TimeLine() -> impl IntoView {
                 match get_timeline(&current_room_id).await {
                     Ok(tl) => {
                         if state.active_room_id.get_untracked() == Some(current_room_id.clone()) {
-                            log::info!("Effect: Received {} items", tl.len());
                             messages.set(tl);
                             initial_loaded.set(true);
                             is_loading.set(false);
@@ -1025,7 +1042,7 @@ fn ChatInput() -> impl IntoView {
     view! {
         <div class="p-2 pt-0 w-full rounded-full relative">
             <SelectionMenu menu=menu input_ref=input_ref />
-            <div class="text-(--bright-text-color) w-full min-h-13 border-1 border-[var(--tile-border-color)] rounded-(--ui-border-radius) bg-[rgba(0, 0, 0, 0.6)] flex flex-row bg-(--ui-floating-bg) items-center gap-3 px-3">
+            <div class="text-(--bright-text-color) w-full min-h-13 border-1 border-[var(--tile-border-color)] rounded-(--ui-border-radius) bg-[rgba(0, 0, 0, 0.6)] flex flex-row bg-(--ui-floating-bg) items-center gap-3 px-3 cursor-text">
                 <Icon icon=UPLOAD_SIMPLE size="20px" color="var(--ui-base-color)" />
                 <div class="relative flex-1 min-w-0 flex items-center">
                     <Show when=move || is_empty.get()>
@@ -1094,8 +1111,6 @@ pub fn Chat() -> impl IntoView {
 
 #[component]
 fn ChatInfo(header: Memo<RoomHeader>) -> impl IntoView {
-    let state: AppState = expect_context();
-
     view! {
         <div class="flex flex-col w-full overflow-visible">
             {move || match header.get() {
@@ -1158,9 +1173,7 @@ fn ChatInfo(header: Memo<RoomHeader>) -> impl IntoView {
                     }
                         .into_any()
                 }
-                RoomHeader::Channel(..) => {
-                    view! { <MemberList room_id=state.active_room_id /> }.into_any()
-                }
+                RoomHeader::Channel(..) => view! { <MemberList /> }.into_any(),
                 _ => view! { <div class="px-4 py-4">"..."</div> }.into_any(),
             }}
         </div>
@@ -1168,19 +1181,22 @@ fn ChatInfo(header: Memo<RoomHeader>) -> impl IntoView {
 }
 
 #[component]
-fn MemberList(room_id: RwSignal<Option<String>>) -> impl IntoView {
-    let member_store: MemberStore = expect_context();
-    let store_clone = member_store.clone();
+fn MemberList() -> impl IntoView {
+    let state: AppState = expect_context();
+    let store: MemberStore = expect_context();
 
     let members = LocalResource::new(move || {
-        let room_id = room_id.get().unwrap_or_default();
-        let store = store_clone.clone();
+        let store = store.clone();
 
         async move {
+            let Some(room_id) = state.active_room_id.get() else {
+                return (Vec::new(), Vec::new());
+            };
+
             let mut online = Vec::new();
             let mut offline = Vec::new();
 
-            let Ok(members) = get_members(room_id.clone()).await else {
+            let Ok(members) = get_members_for_room(&room_id).await else {
                 return (Vec::new(), Vec::new());
             };
 

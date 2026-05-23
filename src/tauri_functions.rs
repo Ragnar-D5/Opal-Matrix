@@ -6,24 +6,6 @@ use shared::{
 
 use crate::app::{call_tauri, call_tauri_no_args};
 
-pub async fn get_members(room_id: String) -> Result<Vec<UserProfile>, String> {
-    let args = serde_wasm_bindgen::to_value(&json!(
-            {
-        "room_id": room_id
-    }
-        ))
-    .map_err(|_| "Failed to construct args".to_string())?;
-
-    let js_val = call_tauri("get_members_for_room", args)
-        .await
-        .map_err(|e| format!("Failed to get members: {:?}", e))?;
-
-    let members: Vec<UserProfile> = serde_wasm_bindgen::from_value(js_val)
-        .map_err(|e| format!("Failed to deserialize answer: {:?}", e))?;
-
-    Ok(members)
-}
-
 pub async fn commit_message(message: String, room_id: String) -> Result<(), String> {
     let args = serde_wasm_bindgen::to_value(&json!({ "html": message, "room_id": room_id }))
         .map_err(|e| format!("Failed to construct args: {e}"))?;
@@ -122,4 +104,17 @@ pub async fn get_members_for_room(room_id: &str) -> Result<Vec<UserProfile>, Str
         .map_err(|e| format!("Failed to parse response: {:?}", e))?;
 
     Ok(members)
+}
+
+pub async fn toggle_reaction(room_id: &str, event_id: &str, reaction: &str) -> Result<(), String> {
+    let args = serde_wasm_bindgen::to_value(
+        &json!({ "room_id": room_id, "event_id": event_id, "reaction": reaction }),
+    )
+    .map_err(|e| format!("Failed to serialize request: {:?}", e))?;
+
+    call_tauri("toggle_reaction", args)
+        .await
+        .map_err(|e| format!("Tauri call failed: {:?}", e))?;
+
+    Ok(())
 }

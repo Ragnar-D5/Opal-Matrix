@@ -244,6 +244,10 @@ pub struct MemberStore {
 
 impl MemberStore {
     pub fn get_profile(&self, room_id: &str, user_id: &str) -> ArcRwSignal<Option<UserProfile>> {
+        if room_id.is_empty() {
+            return ArcRwSignal::new(None);
+        }
+
         if room_id == user_id {
             return ArcRwSignal::new(Some(UserProfile {
                 display_name: Some("room".into()),

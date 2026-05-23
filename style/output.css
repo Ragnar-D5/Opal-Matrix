@@ -565,6 +565,9 @@
   .cursor-pointer {
     cursor: pointer;
   }
+  .cursor-text {
+    cursor: text;
+  }
   .flex-col {
     flex-direction: column;
   }

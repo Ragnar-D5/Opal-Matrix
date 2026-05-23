@@ -1,13 +1,13 @@
 use futures::StreamExt;
 use matrix_sdk::Client as MatrixClient;
+use matrix_sdk_ui::timeline::TimelineEventItemId;
 use std::str::FromStr;
 use tokio_util::sync::CancellationToken;
 
 use ego_tree::NodeRef;
 use log::{error, warn};
 use ruma::{
-    OwnedUserId, RoomId,
-    events::{AnyMessageLikeEventContent, Mentions, room::message::RoomMessageEventContent},
+    EventId, OwnedEventId, OwnedUserId, RoomId, events::{AnyMessageLikeEventContent, Mentions, room::message::RoomMessageEventContent}
 };
 use scraper::{Html, Node};
 use shared::timeline::{RichTextSpan, UiTimelineDiff, UiTimelineItem};
@@ -233,4 +233,26 @@ async fn send_timeline_diffs(handle: AppHandle, diffs: Vec<UiTimelineDiff>) {
     if let Err(e) = handle.emit("timeline_update", diffs) {
         error!("Failed to emit timeline update: {:?}", e);
     }
+}
+
+#[command(rename_all = "snake_case")]
+pub async fn toggle_reaction(
+    matrix_client: State<'_, RwLock<MatrixClient>>,
+    timeline_manager: State<'_, TimelineManager>,
+    room_id: String,
+    event_id: String,
+    reaction: String,
+) -> Result<(), TauriError> {
+    log::debug!("Toggling reaction '{}' on event {} in room {}", reaction, event_id, room_id);
+    let room = matrix_client
+        .read()
+        .await
+        .get_room(&RoomId::parse(&room_id)?)
+        .ok_or("No room found")?;
+
+    let timeline = timeline_manager.get_or_create_timeline(&room).await?;
+
+    timeline.toggle_reaction(&TimelineEventItemId::EventId(OwnedEventId::try_from(event_id)?), &reaction).await?;
+
+    Ok(())
 }
