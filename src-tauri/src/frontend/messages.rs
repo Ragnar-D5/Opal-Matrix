@@ -7,7 +7,7 @@ use tokio_util::sync::CancellationToken;
 use ego_tree::NodeRef;
 use log::{error, warn};
 use ruma::{
-    EventId, OwnedEventId, OwnedUserId, RoomId, events::{AnyMessageLikeEventContent, Mentions, room::message::RoomMessageEventContent}
+    OwnedEventId, OwnedUserId, RoomId, events::{AnyMessageLikeEventContent, Mentions, room::message::RoomMessageEventContent}
 };
 use scraper::{Html, Node};
 use shared::timeline::{RichTextSpan, UiTimelineDiff, UiTimelineItem};

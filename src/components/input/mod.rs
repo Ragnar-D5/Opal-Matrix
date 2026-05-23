@@ -339,9 +339,9 @@ pub fn get_caret_position(el: &HtmlElement) -> u32 {
     };
     let pre_caret_range = range.clone_range();
 
-    pre_caret_range
+    let _ = pre_caret_range
         .select_node_contents(el)
-        .unwrap_or_else(|_| {});
+        .map_err(|_| warn!("Could not select node contents"));
     pre_caret_range
         .set_end(&range.end_container().unwrap(), range.end_offset().unwrap())
         .unwrap();
