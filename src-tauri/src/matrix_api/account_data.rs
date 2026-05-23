@@ -1,203 +1,83 @@
-// use std::sync::Arc;
+use serde::{Deserialize, Serialize};
+use shared::account_data::{Breadcrumbs, ServerOrder};
+use tauri::command;
 
-// use crate::{AppState, TauriError, construct_url};
-// use serde::{Serialize, de::DeserializeOwned};
-// use shared::account_data::{AccountData, AccountDataPayload, AccountDataType};
-// use tauri::{State, command};
-// use tauri_plugin_http::reqwest::Client;
+use crate::{MatrixClientState, TauriError};
 
-// /// Generic function to set account data for a given type T that implements the `AccountData` trait.
-// async fn set_account_data_api<T: Serialize + AccountData>(
-//     matrix_url: &str,
-//     user_id: &str,
-//     access_token: &str,
-//     data: T,
-// ) -> Result<(), TauriError> {
-//     let client = Client::new();
+use ruma::events::macros::EventContent;
 
-//     let url = construct_url(vec![
-//         matrix_url,
-//         "_matrix",
-//         "client",
-//         "v3",
-//         "user",
-//         user_id,
-//         "account_data",
-//         T::DATA_KEY,
-//     ])?;
+#[derive(Clone, Debug, Serialize, Deserialize, EventContent)]
+#[ruma_event(type = "org.opal-matrix.breadcrumbs", kind = GlobalAccountData)]
+pub struct BreadcrumbsEventContent(pub Breadcrumbs);
 
-//     client
-//         .put(url)
-//         .bearer_auth(access_token)
-//         .json(&data)
-//         .send()
-//         .await?
-//         .error_for_status()?;
+#[derive(Clone, Debug, Serialize, Deserialize, EventContent)]
+#[ruma_event(type = "org.opal-matrix.server_order", kind = GlobalAccountData)]
+pub struct ServerOrderEventContent(pub ServerOrder);
 
-//     Ok(())
-// }
+#[command]
+pub async fn get_breadcrumbs(client: MatrixClientState<'_>) -> Result<Breadcrumbs, TauriError> {
+    log::debug!("Getting breadcrumbs");
+    let client = client.read().await;
 
-// /// Generic function to get account data for a given type T that implements the `AccountData` trait.
-// async fn get_account_data_api<T: DeserializeOwned + Serialize + AccountData + Default>(
-//     matrix_url: &str,
-//     user_id: &str,
-//     access_token: &str,
-// ) -> Result<T, TauriError> {
-//     let client = Client::new();
+    let res = client
+        .account()
+        .account_data::<BreadcrumbsEventContent>()
+        .await?;
 
-//     let url = construct_url(vec![
-//         matrix_url,
-//         "_matrix",
-//         "client",
-//         "v3",
-//         "user",
-//         user_id,
-//         "account_data",
-//         T::DATA_KEY,
-//     ])?;
+    let breadcumbs: Breadcrumbs = if let Some(event) = res {
+        event.deserialize()?.0
+    } else {
+        Breadcrumbs::default()
+    };
 
-//     let response = client.get(url).bearer_auth(access_token).send().await?;
+    Ok(breadcumbs)
+}
 
-//     if response.status().is_success() {
-//         let data = response.json::<T>().await?;
-//         Ok(data)
-//     } else if response.status().as_u16() == 404 {
-//         set_account_data_api(matrix_url, user_id, access_token, T::default()).await?;
-//         Ok(T::default())
-//     } else {
-//         Err(format!(
-//             "Failed to fetch account data: HTTP {}: {}",
-//             response.status(),
-//             response.text().await?
-//         )
-//         .into())
-//     }
-// }
+#[command]
+pub async fn get_server_order(client: MatrixClientState<'_>) -> Result<ServerOrder, TauriError> {
+    log::debug!("Getting server order");
+    let client = client.read().await;
 
-// /// Command to set account data, which can handle multiple types of account data based on the payload.
-// ///
-// /// Example usage from a leptos frontend:
-// /// ```rust
-// /// use shared::account_data::{AccountDataPayload, Breadcrumbs};
-// /// use leptos::prelude::*;
-// ///
-// /// let payload = AccountDataPayload::Breadcrumbs(Breadcrumbs {
-// ///    room_ids: vec!["!roomid:example.com".to_string()],
-// /// });
-// ///
-// /// invoke("set_account_data", serde_wasm_bindgen::to_value(&payload)?).await?;
-// /// ```
-// #[command]
-// pub async fn set_account_data(
-//     state: State<'_, Arc<AppState>>,
-//     payload: AccountDataPayload,
-// ) -> Result<(), TauriError> {
-//     let (matrix_url, access_token, user_id) = {
-//         let m = state.home_server_info.read().await;
-//         let t = state.token.read().await;
-//         let c = state.client.read().await;
+    let res = client
+        .account()
+        .account_data::<ServerOrderEventContent>()
+        .await?;
 
-//         let url = m.as_ref().ok_or("Not logged in")?.clone();
-//         let token = t.as_ref().ok_or("Not logged in")?.access_token.clone();
-//         let id = c.as_ref().ok_or("Not logged in")?.user_id.clone();
-//         (url.base_url, token, id)
-//     };
+    let server_order: ServerOrder = if let Some(event) = res {
+        event.deserialize()?.0
+    } else {
+        ServerOrder::default()
+    };
 
-//     match payload {
-//         AccountDataPayload::Breadcrumbs(data) => {
-//             set_account_data_api(&matrix_url, &user_id, &access_token, data).await?
-//         }
-//         AccountDataPayload::ServerOrder(data) => {
-//             set_account_data_api(&matrix_url, &user_id, &access_token, data).await?
-//         }
-//     }
+    Ok(server_order)
+}
 
-//     Ok(())
-// }
+#[command]
+pub async fn set_breadcrumbs(
+    client: MatrixClientState<'_>,
+    breadcrumbs: Breadcrumbs,
+) -> Result<(), TauriError> {
+    log::debug!("Setting breadcrumbs");
+    let client = client.read().await;
 
-// /// Command to get account data. The `data_type` parameter specifies which type of account data to fetch (e.g., "breadcrumbs" or "server_order").
-// ///
-// /// Example usage from a leptos frontend:
-// /// ```rust
-// /// use shared::account_data::{AccountDataPayload, AccountDataType, GetAccountDataArgs};
-// /// use leptos::prelude::*;
-// ///
-// /// let payload = GetAccountDataArgs {
-// ///     data_type: AccountDataType::Breadcrumbs,
-// /// };
-// ///
-// /// let data = invoke("get_account_data", serde_wasm_bindgen::to_value(&payload)?).await?;
-// /// ```
-// #[command(rename_all = "snake_case")]
-// pub async fn get_account_data(
-//     state: State<'_, Arc<AppState>>,
-//     data_type: AccountDataType,
-// ) -> Result<AccountDataPayload, TauriError> {
-//     let (matrix_url, access_token, user_id) = {
-//         let m = state.home_server_info.read().await;
-//         let t = state.token.read().await;
-//         let c = state.client.read().await;
+    let content = BreadcrumbsEventContent(breadcrumbs);
 
-//         let url = m.as_ref().ok_or("Not logged in")?.clone();
-//         let token = t.as_ref().ok_or("Not logged in")?.access_token.clone();
-//         let id = c.as_ref().ok_or("Not logged in")?.user_id.clone();
-//         (url.base_url, token, id)
-//     };
+    client.account().set_account_data(content).await?;
 
-//     match data_type {
-//         AccountDataType::Breadcrumbs => {
-//             let data = get_account_data_api::<shared::account_data::Breadcrumbs>(
-//                 &matrix_url,
-//                 &user_id,
-//                 &access_token,
-//             )
-//             .await?;
-//             Ok(AccountDataPayload::Breadcrumbs(data))
-//         }
-//         AccountDataType::ServerOrder => {
-//             let data = get_account_data_api::<shared::account_data::ServerOrder>(
-//                 &matrix_url,
-//                 &user_id,
-//                 &access_token,
-//             )
-//             .await?;
-//             Ok(AccountDataPayload::ServerOrder(data))
-//         }
-//     }
-// }
+    Ok(())
+}
 
-// /// Convenience command to directly get breadcrumbs without needing to specify the data type.
-// ///
-// /// Example usage from a leptos frontend:
-// /// ```rust
-// /// use leptos::prelude::*;
-// ///
-// /// let breadcrumbs = invoke("get_breadcrumbs", ()).await?;
-// /// ```
-// #[command]
-// pub async fn get_breadcrumbs(
-//     state: State<'_, Arc<AppState>>,
-// ) -> Result<shared::account_data::Breadcrumbs, TauriError> {
-//     match get_account_data(state, AccountDataType::Breadcrumbs).await? {
-//         AccountDataPayload::Breadcrumbs(data) => Ok(data),
-//         _ => Err("Unexpected account data type".into()),
-//     }
-// }
+#[command(rename_all = "snake_case")]
+pub async fn set_server_order(
+    client: MatrixClientState<'_>,
+    server_order: ServerOrder,
+) -> Result<(), TauriError> {
+    log::debug!("Setting server order");
+    let client = client.read().await;
 
-// /// Convenience command to directly get server order without needing to specify the data type.
-// ///
-// /// Example usage from a leptos frontend:
-// /// ```rust
-// /// use leptos::prelude::*;
-// ///
-// /// let server_order = invoke("get_server_order", ()).await?;
-// /// ```
-// #[command]
-// pub async fn get_server_order(
-//     state: State<'_, Arc<AppState>>,
-// ) -> Result<shared::account_data::ServerOrder, TauriError> {
-//     match get_account_data(state, AccountDataType::ServerOrder).await? {
-//         AccountDataPayload::ServerOrder(data) => Ok(data),
-//         _ => Err("Unexpected account data type".into()),
-//     }
-// }
+    let content = ServerOrderEventContent(server_order);
+
+    client.account().set_account_data(content).await?;
+
+    Ok(())
+}

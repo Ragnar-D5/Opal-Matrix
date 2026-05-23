@@ -2,8 +2,9 @@ use std::collections::{HashMap, HashSet};
 
 use leptos::task::spawn_local;
 use log::error;
+use serde_json::json;
 use shared::{
-    account_data::{AccountDataArgs, AccountDataPayload, Breadcrumbs, ServerOrder},
+    account_data::{Breadcrumbs, ServerOrder},
     sidebar::{RoomKind, RoomNode, SidebarState},
     user_profile::{PresenceInfo, UserProfile},
 };
@@ -146,11 +147,11 @@ impl AppState {
     fn save_breadcrumbs(&self) {
         let breadcrumbs = self.breadcrums.get();
         spawn_local(async move {
-            let args = serde_wasm_bindgen::to_value(&AccountDataArgs {
-                payload: AccountDataPayload::Breadcrumbs(breadcrumbs),
-            })
-            .expect("Failed to serialize breadcrumbs");
-            if let Err(err) = call_tauri("set_account_data", args).await {
+            let args = serde_wasm_bindgen::to_value(&json!({
+                "breadcrumbs": breadcrumbs
+            })).expect("Failed to serialize breadcrumbs");
+
+            if let Err(err) = call_tauri("set_breadcrumbs", args).await {
                 error!("Error saving breadcrumbs: {:?}", err);
             }
         });
@@ -164,11 +165,11 @@ impl AppState {
     fn save_server_order(&self) {
         let order = self.server_order.get_untracked();
         spawn_local(async move {
-            let args = serde_wasm_bindgen::to_value(&AccountDataArgs {
-                payload: AccountDataPayload::ServerOrder(order),
-            })
-            .expect("Failed to serialize server order");
-            if let Err(err) = call_tauri("set_account_data", args).await {
+            let args = serde_wasm_bindgen::to_value(&json!({
+                "server_order": order
+            })).expect("Failed to serialize server order");
+
+            if let Err(err) = call_tauri("set_server_order", args).await {
                 error!("Error saving server order: {:?}", err);
             }
         });

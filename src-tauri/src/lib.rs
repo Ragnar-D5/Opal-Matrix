@@ -545,10 +545,10 @@ pub fn run() {
             // matrix API commands
             matrix_api::discovery::choose_home_server,
             // matrix_api::messages::fetch_messages,
-            // matrix_api::account_data::set_account_data,
-            // matrix_api::account_data::get_account_data,
-            // matrix_api::account_data::get_breadcrumbs,
-            // matrix_api::account_data::get_server_order,
+            matrix_api::account_data::get_breadcrumbs,
+            matrix_api::account_data::set_breadcrumbs,
+            matrix_api::account_data::get_server_order,
+            matrix_api::account_data::set_server_order,
             matrix_api::previews::get_url_preview,
         ])
         .register_asynchronous_uri_scheme_protocol(
