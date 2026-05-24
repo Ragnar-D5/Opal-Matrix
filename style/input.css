@@ -43,7 +43,6 @@
 
 @utility text-token {
     white-space: pre-wrap;
-    cursor: text;
     line-height: 1;
 }
 

@@ -474,6 +474,7 @@ pub fn run() {
                     .level_for("html5ever", log::LevelFilter::Off)
                     .level_for("matrix_sdk", log::LevelFilter::Debug)
                     .level_for("matrix_sdk_base", log::LevelFilter::Debug)
+                    .level_for("rustls", log::LevelFilter::Off)
                     .format(|out, message, record| {
                         let level = match record.level() {
                             log::Level::Error => "ERROR",

@@ -575,11 +575,6 @@
   .animate-pulse {
     animation: var(--animate-pulse);
   }
-  .text-token {
-    white-space: pre-wrap;
-    cursor: text;
-    line-height: 1;
-  }
   .cursor-grab {
     cursor: grab;
   }
@@ -591,6 +586,9 @@
   }
   .cursor-text {
     cursor: text;
+  }
+  .resize {
+    resize: both;
   }
   .flex-col {
     flex-direction: column;
@@ -1014,6 +1012,10 @@
   }
   .text-\[15px\] {
     font-size: 15px;
+  }
+  .text-token {
+    white-space: pre-wrap;
+    line-height: 1;
   }
   .leading-none {
     --tw-leading: 1;

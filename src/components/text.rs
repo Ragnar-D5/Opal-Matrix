@@ -42,7 +42,7 @@ impl RichTextExt for RichTextSpan {
     fn render(self, store: MemberStore, room_id: String) -> impl IntoView {
         match self {
             RichTextSpan::Plain(text) => {
-                view! { <span class="text-token">{text}</span> }.into_any()
+                view! { <span class="text-token cursor-text">{text}</span> }.into_any()
             }
 
             RichTextSpan::Link { url, .. } => {

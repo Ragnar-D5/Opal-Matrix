@@ -20,7 +20,9 @@ web-sys = { version = "0.3.95", features = [
   "WebGlBuffer",
   "WebGlUniformLocation",
   "Performance",
-  "WebGlVertexArrayObject"
+  "WebGlVertexArrayObject",
+  "Worker",
+  "OffscreenCanvas"
 ] }
 leptos = { version = "0.8", features = ["csr"] }
 wasm-bindgen = "0.2"

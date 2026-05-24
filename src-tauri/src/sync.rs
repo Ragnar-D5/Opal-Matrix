@@ -49,22 +49,14 @@ pub async fn attach_callbacks(client: &MatrixClient, handle: &AppHandle) -> Resu
             });
     });
 
+    send_sidebar(&client.joined_rooms(), handle).await?;
+
     let client_sync_clone = client.clone();
     let handle_clone = handle.clone();
     spawn(async move {
         let sync_settings = SyncSettings::default()
             .ignore_timeout_on_first_sync(true)
             .timeout(std::time::Duration::from_secs(30));
-
-        if let Err(e) = client_sync_clone.sync_once(sync_settings.clone()).await {
-            log::error!("Initial sync failed: {e}");
-        };
-
-        send_sidebar(&client_sync_clone.joined_rooms(), &handle_clone)
-            .await
-            .unwrap_or_else(|e| {
-                log::error!("Failed to send sidebar after initial sync: {:?}", e);
-            });
 
         let sync_result = client_sync_clone
             .sync_with_result_callback(sync_settings, |_| {

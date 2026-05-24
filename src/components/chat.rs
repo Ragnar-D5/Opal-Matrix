@@ -48,6 +48,9 @@ fn ReplyPreview(reply_info: Option<ReplyInfo>) -> impl IntoView {
     };
 
     let store: MemberStore = expect_context();
+    let state: AppState = expect_context();
+
+    log::debug!("Rendering reply: {:?}", reply_info);
 
     let mut content = vec![RichTextSpan::Plain("click to go to event".to_string())];
 
@@ -73,7 +76,7 @@ fn ReplyPreview(reply_info: Option<ReplyInfo>) -> impl IntoView {
     };
 
     view! {
-        <div class="flex items-center gap-1 ml-[52px] mb-1 cursor-pointer text-xs relative group/reply">
+        <div class="flex items-center gap-1 ml-[52px] mb-1 cursor-pointer text-xs relative group/reply cursor-pointer">
             <div class="absolute -left-[32px] top-[calc(50%-1px)] w-[28px] h-4.5 border-l-2 border-t-2 border-white/20 rounded-tl-md"></div>
 
             <div class="shrink-0">
@@ -87,7 +90,12 @@ fn ReplyPreview(reply_info: Option<ReplyInfo>) -> impl IntoView {
             <span class="truncate text-bright line-clamp-1">
                 {content
                     .into_iter()
-                    .map(|v| v.render(store.clone(), "".to_string()))
+                    .map(|v| {
+                        v.render(
+                            store.clone(),
+                            state.active_room_id.get_untracked().unwrap_or_default(),
+                        )
+                    })
                     .collect_view()}
             </span>
         </div>
