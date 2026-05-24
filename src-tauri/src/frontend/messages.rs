@@ -1,5 +1,5 @@
 use futures::StreamExt;
-use matrix_sdk::Client as MatrixClient;
+use matrix_sdk::{Client as MatrixClient, room::edit::EditedContent};
 use matrix_sdk_ui::timeline::TimelineEventItemId;
 use std::str::FromStr;
 use tokio_util::sync::CancellationToken;
@@ -7,7 +7,7 @@ use tokio_util::sync::CancellationToken;
 use ego_tree::NodeRef;
 use log::{error, warn};
 use ruma::{
-    OwnedEventId, OwnedUserId, RoomId, events::{AnyMessageLikeEventContent, Mentions, room::message::RoomMessageEventContent}
+    OwnedEventId, OwnedUserId, RoomId, events::{AnyMessageLikeEventContent, Mentions, room::message::{RoomMessageEventContent, RoomMessageEventContentWithoutRelation}}
 };
 use scraper::{Html, Node};
 use shared::timeline::{RichTextSpan, UiTimelineDiff, UiTimelineItem};
@@ -26,7 +26,9 @@ pub async fn commit_message(
     matrix_client: State<'_, RwLock<MatrixClient>>,
     timeline_manager: State<'_, TimelineManager>,
     room_id: String,
+    replies_to: Option<String>,
 ) -> Result<(), TauriError> {
+    log::debug!("Committing message to room {}", room_id);
     let client = matrix_client.read().await;
     let room = client
         .get_room(&RoomId::parse(&room_id)?)
@@ -39,11 +41,46 @@ pub async fn commit_message(
 
     let (body, formatted_body) = process_string_to_message(&html, &mut mentions, &mut spans);
 
-    let mut message_content = RoomMessageEventContent::text_html(body, formatted_body);
-    message_content.mentions = Some(mentions.clone());
+    if let Some(reply_to_id) = replies_to {
+        let content = RoomMessageEventContentWithoutRelation::text_html(body, formatted_body);
+        timeline.send_reply(content, OwnedEventId::try_from(reply_to_id)?).await?;
+    } else {
+        let mut message_content = RoomMessageEventContent::text_html(body, formatted_body);
+        message_content.mentions = Some(mentions.clone());
 
-    let content = AnyMessageLikeEventContent::RoomMessage(message_content);
-    timeline.send(content).await?;
+        let content = AnyMessageLikeEventContent::RoomMessage(message_content);
+        timeline.send(content).await?;
+    }
+
+    Ok(())
+}
+
+#[command(rename_all = "snake_case")]
+pub async fn edit_message(
+    html: String,
+    matrix_client: State<'_, RwLock<MatrixClient>>,
+    timeline_manager: State<'_, TimelineManager>,
+    room_id: String,
+    event_id: String,
+) -> Result<(), TauriError> {
+    log::debug!("Editing message {} in room {}", event_id, room_id);
+    let client = matrix_client.read().await;
+    let room = client
+        .get_room(&RoomId::parse(&room_id)?)
+        .ok_or("Room not found")?;
+
+    let timeline = timeline_manager.get_or_create_timeline(&room).await?;
+
+    let mut mentions = Mentions::default();
+    let mut spans = Vec::new();
+
+    let (body, formatted_body) = process_string_to_message(&html, &mut mentions, &mut spans);
+
+
+    let mut messge_content = RoomMessageEventContentWithoutRelation::text_html(body, formatted_body);
+    messge_content.mentions = Some(mentions);
+
+    timeline.edit(&TimelineEventItemId::EventId(OwnedEventId::try_from(event_id)?), EditedContent::RoomMessage(messge_content)).await?;
 
     Ok(())
 }

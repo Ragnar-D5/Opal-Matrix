@@ -538,6 +538,7 @@ pub fn run() {
             set_frontend_focused,
             // frontend commands
             frontend::messages::commit_message,
+            frontend::messages::edit_message,
             frontend::messages::get_timeline,
             frontend::messages::scroll_up,
             frontend::messages::toggle_reaction,

@@ -8,10 +8,11 @@ use wasm_bindgen::JsCast;
 use web_sys::{HtmlDivElement, HtmlElement, KeyboardEvent};
 use web_sys::{Node, window};
 
+use crate::components::chat::ChatInputInfo;
 use crate::components::input::menu::MenuType;
 use crate::components::input::menu::{SelectedItem, commit_selection};
 use crate::state::{AppState, MemberStore};
-use crate::tauri_functions::commit_message;
+use crate::tauri_functions::{commit_message, edit_message};
 
 pub(crate) mod menu;
 
@@ -212,6 +213,7 @@ pub fn handle_keydown(
     state: AppState,
     store: MemberStore,
     is_empty: RwSignal<bool>,
+    input_info: RwSignal<Option<ChatInputInfo>>
 ) {
     let Some(el) = input_ref.get() else { return };
 
@@ -263,11 +265,31 @@ pub fn handle_keydown(
                     });
                 }
 
-                spawn_local(async move {
-                    if let Err(e) = commit_message(message, room_id).await {
-                        warn!("Failed to commit message: {e}");
-                    };
-                });
+                match input_info.get_untracked() {
+                    Some(ChatInputInfo::ReplyingTo { event_id, .. }) => {
+                        spawn_local(async move {
+                            if let Err(e) = commit_message(message, room_id, Some(event_id)).await {
+                                warn!("Failed to commit message: {e}");
+                            };
+                        });
+                    }
+                    Some(ChatInputInfo::Editing { event_id, .. }) => {
+                        spawn_local(async move {
+                            if let Err(e) = edit_message(message, room_id, event_id).await {
+                                warn!("Failed to commit message: {e}");
+                            };
+                        });
+                    }
+                    _ => {
+                        spawn_local(async move {
+                            if let Err(e) = commit_message(message, room_id, None).await {
+                                warn!("Failed to commit message: {e}");
+                            };
+                        });
+                    }
+                }
+
+                input_info.set(None);
             }
         }
         "ArrowUp" | "ArrowDown" if current_menu != MenuType::None => {
@@ -311,8 +333,14 @@ pub fn handle_keydown(
                 _ => return,
             };
         }
-        "Escape" if current_menu != MenuType::None => {
-            menu.set(MenuType::None);
+        "Escape"  => {
+            if current_menu != MenuType::None {
+                ev.prevent_default();
+                menu.set(MenuType::None);
+            } else if input_info.get_untracked().is_some() {
+                ev.prevent_default();
+                input_info.set(None);
+            }
         }
         _ => {}
     }

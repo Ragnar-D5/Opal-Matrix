@@ -224,6 +224,9 @@
   .end {
     inset-inline-end: var(--spacing);
   }
+  .-top-4 {
+    top: calc(var(--spacing) * -4);
+  }
   .top-0 {
     top: calc(var(--spacing) * 0);
   }
@@ -653,6 +656,9 @@
   .rounded-\(--floating-border-radius\) {
     border-radius: var(--floating-border-radius);
   }
+  .rounded-\(--gap\) {
+    border-radius: var(--gap);
+  }
   .rounded-\(--ui-border-radius\) {
     border-radius: var(--ui-border-radius);
   }
@@ -671,12 +677,20 @@
   .rounded-md {
     border-radius: var(--radius-md);
   }
+  .rounded-t-\(--ui-border-radius\) {
+    border-top-left-radius: var(--ui-border-radius);
+    border-top-right-radius: var(--ui-border-radius);
+  }
   .rounded-tl-md {
     border-top-left-radius: var(--radius-md);
   }
   .rounded-r-\[3px\] {
     border-top-right-radius: 3px;
     border-bottom-right-radius: 3px;
+  }
+  .rounded-b-\(--ui-border-radius\) {
+    border-bottom-right-radius: var(--ui-border-radius);
+    border-bottom-left-radius: var(--ui-border-radius);
   }
   .border {
     border-style: var(--tw-border-style);
@@ -713,6 +727,10 @@
   .border-b {
     border-bottom-style: var(--tw-border-style);
     border-bottom-width: 1px;
+  }
+  .border-b-0 {
+    border-bottom-style: var(--tw-border-style);
+    border-bottom-width: 0px;
   }
   .border-l-2 {
     border-left-style: var(--tw-border-style);
@@ -775,9 +793,6 @@
   }
   .bg-\[color\:var\(--color-item-selected\)\] {
     background-color: var(--color-item-selected);
-  }
-  .bg-\[var\(--accent-color\)\] {
-    background-color: var(--accent-color);
   }
   .bg-\[var\(--bright-text-color\)\] {
     background-color: var(--bright-text-color);
@@ -1253,6 +1268,13 @@
       }
     }
   }
+  .group-hover\/msg\:opacity-100 {
+    &:is(:where(.group\/msg):hover *) {
+      @media (hover: hover) {
+        opacity: 100%;
+      }
+    }
+  }
   .placeholder\:text-\(--muted-text-color\) {
     &::placeholder {
       color: var(--muted-text-color);
@@ -1312,6 +1334,13 @@
     &:hover {
       @media (hover: hover) {
         color: var(--bright-text-color, #ffffff);
+      }
+    }
+  }
+  .hover\:text-normal {
+    &:hover {
+      @media (hover: hover) {
+        color: var(--text-color, #dbdee1);
       }
     }
   }

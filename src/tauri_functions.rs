@@ -6,13 +6,36 @@ use shared::{
 
 use crate::app::{call_tauri, call_tauri_no_args};
 
-pub async fn commit_message(message: String, room_id: String) -> Result<(), String> {
-    let args = serde_wasm_bindgen::to_value(&json!({ "html": message, "room_id": room_id }))
-        .map_err(|e| format!("Failed to construct args: {e}"))?;
+pub async fn commit_message(
+    message: String,
+    room_id: String,
+    replies_to: Option<String>,
+) -> Result<(), String> {
+    let args = serde_wasm_bindgen::to_value(
+        &json!({ "html": message, "room_id": room_id, "replies_to": replies_to }),
+    )
+    .map_err(|e| format!("Failed to construct args: {e}"))?;
 
     call_tauri("commit_message", args)
         .await
         .map_err(|e| format!("Failed to commit message: {:?}", e))?;
+
+    Ok(())
+}
+
+pub async fn edit_message(
+    message: String,
+    room_id: String,
+    event_id: String,
+) -> Result<(), String> {
+    let args = serde_wasm_bindgen::to_value(
+        &json!({ "html": message, "room_id": room_id, "event_id": event_id }),
+    )
+    .map_err(|e| format!("Failed to construct args: {e}"))?;
+
+    call_tauri("edit_message", args)
+        .await
+        .map_err(|e| format!("Failed to edit message: {:?}", e))?;
 
     Ok(())
 }

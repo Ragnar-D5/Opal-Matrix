@@ -18,18 +18,17 @@ use crate::{
 };
 
 use colorsys::Hsl;
-use phosphor_leptos::{HASH, INFO, Icon, IconWeight, PHONE, TRASH, UPLOAD_SIMPLE, WARNING_CIRCLE};
+use phosphor_leptos::{ARROW_BEND_UP_LEFT, HASH, INFO, Icon, IconWeight, PENCIL_SIMPLE, PHONE, SMILEY, TRASH, UPLOAD_SIMPLE, WARNING_CIRCLE, X_CIRCLE};
 
 use chrono::{DateTime, Local, TimeZone};
 use leptos::{ev, html::Div, prelude::*, task::spawn_local};
 use leptos_use::{UseIntersectionObserverReturn, use_event_listener, use_intersection_observer};
 use shared::{
-    commands::Command,
     get_color,
     timeline::{
         DetailState, EventContent, MessageContent, ReactionInfo, ReplyInfo, RichTextSpan, SystemMessage, UiMessageType, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind
     },
-    user_profile::{PresenceStatus, UserProfile},
+    user_profile::{PresenceStatus},
 };
 use std::collections::HashMap;
 use web_sys::IntersectionObserverEntry;
@@ -464,13 +463,14 @@ fn render_timeline_event(
 ) -> impl IntoView {
     let hovered = RwSignal::new(false);
 
-    let (show_highlight, date, name, avatar_url, color, reply_info, event_id, content) = item_sig.with_untracked(|item| {
+    let (show_highlight, date, sender_id, name, avatar_url, color, reply_info, event_id, content) = item_sig.with_untracked(|item| {
         if let UiTimelineItemKind::Event(event) = &item.kind {
             let sender_id = event.get_sender_id();
             let name = event.get_sender_name().unwrap_or(sender_id.clone().unwrap_or("Unknown".to_string()));
             (
                 event.flags.is_highlighted,
                 get_date_from_ts(event.timestamp as i64),
+                sender_id,
                 name,
                 event.get_sender_avatar_url(),
                 event.get_sender_id().map(|v| get_color(&v)).unwrap_or(Hsl::new(0.0, 0.0, 70.0, None)),
@@ -483,15 +483,38 @@ fn render_timeline_event(
         }
     });
 
-    let rendered_content = match content {
-        EventContent::MsgLike(ev) => render_message_content(*ev, store.clone(), room_id.to_string()),
-        EventContent::FailedToParseMessageLike { event_type, error } => return view! { <div class="text-red-500 italic">{format!("Failed to render {event_type}: {error}")}</div> }.into_any(),
-        EventContent::FailedToParseState { event_type, state_key, error } => return view! {
-            <div class="text-red-500 italic">
-                {format!("Failed to render {event_type} with state key {state_key}: {error}")}
-            </div>
-        }.into_any(),
-        EventContent::SystemMessage(ev) => return render_system_message(ev, store, room_id.to_string()).into_any(),
+    let item_id = item_sig.get_untracked().id.clone();
+
+    let room_id_for_content = room_id.to_string();
+    let store_for_content = store.clone();
+
+    let rendered_content = move || {
+        item_sig.with(|item| {
+            if let UiTimelineItemKind::Event(event) = &item.kind {
+                match &event.content {
+                    EventContent::MsgLike(ev) => render_message_content(
+                        *ev.clone(),
+                        store_for_content.clone(),
+                        room_id_for_content.clone(),
+                    ).into_any(),
+                    EventContent::FailedToParseMessageLike { event_type, error } => view! { <div class="text-red-500 italic">{format!("Failed to render {event_type}: {error}")}</div> }.into_any(),
+                    EventContent::FailedToParseState { event_type, state_key, error } => view! {
+                        <div class="text-red-500 italic">
+                            {format!(
+                                "Failed to render {event_type} with state key {state_key}: {error}",
+                            )}
+                        </div>
+                    }.into_any(),
+                    EventContent::SystemMessage(ev) => render_system_message(
+                        ev.clone(),
+                        store_for_content.clone(),
+                        room_id_for_content.clone()
+                    ).into_any(),
+                }
+            } else {
+                ().into_any()
+            }
+        })
     };
 
     let store_clone = store.clone();
@@ -515,15 +538,38 @@ fn render_timeline_event(
         )
     };
 
+    let input_info: RwSignal<Option<ChatInputInfo>> = expect_context();
+    let input_ref: NodeRef<Div> = expect_context();
+
+    let current_highlight = Memo::new({
+        let item_id = item_id.clone();
+        move |_| {
+            match input_info.get() {
+                Some(ChatInputInfo::ReplyingTo { item_id: reply_id, .. })
+                    if *reply_id == item_id => return Some("white".to_string()),
+                Some(ChatInputInfo::Editing { item_id: edit_id, .. })
+                    if *edit_id == item_id => return Some("white".to_string()),
+                _ => (),
+            }
+            if show_highlight {
+                return Some("var(--accent-color)".to_string());
+            }
+            None
+        }
+    });
+
+    let edit_event_id = event_id.clone();
+    let edit_item_id = item_id.clone();
+
     view! {
         <div
             class="group/msg relative flex flex-col gap-[var(--gap)] hover:bg-black/20 ml-1 pl-4 py-[2px] rounded-md"
             class=("mt-5", show_header)
             style:background=move || {
                 let hovered = hovered.get();
-                if show_highlight {
+                if let Some(color) = current_highlight.get() {
                     format!(
-                        "linear-gradient(in oklch to right, oklch(from var(--accent-color) l c h / {}) 20%, oklch(from var(--accent-color) l c h / 0) 100%)",
+                        "linear-gradient(in oklch to right, oklch(from {color} l c h / {}) 20%, oklch(from {color} l c h / 0) 100%)",
                         if hovered { "0.10" } else { "0.15" },
                     )
                 } else if hovered {
@@ -535,13 +581,18 @@ fn render_timeline_event(
             on:mouseenter=move |_| hovered.set(true)
             on:mouseleave=move |_| hovered.set(false)
         >
-            {if show_highlight {
-                view! {
-                    <div class="absolute left-1 top-1 bottom-1 w-1 rounded-full bg-[var(--accent-color)] pointer-events-none"></div>
+            {move || {
+                if let Some(color) = current_highlight.get() {
+                    view! {
+                        <div
+                            class="absolute left-1 top-1 bottom-1 w-1 rounded-full pointer-events-none"
+                            style=format!("background-color: {color}")
+                        ></div>
+                    }
+                        .into_any()
+                } else {
+                    ().into_any()
                 }
-                    .into_any()
-            } else {
-                ().into_any()
             }}
 
             {move || {
@@ -556,6 +607,57 @@ fn render_timeline_event(
                     ().into_any()
                 }
             }}
+
+            // Add a bar to the top right containing buttons for reply, react, etc which are always visible for now
+            <div class="absolute -top-4 right-4 flex items-center gap-1 bg-(--ui-solid-bg) p-1 rounded-(--gap) text-muted text-xs border border-(--tile-border-color) opacity-0 group-hover/msg:opacity-100">
+                <button class="hover:bg-(--ui-solid-hover-bg) cursor-pointer p-0.5 rounded-(--gap) hover:text-normal">
+                    <Icon icon=SMILEY size="20px"></Icon>
+                </button>
+                <button
+                    class="hover:bg-(--ui-solid-hover-bg) cursor-pointer p-0.5 rounded-(--gap) hover:text-normal"
+                    on:click=move |_| {
+                        let Some(event_id) = event_id.clone() else {
+                            return;
+                        };
+                        let Some(sender_id) = sender_id.clone() else {
+                            return;
+                        };
+                        input_info
+                            .set(
+                                Some(ChatInputInfo::ReplyingTo {
+                                    event_id,
+                                    sender_id,
+                                    item_id: item_id.clone(),
+                                }),
+                            );
+                        if let Some(el) = input_ref.get() {
+                            el.focus().ok();
+                        }
+                    }
+                >
+                    <Icon icon=ARROW_BEND_UP_LEFT size="20px"></Icon>
+                </button>
+                <button
+                    class="hover:bg-(--ui-solid-hover-bg) cursor-pointer p-0.5 rounded-(--gap) hover:text-normal"
+                    on:click=move |_| {
+                        let Some(event_id) = edit_event_id.clone() else {
+                            return;
+                        };
+                        input_info
+                            .set(
+                                Some(ChatInputInfo::Editing {
+                                    event_id,
+                                    item_id: edit_item_id.clone(),
+                                }),
+                            );
+                        if let Some(el) = input_ref.get() {
+                            el.focus().ok();
+                        }
+                    }
+                >
+                    <Icon icon=PENCIL_SIMPLE size="20px"></Icon>
+                </button>
+            </div>
 
             <ReplyPreview reply_info=reply_info />
 
@@ -1046,6 +1148,12 @@ fn ChatHeader(
     }
 }
 
+#[derive(Clone, Debug)]
+pub enum ChatInputInfo {
+    ReplyingTo { event_id: String, sender_id: String, item_id: String },
+    Editing { event_id: String, item_id: String },
+}
+
 #[component]
 fn ChatInput() -> impl IntoView {
     let state: AppState = expect_context();
@@ -1053,16 +1161,20 @@ fn ChatInput() -> impl IntoView {
 
     let menu = RwSignal::new(MenuType::None);
     let selected_index = RwSignal::new(0);
+    let input_info = RwSignal::new(None);
 
     provide_context(selected_index);
+    provide_context(input_info);
 
-    let mention_matches = RwSignal::new(Vec::<UserProfile>::new());
-    let command_matches = RwSignal::new(Vec::<Command>::new());
+    let mention_matches = RwSignal::new(Vec::new());
+    let command_matches = RwSignal::new(Vec::new());
 
     provide_context(mention_matches);
     provide_context(command_matches);
 
-    let input_ref = NodeRef::<Div>::new();
+    let input_ref: NodeRef<Div> = NodeRef::new();
+
+    provide_context(input_ref);
 
     let _ = use_event_listener(document(), ev::selectionchange, move |_| {
         let Some(el) = input_ref.get() else {
@@ -1133,10 +1245,45 @@ fn ChatInput() -> impl IntoView {
         let _ = el.focus();
     });
 
+    let store_clone = store.clone();
+
+    let input_info_content = move || {
+        let Some(info) = input_info.get() else {
+            return ().into_any();
+        };
+
+        let content = match info {
+            ChatInputInfo::ReplyingTo { sender_id, .. } => {
+                let profile = store_clone.get_profile(&state.active_room_id.get().unwrap_or_default(), &sender_id);
+                view! {
+                    <span class="text-sm text-bright">
+                        "Replying to " {move || profile.get().render_name(14)}
+                    </span>
+                }.into_any()
+            }
+            ChatInputInfo::Editing { .. } => view! { <span class="text-sm text-bright">"Editing message"</span> }.into_any(),
+        };
+
+        view! {
+            <div class="w-full bg-(--ui-floating-bg) rounded-t-(--ui-border-radius) border border-(--tile-border-color) border-b-0 px-2 py-1 flex flex-row justify-between items-center">
+                {content}
+                <button
+                    class="text-muted hover:text-bright cursor-pointer"
+                    on:click=move |_| input_info.set(None)
+                >
+                    <Icon icon=X_CIRCLE size="18px" color="currentColor" weight=IconWeight::Fill />
+                </button>
+            </div>
+        }.into_any()
+    };
+
     view! {
-        <div class="p-2 pt-0 w-full rounded-full relative">
-            <SelectionMenu menu=menu input_ref=input_ref />
-            <div class="text-(--bright-text-color) w-full min-h-13 border-1 border-[var(--tile-border-color)] rounded-(--ui-border-radius) bg-[rgba(0, 0, 0, 0.6)] flex flex-row bg-(--ui-floating-bg) items-center gap-3 px-3 cursor-text">
+        <div class="p-2 pt-0 w-full relative">
+            {move || input_info_content()} <SelectionMenu menu=menu input_ref=input_ref />
+            <div
+                class="text-(--bright-text-color) w-full min-h-13 border-1 border-(--tile-border-color) rounded-b-(--ui-border-radius) bg-[rgba(0, 0, 0, 0.6)] flex flex-row bg-(--ui-floating-bg) items-center gap-3 px-3 cursor-text"
+                class=("rounded-t-(--ui-border-radius)", move || input_info.get().is_none())
+            >
                 <Icon icon=UPLOAD_SIMPLE size="20px" color="var(--ui-base-color)" />
                 <div class="relative flex-1 min-w-0 flex items-center">
                     <Show when=move || is_empty.get()>
@@ -1159,6 +1306,7 @@ fn ChatInput() -> impl IntoView {
                             state,
                             store.clone(),
                             is_empty,
+                            input_info,
                         )
                     ></div>
                 </div>
