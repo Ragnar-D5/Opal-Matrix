@@ -1,12 +1,11 @@
 use futures::StreamExt;
 use matrix_sdk::{Client as MatrixClient, room::edit::EditedContent};
 use matrix_sdk_ui::timeline::TimelineEventItemId;
-use std::str::FromStr;
 use tokio_util::sync::CancellationToken;
 
 use ego_tree::NodeRef;
 use log::{error, warn};
-use ruma::{
+use matrix_sdk::ruma::{
     OwnedEventId, OwnedUserId, RoomId, events::{AnyMessageLikeEventContent, Mentions, room::message::{RoomMessageEventContent, RoomMessageEventContentWithoutRelation}}
 };
 use scraper::{Html, Node};
@@ -139,7 +138,7 @@ fn walk_node(
                     mentions.room = true;
                     formatted.push_str("<strong>@room</strong>");
                 } else if data_type == "user_mention" {
-                    if let Ok(user_id) = OwnedUserId::from_str(id) {
+                    if let Ok(user_id) = OwnedUserId::try_from(id) {
                         mentions.user_ids.insert(user_id);
                     } else {
                         warn!("Invalid user ID in mention: {id}");

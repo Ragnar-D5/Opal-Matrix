@@ -1,14 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
-use matrix_sdk_ui::{
-    eyeball_im::VectorDiff,
-    timeline::{
-        BeaconInfo, EmbeddedEvent, EventSendState, EventTimelineItem, InReplyToDetails,
-        MemberProfileChange, MembershipChange, MsgLikeKind, ReactionsByKeyBySender,
-        TimelineDetails, TimelineItem, TimelineItemContent, TimelineItemKind, VirtualTimelineItem,
-    },
-};
-use ruma::{
+use matrix_sdk::ruma::{
     events::{
         poll::start::PollKind,
         room::{
@@ -18,6 +10,14 @@ use ruma::{
         rtc::notification::CallIntent,
     },
     MilliSecondsSinceUnixEpoch,
+};
+use matrix_sdk_ui::{
+    eyeball_im::VectorDiff,
+    timeline::{
+        BeaconInfo, EmbeddedEvent, EventSendState, EventTimelineItem, InReplyToDetails,
+        MemberProfileChange, MembershipChange, MsgLikeKind, ReactionsByKeyBySender,
+        TimelineDetails, TimelineItem, TimelineItemContent, TimelineItemKind, VirtualTimelineItem,
+    },
 };
 use shared::{
     parsing::{parse_html_to_spans, parse_plain_text_to_spans},

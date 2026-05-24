@@ -6,7 +6,7 @@ use matrix_sdk::Room;
 
 use matrix_sdk::room::ParentSpace;
 use matrix_sdk::ruma::UserId;
-use ruma::events::space::child::SpaceChildEventContent;
+use matrix_sdk::ruma::events::space::child::SpaceChildEventContent;
 use shared::sidebar::{RoomKind, RoomNode, SidebarState};
 use tauri::AppHandle;
 use tauri::Emitter;

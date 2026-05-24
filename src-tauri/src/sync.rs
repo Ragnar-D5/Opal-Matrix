@@ -1,14 +1,17 @@
 use matrix_sdk::{
-    config::SyncSettings, ruma::events::space::parent::SyncSpaceParentEvent,
-    Client as MatrixClient, LoopCtrl, SessionChange,
+    config::SyncSettings,
+    ruma::{events::space::parent::SyncSpaceParentEvent, presence::PresenceState},
+    Client as MatrixClient, SessionChange,
 };
+use std::pin::pin;
 use tauri::{async_runtime::spawn, AppHandle};
 
 use crate::{
-    frontend::{members::on_member_update, sidebar::send_sidebar},
+    frontend::{members::on_member_update, presence::handle_presences, sidebar::send_sidebar},
     matrix_api::keyring::{save_session, StoredSession},
     TauriError,
 };
+use futures_util::StreamExt;
 
 pub async fn attach_callbacks(client: &MatrixClient, handle: &AppHandle) -> Result<(), TauriError> {
     let mut session_subscriber = client.subscribe_to_session_changes();
@@ -53,32 +56,33 @@ pub async fn attach_callbacks(client: &MatrixClient, handle: &AppHandle) -> Resu
 
     let client_sync_clone = client.clone();
     let handle_clone = handle.clone();
-    spawn(async move {
+    tauri::async_runtime::spawn(async move {
         let sync_settings = SyncSettings::default()
+            .set_presence(PresenceState::Online)
             .ignore_timeout_on_first_sync(true)
             .timeout(std::time::Duration::from_secs(30));
 
-        let sync_result = client_sync_clone
-            .sync_with_result_callback(sync_settings, |_| {
-                let client_sync_clone = client_sync_clone.clone();
-                let handle_clone = handle_clone.clone();
-                async move {
-                    let client_clone_dwa = client_sync_clone.clone();
-                    let handle_clone = handle_clone.clone();
+        // 1. Get the stream (Note: depending on your matrix-sdk version,
+        // you might not need `.await` on this specific line)
+        let sync_stream = client_sync_clone.sync_stream(sync_settings).await;
 
+        // 2. PIN THE STREAM!
+        let mut sync_stream = pin!(sync_stream);
+
+        log::info!("Started background sync stream");
+
+        // 3. Now .next().await will work perfectly
+        while let Some(sync_item) = sync_stream.next().await {
+            match sync_item {
+                Ok(sync_result) => {
                     log::debug!("Received sync event");
-                    send_sidebar(&client_clone_dwa.joined_rooms(), &handle_clone)
-                        .await
-                        .unwrap_or_else(|e| {
-                            log::error!("Failed to send sidebar after initial sync: {:?}", e);
-                        });
-                    Ok(LoopCtrl::Continue)
-                }
-            })
-            .await;
 
-        if let Err(e) = sync_result {
-            log::error!("Sync loop exited with error: {e}");
+                    handle_presences(&sync_result.into(), &handle_clone);
+                }
+                Err(e) => {
+                    log::error!("Sync loop exited with error: {}", e);
+                }
+            }
         }
     });
 

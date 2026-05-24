@@ -50,8 +50,6 @@ fn ReplyPreview(reply_info: Option<ReplyInfo>) -> impl IntoView {
     let store: MemberStore = expect_context();
     let state: AppState = expect_context();
 
-    log::debug!("Rendering reply: {:?}", reply_info);
-
     let mut content = vec![RichTextSpan::Plain("click to go to event".to_string())];
 
     let (sender_name, avatar_url, color) = match reply_info.event {

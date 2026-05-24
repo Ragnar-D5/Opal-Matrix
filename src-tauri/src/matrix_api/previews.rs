@@ -1,7 +1,7 @@
+use matrix_sdk::ruma::api::client::authenticated_media::get_media_preview::v1::Request as GetMediaPreviewRequest;
 use matrix_sdk::Client as MatrixClient;
-use ruma::api::client::authenticated_media::get_media_preview::v1::Request as GetMediaPreviewRequest;
 use shared::api::LinkPreviewResponse;
-use tauri::{State, command};
+use tauri::{command, State};
 use tokio::sync::RwLock;
 
 use crate::{BrandColorsMap, TauriError};

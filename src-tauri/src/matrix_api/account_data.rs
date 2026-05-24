@@ -4,7 +4,7 @@ use tauri::command;
 
 use crate::{MatrixClientState, TauriError};
 
-use ruma::events::macros::EventContent;
+use matrix_sdk::ruma::events::macros::EventContent;
 
 #[derive(Clone, Debug, Serialize, Deserialize, EventContent)]
 #[ruma_event(type = "org.opal-matrix.breadcrumbs", kind = GlobalAccountData)]

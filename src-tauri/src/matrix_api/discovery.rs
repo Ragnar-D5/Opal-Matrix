@@ -1,14 +1,20 @@
 use matrix_sdk::Client as MatrixClient;
 
 use log::trace;
-use ruma::api::auth_scheme::SendAccessToken;
+use matrix_sdk::ruma::api::{
+    auth_scheme::SendAccessToken,
+    client::discovery::get_supported_versions::{
+        Request as VersionsRequest, Response as VersionsResponse,
+    },
+    IncomingResponse, OutgoingRequest, SupportedVersions,
+};
 use serde::Deserialize;
 use tauri::State;
 use tauri_plugin_http::reqwest::{self, Client};
 use tokio::sync::RwLock;
 use url::Url;
 
-use crate::{AsInfo, TauriError, reqwest_response_to_http_response};
+use crate::{reqwest_response_to_http_response, AsInfo, TauriError};
 
 #[derive(Debug, Deserialize)]
 pub struct WellKnown {
@@ -73,10 +79,6 @@ pub async fn choose_home_server(
     }
 }
 
-use ruma::api::client::discovery::get_supported_versions::{
-    Request as VersionsRequest, Response as VersionsResponse,
-};
-use ruma::api::{IncomingResponse, OutgoingRequest, SupportedVersions};
 pub async fn fetch_supported_versions(base_url: &str) -> Result<SupportedVersions, TauriError> {
     let req = VersionsRequest::new().try_into_http_request::<Vec<u8>>(
         base_url,

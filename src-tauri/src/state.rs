@@ -1,6 +1,6 @@
+use matrix_sdk::ruma::OwnedRoomId;
 use matrix_sdk::Room;
-use matrix_sdk_ui::{Timeline, timeline::TimelineBuilder};
-use ruma::OwnedRoomId;
+use matrix_sdk_ui::{timeline::TimelineBuilder, Timeline};
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use tauri::async_runtime::{Mutex, RwLock};
 use tokio::task::JoinHandle;

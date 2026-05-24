@@ -9,7 +9,7 @@ pub enum RoomKind {
         last_ts: Option<i64>,
     },
     VoiceChannel {
-        last_ts: Option<i64>,
+        joined_user_ids: Vec<String>,
     },
     Dm {
         other_user_ids: Vec<String>,
@@ -36,7 +36,7 @@ impl RoomNode {
             RoomKind::Space { .. } => None,
             RoomKind::TextChannel { last_ts, .. } => last_ts,
             RoomKind::Dm { last_ts, .. } => last_ts,
-            RoomKind::VoiceChannel { last_ts, .. } => last_ts,
+            RoomKind::VoiceChannel { .. } => None,
         }
     }
 
