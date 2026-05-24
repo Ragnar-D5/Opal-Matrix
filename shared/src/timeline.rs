@@ -239,8 +239,14 @@ pub struct ReplyInfo {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct ReactionInfo {
+    pub sendere_id: String,
+    pub timestamp: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct MessageContent {
-    pub reactions: HashMap<String, Vec<String>>,
+    pub reactions: HashMap<String, Vec<ReactionInfo>>,
     pub in_reply_to: Option<ReplyInfo>,
     pub thread_root: Option<String>,
     pub is_edited: bool,
@@ -407,7 +413,7 @@ impl TimelineEvent {
         }
     }
 
-    pub fn get_reactions(&self) -> Option<HashMap<String, Vec<String>>> {
+    pub fn get_reactions(&self) -> Option<HashMap<String, Vec<ReactionInfo>>> {
         match &self.content {
             EventContent::MsgLike(content) => Some(content.reactions.clone()),
             _ => None,

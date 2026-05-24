@@ -23,9 +23,9 @@ use shared::{
     parsing::{parse_html_to_spans, parse_plain_text_to_spans},
     timeline::{
         AbstractProgress, Change, DetailState, EventContent, EventFlags, EventState,
-        MediaUploadProgress, MessageContent, ProfileChange, ReplyInfo, ReplyPreview, RichTextSpan,
-        Sender, SystemMessage, TimelineEvent, UiBeaconInfo, UiCallIntent, UiMediaSource,
-        UiMembershipChange, UiMessageType, UiPollKind, UiPollResult, UiTimelineDiff,
+        MediaUploadProgress, MessageContent, ProfileChange, ReactionInfo, ReplyInfo, ReplyPreview,
+        RichTextSpan, Sender, SystemMessage, TimelineEvent, UiBeaconInfo, UiCallIntent,
+        UiMediaSource, UiMembershipChange, UiMessageType, UiPollKind, UiPollResult, UiTimelineDiff,
         UiTimelineItem, UiTimelineItemKind,
     },
 };
@@ -191,17 +191,28 @@ fn in_reply_to_details_to_ui(value: InReplyToDetails) -> ReplyInfo {
     }
 }
 
-fn get_reactions(reactions: ReactionsByKeyBySender) -> HashMap<String, Vec<String>> {
-    reactions
+fn get_reactions(reactions: ReactionsByKeyBySender) -> HashMap<String, Vec<ReactionInfo>> {
+    let mut reactions: Vec<(String, Vec<ReactionInfo>)> = reactions
         .iter()
         .map(|(key, by_sender)| {
-            let reactors: Vec<String> = by_sender
+            let mut reactors: Vec<ReactionInfo> = by_sender
                 .iter()
-                .map(|(sender, _)| sender.to_string())
+                .map(|(sender, info)| ReactionInfo {
+                    sendere_id: sender.to_string(),
+                    timestamp: info.timestamp.as_secs().into(),
+                })
                 .collect();
+
+            reactors.sort_by_key(|r| r.timestamp);
+
             (key.clone(), reactors)
         })
-        .collect()
+        .collect();
+
+    reactions
+        .sort_by_key(|(_, reactors)| reactors.first().map(|r| r.timestamp).unwrap_or_default());
+
+    reactions.into_iter().collect()
 }
 
 fn member_profile_change_to_ui(value: MemberProfileChange) -> ProfileChange {

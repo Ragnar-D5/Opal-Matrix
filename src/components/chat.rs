@@ -27,8 +27,7 @@ use shared::{
     commands::Command,
     get_color,
     timeline::{
-        DetailState, EventContent, MessageContent, ReplyInfo, RichTextSpan, SystemMessage,
-        TimelineEvent, UiMessageType, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind,
+        DetailState, EventContent, MessageContent, ReactionInfo, ReplyInfo, RichTextSpan, SystemMessage, UiMessageType, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind
     },
     user_profile::{PresenceStatus, UserProfile},
 };
@@ -300,10 +299,10 @@ fn render_message_content(
 }
 
 fn render_reactions(
-    reactions: Option<HashMap<String, Vec<String>>>,
+    reactions: Option<HashMap<String, Vec<ReactionInfo>>>,
     store: MemberStore,
-    room_id: &str,
-    user_id: &str,
+    room_id: String,
+    user_id: String,
     event_id: Option<String>,
 ) -> impl IntoView {
     let Some(reactions) = reactions else {
@@ -320,41 +319,61 @@ fn render_reactions(
             let emoji = emoji.clone();
             let store = store.clone();
 
-            let btn_room_id = room_id.to_string();
+            let btn_room_id = room_id.clone();
             let btn_event_id = event_id.clone();
+
+            let prof_room_id = room_id.clone();
+
+            let contains_user = reactors.iter().any(|v| *v.sendere_id == user_id);
 
             let reactor_pics = move || {
                 let mut pics = Vec::new();
 
-                let mut all_pics: Vec<(String, _)> = reactors
+                let all_pics: Vec<(String, _)> = reactors
                     .iter()
-                    .filter_map(|user_id| {
+                    .filter_map(|info| {
                         store
-                            .get_profile(room_id, user_id)
+                            .get_profile(&prof_room_id, &info.sendere_id)
                             .get()
-                            .map(|p| (p.get_name(), p.render_icon(20).into_any()))
+                            .map(|p| {
+                                let icon = p.clone().render_icon(20);
+
+                                let wrapped = view! {
+                                    <div
+                                        class="rounded-full ring-2 shrink-0 flex items-center justify-center transition-shadow"
+                                        class=("hover:ring-(--ui-solid-hover-bg)", !contains_user)
+                                        class=("ring-(--ui-solid-bg)", !contains_user)
+                                        class=("ring-(--accent-bg-color)", contains_user)
+                                        class=(
+                                            "group-hover:ring-(--ui-solid-hover-bg)",
+                                            !contains_user,
+                                        )
+                                    >
+                                        {icon}
+                                    </div>
+                                };
+                                (p.get_name(), wrapped.into_any())
+                            })
                     })
                     .collect();
-
-                all_pics.sort_by_key(|(name, _)| name.clone());
 
                 let len = all_pics.len();
                 pics.extend(all_pics.into_iter().map(|(_, pic)| pic).take(4));
 
                 if len > 4 {
                     pics.push(
-                        TextCircle(TextCircleProps::builder().text(format!("+{}", len - 4)).class("w-[30px] h-[20px] rounded-full").color(Hsl::new(0.0, 0.0, 60.0, None)).build()).into_any()
+                        TextCircle(TextCircleProps::builder().text(format!("+{}", len - 4)).class("-ml-1.5 first:ml-0 w-[30px] h-[20px] rounded-full").color(Hsl::new(0.0, 0.0, 60.0, None)).build()).into_any()
                     );
                 }
 
                 pics.collect_view()
             };
 
-            let contains_user = reactors.iter().any(|v| v == user_id);
+            let contains_user = reactors.iter().any(|v| *v.sendere_id == user_id);
 
             view! {
                 <button
-                    class="flex items-center p-0.5 pr-1 rounded-lg border cursor-pointer transition-colors select-none"
+                    class="flex items-center p-0.5 pr-1 rounded-lg border cursor-pointer transition-colors select-none group"
                     class=("bg-(--ui-solid-bg)", !contains_user)
                     class=("hover:bg-(--ui-solid-hover-bg)", !contains_user)
                     class=("border-(--tile-border-color)", !contains_user)
@@ -385,7 +404,9 @@ fn render_reactions(
                         {reactors.len()}
                     </span>
 
-                    <div class="flex flex-row items-center pl-0.5">{reactor_pics()}</div>
+                    <div class="flex flex-row items-center pl-0.5 -space-x-2.5">
+                        {reactor_pics()}
+                    </div>
                 </button>
             }
         })
@@ -438,29 +459,31 @@ fn render_timeline_event(
     store: MemberStore,
     room_id: &str,
     own_user_id: &str,
-    event: TimelineEvent,
+    item_sig: RwSignal<UiTimelineItem>,
     show_header: bool,
 ) -> impl IntoView {
     let hovered = RwSignal::new(false);
-    let show_highlight = event.flags.is_highlighted;
 
-    let failed_message = event.get_failed_message();
-    let pending = event.is_sending();
+    let (show_highlight, date, name, avatar_url, color, reply_info, event_id, content) = item_sig.with_untracked(|item| {
+        if let UiTimelineItemKind::Event(event) = &item.kind {
+            let sender_id = event.get_sender_id();
+            let name = event.get_sender_name().unwrap_or(sender_id.clone().unwrap_or("Unknown".to_string()));
+            (
+                event.flags.is_highlighted,
+                get_date_from_ts(event.timestamp as i64),
+                name,
+                event.get_sender_avatar_url(),
+                event.get_sender_id().map(|v| get_color(&v)).unwrap_or(Hsl::new(0.0, 0.0, 70.0, None)),
+                event.in_reply_to(),
+                event.event_id.clone(),
+                event.content.clone(), // You could also make content reactive if edits change it completely
+            )
+        } else {
+            unreachable!("Must be an event")
+        }
+    });
 
-    let date = get_date_from_ts(event.timestamp as i64);
-    let reactions = event.get_reactions();
-
-    let sender_id = event.get_sender_id();
-    let name = event
-        .get_sender_name()
-        .unwrap_or(sender_id.clone().unwrap_or("Unknown".to_string()));
-    let avatar_url = event.get_sender_avatar_url();
-
-    let color = sender_id
-        .map(|v| get_color(&v))
-        .unwrap_or(Hsl::new(0.0, 0.0, 70.0, None));
-
-    let content = match event.content.clone() {
+    let rendered_content = match content {
         EventContent::MsgLike(ev) => render_message_content(*ev, store.clone(), room_id.to_string()),
         EventContent::FailedToParseMessageLike { event_type, error } => return view! { <div class="text-red-500 italic">{format!("Failed to render {event_type}: {error}")}</div> }.into_any(),
         EventContent::FailedToParseState { event_type, state_key, error } => return view! {
@@ -469,6 +492,27 @@ fn render_timeline_event(
             </div>
         }.into_any(),
         EventContent::SystemMessage(ev) => return render_system_message(ev, store, room_id.to_string()).into_any(),
+    };
+
+    let store_clone = store.clone();
+    let event_id_clone = event_id.clone();
+    let room_id = room_id.to_string();
+    let own_user_id = own_user_id.to_string();
+
+    let reactions_view = move || {
+        render_reactions(
+            item_sig.with(|i| {
+                if let UiTimelineItemKind::Event(e) = &i.kind {
+                    e.get_reactions()
+                } else {
+                    None
+                }
+            }),
+            store_clone.clone(),
+            room_id.clone(),
+            own_user_id.clone(),
+            event_id_clone.clone(),
+        )
     };
 
     view! {
@@ -513,7 +557,7 @@ fn render_timeline_event(
                 }
             }}
 
-            <ReplyPreview reply_info=event.in_reply_to() />
+            <ReplyPreview reply_info=reply_info />
 
             <div class="flex gap-[var(--gap)]">
                 <div class="shrink-0 mr-2 w-[40px] mt-[5px]">
@@ -538,22 +582,43 @@ fn render_timeline_event(
                     } else {
                         ().into_any()
                     }} <div>
-                        <div class=("opacity-50", pending)>{content}</div>
-                        {failed_message
-                            .map(|msg| {
-                                view! {
-                                    <div class="flex items-center gap-1 mt-1 text-red-500 text-xs">
-                                        <Icon
-                                            icon=WARNING_CIRCLE
-                                            weight=IconWeight::Duotone
-                                            size="16px"
-                                        />
-                                        "Failed to send: "
-                                        {msg}
-                                    </div>
-                                }
-                            })}
-                        {render_reactions(reactions, store, room_id, own_user_id, event.event_id)}
+                        <div class=(
+                            "opacity-50",
+                            move || {
+                                item_sig
+                                    .with(|i| {
+                                        if let UiTimelineItemKind::Event(e) = &i.kind {
+                                            e.is_sending()
+                                        } else {
+                                            false
+                                        }
+                                    })
+                            },
+                        )>{rendered_content}</div>
+                        {move || {
+                            let failed = item_sig
+                                .with(|i| {
+                                    if let UiTimelineItemKind::Event(e) = &i.kind {
+                                        e.get_failed_message()
+                                    } else {
+                                        None
+                                    }
+                                });
+                            failed
+                                .map(|msg| {
+                                    view! {
+                                        <div class="flex items-center gap-1 mt-1 text-red-500 text-xs">
+                                            <Icon
+                                                icon=WARNING_CIRCLE
+                                                weight=IconWeight::Duotone
+                                                size="16px"
+                                            />
+                                            {msg}
+                                        </div>
+                                    }
+                                })
+                        }}
+                        {reactions_view}
                     </div>
                 </div>
             </div>
@@ -561,7 +626,7 @@ fn render_timeline_event(
     }.into_any()
 }
 
-fn render_timeline_item(item: UiTimelineItem, show_header: bool) -> impl IntoView {
+fn render_timeline_item(item_sig: RwSignal<UiTimelineItem>, show_header: bool) -> impl IntoView {
     let state: AppState = expect_context();
     let store: MemberStore = expect_context();
 
@@ -571,7 +636,9 @@ fn render_timeline_item(item: UiTimelineItem, show_header: bool) -> impl IntoVie
 
     let user_id = state.user_id.get_untracked();
 
-    match item.kind {
+    let kind = item_sig.with_untracked(|i| i.kind.clone());
+
+    match kind {
         UiTimelineItemKind::DateDivider(date)=> {
             let date = get_date_from_ts(date as i64);
 
@@ -614,7 +681,7 @@ fn render_timeline_item(item: UiTimelineItem, show_header: bool) -> impl IntoVie
                 <div class="flex-1 border-t-1 border-[var(--muted-text-color)] bdf"></div>
             </div>
         }.into_any(),
-        UiTimelineItemKind::Event(event) => render_timeline_event(store, &room_id, &user_id, *event, show_header).into_any()
+        UiTimelineItemKind::Event(_) => render_timeline_event(store, &room_id, &user_id, item_sig, show_header).into_any()
     }
 }
 
@@ -625,7 +692,7 @@ fn TimeLine() -> impl IntoView {
     let messages_update_event: ReadSignal<Option<Vec<UiTimelineDiff>>> =
         use_tauri_event("timeline_update");
 
-    let messages: RwSignal<Vec<UiTimelineItem>> = RwSignal::new(Vec::new());
+    let messages: RwSignal<Vec<RwSignal<UiTimelineItem>>> = RwSignal::new(Vec::new());
 
     Effect::new(move |_| {
         let Some(diffs) = messages_update_event.get() else {
@@ -636,14 +703,18 @@ fn TimeLine() -> impl IntoView {
             for diff in diffs {
                 match diff {
                     UiTimelineDiff::Append { values } => {
-                        msgs.extend(values);
+                        let extention: Vec<RwSignal<UiTimelineItem>> = values
+                            .iter()
+                            .map(|v| RwSignal::new(v.clone()))
+                            .collect();
+                        msgs.extend(extention);
                     }
                     UiTimelineDiff::Set { index, value } => {
                         if let Some(item) = msgs.get_mut(index) {
-                            *item = value;
+                            item.set(value);
                         }
                     }
-                    UiTimelineDiff::PushBack { value } => msgs.push(value),
+                    UiTimelineDiff::PushBack { value } => msgs.push(RwSignal::new(value)),
                     UiTimelineDiff::Remove { index } => {
                         if index < msgs.len() {
                             msgs.remove(index);
@@ -652,7 +723,7 @@ fn TimeLine() -> impl IntoView {
                     UiTimelineDiff::Clear => msgs.clear(),
                     UiTimelineDiff::Insert { index, value } => {
                         if index <= msgs.len() {
-                            msgs.insert(index, value);
+                            msgs.insert(index, RwSignal::new(value));
                         }
                     }
                     UiTimelineDiff::PopBack => {
@@ -663,10 +734,15 @@ fn TimeLine() -> impl IntoView {
                             msgs.remove(0);
                         }
                     }
-                    UiTimelineDiff::PushFront { value } => msgs.insert(0, value),
+                    UiTimelineDiff::PushFront { value } => msgs.insert(0, RwSignal::new(value)),
                     UiTimelineDiff::Reset { values } => {
                         msgs.clear();
-                        msgs.extend(values);
+
+                        let extention: Vec<RwSignal<UiTimelineItem>> = values
+                            .iter()
+                            .map(|v| RwSignal::new(v.clone()))
+                            .collect();
+                        msgs.extend(extention);
                     }
                     UiTimelineDiff::Truncate { length } => msgs.truncate(length),
                 }
@@ -681,14 +757,28 @@ fn TimeLine() -> impl IntoView {
         let mut last_sender: Option<String> = None;
         let mut last_timestamp: Option<u64> = None;
 
-        for (idx, item) in msgs.iter().enumerate() {
+        for (idx, item_sig) in msgs.clone().into_iter().enumerate() {
             let mut show_header = true;
 
+            let Some(item) = item_sig.try_get_untracked() else {
+                continue;
+            };
+
+            let prev_was_divider = if idx > 0 {
+                if let Some(prev_item) = msgs[idx - 1].try_get_untracked() {
+                    matches!(
+                        prev_item.kind,
+                        UiTimelineItemKind::DateDivider(_) | UiTimelineItemKind::ReadMarker
+                    )
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+
             // Check if the previous chronological item was a divider
-            if idx > 0
-                && let UiTimelineItemKind::DateDivider(_) | UiTimelineItemKind::ReadMarker =
-                    msgs[idx - 1].kind
-            {
+            if prev_was_divider {
                 show_header = true;
                 if let UiTimelineItemKind::Event(event) = &item.kind
                     && let DetailState::Ready(sender) = &event.sender
@@ -724,7 +814,7 @@ fn TimeLine() -> impl IntoView {
                 last_timestamp = None;
             }
 
-            processed_items.push((item.clone(), show_header));
+            processed_items.push((item_sig, show_header));
         }
 
         processed_items.reverse();
@@ -791,7 +881,7 @@ fn TimeLine() -> impl IntoView {
                 match get_timeline(&current_room_id).await {
                     Ok(tl) => {
                         if state.active_room_id.get_untracked() == Some(current_room_id.clone()) {
-                            messages.set(tl);
+                            messages.set(tl.into_iter().map(RwSignal::new).collect());
                             initial_loaded.set(true);
                             is_loading.set(false);
                         }
@@ -820,8 +910,12 @@ fn TimeLine() -> impl IntoView {
             <div class="mb-5"></div>
             <For
                 each=move || timeline.get()
-                key=|(item, _)| item.render_key
-                children=|(item, show_header)| render_timeline_item(item.clone(), show_header)
+                key=|(item_sig, _)| {
+                    item_sig
+                        .try_with_untracked(|item| { item.id.clone() })
+                        .unwrap_or_else(|| "disposed_fallback_key".to_string())
+                }
+                children=|(item_sig, show_header)| { render_timeline_item(item_sig, show_header) }
             />
 
             <Show
