@@ -120,3 +120,49 @@ impl RichTextExt for RichTextSpan {
         }
     }
 }
+
+pub fn richt_text_spans_to_html(
+    spans: &[RichTextSpan],
+    store: MemberStore,
+    room_id: String,
+) -> String {
+    let doc = document();
+    let owner = Owner::new();
+
+    let combined_html = owner.with(|| {
+        spans
+            .iter()
+            .map(|span| {
+                match span.clone() {
+                    RichTextSpan::Plain(text) => {
+                        text
+                    }
+                    RichTextSpan::RoomMention | RichTextSpan::UserMention { .. } => {
+                        let view = span.clone().render(store.clone(), room_id.clone());
+                        let any_view: AnyView = view.into_any();
+
+                        // Create a fresh temporary container for this span
+                        let temp_container = doc.create_element("div").unwrap();
+
+                        // Build and mount
+                        let mut render_state = any_view.build();
+                        render_state.mount(&temp_container, None);
+
+                        // Extract the raw HTML string
+                        temp_container.inner_html()
+                    }
+                    RichTextSpan::Link { url, text } => format!(
+                        r#"<span class="text-blue-500 underline link cursor-pointer" data-url="{url}">{}</span>"#,
+                        text.unwrap_or(url.clone())
+                    ),
+                    RichTextSpan::Newline => "<br>".to_string(),
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("")
+    });
+
+    owner.cleanup();
+
+    combined_html
+}

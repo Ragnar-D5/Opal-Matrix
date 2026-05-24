@@ -431,3 +431,23 @@ fn get_node_and_offset(el: &HtmlElement, absolute_pos: u32) -> Option<(Node, u32
     }
     None
 }
+
+pub fn move_caret_to_end(el: &HtmlElement) {
+    let win = web_sys::window().unwrap();
+    let doc = win.document().unwrap();
+
+    // Create a new range
+    let range = doc.create_range().unwrap();
+
+    // Select all contents of the element
+    range.select_node_contents(el).unwrap();
+
+    // Collapse the range to the end (false = end, true = start)
+    range.collapse_with_to_start(false);
+
+    // Apply the range to the user's selection
+    if let Ok(Some(sel)) = win.get_selection() {
+        sel.remove_all_ranges().unwrap();
+        sel.add_range(&range).unwrap();
+    }
+}

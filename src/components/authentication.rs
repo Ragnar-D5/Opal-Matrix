@@ -1,9 +1,9 @@
 use crate::{
-    app::{CurrentWindow, call_tauri},
-    components::SingleFloatingTile,
+    app::{call_tauri, CurrentWindow},
+    components::{input::move_caret_to_end, SingleFloatingTile},
     state::AppState,
 };
-use leptos::{prelude::*, task::spawn_local};
+use leptos::{html::Input, prelude::*, task::spawn_local};
 use serde_json::json;
 use shared::api::errors::LoginError;
 use web_sys::{HtmlInputElement, SubmitEvent};
@@ -300,6 +300,14 @@ pub fn HomeserverDiscoveryPage(window: RwSignal<CurrentWindow>) -> impl IntoView
         }
     });
 
+    let input_ref: NodeRef<Input> = NodeRef::new();
+
+    Effect::new(move || {
+        if let Some(el) = input_ref.get() {
+            move_caret_to_end(&el);
+        }
+    });
+
     let choose_home_server = async move || {
         let chosen_server = text.get_untracked();
 
@@ -318,6 +326,7 @@ pub fn HomeserverDiscoveryPage(window: RwSignal<CurrentWindow>) -> impl IntoView
         <ArgSpan text="Homeserver" />
         <input
             type="text"
+            node_ref=input_ref
             placeholder="example.org"
             class="p-2.5 text-xl rounded-lg select-none w-full bg-(--ui-floating-bg) placeholder:text-(--muted-text-color) text-(--text-color) border border-(--tile-border-color) outline-none focus:border-(--accent-color) focus:bg-(--ui-floating-hover-bg)"
             autofocus

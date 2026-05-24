@@ -461,6 +461,36 @@ pub struct UiTimelineItem {
     pub kind: UiTimelineItemKind,
 }
 
+impl UiTimelineItem {
+    pub fn body(&self) -> Vec<RichTextSpan> {
+        match &self.kind {
+            UiTimelineItemKind::Event(event) => match &event.content {
+                EventContent::MsgLike(content) => content.body.clone(),
+                _ => vec![RichTextSpan::Plain("Unsupported event type".to_string())],
+            },
+            UiTimelineItemKind::DateDivider(_) => {
+                vec![RichTextSpan::Plain("Date Divider".to_string())]
+            }
+            UiTimelineItemKind::ReadMarker => vec![RichTextSpan::Plain("Read Marker".to_string())],
+            UiTimelineItemKind::TimelineStart => {
+                vec![RichTextSpan::Plain("Start of Timeline".to_string())]
+            }
+        }
+    }
+
+    pub fn flags(&self) -> EventFlags {
+        match &self.kind {
+            UiTimelineItemKind::Event(event) => event.flags.clone(),
+            _ => EventFlags {
+                is_editable: false,
+                is_highlighted: false,
+                can_be_replied_to: false,
+                contains_only_emojis: false,
+            },
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", content = "data")]
 pub enum UiTimelineDiff {

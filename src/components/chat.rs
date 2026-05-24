@@ -3,11 +3,11 @@ use crate::{
         FloatingTile, TextCircle, TextCircleProps,
         input::{
             get_active_filter, get_caret_position, handle_input, handle_keydown,
-            menu::{MenuType, SelectionMenu},
+            menu::{MenuType, SelectionMenu}, move_caret_to_end,
         },
         presence::PresenceBadge,
         previews::render_link,
-        text::RichTextExt,
+        text::{RichTextExt, richt_text_spans_to_html},
         user_profile::{
             UserProfileExt, UserProfileMaybeExt, render_profile_icon, render_profile_name,
         },
@@ -28,7 +28,7 @@ use shared::{
     timeline::{
         DetailState, EventContent, MessageContent, ReactionInfo, ReplyInfo, RichTextSpan, SystemMessage, UiMessageType, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind
     },
-    user_profile::{PresenceStatus},
+    user_profile::PresenceStatus,
 };
 use std::collections::HashMap;
 use web_sys::IntersectionObserverEntry;
@@ -463,7 +463,7 @@ fn render_timeline_event(
 ) -> impl IntoView {
     let hovered = RwSignal::new(false);
 
-    let (show_highlight, date, sender_id, name, avatar_url, color, reply_info, event_id, content) = item_sig.with_untracked(|item| {
+    let (show_highlight, date, sender_id, name, avatar_url, color, reply_info, event_id) = item_sig.with_untracked(|item| {
         if let UiTimelineItemKind::Event(event) = &item.kind {
             let sender_id = event.get_sender_id();
             let name = event.get_sender_name().unwrap_or(sender_id.clone().unwrap_or("Unknown".to_string()));
@@ -476,7 +476,6 @@ fn render_timeline_event(
                 event.get_sender_id().map(|v| get_color(&v)).unwrap_or(Hsl::new(0.0, 0.0, 70.0, None)),
                 event.in_reply_to(),
                 event.event_id.clone(),
-                event.content.clone(), // You could also make content reactive if edits change it completely
             )
         } else {
             unreachable!("Must be an event")
@@ -521,6 +520,8 @@ fn render_timeline_event(
     let event_id_clone = event_id.clone();
     let room_id = room_id.to_string();
     let own_user_id = own_user_id.to_string();
+    let edit_room_id = room_id.clone();
+    let flags_own_user_id = own_user_id.clone();
 
     let reactions_view = move || {
         render_reactions(
@@ -560,6 +561,22 @@ fn render_timeline_event(
 
     let edit_event_id = event_id.clone();
     let edit_item_id = item_id.clone();
+    let edit_store = store.clone();
+
+    let is_empty: RwSignal<bool> = expect_context();
+
+    let flags_sender_id = sender_id.clone().unwrap_or_default();
+
+    let flags = Memo::new(move |_| {
+        let item = item_sig.get();
+
+        let mut flags = item.flags();
+        let is_own_message = flags_sender_id == flags_own_user_id;
+
+        flags.is_editable = flags.is_editable && is_own_message;
+
+        flags
+    });
 
     view! {
         <div
@@ -608,55 +625,91 @@ fn render_timeline_event(
                 }
             }}
 
-            // Add a bar to the top right containing buttons for reply, react, etc which are always visible for now
             <div class="absolute -top-4 right-4 flex items-center gap-1 bg-(--ui-solid-bg) p-1 rounded-(--gap) text-muted text-xs border border-(--tile-border-color) opacity-0 group-hover/msg:opacity-100">
                 <button class="hover:bg-(--ui-solid-hover-bg) cursor-pointer p-0.5 rounded-(--gap) hover:text-normal">
                     <Icon icon=SMILEY size="20px"></Icon>
                 </button>
-                <button
-                    class="hover:bg-(--ui-solid-hover-bg) cursor-pointer p-0.5 rounded-(--gap) hover:text-normal"
-                    on:click=move |_| {
-                        let Some(event_id) = event_id.clone() else {
-                            return;
-                        };
-                        let Some(sender_id) = sender_id.clone() else {
-                            return;
-                        };
-                        input_info
-                            .set(
-                                Some(ChatInputInfo::ReplyingTo {
-                                    event_id,
-                                    sender_id,
-                                    item_id: item_id.clone(),
-                                }),
-                            );
-                        if let Some(el) = input_ref.get() {
-                            el.focus().ok();
+                <Show when=move || {
+                    flags.get().can_be_replied_to
+                }>
+                    {
+                        let reply_event_id = event_id.clone();
+                        let sender_id = sender_id.clone();
+                        let item_id = item_id.clone();
+                        let input_info = input_info;
+                        let input_ref = input_ref;
+
+                        view! {
+                            <button
+                                class="hover:bg-(--ui-solid-hover-bg) cursor-pointer p-0.5 rounded-(--gap) hover:text-normal"
+                                on:click=move |_| {
+                                    let Some(event_id) = reply_event_id.clone() else {
+                                        return;
+                                    };
+                                    let Some(sender_id) = sender_id.clone() else {
+                                        return;
+                                    };
+                                    input_info
+                                        .set(
+                                            Some(ChatInputInfo::ReplyingTo {
+                                                event_id,
+                                                sender_id,
+                                                item_id: item_id.clone(),
+                                            }),
+                                        );
+                                    if let Some(el) = input_ref.get() {
+                                        el.focus().ok();
+                                    }
+                                }
+                            >
+                                <Icon icon=ARROW_BEND_UP_LEFT size="20px"></Icon>
+                            </button>
                         }
                     }
-                >
-                    <Icon icon=ARROW_BEND_UP_LEFT size="20px"></Icon>
-                </button>
-                <button
-                    class="hover:bg-(--ui-solid-hover-bg) cursor-pointer p-0.5 rounded-(--gap) hover:text-normal"
-                    on:click=move |_| {
-                        let Some(event_id) = edit_event_id.clone() else {
-                            return;
-                        };
-                        input_info
-                            .set(
-                                Some(ChatInputInfo::Editing {
-                                    event_id,
-                                    item_id: edit_item_id.clone(),
-                                }),
-                            );
-                        if let Some(el) = input_ref.get() {
-                            el.focus().ok();
+                </Show>
+                <Show when=move || {
+                    flags.get().is_editable
+                }>
+                    {
+                        let event_id = edit_event_id.clone();
+                        let item_id = edit_item_id.clone();
+                        let store = edit_store.clone();
+                        let room_id = edit_room_id.clone();
+
+                        view! {
+                            <button
+                                class="hover:bg-(--ui-solid-hover-bg) cursor-pointer p-0.5 rounded-(--gap) hover:text-normal"
+                                on:click=move |_| {
+                                    let Some(event_id) = event_id.clone() else {
+                                        return;
+                                    };
+                                    input_info
+                                        .set(
+                                            Some(ChatInputInfo::Editing {
+                                                event_id,
+                                                item_id: item_id.clone(),
+                                            }),
+                                        );
+                                    if let Some(el) = input_ref.get() {
+                                        el.focus().ok();
+                                        let spans = item_sig.get_untracked().body();
+                                        el.set_inner_html(
+                                            &richt_text_spans_to_html(
+                                                &spans,
+                                                store.clone(),
+                                                room_id.clone(),
+                                            ),
+                                        );
+                                        is_empty.set(false);
+                                        move_caret_to_end(&el);
+                                    }
+                                }
+                            >
+                                <Icon icon=PENCIL_SIMPLE size="20px"></Icon>
+                            </button>
                         }
                     }
-                >
-                    <Icon icon=PENCIL_SIMPLE size="20px"></Icon>
-                </button>
+                </Show>
             </div>
 
             <ReplyPreview reply_info=reply_info />
@@ -865,6 +918,17 @@ fn TimeLine() -> impl IntoView {
             let Some(item) = item_sig.try_get_untracked() else {
                 continue;
             };
+
+            let is_event = if let UiTimelineItemKind::Event(ev) = &item.kind {
+                matches!(ev.content, EventContent::MsgLike(_))
+            } else {
+                false
+            };
+
+            if !is_event {
+                processed_items.push((item_sig, false));
+                continue
+            }
 
             let prev_was_divider = if idx > 0 {
                 if let Some(prev_item) = msgs[idx - 1].try_get_untracked() {
@@ -1215,6 +1279,7 @@ fn ChatInput() -> impl IntoView {
     });
 
     let is_empty = RwSignal::new(true);
+    provide_context(is_empty);
 
     // Load on room change
     Effect::new(move |_| {
