@@ -4,16 +4,17 @@ use serde::{Deserialize, Serialize};
 pub enum RoomKind {
     Space {
         children: Vec<RoomNode>,
+        user_ids_in_calls: Vec<String>,
     },
     TextChannel {
-        last_ts: Option<i64>,
+        last_ts: Option<u64>,
     },
     VoiceChannel {
         joined_user_ids: Vec<String>,
     },
     Dm {
         other_user_ids: Vec<String>,
-        last_ts: Option<i64>,
+        last_ts: Option<u64>,
     },
 }
 
@@ -31,7 +32,13 @@ pub struct RoomNode {
 }
 
 impl RoomNode {
-    pub fn last_ts(&self) -> Option<i64> {
+    pub fn get_name_or_id(&self) -> String {
+        self.name.clone().unwrap_or_else(|| self.room_id.clone())
+    }
+}
+
+impl RoomNode {
+    pub fn last_ts(&self) -> Option<u64> {
         match self.kind {
             RoomKind::Space { .. } => None,
             RoomKind::TextChannel { last_ts, .. } => last_ts,
@@ -62,16 +69,4 @@ pub struct SidebarState {
     pub dms: Vec<RoomNode>,
     pub servers: Vec<RoomNode>,
     pub orphaned_rooms: Vec<RoomNode>,
-}
-
-pub struct FlatRoom {
-    pub room_id: String,
-    pub name: Option<String>,
-    pub topic: Option<String>,
-    pub avatar_url: Option<String>,
-    pub room_type: Option<String>,
-    pub is_direct: bool,
-    pub last_ts: Option<i64>,
-    pub highlight_count: u64,
-    pub notification_count: u64,
 }

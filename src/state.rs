@@ -22,7 +22,7 @@ pub struct AppState {
     pub last_changed_time: RwSignal<f64>,
     pub user_id: RwSignal<String>,
 
-    pub active_room_id: RwSignal<Option<String>>,
+    pub active_room: RwSignal<Option<RoomNode>>,
     pub active_server_id: RwSignal<Option<String>>,
 
     pub breadcrums: RwSignal<Breadcrumbs>,
@@ -55,7 +55,7 @@ impl AppState {
             previous_window: RwSignal::new(CurrentWindow::Loading),
             last_changed_time: RwSignal::new(0.0),
             user_id: RwSignal::new(String::new()),
-            active_room_id: RwSignal::new(None),
+            active_room: RwSignal::new(None),
             active_server_id: RwSignal::new(None),
             breadcrums: RwSignal::new(Breadcrumbs::default()),
             server_order: RwSignal::new(ServerOrder::default()),
@@ -65,14 +65,34 @@ impl AppState {
         }
     }
 
-    pub fn set_active_room_id(&self, room_id: Option<String>) {
-        self.active_room_id.set(room_id.clone());
+    pub fn active_room_id(&self) -> Option<String> {
+        self.active_room.get().map(|room| room.room_id.clone())
+    }
+
+    pub fn active_room_id_untracked(&self) -> Option<String> {
+        self.active_room.get_untracked().map(|room| room.room_id.clone())
+    }
+
+    pub fn set_active_room_with_id(&self, room_id: Option<String>) {
+        let active_room = room_id.as_ref().and_then(|id| {
+            find_node_in_nodes(&self.sidebar_state.get_untracked().servers, id)
+                .cloned()
+                .or_else(|| {
+                    self.sidebar_state
+                        .get()
+                        .dms
+                        .iter()
+                        .find(|dm| dm.room_id == *id)
+                        .cloned()
+                })
+        });
+        self.active_room.set(active_room);
 
         let Some(room_id) = room_id else {
             return;
         };
 
-        let key = self.active_server_id.get().unwrap_or("dms".to_string());
+        let key = self.active_server_id.get_untracked().unwrap_or("dms".to_string());
 
         self.breadcrums.update(|bc| {
             bc.last_space_ids.insert(key, room_id.clone());
@@ -88,7 +108,7 @@ impl AppState {
         let key = server_id.clone().unwrap_or("dms".to_string());
 
         if let Some(room_id) = self.breadcrums.get().last_space_ids.get(&key).cloned() {
-            self.active_room_id.set(Some(room_id.clone()));
+            self.set_active_room_with_id(Some(room_id.clone()));
             self.append_room_id(room_id);
 
             self.save_breadcrumbs();
@@ -100,7 +120,7 @@ impl AppState {
         };
 
         if let Some(room_id) = self.first_channel_id_for_server(server_id) {
-            self.set_active_room_id(Some(room_id));
+            self.set_active_room_with_id(Some(room_id));
         }
     }
 
@@ -109,7 +129,7 @@ impl AppState {
         let server = state.servers.iter().find(|srv| srv.room_id == server_id)?;
 
         match &server.kind {
-            RoomKind::Space { children } => Self::find_first_channel(children),
+            RoomKind::Space { children, .. } => Self::find_first_channel(children),
             RoomKind::TextChannel { .. } => Some(server.room_id.clone()),
             RoomKind::Dm { .. } => Some(server.room_id.clone()),
             RoomKind::VoiceChannel { .. } => Some(server.room_id.clone()),
@@ -120,7 +140,7 @@ impl AppState {
         for node in nodes {
             match &node.kind {
                 RoomKind::TextChannel { .. } => return Some(node.room_id.clone()),
-                RoomKind::Space { children } => {
+                RoomKind::Space { children, .. } => {
                     if let Some(room_id) = Self::find_first_channel(children) {
                         return Some(room_id);
                     }
@@ -145,7 +165,7 @@ impl AppState {
     }
 
     fn save_breadcrumbs(&self) {
-        let breadcrumbs = self.breadcrums.get();
+        let breadcrumbs = self.breadcrums.get_untracked();
         spawn_local(async move {
             let args = serde_wasm_bindgen::to_value(&json!({
                 "breadcrumbs": breadcrumbs
@@ -176,7 +196,7 @@ impl AppState {
     }
 
     pub fn get_active_profile(&self, member_store: MemberStore) -> Option<MemberProfileHandle> {
-        let current_room_id = self.active_room_id.get()?;
+        let current_room_id = self.active_room_id()?;
 
         for dm in self
             .sidebar_state
@@ -205,7 +225,7 @@ impl AppState {
             return RoomHeader::DM(profile);
         }
 
-        let Some(active_room_id) = self.active_room_id.get() else {
+        let Some(active_room_id) = self.active_room_id() else {
             return RoomHeader::Unknown;
         };
 
@@ -216,6 +236,27 @@ impl AppState {
 
         RoomHeader::Channel(node.clone())
     }
+
+    pub fn update_active_room(&self) {
+        let current_room_id = self.active_room_id_untracked();
+
+        if let Some(room_id) = current_room_id {
+            let sidebar_state = self.sidebar_state.get();
+            let active_room = find_node_in_nodes(&sidebar_state.servers, &room_id)
+                .cloned()
+                .or_else(|| {
+                    sidebar_state
+                        .dms
+                        .iter()
+                        .find(|dm| dm.room_id == room_id)
+                        .cloned()
+                });
+
+            self.active_room.set(active_room);
+        } else {
+            self.active_room.set(None);
+        }
+    }
 }
 
 fn find_node_in_nodes<'a>(nodes: &'a [RoomNode], room_id: &str) -> Option<&'a RoomNode> {
@@ -224,7 +265,7 @@ fn find_node_in_nodes<'a>(nodes: &'a [RoomNode], room_id: &str) -> Option<&'a Ro
             return Some(node);
         }
 
-        if let RoomKind::Space { children } = &node.kind
+        if let RoomKind::Space { children, .. } = &node.kind
             && let Some(found) = find_node_in_nodes(children, room_id)
         {
             return Some(found);

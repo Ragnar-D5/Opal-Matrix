@@ -73,7 +73,7 @@ pub fn App() -> impl IntoView {
     let profile_update = use_tauri_event::<(String, UserProfile)>("member_update");
 
     Effect::new(move |_| {
-        let room_id = state.active_room_id.get();
+        let room_id = state.active_room_id();
 
         spawn_local(async move {
             if let Err(e) = set_backend_room_id(room_id).await {
@@ -136,10 +136,6 @@ pub fn App() -> impl IntoView {
 
     Effect::new(move |_| {
         if let Some(mut new_state) = sidebar_update_event.get() {
-            // new_state
-            //     .dms
-            //     .sort_by_key(|b| std::cmp::Reverse(b.last_ts().unwrap_or(0)));
-
             let current_order = state.server_order.get_untracked();
 
             let order_map: HashMap<&String, usize> = current_order
@@ -173,6 +169,7 @@ pub fn App() -> impl IntoView {
             }
 
             state.sidebar_state.set(new_state);
+            state.update_active_room();
 
             if state.current_window.get() == CurrentWindow::Loading {
                 state.current_window.set(CurrentWindow::Home);
@@ -208,12 +205,10 @@ pub fn App() -> impl IntoView {
                 Ok(js_val) => {
                     let breadcrumbs: Breadcrumbs = serde_wasm_bindgen::from_value(js_val).unwrap();
 
-                    state
-                        .active_room_id
-                        .set(breadcrumbs.recent_rooms.first().cloned());
+                    state.set_active_room_with_id(breadcrumbs.recent_rooms.first().cloned());
 
                     if let Some(room_id) = breadcrumbs.recent_rooms.first().cloned() {
-                        state.active_room_id.set(Some(room_id.clone()));
+                        state.set_active_room_with_id(Some(room_id.clone()));
 
                         for (server, last_room) in breadcrumbs.clone().last_space_ids {
                             if last_room == room_id {

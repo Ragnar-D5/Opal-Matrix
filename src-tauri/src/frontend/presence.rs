@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use matrix_sdk::{ruma::presence::PresenceState, sync::SyncResponse};
+use matrix_sdk::ruma::{events::presence::PresenceEvent, presence::PresenceState, serde::Raw};
 use shared::user_profile::{PresenceInfo, PresenceStatus};
 use tauri::{AppHandle, Emitter};
 
@@ -13,14 +13,10 @@ fn presence_to_ui(state: PresenceState) -> PresenceStatus {
     }
 }
 
-pub fn handle_presences(sync_result: &SyncResponse, app_handle: &AppHandle) {
-    log::debug!(
-        "Handling presence updates for {} users",
-        sync_result.presence.len()
-    );
+pub fn handle_presences(presence_events: &Vec<Raw<PresenceEvent>>, app_handle: &AppHandle) {
     let mut presence_batch = HashMap::new();
 
-    for raw_event in &sync_result.presence {
+    for raw_event in presence_events {
         if let Ok(event) = raw_event.deserialize() {
             let user_id = event.sender.to_string();
 

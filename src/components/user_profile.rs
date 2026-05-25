@@ -110,6 +110,7 @@ impl UserProfileExt for UserProfile {
 pub trait UserProfileMaybeExt {
     fn render_icon(self, size: usize) -> impl IntoView;
     fn render_name(self, font_size: usize) -> impl IntoView;
+    fn get_color(&self) -> Hsl;
 }
 
 impl UserProfileMaybeExt for Option<UserProfile> {
@@ -124,6 +125,13 @@ impl UserProfileMaybeExt for Option<UserProfile> {
         match self {
             Some(profile) => profile.render_name(font_size).into_any(),
             None => ().into_any(),
+        }
+    }
+
+    fn get_color(&self) -> Hsl {
+        match self {
+            Some(profile) => profile.get_color(),
+            None => Hsl::new(0.0, 0.0, 70.0, None),
         }
     }
 }

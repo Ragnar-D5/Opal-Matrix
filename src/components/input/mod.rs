@@ -106,7 +106,7 @@ pub fn handle_input(input_ref: NodeRef<Div>, is_empty: RwSignal<bool>, state: Ap
 
     let empty = check_if_empty(&el, is_empty);
 
-    if let Some(room_id) = state.active_room_id.get_untracked() {
+    if let Some(room_id) = state.active_room_id_untracked() {
         state.drafts.update(|drafts| {
             if empty {
                 drafts.remove(&room_id);
@@ -253,13 +253,13 @@ pub fn handle_keydown(
                 menu.set(MenuType::None);
             } else {
                 let message = el.inner_html();
-                let Some(room_id) = state.active_room_id.get_untracked() else {
+                let Some(room_id) = state.active_room_id_untracked() else {
                     warn!("No active room to send message to");
                     return;
                 };
 
                 el.set_inner_html("<br>");
-                if let Some(room_id) = state.active_room_id.get_untracked() {
+                if let Some(room_id) = state.active_room_id_untracked() {
                     state.drafts.update(|drafts| {
                         drafts.remove(&room_id);
                     });

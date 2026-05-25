@@ -17,18 +17,16 @@ use crate::{
     tauri_functions::{get_members_for_room, get_timeline, scroll_up, toggle_reaction},
 };
 
-use colorsys::Hsl;
+use colorsys::{ColorAlpha, Hsl};
 use phosphor_leptos::{ARROW_BEND_UP_LEFT, HASH, INFO, Icon, IconWeight, PENCIL_SIMPLE, PHONE, SMILEY, TRASH, UPLOAD_SIMPLE, WARNING_CIRCLE, X_CIRCLE};
 
 use chrono::{DateTime, Local, TimeZone};
 use leptos::{ev, html::Div, prelude::*, task::spawn_local};
 use leptos_use::{UseIntersectionObserverReturn, use_event_listener, use_intersection_observer};
 use shared::{
-    get_color,
-    timeline::{
+    get_color, sidebar::{RoomKind}, timeline::{
         DetailState, EventContent, MessageContent, ReactionInfo, ReplyInfo, RichTextSpan, SystemMessage, UiMessageType, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind
-    },
-    user_profile::PresenceStatus,
+    }, user_profile::PresenceStatus
 };
 use std::collections::HashMap;
 use web_sys::IntersectionObserverEntry;
@@ -91,7 +89,7 @@ fn ReplyPreview(reply_info: Option<ReplyInfo>) -> impl IntoView {
                     .map(|v| {
                         v.render(
                             store.clone(),
-                            state.active_room_id.get_untracked().unwrap_or_default(),
+                            state.active_room_id_untracked().unwrap_or_default(),
                         )
                     })
                     .collect_view()}
@@ -791,7 +789,7 @@ fn render_timeline_item(item_sig: RwSignal<UiTimelineItem>, show_header: bool) -
     let state: AppState = expect_context();
     let store: MemberStore = expect_context();
 
-    let Some(room_id) = state.active_room_id.get_untracked() else {
+    let Some(room_id) = state.active_room_id_untracked() else {
         return ().into_any();
     };
 
@@ -1000,7 +998,7 @@ fn TimeLine() -> impl IntoView {
     let sentinel_ref = NodeRef::<Div>::new();
 
     let fetch_more = move || {
-        let Some(room_id) = state.active_room_id.get_untracked() else {
+        let Some(room_id) = state.active_room_id_untracked() else {
             log::error!("No active room ID, cannot fetch more messages");
             return;
         };
@@ -1037,7 +1035,7 @@ fn TimeLine() -> impl IntoView {
     );
 
     Effect::new(move |_| {
-        if let Some(room_id) = state.active_room_id.get() {
+        if let Some(room_id) = state.active_room_id() {
             log::debug!(
                 "Loading room {}, resetting messages to empty",
                 room_id
@@ -1052,7 +1050,7 @@ fn TimeLine() -> impl IntoView {
             spawn_local(async move {
                 match get_timeline(&current_room_id).await {
                     Ok(tl) => {
-                        if state.active_room_id.get_untracked() == Some(current_room_id.clone()) {
+                        if state.active_room_id_untracked() == Some(current_room_id.clone()) {
                             messages.set(tl.into_iter().map(RwSignal::new).collect());
                             initial_loaded.set(true);
                             is_loading.set(false);
@@ -1067,7 +1065,7 @@ fn TimeLine() -> impl IntoView {
                             );
                         } else {
                             log::error!("Failed to load timeline: {}", e);
-                            if state.active_room_id.get_untracked() == Some(current_room_id) {
+                            if state.active_room_id_untracked() == Some(current_room_id) {
                                 is_loading.set(false);
                             }
                         }
@@ -1277,7 +1275,7 @@ fn ChatInput() -> impl IntoView {
 
     // Focus the input when the component mounts or when the active room changes
     Effect::new(move |_| {
-        state.active_room_id.get();
+        state.active_room_id();
 
         if let Some(el) = input_ref.get() {
             let _ = el.focus();
@@ -1289,7 +1287,7 @@ fn ChatInput() -> impl IntoView {
 
     // Load on room change
     Effect::new(move |_| {
-        let room_id = state.active_room_id.get();
+        let room_id = state.active_room_id();
         let draft = room_id.and_then(|rid| state.drafts.with_untracked(|d| d.get(&rid).cloned()));
 
         let Some(el) = input_ref.get() else {
@@ -1325,7 +1323,7 @@ fn ChatInput() -> impl IntoView {
 
         let content = match info {
             ChatInputInfo::ReplyingTo { sender_id, .. } => {
-                let profile = store_clone.get_profile(&state.active_room_id.get().unwrap_or_default(), &sender_id);
+                let profile = store_clone.get_profile(&state.active_room_id().unwrap_or_default(), &sender_id);
                 view! {
                     <span class="text-sm text-bright">
                         "Replying to " {move || profile.get().render_name(14)}
@@ -1407,8 +1405,105 @@ pub fn Chat() -> impl IntoView {
             />
             <div class="flex flex-row h-full min-h-0">
                 <FloatingTile class="flex-1 flex flex-col h-full min-h-0 overflow-hidden">
-                    <TimeLine />
-                    <ChatInput />
+                    {move || match state.active_room.get() {
+                        None => {
+                            view! {
+                                <div class="flex-1 flex items-center justify-center text-muted">
+                                    "No room selected"
+                                </div>
+                            }
+                                .into_any()
+                        }
+                        Some(node) => {
+                            match &node.kind {
+                                RoomKind::Dm { .. } | RoomKind::TextChannel { .. } => {
+                                    view! {
+                                        <TimeLine />
+                                        <ChatInput />
+                                    }
+                                        .into_any()
+                                }
+                                RoomKind::VoiceChannel { joined_user_ids } => {
+                                    if joined_user_ids.is_empty() {
+                                        view! {
+                                            <div class="flex-1 flex items-center justify-center text-muted flex-col gap-2 bg-radial-[at_50%_100%] from-(--accent-color) to-transparent to-80% w-full h-full">
+                                                <span class="text-3xl text-bright font-bold text-shadow-xs">
+                                                    {node.get_name_or_id()}
+                                                </span>
+                                                <span class="text-muted">
+                                                    "No one is currently in this voice channel"
+                                                </span>
+                                            </div>
+                                        }
+                                            .into_any()
+                                    } else {
+                                        let count = joined_user_ids.len();
+                                        let width_class = match count {
+                                            1 => "w-full max-w-5xl",
+                                            2 => "w-[calc(50%-0.5*var(--gap))] max-w-3xl",
+                                            3 | 4 => "w-[calc(50%-0.5*var(--gap))] max-w-2xl",
+                                            5..=6 => "w-[calc(33.33%-0.66*var(--gap))] max-w-xl",
+                                            7..=9 => "w-[calc(33.33%-0.66*var(--gap))] max-w-lg",
+                                            10..=12 => "w-[calc(25%-0.75*var(--gap))] max-w-md",
+                                            _ => "w-[calc(20%-0.8*var(--gap))] max-w-sm",
+                                        };
+
+                                        // Dynamically shrink the width basis based on the number of people.
+                                        // The `calc` subtracts a fraction of the gap to prevent flex wrapping too early.
+                                        // 13+ users
+
+                                        view! {
+                                            // `content-center` vertically centers the rows
+                                            // `justify-center` horizontally centers odd items on the bottom row
+                                            <div class="flex-1 flex flex-wrap justify-center content-center w-full h-full min-h-0 gap-[var(--gap)] p-[var(--gap)] overflow-y-auto">
+                                                {joined_user_ids
+                                                    .iter()
+                                                    .map(|id| {
+                                                        let profile = member_store.get_profile(&node.room_id, id);
+                                                        let clone = profile.clone();
+                                                        let colors = move || {
+                                                            let mut color = clone.get().get_color();
+                                                            let fg_color = color.clone().to_css_string();
+                                                            color.set_lightness(10.0);
+                                                            format!(
+                                                                "background-color: {}; box-shadow: inset 0 0 20px 0px {};",
+                                                                color.to_css_string(),
+                                                                fg_color,
+                                                            )
+                                                        };
+                                                        let clone = profile.clone();
+                                                        view! {
+                                                            <div
+                                                                class=format!(
+                                                                    "{} aspect-video rounded-2xl flex flex-col items-center justify-center overflow-hidden transition-all duration-300 rounded-3xl",
+                                                                    width_class,
+                                                                )
+                                                                style=colors
+                                                            >
+
+                                                                // Discord-like Avatar Placeholder
+                                                                {move || profile.get().render_icon(64)}
+                                                                {move || clone.get().render_name(16)}
+                                                            </div>
+                                                        }
+                                                    })
+                                                    .collect_view()}
+                                            </div>
+                                        }
+                                            .into_any()
+                                    }
+                                }
+                                RoomKind::Space { .. } => {
+                                    view! {
+                                        <div class="flex-1 flex items-center justify-center text-muted">
+                                            "Spaces are not supported yet"
+                                        </div>
+                                    }
+                                        .into_any()
+                                }
+                            }
+                        }
+                    }}
                 </FloatingTile>
                 <Show when=move || chat_sidebar_open.get()>
                     <div class="flex-shrink-0 h-full w-[20rem] ml-[var(--gap)]">
@@ -1502,7 +1597,7 @@ fn MemberList() -> impl IntoView {
         let store = store.clone();
 
         async move {
-            let Some(room_id) = state.active_room_id.get() else {
+            let Some(room_id) = state.active_room_id() else {
                 return (Vec::new(), Vec::new());
             };
 

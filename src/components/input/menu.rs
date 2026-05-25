@@ -137,7 +137,7 @@ pub fn commit_selection(
 
     let (focus_node, focus_offset) = match selected {
         SelectedItem::User(membership) => {
-            let room_id = state.active_room_id.get_untracked().unwrap_or_default();
+            let room_id = state.active_room_id_untracked().unwrap_or_default();
             let mention_view = membership.to_span().render(store, room_id);
             let any_view: AnyView = mention_view.into_any();
             let mut render_state = any_view.build();
@@ -252,7 +252,7 @@ impl RenderMenuRow for UserProfile {
                 {move || {
                     let profile = profile.clone();
                     let presence = presence.clone();
-                    if state.active_room_id.get().unwrap_or_default() != m_clone.user_id {
+                    if state.active_room_id().unwrap_or_default() != m_clone.user_id {
                         view! {
                             <PresenceBadge presence=presence size=15.0>
                                 {profile.render_icon(30)}
@@ -333,7 +333,7 @@ pub fn SelectionMenu(menu: RwSignal<MenuType>, input_ref: NodeRef<Div>) -> impl 
     let matcher = StoredValue::new(Matcher::new(Config::DEFAULT));
 
     let members_resource = LocalResource::new(move || {
-        let room_id = state.active_room_id.get();
+        let room_id = state.active_room_id();
         async move {
             if let Some(rid) = room_id {
                 let mut res = get_members_for_room(&rid).await.unwrap_or_default();
@@ -403,7 +403,7 @@ pub fn SelectionMenu(menu: RwSignal<MenuType>, input_ref: NodeRef<Div>) -> impl 
         let Some(el) = input_ref.get() else {
             return ().into_any();
         };
-        let room_id = state.active_room_id.get().unwrap_or_default();
+        let room_id = state.active_room_id().unwrap_or_default();
         let room_id_command = room_id.clone();
         let el_command = el.clone();
 

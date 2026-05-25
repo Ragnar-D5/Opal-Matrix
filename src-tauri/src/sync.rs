@@ -7,7 +7,11 @@ use std::pin::pin;
 use tauri::{async_runtime::spawn, AppHandle};
 
 use crate::{
-    frontend::{members::on_member_update, presence::handle_presences, sidebar::send_sidebar},
+    frontend::{
+        members::on_member_update,
+        presence::handle_presences,
+        sidebar::{handle_room_updates, send_sidebar},
+    },
     matrix_api::keyring::{save_session, StoredSession},
     TauriError,
 };
@@ -77,7 +81,9 @@ pub async fn attach_callbacks(client: &MatrixClient, handle: &AppHandle) -> Resu
                 Ok(sync_result) => {
                     log::debug!("Received sync event");
 
-                    handle_presences(&sync_result.into(), &handle_clone);
+                    handle_presences(&sync_result.presence, &handle_clone);
+                    handle_room_updates(&sync_result.rooms, &client_sync_clone, &handle_clone)
+                        .await;
                 }
                 Err(e) => {
                     log::error!("Sync loop exited with error: {}", e);

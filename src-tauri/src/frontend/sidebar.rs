@@ -2,11 +2,12 @@ use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 
 use futures::StreamExt;
-use matrix_sdk::Room;
+use matrix_sdk::{Client, Room};
 
 use matrix_sdk::room::ParentSpace;
 use matrix_sdk::ruma::UserId;
 use matrix_sdk::ruma::events::space::child::SpaceChildEventContent;
+use matrix_sdk::sync::RoomUpdates;
 use shared::sidebar::{RoomKind, RoomNode, SidebarState};
 use tauri::AppHandle;
 use tauri::Emitter;
@@ -193,6 +194,7 @@ async fn build_async_node(
 
     let mut highlight_count = unread_counts.highlight_count;
     let mut notification_count = unread_counts.notification_count;
+    let mut user_ids_in_calls = HashSet::new();
 
     let room_kind = if room.is_space() {
         let mut children_nodes = Vec::new();
@@ -204,17 +206,29 @@ async fn build_async_node(
                 {
                     highlight_count += child_node.highlight_count;
                     notification_count += child_node.notification_count;
+                    if let RoomKind::VoiceChannel { joined_user_ids } = &child_node.kind {
+                        for user_id in joined_user_ids {
+                            user_ids_in_calls.insert(user_id.clone());
+                        }
+                    }
                     children_nodes.push(child_node);
                 }
             }
         }
 
+
         RoomKind::Space {
+            user_ids_in_calls: user_ids_in_calls.into_iter().collect(),
             children: children_nodes,
         }
     } else {
-        RoomKind::TextChannel {
-            last_ts: room.latest_event_timestamp().map(|t| t.as_secs().into()),
+        if room.is_call() {
+            let joined_user_ids = room.active_room_call_participants().iter().map(|v| v.to_string()).collect();
+            RoomKind::VoiceChannel { joined_user_ids }
+        } else {
+            RoomKind::TextChannel {
+                last_ts: room.latest_event_timestamp().map(|t| t.as_secs().into()),
+            }
         }
     };
 
@@ -227,4 +241,41 @@ async fn build_async_node(
         notification_count,
         kind: room_kind,
     })
+}
+
+fn should_sidebar_update(room_updates: &RoomUpdates) -> bool {
+    if !room_updates.left.is_empty() || !room_updates.invited.is_empty() {
+            return true;
+    }
+
+    for update in room_updates.joined.values() {
+        if !update.timeline.events.is_empty() {
+            return true;
+        }
+
+        for raw_event in &update.ephemeral {
+            if let Ok(Some(event_type)) = raw_event.get_field::<String>("type")
+                && event_type == "m.receipt" {
+                    return true;
+                }
+        }
+
+        for raw_event in &update.account_data {
+                if let Ok(Some(event_type)) = raw_event.get_field::<String>("type")
+                && (event_type == "m.direct" || event_type == "m.fully_read") {
+                    return true;
+                }
+        }
+    }
+
+    false
+}
+
+pub async fn handle_room_updates(room_updates: &RoomUpdates, client: &Client, handle: &AppHandle) {
+    if should_sidebar_update(room_updates) {
+        log::debug!("Significant room update detected, refreshing sidebar");
+        if let Err(e) = send_sidebar(&client.joined_rooms(), handle).await {
+            log::error!("Failed to send sidebar update: {:?}", e);
+        }
+    }
 }

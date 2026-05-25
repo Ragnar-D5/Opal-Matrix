@@ -39,6 +39,11 @@
     --confirm-color: #2b7fff;
     --confirm-hover-color: #184890;
     --confirm-text-color: #ffffff;
+
+    --online-color: #23a55a;
+    --idle-color: #e5c100;
+    --busy-color: #e53e3e;
+    --offline-color: #6a6a6a;
 }
 
 @utility text-token {
