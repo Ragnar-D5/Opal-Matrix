@@ -32,12 +32,6 @@ pub struct RoomNode {
 }
 
 impl RoomNode {
-    pub fn get_name_or_id(&self) -> String {
-        self.name.clone().unwrap_or_else(|| self.room_id.clone())
-    }
-}
-
-impl RoomNode {
     pub fn last_ts(&self) -> Option<u64> {
         match self.kind {
             RoomKind::Space { .. } => None,
@@ -48,11 +42,7 @@ impl RoomNode {
     }
 
     pub fn get_name(&self) -> String {
-        if let Some(name) = &self.name {
-            return name.clone();
-        }
-
-        self.room_id.clone()
+        self.name.clone().unwrap_or(self.room_id.clone())
     }
 
     pub fn dm_user_id(&self) -> Option<String> {

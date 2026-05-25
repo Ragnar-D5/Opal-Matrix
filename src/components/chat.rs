@@ -18,7 +18,7 @@ use crate::{
 };
 
 use colorsys::{ColorAlpha, Hsl};
-use phosphor_leptos::{ARROW_BEND_UP_LEFT, HASH, INFO, Icon, IconWeight, PENCIL_SIMPLE, PHONE, SMILEY, TRASH, UPLOAD_SIMPLE, WARNING_CIRCLE, X_CIRCLE};
+use phosphor_leptos::{ARROW_BEND_UP_LEFT, HASH, INFO, Icon, IconWeight, MATRIX_LOGO, PENCIL_SIMPLE, PHONE, SMILEY, SPEAKER_HIGH, TRASH, UPLOAD_SIMPLE, WARNING_CIRCLE, X_CIRCLE};
 
 use chrono::{DateTime, Local, TimeZone};
 use leptos::{ev, html::Div, prelude::*, task::spawn_local};
@@ -1111,61 +1111,80 @@ fn ChatHeader(
     view! {
         <FloatingTile class="h-(--header-height) items-start flex-row gap-1 pl-[5px]">
             <div class="w-8 self-center flex items-center justify-center">
-                {move || match header.get() {
-                    RoomHeader::Channel { .. } => {
-                        view! {
-                            <div class="text-(--ui-base-color) w-full justify-center flex">
-                                <Icon icon=HASH color="currentColor" size="70%" />
-                            </div>
-                        }
-                            .into_any()
-                    }
-                    RoomHeader::DM(handle) => {
-                        {
-                            let presence = member_store.get_presence(&handle.user_id);
-                            let profile_sig = handle.profile;
-
+                {move || {
+                    let clone = member_store.clone();
+                    match header.get() {
+                        RoomHeader::TextChannel(_) => {
                             view! {
-                                {move || {
-                                    if let Some(profile) = profile_sig.get() {
-                                        let presence = presence.clone();
-                                        view! {
-                                            <PresenceBadge presence=presence size=14.0>
-                                                {profile.render_icon(30)}
-                                            </PresenceBadge>
-                                        }
-                                            .into_any()
-                                    } else {
-                                        ().into_any()
-                                    }
-                                }}
+                                <div class="text-(--ui-base-color) w-full justify-center flex">
+                                    <Icon icon=HASH color="currentColor" size="70%" />
+                                </div>
                             }
+                                .into_any()
                         }
-                            .into_any()
-                    }
-                    RoomHeader::Unknown => {
-                        view! {
-                            <div class="w-8 text-end">
-                                <span class="text-lg text-bright self-center align-middle">
-                                    "?"
-                                </span>
-                            </div>
+                        RoomHeader::VoiceChannel(_) => {
+                            view! {
+                                <div class="text-(--ui-base-color) w-full justify-center flex">
+                                    <Icon icon=SPEAKER_HIGH color="currentColor" size="70%" />
+                                </div>
+                            }
+                                .into_any()
                         }
-                            .into_any()
+                        RoomHeader::DM(profile_sig) => {
+                            {
+                                view! {
+                                    {move || {
+                                        if let Some(profile) = profile_sig.get() {
+                                            let presence = clone.clone().get_presence(&profile.user_id);
+                                            view! {
+                                                <PresenceBadge presence=presence size=14.0>
+                                                    {profile.render_icon(30)}
+                                                </PresenceBadge>
+                                            }
+                                                .into_any()
+                                        } else {
+                                            ().into_any()
+                                        }
+                                    }}
+                                }
+                            }
+                                .into_any()
+                        }
+                        RoomHeader::Unknown => {
+                            view! {
+                                <div class="w-8 text-end">
+                                    <span class="text-lg text-bright self-center align-middle">
+                                        "?"
+                                    </span>
+                                </div>
+                            }
+                                .into_any()
+                        }
+                        RoomHeader::Space(_) => {
+                            view! {
+                                <div class="text-(--ui-base-color) w-full justify-center flex">
+                                    <Icon icon=MATRIX_LOGO color="currentColor" size="70%" />
+                                </div>
+                            }
+                                .into_any()
+                        }
                     }
                 }}
             </div>
             <div class="flex-1 flex flex-col self-center text-bright text-m font-semibold">
                 {move || match header.get() {
-                    RoomHeader::Channel(node) => view! { <span>{node.name}</span> }.into_any(),
-                    RoomHeader::DM(handle) => {
-                        {
-                            let profile_sig = handle.profile;
-                            view! { {move || profile_sig.get().render_name(16)} }.into_any()
-                        }
+                    RoomHeader::TextChannel(name) => {
+                        view! { <span>{name.clone()}</span> }.into_any()
+                    }
+                    RoomHeader::VoiceChannel(name) => {
+                        view! { <span>{name.clone()}</span> }.into_any()
+                    }
+                    RoomHeader::DM(profile_sig) => {
+                        { view! { {move || profile_sig.get().render_name(16)} }.into_any() }
                             .into_any()
                     }
                     RoomHeader::Unknown => view! { <span>"Unknown Room"</span> }.into_any(),
+                    RoomHeader::Space(name) => view! { <span>{name.clone()}</span> }.into_any(),
                 }}
             </div>
             <div class="self-center h-full">
@@ -1428,7 +1447,7 @@ pub fn Chat() -> impl IntoView {
                                         view! {
                                             <div class="flex-1 flex items-center justify-center text-muted flex-col gap-2 bg-radial-[at_50%_100%] from-(--accent-color) to-transparent to-80% w-full h-full">
                                                 <span class="text-3xl text-bright font-bold text-shadow-xs">
-                                                    {node.get_name_or_id()}
+                                                    {node.get_name()}
                                                 </span>
                                                 <span class="text-muted">
                                                     "No one is currently in this voice channel"
@@ -1519,73 +1538,78 @@ pub fn Chat() -> impl IntoView {
 
 #[component]
 fn ChatInfo(header: Memo<RoomHeader>) -> impl IntoView {
-    view! {
-        <div class="flex flex-col w-full overflow-visible">
-            {move || match header.get() {
-                RoomHeader::DM(handle) => {
-                    let members: MemberStore = expect_context();
-                    let presence = members.get_presence(&handle.user_id);
-                    let profile_sig = handle.profile;
-                    let banner_color = profile_sig
-                        .get()
-                        .map(|profile| profile.get_color().to_css_string())
-                        .unwrap_or_else(|| "transparent".to_string());
-                    let banner_height = 108.0;
-                    let icon_size = 70.0;
-                    let icon_radius = icon_size / 2.0;
-                    let ring_width = 6.0;
-                    let left_offset = 16.0;
-                    let cutout_radius = icon_radius + ring_width;
-                    let smooth_cutout_radius = cutout_radius + 0.5;
-                    let cx = left_offset + icon_radius;
-                    let cy = banner_height;
-                    let banner_mask = format!(
-                        "-webkit-mask-image: radial-gradient(circle at {cx}px {cy}px, transparent {cutout_radius}px, black {smooth_cutout_radius}px); \
-                         mask-image: radial-gradient(circle at {cx}px {cy}px, transparent {cutout_radius}px, black {smooth_cutout_radius}px); \
-                         -webkit-mask-composite: destination-out; \
-                         mask-composite: exclude;",
-                    );
-                    let profile_sig_icon = profile_sig.clone();
-                    let profile_sig_name = profile_sig.clone();
+    let member_store: MemberStore = expect_context();
 
-                    view! {
-                        <div class="relative flex flex-col w-full">
-                            <div
-                                class="h-30 w-full"
-                                style=format!("background-color: {banner_color}; {banner_mask}")
-                            ></div>
+    let content = move || {
+        let store_clone = member_store.clone();
 
-                            <div class="absolute top-[73px] left-4">
-                                {move || {
-                                    if let Some(profile) = profile_sig_icon.get() {
-                                        let presence = presence.clone();
-                                        view! {
-                                            <PresenceBadge presence=presence size=25.0>
-                                                {profile.render_icon(icon_size as usize)}
-                                            </PresenceBadge>
-                                        }
-                                            .into_any()
-                                    } else {
-                                        ().into_any()
-                                    }
-                                }}
-                            </div>
+        match header.get() {
+        RoomHeader::DM(profile_sig) => {
+            let banner_color = profile_sig
+                .get()
+                .map(|profile| profile.get_color().to_css_string())
+                .unwrap_or_else(|| "transparent".to_string());
+            let banner_height = 108.0;
+            let icon_size = 70.0;
+            let icon_radius = icon_size / 2.0;
+            let ring_width = 6.0;
+            let left_offset = 16.0;
+            let cutout_radius = icon_radius + ring_width;
+            let smooth_cutout_radius = cutout_radius + 0.5;
+            let cx = left_offset + icon_radius;
+            let cy = banner_height;
+            let banner_mask = format!(
+                "-webkit-mask-image: radial-gradient(circle at {cx}px {cy}px, transparent {cutout_radius}px, black {smooth_cutout_radius}px); \
+                 mask-image: radial-gradient(circle at {cx}px {cy}px, transparent {cutout_radius}px, black {smooth_cutout_radius}px); \
+                 -webkit-mask-composite: destination-out; \
+                 mask-composite: exclude;",
+            );
+            let profile_sig_icon = profile_sig.clone();
+            let profile_sig_name = profile_sig.clone();
+            view! {
+                <div class="relative flex flex-col w-full">
+                    <div
+                        class="h-30 w-full"
+                        style=format!("background-color: {banner_color}; {banner_mask}")
+                    ></div>
 
-                            <div class="px-4 pt-10 pb-6">
-                                <h2 class="text-xl font-bold text-bright">
-                                    {move || profile_sig_name.get().render_name(16)}
-                                </h2>
-                                <p class="text-sm text-muted">"Direct Message"</p>
-                            </div>
-                        </div>
-                    }
-                        .into_any()
-                }
-                RoomHeader::Channel(..) => view! { <MemberList /> }.into_any(),
-                _ => view! { <div class="px-4 py-4">"..."</div> }.into_any(),
-            }}
-        </div>
-    }
+                    <div class="absolute top-[73px] left-4">
+                        {move || {
+                            if let Some(profile) = profile_sig_icon.get() {
+                                let presence = store_clone.get_presence(&profile.user_id);
+                                view! {
+                                    <PresenceBadge presence=presence size=25.0>
+                                        {profile.render_icon(icon_size as usize)}
+                                    </PresenceBadge>
+                                }
+                                    .into_any()
+                            } else {
+                                ().into_any()
+                            }
+                        }}
+                    </div>
+
+                    <div class="px-4 pt-10 pb-6">
+                        <h2 class="text-xl font-bold text-bright">
+                            {move || profile_sig_name.get().render_name(16)}
+                        </h2>
+                        <p class="text-sm text-muted">"Direct Message"</p>
+                    </div>
+                </div>
+            }
+                .into_any()
+        }
+        RoomHeader::TextChannel(_) => view! { <MemberList /> }.into_any(),
+        RoomHeader::VoiceChannel(_) => view! { <MemberList /> }.into_any(),
+        RoomHeader::Space(_) => view! { <MemberList /> }.into_any(),
+        RoomHeader::Unknown => view! {
+            <div class="flex-1 flex items-center justify-center text-muted">
+                "No information available for this room"
+            </div>
+        }.into_any(),
+    }};
+
+    view! { <div class="flex flex-col w-full overflow-visible">{content}</div> }
 }
 
 #[component]

@@ -43,8 +43,10 @@ pub struct MemberProfileHandle {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum RoomHeader {
-    Channel(RoomNode),
-    DM(MemberProfileHandle),
+    Space(String),
+    TextChannel(String),
+    VoiceChannel(String),
+    DM(ArcRwSignal<Option<UserProfile>>),
     Unknown,
 }
 
@@ -221,20 +223,38 @@ impl AppState {
     }
 
     pub fn get_room_header(&self, member_store: MemberStore) -> RoomHeader {
-        if let Some(profile) = self.get_active_profile(member_store) {
-            return RoomHeader::DM(profile);
+        // if let Some(profile) = self.get_active_profile(member_store) {
+        //     return RoomHeader::DM(profile);
+        // }
+
+        // let Some(active_room_id) = self.active_room_id() else {
+        //     return RoomHeader::Unknown;
+        // };
+
+        // let sidebar_state = self.sidebar_state.get();
+        // let Some(node) = find_node_in_nodes(&sidebar_state.servers, &active_room_id) else {
+        //     return RoomHeader::Unknown;
+        // };
+
+        let Some(room) = self.active_room.get() else {
+            return RoomHeader::Unknown;
+        };
+
+        let active_room_id = room.room_id.clone();
+
+        match &room.kind {
+            RoomKind::Dm { other_user_ids, .. } => {
+                let Some(other_user_id) = other_user_ids.first() else {
+                    return RoomHeader::Unknown;
+                };
+                let profile = member_store.get_profile(&active_room_id, &other_user_id);
+
+                return RoomHeader::DM(profile);
+            }
+            RoomKind::TextChannel { .. } => RoomHeader::TextChannel(room.get_name()),
+            RoomKind::VoiceChannel { .. } => RoomHeader::VoiceChannel(room.get_name()),
+            RoomKind::Space { .. } => RoomHeader::Space(room.get_name()),
         }
-
-        let Some(active_room_id) = self.active_room_id() else {
-            return RoomHeader::Unknown;
-        };
-
-        let sidebar_state = self.sidebar_state.get();
-        let Some(node) = find_node_in_nodes(&sidebar_state.servers, &active_room_id) else {
-            return RoomHeader::Unknown;
-        };
-
-        RoomHeader::Channel(node.clone())
     }
 
     pub fn update_active_room(&self) {
