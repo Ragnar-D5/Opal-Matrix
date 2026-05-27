@@ -4,7 +4,8 @@ use crate::{
         FloatingTile, TextCircle, TextCircleProps,
         input::{
             get_active_filter, get_caret_position, handle_input, handle_keydown,
-            menu::{MenuType, SelectionMenu}, move_caret_to_end,
+            menu::{MenuType, SelectionMenu},
+            move_caret_to_end,
         },
         presence::PresenceBadge,
         previews::render_link,
@@ -19,7 +20,10 @@ use crate::{
 };
 
 use colorsys::{ColorAlpha, Hsl};
-use phosphor_leptos::{ARROW_BEND_UP_LEFT, HASH, INFO, Icon, IconWeight, MATRIX_LOGO, PENCIL_SIMPLE, PHONE, SMILEY, SPEAKER_HIGH, TRASH, UPLOAD_SIMPLE, WARNING_CIRCLE, X_CIRCLE};
+use phosphor_leptos::{
+    ARROW_BEND_UP_LEFT, HASH, INFO, Icon, IconWeight, MATRIX_LOGO, PENCIL_SIMPLE, PHONE, SMILEY,
+    SPEAKER_HIGH, TRASH, UPLOAD_SIMPLE, WARNING_CIRCLE, X_CIRCLE,
+};
 
 use chrono::{DateTime, Local, TimeZone};
 use leptos::{ev, html::Div, prelude::*, task::spawn_local};
@@ -102,6 +106,30 @@ fn ReplyPreview(reply_info: Option<ReplyInfo>) -> impl IntoView {
         </div>
     }
     .into_any()
+}
+
+async fn mxc_to_blob_url(mxc_url: String) -> Option<String> {
+    use js_sys::{Array, Uint8Array};
+    use wasm_bindgen::JsCast;
+    use wasm_bindgen_futures::JsFuture;
+    use web_sys::{Blob, BlobPropertyBag, Response, Url};
+
+    let window = web_sys::window()?;
+    let response: Response = JsFuture::from(window.fetch_with_str(&mxc_url))
+        .await
+        .ok()?
+        .dyn_into()
+        .ok()?;
+    let buffer = JsFuture::from(response.array_buffer().ok()?).await.ok()?;
+
+    let uint8 = Uint8Array::new(&buffer);
+    let arr = Array::new();
+    arr.push(&uint8.buffer());
+
+    let opts = BlobPropertyBag::new();
+    opts.set_type("video/mp4");
+    let blob = Blob::new_with_u8_array_sequence_and_options(&arr, &opts).ok()?;
+    Url::create_object_url_with_blob(&blob).ok()
 }
 
 fn render_message_content(
@@ -282,21 +310,29 @@ fn render_message_content(
             </div>
         }
             .into_any(),
-        UiMessageType::Video { source, .. } => view! {
-            <div class="mt-1">
-                <video
-                    src=source.url()
-                    controls=true
-                    class="max-w-sm rounded-md border border-[var(--tile-border-color)]"
-                >
-                    {format!(
-                        "Your browser does not support the video tag. You can download the video here: {}",
-                        source.url(),
-                    )}
-                </video>
-            </div>
+        UiMessageType::Video { source, .. } => {
+            let mxc_url = source.url();
+            let blob_url = LocalResource::new(move || {
+                let url = mxc_url.clone();
+                async move { mxc_to_blob_url(url).await }
+            });
+
+            view! {
+                <Suspense fallback=|| view! {
+                    <div class="text-muted text-sm italic">"Loading video..."</div>
+                }>
+                    {move || blob_url.get().flatten().map(|url| view! {
+                        <div class="mt-1">
+                            <video
+                                src=url
+                                controls=true
+                                class="max-w-sm rounded-md border border-[var(--tile-border-color)]"
+                            />
+                        </div>
+                    })}
+                </Suspense>
+            }.into_any()
         }
-            .into_any(),
         UiMessageType::VerificationRequest => view! {
             <div class="text-normal leading-relaxed break-words italic text-muted">
                 "Verification request messages are not supported yet"
@@ -472,24 +508,30 @@ fn render_timeline_event(
 ) -> impl IntoView {
     let hovered = RwSignal::new(false);
 
-    let (show_highlight, date, sender_id, name, avatar_url, color, reply_info, event_id) = item_sig.with_untracked(|item| {
-        if let UiTimelineItemKind::Event(event) = &item.kind {
-            let sender_id = event.get_sender_id();
-            let name = event.get_sender_name().unwrap_or(sender_id.clone().unwrap_or("Unknown".to_string()));
-            (
-                event.flags.is_highlighted,
-                get_date_from_ts(event.timestamp as i64),
-                sender_id,
-                name,
-                event.get_sender_avatar_url(),
-                event.get_sender_id().map(|v| get_color(&v)).unwrap_or(Hsl::new(0.0, 0.0, 70.0, None)),
-                event.in_reply_to(),
-                event.event_id.clone(),
-            )
-        } else {
-            unreachable!("Must be an event")
-        }
-    });
+    let (show_highlight, date, sender_id, name, avatar_url, color, reply_info, event_id) = item_sig
+        .with_untracked(|item| {
+            if let UiTimelineItemKind::Event(event) = &item.kind {
+                let sender_id = event.get_sender_id();
+                let name = event
+                    .get_sender_name()
+                    .unwrap_or(sender_id.clone().unwrap_or("Unknown".to_string()));
+                (
+                    event.flags.is_highlighted,
+                    get_date_from_ts(event.timestamp as i64),
+                    sender_id,
+                    name,
+                    event.get_sender_avatar_url(),
+                    event
+                        .get_sender_id()
+                        .map(|v| get_color(&v))
+                        .unwrap_or(Hsl::new(0.0, 0.0, 70.0, None)),
+                    event.in_reply_to(),
+                    event.event_id.clone(),
+                )
+            } else {
+                unreachable!("Must be an event")
+            }
+        });
 
     let item_id = item_sig.get_untracked().id.clone();
 
@@ -555,10 +597,12 @@ fn render_timeline_event(
         let item_id = item_id.clone();
         move |_| {
             match input_info.get() {
-                Some(ChatInputInfo::ReplyingTo { item_id: reply_id, .. })
-                    if *reply_id == item_id => return Some("white".to_string()),
-                Some(ChatInputInfo::Editing { item_id: edit_id, .. })
-                    if *edit_id == item_id => return Some("white".to_string()),
+                Some(ChatInputInfo::ReplyingTo {
+                    item_id: reply_id, ..
+                }) if *reply_id == item_id => return Some("white".to_string()),
+                Some(ChatInputInfo::Editing {
+                    item_id: edit_id, ..
+                }) if *edit_id == item_id => return Some("white".to_string()),
                 _ => (),
             }
             if show_highlight {
@@ -932,7 +976,7 @@ fn TimeLine() -> impl IntoView {
 
             if !is_event {
                 processed_items.push((item_sig, false));
-                continue
+                continue;
             }
 
             let prev_was_divider = if idx > 0 {
@@ -1037,10 +1081,7 @@ fn TimeLine() -> impl IntoView {
 
     Effect::new(move |_| {
         if let Some(room_id) = state.active_room_id() {
-            log::debug!(
-                "Loading room {}, resetting messages to empty",
-                room_id
-            );
+            log::debug!("Loading room {}, resetting messages to empty", room_id);
             messages.set(Vec::new());
             initial_loaded.set(false);
             has_more.set(true);
@@ -1239,8 +1280,15 @@ fn ChatHeader(
 
 #[derive(Clone, Debug)]
 pub enum ChatInputInfo {
-    ReplyingTo { event_id: String, sender_id: String, item_id: String },
-    Editing { event_id: String, item_id: String },
+    ReplyingTo {
+        event_id: String,
+        sender_id: String,
+        item_id: String,
+    },
+    Editing {
+        event_id: String,
+        item_id: String,
+    },
 }
 
 #[component]
@@ -1344,14 +1392,18 @@ fn ChatInput() -> impl IntoView {
 
         let content = match info {
             ChatInputInfo::ReplyingTo { sender_id, .. } => {
-                let profile = store_clone.get_profile(&state.active_room_id().unwrap_or_default(), &sender_id);
+                let profile = store_clone
+                    .get_profile(&state.active_room_id().unwrap_or_default(), &sender_id);
                 view! {
                     <span class="text-sm text-bright">
                         "Replying to " {move || profile.get().render_name(14)}
                     </span>
-                }.into_any()
+                }
+                .into_any()
             }
-            ChatInputInfo::Editing { .. } => view! { <span class="text-sm text-bright">"Editing message"</span> }.into_any(),
+            ChatInputInfo::Editing { .. } => {
+                view! { <span class="text-sm text-bright">"Editing message"</span> }.into_any()
+            }
         };
 
         view! {
@@ -1546,70 +1598,72 @@ fn ChatInfo(header: Memo<RoomHeader>) -> impl IntoView {
         let store_clone = member_store.clone();
 
         match header.get() {
-        RoomHeader::DM(profile_sig) => {
-            let banner_color = profile_sig
-                .get()
-                .map(|profile| profile.get_color().to_css_string())
-                .unwrap_or_else(|| "transparent".to_string());
-            let banner_height = 108.0;
-            let icon_size = 70.0;
-            let icon_radius = icon_size / 2.0;
-            let ring_width = 6.0;
-            let left_offset = 16.0;
-            let cutout_radius = icon_radius + ring_width;
-            let smooth_cutout_radius = cutout_radius + 0.5;
-            let cx = left_offset + icon_radius;
-            let cy = banner_height;
-            let banner_mask = format!(
-                "-webkit-mask-image: radial-gradient(circle at {cx}px {cy}px, transparent {cutout_radius}px, black {smooth_cutout_radius}px); \
+            RoomHeader::DM(profile_sig) => {
+                let banner_color = profile_sig
+                    .get()
+                    .map(|profile| profile.get_color().to_css_string())
+                    .unwrap_or_else(|| "transparent".to_string());
+                let banner_height = 108.0;
+                let icon_size = 70.0;
+                let icon_radius = icon_size / 2.0;
+                let ring_width = 6.0;
+                let left_offset = 16.0;
+                let cutout_radius = icon_radius + ring_width;
+                let smooth_cutout_radius = cutout_radius + 0.5;
+                let cx = left_offset + icon_radius;
+                let cy = banner_height;
+                let banner_mask = format!(
+                    "-webkit-mask-image: radial-gradient(circle at {cx}px {cy}px, transparent {cutout_radius}px, black {smooth_cutout_radius}px); \
                  mask-image: radial-gradient(circle at {cx}px {cy}px, transparent {cutout_radius}px, black {smooth_cutout_radius}px); \
                  -webkit-mask-composite: destination-out; \
                  mask-composite: exclude;",
-            );
-            let profile_sig_icon = profile_sig.clone();
-            let profile_sig_name = profile_sig.clone();
-            view! {
-                <div class="relative flex flex-col w-full">
-                    <div
-                        class="h-30 w-full"
-                        style=format!("background-color: {banner_color}; {banner_mask}")
-                    ></div>
+                );
+                let profile_sig_icon = profile_sig.clone();
+                let profile_sig_name = profile_sig.clone();
+                view! {
+                    <div class="relative flex flex-col w-full">
+                        <div
+                            class="h-30 w-full"
+                            style=format!("background-color: {banner_color}; {banner_mask}")
+                        ></div>
 
-                    <div class="absolute top-[73px] left-4">
-                        {move || {
-                            if let Some(profile) = profile_sig_icon.get() {
-                                let presence = store_clone.get_presence(&profile.user_id);
-                                view! {
-                                    <PresenceBadge presence=presence size=25.0>
-                                        {profile.render_icon(icon_size as usize)}
-                                    </PresenceBadge>
+                        <div class="absolute top-[73px] left-4">
+                            {move || {
+                                if let Some(profile) = profile_sig_icon.get() {
+                                    let presence = store_clone.get_presence(&profile.user_id);
+                                    view! {
+                                        <PresenceBadge presence=presence size=25.0>
+                                            {profile.render_icon(icon_size as usize)}
+                                        </PresenceBadge>
+                                    }
+                                        .into_any()
+                                } else {
+                                    ().into_any()
                                 }
-                                    .into_any()
-                            } else {
-                                ().into_any()
-                            }
-                        }}
-                    </div>
+                            }}
+                        </div>
 
-                    <div class="px-4 pt-10 pb-6">
-                        <h2 class="text-xl font-bold text-bright">
-                            {move || profile_sig_name.get().render_name(16)}
-                        </h2>
-                        <p class="text-sm text-muted">"Direct Message"</p>
+                        <div class="px-4 pt-10 pb-6">
+                            <h2 class="text-xl font-bold text-bright">
+                                {move || profile_sig_name.get().render_name(16)}
+                            </h2>
+                            <p class="text-sm text-muted">"Direct Message"</p>
+                        </div>
                     </div>
+                }
+                .into_any()
+            }
+            RoomHeader::TextChannel(_) => view! { <MemberList /> }.into_any(),
+            RoomHeader::VoiceChannel(_) => view! { <MemberList /> }.into_any(),
+            RoomHeader::Space(_) => view! { <MemberList /> }.into_any(),
+            RoomHeader::Unknown => view! {
+                <div class="flex-1 flex items-center justify-center text-muted">
+                    "No information available for this room"
                 </div>
             }
-                .into_any()
+            .into_any(),
         }
-        RoomHeader::TextChannel(_) => view! { <MemberList /> }.into_any(),
-        RoomHeader::VoiceChannel(_) => view! { <MemberList /> }.into_any(),
-        RoomHeader::Space(_) => view! { <MemberList /> }.into_any(),
-        RoomHeader::Unknown => view! {
-            <div class="flex-1 flex items-center justify-center text-muted">
-                "No information available for this room"
-            </div>
-        }.into_any(),
-    }};
+    };
 
     view! { <div class="flex flex-col w-full overflow-visible">{content}</div> }
 }

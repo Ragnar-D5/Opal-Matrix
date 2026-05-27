@@ -23,7 +23,6 @@ pub fn render_link(span: RichTextSpan) -> impl IntoView {
         <Suspense fallback=move || {
             view! {
                 <div class="animate-pulse bg-(--ui-solid-bg) w-full max-w-sm h-24 rounded-md mt-2">
-                    dwadwa
                 </div>
             }
         }>

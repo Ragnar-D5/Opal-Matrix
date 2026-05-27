@@ -81,7 +81,7 @@ impl AppState {
                 .cloned()
                 .or_else(|| {
                     self.sidebar_state
-                        .get()
+                        .get_untracked()
                         .dms
                         .iter()
                         .find(|dm| dm.room_id == *id)

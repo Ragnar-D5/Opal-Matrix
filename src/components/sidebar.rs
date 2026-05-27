@@ -1,9 +1,9 @@
-use phosphor_leptos::{Icon, IconData, IconWeight, HASH, MATRIX_LOGO, SPEAKER_HIGH};
+use phosphor_leptos::{HASH, Icon, IconData, IconWeight, MATRIX_LOGO, SPEAKER_HIGH};
 use shared::get_color;
 
+use crate::components::FloatingTile;
 use crate::components::presence::PresenceBadge;
 use crate::components::user_profile::UserProfileMaybeExt;
-use crate::components::FloatingTile;
 use crate::state::{AppState, MemberStore};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -196,8 +196,6 @@ pub fn ServerIcon(server_id: String) -> impl IntoView {
             .unwrap_or(false)
     });
 
-    let own_user_id = state.user_id.get();
-
     view! {
         <div class="relative flex items-center justify-center group w-full">
             <IndicatorPill is_active=is_active has_notifications=has_notifications />
@@ -221,7 +219,7 @@ pub fn ServerIcon(server_id: String) -> impl IntoView {
                 };
                 let tr_corner = if let RoomKind::Space { user_ids_in_calls, .. } = &server.kind {
                     if !user_ids_in_calls.is_empty() {
-                        let user_in_call = user_ids_in_calls.contains(&own_user_id);
+                        let user_in_call = user_ids_in_calls.contains(&state.user_id.get());
                         Some(CutoutBadgeCorner {
                             fg_color: "white".to_string(),
                             bg_color: if user_in_call {

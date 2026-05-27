@@ -22,7 +22,14 @@ web-sys = { version = "0.3.95", features = [
   "Performance",
   "WebGlVertexArrayObject",
   "Worker",
-  "OffscreenCanvas"
+  "OffscreenCanvas",
+  "MediaError",
+  "HtmlVideoElement",
+  "Blob",
+  "BlobPropertyBag",
+  "Window",
+  "Response",
+  "Url"
 ] }
 leptos = { version = "0.8", features = ["csr"] }
 wasm-bindgen = "0.2"
