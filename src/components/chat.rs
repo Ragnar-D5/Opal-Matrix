@@ -1,4 +1,5 @@
 use crate::{
+    app::call_tauri,
     components::{
         FloatingTile, TextCircle, TextCircleProps,
         input::{
@@ -24,9 +25,13 @@ use chrono::{DateTime, Local, TimeZone};
 use leptos::{ev, html::Div, prelude::*, task::spawn_local};
 use leptos_use::{UseIntersectionObserverReturn, use_event_listener, use_intersection_observer};
 use shared::{
-    get_color, sidebar::{RoomKind}, timeline::{
-        DetailState, EventContent, MessageContent, ReactionInfo, ReplyInfo, RichTextSpan, SystemMessage, UiMessageType, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind
-    }, user_profile::PresenceStatus
+    commands::Command,
+    get_color,
+    timeline::{
+        DetailState, EventContent, MessageContent, ReactionInfo, ReplyInfo, RichTextSpan,
+        SystemMessage, UiMessageType, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind,
+    },
+    user_profile::{PresenceStatus, UserProfile},
 };
 use std::collections::HashMap;
 use web_sys::IntersectionObserverEntry;
@@ -862,10 +867,8 @@ fn TimeLine() -> impl IntoView {
             for diff in diffs {
                 match diff {
                     UiTimelineDiff::Append { values } => {
-                        let extention: Vec<RwSignal<UiTimelineItem>> = values
-                            .iter()
-                            .map(|v| RwSignal::new(v.clone()))
-                            .collect();
+                        let extention: Vec<RwSignal<UiTimelineItem>> =
+                            values.iter().map(|v| RwSignal::new(v.clone())).collect();
                         msgs.extend(extention);
                     }
                     UiTimelineDiff::Set { index, value } => {
@@ -897,10 +900,8 @@ fn TimeLine() -> impl IntoView {
                     UiTimelineDiff::Reset { values } => {
                         msgs.clear();
 
-                        let extention: Vec<RwSignal<UiTimelineItem>> = values
-                            .iter()
-                            .map(|v| RwSignal::new(v.clone()))
-                            .collect();
+                        let extention: Vec<RwSignal<UiTimelineItem>> =
+                            values.iter().map(|v| RwSignal::new(v.clone())).collect();
                         msgs.extend(extention);
                     }
                     UiTimelineDiff::Truncate { length } => msgs.truncate(length),
@@ -1105,6 +1106,7 @@ fn ChatHeader(
     set_chat_sidebar_open: WriteSignal<bool>,
 ) -> impl IntoView {
     let member_store: MemberStore = expect_context();
+    let state: AppState = expect_context();
 
     let (info_hovered, set_info_hovered) = signal(false);
 
@@ -1217,7 +1219,7 @@ fn ChatHeader(
                     class="transition-opacity h-full mr-1"
                     class=("text-(--ui-hover-color)", move || info_hovered.get())
                     class=("text-(--ui-base-color)", move || !info_hovered.get())
-                    on:click=move |_| log::info!("John Pork is calling...")
+                    on:click=move |_| {let value = serde_wasm_bindgen::to_value(&serde_json::json!({"room_id": &state.active_room_id.get().unwrap()})) ;spawn_local(async move {log::debug!("{:?}", call_tauri("join_matrixrtc_call", value.unwrap()).await);})}
                 >
                     // on:mouseenter=move |_| set_info_hovered.set(true)
                     // on:mouseleave=move |_| set_info_hovered.set(false)

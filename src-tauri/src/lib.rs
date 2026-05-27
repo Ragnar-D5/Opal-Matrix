@@ -42,6 +42,7 @@ use tauri_plugin_log::{Target, TargetKind};
 use tauri_plugin_notification::{NotificationExt, PermissionState};
 
 use crate::matrix_api::keyring::{self, StoredSession, init_keyring};
+use crate::matrix_api::matrixrtc::join_matrixrtc_call;
 use crate::state::{AppState, TaskManager, TimelineManager};
 use crate::sync::attach_callbacks;
 
@@ -175,9 +176,7 @@ async fn try_restore(
     app_handle: AppHandle,
     matrix_client: State<'_, RwLock<MatrixClient>>,
 ) -> Result<RestoreResponse, TauriError> {
-    let session_result = tokio::task::spawn_blocking(|| {
-            keyring::get_last_active_session()
-        })
+    let session_result = tokio::task::spawn_blocking(|| keyring::get_last_active_session())
         .await
         .expect("Keyring blocking task panicked");
 
@@ -333,9 +332,7 @@ async fn login(
     };
 
     tokio::task::spawn_blocking(move || {
-        keyring::save_session(&session).map_err(|_| {
-            LoginError::BackendError
-        })
+        keyring::save_session(&session).map_err(|_| LoginError::BackendError)
     });
 
     Ok(user_id)
@@ -470,6 +467,8 @@ pub fn run() {
                         }),
                     ])
                     .level_for("reqwest", log::LevelFilter::Off)
+                    .level_for("libwebrtc", log::LevelFilter::Off)
+                    .level_for("livekit", log::LevelFilter::Off)
                     .level_for("rustls_platform_verifier", log::LevelFilter::Off)
                     .level_for("html5ever", log::LevelFilter::Off)
                     .level_for("matrix_sdk", log::LevelFilter::Debug)
@@ -537,6 +536,7 @@ pub fn run() {
             backend_log,
             set_room_id,
             set_frontend_focused,
+            join_matrixrtc_call,
             // frontend commands
             frontend::messages::commit_message,
             frontend::messages::edit_message,
