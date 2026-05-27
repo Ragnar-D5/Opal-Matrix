@@ -19,7 +19,7 @@ use crate::{
     tauri_functions::{get_members_for_room, get_timeline, scroll_up, toggle_reaction},
 };
 
-use colorsys::{ColorAlpha, Hsl};
+use colorsys::Hsl;
 use phosphor_leptos::{
     ARROW_BEND_UP_LEFT, HASH, INFO, Icon, IconWeight, MATRIX_LOGO, PENCIL_SIMPLE, PHONE, SMILEY,
     SPEAKER_HIGH, TRASH, UPLOAD_SIMPLE, WARNING_CIRCLE, X_CIRCLE,
@@ -29,13 +29,13 @@ use chrono::{DateTime, Local, TimeZone};
 use leptos::{ev, html::Div, prelude::*, task::spawn_local};
 use leptos_use::{UseIntersectionObserverReturn, use_event_listener, use_intersection_observer};
 use shared::{
-    commands::Command,
     get_color,
+    sidebar::RoomKind,
     timeline::{
         DetailState, EventContent, MessageContent, ReactionInfo, ReplyInfo, RichTextSpan,
         SystemMessage, UiMessageType, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind,
     },
-    user_profile::{PresenceStatus, UserProfile},
+    user_profile::PresenceStatus,
 };
 use std::collections::HashMap;
 use web_sys::IntersectionObserverEntry;
@@ -1260,7 +1260,7 @@ fn ChatHeader(
                     class="transition-opacity h-full mr-1"
                     class=("text-(--ui-hover-color)", move || info_hovered.get())
                     class=("text-(--ui-base-color)", move || !info_hovered.get())
-                    on:click=move |_| {let value = serde_wasm_bindgen::to_value(&serde_json::json!({"room_id": &state.active_room_id.get().unwrap()})) ;spawn_local(async move {log::debug!("{:?}", call_tauri("join_matrixrtc_call", value.unwrap()).await);})}
+                    on:click=move |_| {let value = serde_wasm_bindgen::to_value(&serde_json::json!({"room_id": &state.active_room_id().unwrap()})) ;spawn_local(async move {log::debug!("{:?}", call_tauri("join_matrixrtc_call", value.unwrap()).await);})}
                 >
                     // on:mouseenter=move |_| set_info_hovered.set(true)
                     // on:mouseleave=move |_| set_info_hovered.set(false)
