@@ -1,7 +1,8 @@
-use matrix_sdk::ruma::api::client::authenticated_media::get_media_preview::v1::Request as GetMediaPreviewRequest;
 use matrix_sdk::Client as MatrixClient;
+use matrix_sdk::ruma::api::client::authenticated_media::get_media_preview::v1::Request as GetMediaPreviewRequest;
+use regex::Regex;
 use shared::api::LinkPreviewResponse;
-use tauri::{command, State};
+use tauri::{State, command};
 use tokio::sync::RwLock;
 
 use crate::{BrandColorsMap, TauriError};
@@ -13,9 +14,13 @@ pub async fn get_url_preview(
     color_map: State<'_, BrandColorsMap>,
     url: String,
 ) -> Result<LinkPreviewResponse, TauriError> {
+    let reddit_replacement = Regex::new(r"(?i)(https?://)?(?:[a-z0-9-]+.)*\breddit.com\b").unwrap();
+
+    let url = reddit_replacement.replace_all(&url, "${1}vxreddit.com");
+
     let matrix_client = matrix_client.read().await;
 
-    let request = GetMediaPreviewRequest::new(url.clone());
+    let request = GetMediaPreviewRequest::new(url.to_string());
     let response = matrix_client.send(request).await?;
 
     let Some(data) = response.data else {

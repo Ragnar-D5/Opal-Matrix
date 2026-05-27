@@ -4,11 +4,11 @@ use const_format::formatcp;
 use log::{error, trace};
 use matrix_sdk::authentication::matrix::MatrixSession;
 use matrix_sdk::media::{MediaFormat, MediaRequestParameters, MediaThumbnailSettings};
-use matrix_sdk::ruma::{OwnedDeviceId, UserId};
-use matrix_sdk::{AuthSession, Client as MatrixClient, SessionMeta, SessionTokens};
 use matrix_sdk::ruma::OwnedMxcUri;
 use matrix_sdk::ruma::events::room::MediaSource;
 use matrix_sdk::ruma::media::Method;
+use matrix_sdk::ruma::{OwnedDeviceId, UserId};
+use matrix_sdk::{AuthSession, Client as MatrixClient, SessionMeta, SessionTokens};
 use shared::api::RestoreResponse;
 use shared::api::errors::LoginError;
 use std::collections::HashMap;
@@ -175,9 +175,7 @@ async fn try_restore(
     app_handle: AppHandle,
     matrix_client: State<'_, RwLock<MatrixClient>>,
 ) -> Result<RestoreResponse, TauriError> {
-    let session_result = tokio::task::spawn_blocking(|| {
-            keyring::get_last_active_session()
-        })
+    let session_result = tokio::task::spawn_blocking(|| keyring::get_last_active_session())
         .await
         .expect("Keyring blocking task panicked");
 
@@ -333,9 +331,7 @@ async fn login(
     };
 
     tokio::task::spawn_blocking(move || {
-        keyring::save_session(&session).map_err(|_| {
-            LoginError::BackendError
-        })
+        keyring::save_session(&session).map_err(|_| LoginError::BackendError)
     });
 
     Ok(user_id)
@@ -398,6 +394,26 @@ async fn backend_log(
             .line(line)
             .build(),
     );
+}
+
+fn detect_content_type(bytes: &[u8]) -> &'static str {
+    if bytes.starts_with(b"\xFF\xD8\xFF") {
+        "image/jpeg"
+    } else if bytes.starts_with(b"\x89PNG") {
+        "image/png"
+    } else if bytes.starts_with(b"GIF8") {
+        "image/gif"
+    } else if bytes.starts_with(b"RIFF") && bytes.len() >= 12 && &bytes[8..12] == b"WEBP" {
+        "image/webp"
+    } else if bytes.starts_with(b"\x1A\x45\xDF\xA3") {
+        "video/webm"
+    } else if bytes.len() >= 8 && &bytes[4..8] == b"ftyp" {
+        "video/mp4"
+    } else if bytes.starts_with(b"OggS") {
+        "video/ogg"
+    } else {
+        "application/octet-stream"
+    }
 }
 
 pub struct BrandColorsMap(pub HashMap<String, String>);
@@ -647,12 +663,75 @@ pub fn run() {
                                 }
                             }
 
-                            responder.respond(
-                                tauri::http::Response::builder()
-                                    .header("Access-Control-Allow-Origin", "*")
-                                    .body(bytes)
-                                    .unwrap(),
+                            log::debug!(
+                                "MXC media request: uri={}, range_header={:?}",
+                                uri,
+                                request.headers().get("range").and_then(|v| v.to_str().ok())
                             );
+
+                            // After fetching bytes and decrypting them, replace the final responder.respond() with:
+                            let range_header = request
+                                .headers()
+                                .get("range")
+                                .and_then(|v| v.to_str().ok())
+                                .and_then(|v| v.strip_prefix("bytes="))
+                                .and_then(|v| {
+                                    let mut parts = v.splitn(2, '-');
+                                    let start: usize = parts.next()?.parse().ok()?;
+                                    let end: usize = parts
+                                        .next()
+                                        .and_then(|e| e.parse().ok())
+                                        .unwrap_or(bytes.len().saturating_sub(1));
+                                    Some((start, end))
+                                });
+
+                            let content_type = detect_content_type(&bytes);
+                            let is_video = content_type.starts_with("video/");
+
+                            if is_video {
+                                if let Some((start, end)) = range_header
+                                    && start > 0
+                                {
+                                    let end = end.min(bytes.len().saturating_sub(1));
+                                    let chunk = bytes[start..=end].to_vec();
+                                    let total = bytes.len();
+                                    responder.respond(
+                                        tauri::http::Response::builder()
+                                            .status(206)
+                                            .header("Content-Type", content_type)
+                                            .header(
+                                                "Content-Range",
+                                                format!("bytes {}-{}/{}", start, end, total),
+                                            )
+                                            .header("Content-Length", chunk.len().to_string())
+                                            .header("Accept-Ranges", "bytes")
+                                            .header("Access-Control-Allow-Origin", "*")
+                                            .body(chunk)
+                                            .unwrap(),
+                                    );
+                                } else {
+                                    responder.respond(
+                                        tauri::http::Response::builder()
+                                            .status(200)
+                                            .header("Content-Type", content_type)
+                                            .header("Content-Length", bytes.len().to_string())
+                                            .header("Accept-Ranges", "bytes")
+                                            .header("Access-Control-Allow-Origin", "*")
+                                            .body(bytes)
+                                            .unwrap(),
+                                    );
+                                }
+                            } else {
+                                responder.respond(
+                                    tauri::http::Response::builder()
+                                        .status(200)
+                                        .header("Content-Type", content_type)
+                                        .header("Content-Length", bytes.len().to_string())
+                                        .header("Access-Control-Allow-Origin", "*")
+                                        .body(bytes)
+                                        .unwrap(),
+                                );
+                            }
                         }
                         Err(e) => {
                             log::error!("Matrix SDK rejected media request: {}", e);
