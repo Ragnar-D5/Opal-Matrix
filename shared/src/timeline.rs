@@ -308,8 +308,8 @@ pub enum UiCallIntent {
 impl std::fmt::Display for UiCallIntent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            UiCallIntent::Audio => write!(f, "Audio Call"),
-            UiCallIntent::Video => write!(f, "Video Call"),
+            UiCallIntent::Audio => write!(f, "Audio"),
+            UiCallIntent::Video => write!(f, "Video"),
             UiCallIntent::Unknown => write!(f, "Call"),
         }
     }

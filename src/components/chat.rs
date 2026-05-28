@@ -497,9 +497,13 @@ fn render_system_message(
             call_intent,
             declined_by,
         } => format!(
-            "{} Call declined by {})",
-            call_intent.map(|v| v.to_string()).unwrap_or("".to_string()),
-            declined_by.join(", ")
+            "{} Call declined {}",
+            call_intent.map(|v| v.to_string()).unwrap_or_default(),
+            if !declined_by.is_empty() {
+                format!("by {}", declined_by.join(", "))
+            } else {
+                "".to_string()
+            }
         ),
         SystemMessage::OtherEvent => "[unsupported message]".to_string(),
         SystemMessage::CallInvite => "Call started".to_string(),
@@ -1308,7 +1312,7 @@ pub enum ChatInputInfo {
 pub enum AttachmentSource {
     LocalFile(String),
     Url(String),
-    RawBlob(web_sys::Blob)
+    RawBlob(web_sys::Blob),
 }
 
 #[derive(Clone, Debug)]
