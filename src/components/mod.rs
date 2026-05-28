@@ -1,7 +1,5 @@
 use colorsys::Hsl;
 use leptos::prelude::*;
-use phosphor_leptos::{Icon, HASH, MATRIX_LOGO, SPEAKER_HIGH, USER};
-use shared::sidebar::{RoomKind, RoomNode};
 
 pub(crate) mod authentication;
 pub(crate) mod chat;

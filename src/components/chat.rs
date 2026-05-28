@@ -1,5 +1,5 @@
 use crate::{
-    app::call_tauri,
+    app::{call_tauri,  convertFileSrc},
     components::{
         FloatingTile, TextCircle, TextCircleProps,
         input::{
@@ -16,26 +16,22 @@ use crate::{
     },
     hooks::use_tauri_event,
     state::{AppState, MemberProfileHandle, MemberStore, RoomHeader},
-    tauri_functions::{get_members_for_room, get_timeline, pick_file, scroll_up, toggle_reaction},
+    tauri_functions::{get_members_for_room, get_timeline, pick_files, scroll_up, toggle_reaction},
 };
 
 use colorsys::Hsl;
 use phosphor_leptos::{
-    ARROW_BEND_UP_LEFT, HASH, INFO, Icon, IconWeight, MATRIX_LOGO, PENCIL_SIMPLE, PHONE, SMILEY,
-    SPEAKER_HIGH, TRASH, UPLOAD_SIMPLE, WARNING_CIRCLE, X_CIRCLE,
+    ARROW_BEND_UP_LEFT, HASH, INFO, Icon, IconWeight, MATRIX_LOGO, PENCIL_SIMPLE, PHONE, SMILEY, SPEAKER_HIGH, TRASH, UPLOAD_SIMPLE, WARNING_CIRCLE, X_CIRCLE
 };
 
 use chrono::{DateTime, Local, TimeZone};
 use leptos::{ev, html::Div, prelude::*, task::spawn_local};
 use leptos_use::{UseIntersectionObserverReturn, use_event_listener, use_intersection_observer};
 use shared::{
-    get_color,
-    sidebar::RoomKind,
-    timeline::{
+    api::FileMetadata, get_color, sidebar::RoomKind, timeline::{
         DetailState, EventContent, MessageContent, ReactionInfo, ReplyInfo, RichTextSpan,
         SystemMessage, UiMessageType, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind,
-    },
-    user_profile::PresenceStatus,
+    }, user_profile::PresenceStatus
 };
 use std::collections::HashMap;
 use web_sys::IntersectionObserverEntry;
@@ -331,18 +327,25 @@ fn render_message_content(
             });
 
             view! {
-                <Suspense fallback=|| view! {
-                    <div class="text-muted text-sm italic">"Loading video..."</div>
+                <Suspense fallback=|| {
+                    view! { <div class="text-muted text-sm italic">"Loading video..."</div> }
                 }>
-                    {move || blob_url.get().flatten().map(|url| view! {
-                        <div class="mt-1">
-                            <video
-                                src=url
-                                controls=true
-                                class="max-w-sm rounded-md border border-[var(--tile-border-color)]"
-                            />
-                        </div>
-                    })}
+                    {move || {
+                        blob_url
+                            .get()
+                            .flatten()
+                            .map(|url| {
+                                view! {
+                                    <div class="mt-1">
+                                        <video
+                                            src=url
+                                            controls=true
+                                            class="max-w-sm rounded-md border border-[var(--tile-border-color)]"
+                                        />
+                                    </div>
+                                }
+                            })
+                    }}
                 </Suspense>
             }.into_any()
         }
@@ -1277,10 +1280,19 @@ fn ChatHeader(
                     class="transition-opacity h-full mr-1"
                     class=("text-(--ui-hover-color)", move || info_hovered.get())
                     class=("text-(--ui-base-color)", move || !info_hovered.get())
-                    on:click=move |_| {let value = serde_wasm_bindgen::to_value(&serde_json::json!({"room_id": &state.active_room_id().unwrap()})) ;spawn_local(async move {log::debug!("{:?}", call_tauri("join_matrixrtc_call", value.unwrap()).await);})}
+                    on:click=move |_| {
+                        let value = serde_wasm_bindgen::to_value(
+                            &serde_json::json!({"room_id": &state.active_room_id().unwrap()}),
+                        );
+                        spawn_local(async move {
+                            log::debug!(
+                                "{:?}", call_tauri("join_matrixrtc_call", value.unwrap()).await
+                            );
+                        })
+                    }
+                    on:mouseenter=move |_| set_info_hovered.set(true)
+                    on:mouseleave=move |_| set_info_hovered.set(false)
                 >
-                    // on:mouseenter=move |_| set_info_hovered.set(true)
-                    // on:mouseleave=move |_| set_info_hovered.set(false)
                     <div class="h-full justify-center items-center flex cursor-pointer">
                         <Icon
                             icon=PHONE
@@ -1308,10 +1320,26 @@ pub enum ChatInputInfo {
     },
 }
 
+pub fn format_bytes(bytes: u64) -> String {
+    const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
+    let mut size = bytes as f64;
+    let mut unit_index = 0;
+
+    while size >= 1024.0 && unit_index < UNITS.len() - 1 {
+        size /= 1024.0;
+        unit_index += 1;
+    }
+
+    if unit_index == 0 {
+        format!("{} {}", size as u64, UNITS[unit_index])
+    } else {
+        format!("{:.2} {}", size, UNITS[unit_index])
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum AttachmentSource {
     LocalFile(String),
-    Url(String),
     RawBlob(web_sys::Blob),
 }
 
@@ -1322,6 +1350,91 @@ struct Attachment {
     mime_type: String,
     size: u64,
     preview_url: Option<String>,
+    source: AttachmentSource,
+}
+
+impl Attachment {
+    fn from_file_metadata(metadata: FileMetadata) -> Self {
+        let path = metadata.path;
+        let preview_url = Some(convertFileSrc(&path));
+
+        Self {
+            id: uuid::Uuid::new_v4().to_string(),
+            file_name: metadata.file_name,
+            mime_type: metadata.mime_type,
+            size: metadata.size,
+            preview_url,
+            source: AttachmentSource::LocalFile(path),
+        }
+    }
+
+    pub fn render_preview(&self, attachments: RwSignal<Vec<Attachment>>) -> impl IntoView {
+        let id = self.id.clone();
+        let name = self.file_name.clone();
+        let size_str = format_bytes(self.size);
+        let preview_url = self.preview_url.clone().unwrap_or_default();
+        let is_image = self.mime_type.starts_with("image/");
+
+        let mut ext = if name.contains('.') {
+            name.split('.').next_back().unwrap_or("FILE").to_uppercase()
+        } else {
+            "FILE".to_string()
+        };
+        ext.truncate(4);
+
+        let fallback_color = match ext.as_str() {
+            "PDF" => "#ED4245",
+            "ZIP" | "RAR" | "TAR" | "GZ" => "#FEE75C",
+            "TXT" | "MD" | "RS" | "CSS" => "#5865F2",
+            _ => "#4E5058",
+        };
+
+        view! {
+            <div class="flex flex-col w-35 bg-(--ui-solid-bg) rounded-(--ui-border-radius) overflow-hidden border border-(--tile-border-color)">
+                <div class="group relative">
+
+                    {if is_image {
+                        view! {
+                            <img
+                                src=preview_url
+                                class="w-35 h-25 object-contain bg-black rounded-t-(--ui-border-radius) border-b border-(--tile-border-color)"
+                            />
+                        }
+                            .into_any()
+                    } else {
+                        view! {
+                            <div
+                                class="flex items-center justify-center w-full h-full text-white font-extrabold tracking-wider p-2"
+                                style=format!("background-color: {};", fallback_color)
+                            >
+                                <span>{ext}</span>
+                            </div>
+                        }
+                            .into_any()
+                    }}
+                    <div
+                        class="absolute top-1.5 right-1.5 rounded cursor-pointer flex items-center justify-center opacity-0 transition-all duration-150 ease-in-out group-hover:opacity-100 bg-(--ui-solid-bg) hover:bg-(--ui-solid-hover-bg) border border-(--tile-border-color) hover:border-(--accent-color) text-muted hover:text-bright"
+                        on:click=move |_| {
+                            let mut atts = attachments.get_untracked();
+                            if let Some(pos) = atts.iter().position(|a| a.id == id) {
+                                atts.remove(pos);
+                                attachments.set(atts);
+                            }
+                        }
+                    >
+                        <Icon icon=TRASH size="16px" color="currentColor" />
+                    </div>
+                </div>
+
+                <div class="p-2 flex flex-col gap-1">
+                    <div class="text-dim text-xs font-medium truncate" title=name.clone()>
+                        {name.clone()}
+                    </div>
+                    <div class="text-muted text-xs">{size_str}</div>
+                </div>
+            </div>
+        }
+    }
 }
 
 #[component]
@@ -1452,18 +1565,53 @@ fn ChatInput() -> impl IntoView {
         }.into_any()
     };
 
-    view! {
-        <div class="p-2 pt-0 w-full relative">
-            {move || input_info_content()} <SelectionMenu menu=menu input_ref=input_ref />
+    let attachments: RwSignal<Vec<Attachment>> = RwSignal::new(Vec::new());
+
+    let attachment_view = move || {
+        let atts = attachments.get();
+        if atts.is_empty() {
+            return ().into_any();
+        }
+
+        view! {
             <div
-                class="text-(--bright-text-color) w-full min-h-13 border-1 border-(--tile-border-color) rounded-b-(--ui-border-radius) bg-[rgba(0, 0, 0, 0.6)] flex flex-row bg-(--ui-floating-bg) items-center gap-3 px-3 cursor-text"
+                class="w-full bg-(--ui-floating-bg) border border-(--tile-border-color) border-b-0 p-2 flex flex-row gap-2 overflow-x-auto"
                 class=("rounded-t-(--ui-border-radius)", move || input_info.get().is_none())
             >
-                <button on:click = move |_| {spawn_local(
-                    async move {
-                    if let Err(e) = pick_file().await {
-                        log::error!("File picking failed: {}", e);
-                    }})}
+                {atts.iter().map(|att| att.render_preview(attachments)).collect_view()}
+            </div>
+        }.into_any()
+    };
+
+    let add_files_to_attachment = move || {
+        spawn_local(async move {
+            match pick_files().await {
+                Ok(paths) => {
+                    let mut new_atts = attachments.get_untracked();
+                    for file in paths {
+                        new_atts.push(Attachment::from_file_metadata(file));
+                    }
+                    attachments.set(new_atts);
+                }
+                Err(e) => log::error!("File picking failed: {}", e),
+            }
+        });
+    };
+
+    view! {
+        <div class="p-2 pt-0 w-full relative">
+            {move || input_info_content()} {move || attachment_view()}
+            <SelectionMenu menu=menu input_ref=input_ref />
+            <div
+                class="text-(--bright-text-color) w-full min-h-13 border-1 border-(--tile-border-color) rounded-b-(--ui-border-radius) bg-[rgba(0, 0, 0, 0.6)] flex flex-row bg-(--ui-floating-bg) items-center gap-3 px-3 cursor-text"
+                class=(
+                    "rounded-t-(--ui-border-radius)",
+                    move || input_info.get().is_none() && attachments.get().is_empty(),
+                )
+            >
+                <button
+                    class="cursor-pointer hover:color-(--text-bright)"
+                    on:click=move |_| add_files_to_attachment()
                 >
                     <Icon icon=UPLOAD_SIMPLE size="20px" color="var(--ui-base-color)" />
                 </button>

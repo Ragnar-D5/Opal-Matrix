@@ -24,6 +24,9 @@ extern "C" {
     #[wasm_bindgen(js_namespace = ["window", "__TAURI__", "core"])]
     pub fn invoke(cmd: &str, args: JsValue) -> js_sys::Promise;
 
+    #[wasm_bindgen(js_namespace = ["__TAURI__", "core"], js_name = convertFileSrc)]
+    pub fn convertFileSrc(path: &str) -> String;
+
     #[wasm_bindgen(js_namespace = ["__TAURI__", "opener"])]
     pub fn openUrl(url: &str) -> js_sys::Promise;
 }

@@ -36,6 +36,7 @@
     --text-xl--line-height: calc(1.75 / 1.25);
     --text-3xl: 1.875rem;
     --text-3xl--line-height: calc(2.25 / 1.875);
+    --font-weight-medium: 500;
     --font-weight-semibold: 600;
     --font-weight-bold: 700;
     --font-weight-extrabold: 800;
@@ -245,6 +246,9 @@
   .top-1 {
     top: calc(var(--spacing) * 1);
   }
+  .top-1\.5 {
+    top: calc(var(--spacing) * 1.5);
+  }
   .top-1\/2 {
     top: calc(1 / 2 * 100%);
   }
@@ -259,6 +263,9 @@
   }
   .right-0 {
     right: calc(var(--spacing) * 0);
+  }
+  .right-1\.5 {
+    right: calc(var(--spacing) * 1.5);
   }
   .right-4 {
     right: calc(var(--spacing) * 4);
@@ -475,6 +482,9 @@
   .h-24 {
     height: calc(var(--spacing) * 24);
   }
+  .h-25 {
+    height: calc(var(--spacing) * 25);
+  }
   .h-30 {
     height: calc(var(--spacing) * 30);
   }
@@ -528,6 +538,9 @@
   }
   .w-20 {
     width: calc(var(--spacing) * 20);
+  }
+  .w-35 {
+    width: calc(var(--spacing) * 35);
   }
   .w-65 {
     width: calc(var(--spacing) * 65);
@@ -717,6 +730,9 @@
   .overflow-visible {
     overflow: visible;
   }
+  .overflow-x-auto {
+    overflow-x: auto;
+  }
   .overflow-y-auto {
     overflow-y: auto;
   }
@@ -888,6 +904,9 @@
   .bg-\[var\(--tile-bg-color\)\] {
     background-color: var(--tile-bg-color);
   }
+  .bg-black {
+    background-color: var(--color-black);
+  }
   .bg-gray-700 {
     background-color: var(--color-gray-700);
   }
@@ -920,6 +939,9 @@
   }
   .to-80\% {
     --tw-gradient-to-position: 80%;
+  }
+  .object-contain {
+    object-fit: contain;
   }
   .object-cover {
     object-fit: cover;
@@ -1112,6 +1134,10 @@
     --tw-font-weight: var(--font-weight-extrabold);
     font-weight: var(--font-weight-extrabold);
   }
+  .font-medium {
+    --tw-font-weight: var(--font-weight-medium);
+    font-weight: var(--font-weight-medium);
+  }
   .font-semibold {
     --tw-font-weight: var(--font-weight-semibold);
     font-weight: var(--font-weight-semibold);
@@ -1294,6 +1320,10 @@
     transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));
     transition-duration: var(--tw-duration, var(--default-transition-duration));
   }
+  .duration-150 {
+    --tw-duration: 150ms;
+    transition-duration: 150ms;
+  }
   .duration-200 {
     --tw-duration: 200ms;
     transition-duration: 200ms;
@@ -1381,6 +1411,13 @@
   .first\:ml-0 {
     &:first-child {
       margin-left: calc(var(--spacing) * 0);
+    }
+  }
+  .hover\:border-\(--accent-color\) {
+    &:hover {
+      @media (hover: hover) {
+        border-color: var(--accent-color);
+      }
     }
   }
   .hover\:bg-\(--color-item-hover\) {

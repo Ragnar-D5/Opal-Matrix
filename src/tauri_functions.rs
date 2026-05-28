@@ -1,6 +1,8 @@
 use serde_json::json;
 use shared::{
-    api::LinkPreviewResponse, commands::Command, timeline::UiTimelineItem,
+    api::{FileMetadata, LinkPreviewResponse},
+    commands::Command,
+    timeline::UiTimelineItem,
     user_profile::UserProfile,
 };
 
@@ -142,10 +144,13 @@ pub async fn toggle_reaction(room_id: &str, event_id: &str, reaction: &str) -> R
     Ok(())
 }
 
-pub async fn pick_file() -> Result<Option<String>, String> {
-    match call_tauri_no_args("open_file_dialog").await {
-        Ok(result) => serde_wasm_bindgen::from_value(result)
-            .map_err(|e| format!("Failed to deserialize file path: {:?}", e)),
-        Err(e) => Err(format!("Failed to open file dialog: {:?}", e)),
-    }
+pub async fn pick_files() -> Result<Vec<FileMetadata>, String> {
+    let res = call_tauri_no_args("open_file_dialog")
+        .await
+        .map_err(|e| format!("Tauri call failed: {:?}", e))?;
+
+    let paths: Vec<FileMetadata> = serde_wasm_bindgen::from_value(res)
+        .map_err(|e| format!("Failed to parse response: {:?}", e))?;
+
+    Ok(paths)
 }
