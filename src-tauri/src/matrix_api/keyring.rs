@@ -1,4 +1,4 @@
-use crate::{TauriError, APP_NAME};
+use crate::{APP_NAME, TauriError};
 
 use keyring_core::Entry;
 use log::info;

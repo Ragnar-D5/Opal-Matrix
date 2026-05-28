@@ -1,5 +1,5 @@
 use log::warn;
-use shared::commands::{default_commands, default_macros, Command};
+use shared::commands::{Command, default_commands, default_macros};
 use tauri::command;
 
 #[command]

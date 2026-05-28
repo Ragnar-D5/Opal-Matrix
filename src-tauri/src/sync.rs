@@ -1,19 +1,19 @@
 use matrix_sdk::{
+    Client as MatrixClient, SessionChange,
     config::SyncSettings,
     ruma::{events::space::parent::SyncSpaceParentEvent, presence::PresenceState},
-    Client as MatrixClient, SessionChange,
 };
 use std::pin::pin;
-use tauri::{async_runtime::spawn, AppHandle};
+use tauri::{AppHandle, async_runtime::spawn};
 
 use crate::{
+    TauriError,
     frontend::{
         members::on_member_update,
         presence::handle_presences,
         sidebar::{handle_room_updates, send_sidebar},
     },
-    matrix_api::keyring::{save_session, StoredSession},
-    TauriError,
+    matrix_api::keyring::{StoredSession, save_session},
 };
 use futures_util::StreamExt;
 

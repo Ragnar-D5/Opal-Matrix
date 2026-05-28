@@ -1,15 +1,15 @@
 use std::{collections::HashMap, sync::Arc};
 
 use matrix_sdk::ruma::{
+    MilliSecondsSinceUnixEpoch,
     events::{
         poll::start::PollKind,
         room::{
-            message::{MessageFormat, MessageType},
             EncryptedFileInfo, MediaSource,
+            message::{MessageFormat, MessageType},
         },
         rtc::notification::CallIntent,
     },
-    MilliSecondsSinceUnixEpoch,
 };
 use matrix_sdk_ui::{
     eyeball_im::VectorDiff,

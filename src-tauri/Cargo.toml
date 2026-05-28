@@ -62,6 +62,7 @@ const_format = "0.2.36"
 rustls = { version = "0.23.40", features = ["ring"] }
 livekit = { version = "0.7.42", features = ["native-tls"] }
 futures-util = "0.3.32"
+tauri-plugin-dialog = "2"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 zbus-secret-service-keyring-store = {version = "1.0",features = ["rt-tokio-crypto-rust"] }

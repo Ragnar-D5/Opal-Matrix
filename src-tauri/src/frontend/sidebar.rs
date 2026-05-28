@@ -90,7 +90,8 @@ pub async fn send_sidebar(all_rooms: &[Room], handle: &AppHandle) -> Result<(), 
         }
     }
 
-    let mut ordered_parent_to_children: HashMap<String, Vec<(String, Option<String>)>> = HashMap::new();
+    let mut ordered_parent_to_children: HashMap<String, Vec<(String, Option<String>)>> =
+        HashMap::new();
 
     for (parent_id, child_ids) in &parent_to_children {
         if let Some(parent_room) = channels.get(parent_id) {
@@ -103,8 +104,12 @@ pub async fn send_sidebar(all_rooms: &[Room], handle: &AppHandle) -> Result<(), 
                 .iter()
                 .filter_map(|raw| raw.deserialize().ok())
                 .filter_map(|ev| {
-                    ev.as_stripped()
-                        .map(|or| (ev.state_key().to_string(), or.content.order.clone().clone().map(|o| o.to_string())))
+                    ev.as_stripped().map(|or| {
+                        (
+                            ev.state_key().to_string(),
+                            or.content.order.clone().clone().map(|o| o.to_string()),
+                        )
+                    })
                 })
                 .collect();
 
@@ -136,7 +141,8 @@ pub async fn send_sidebar(all_rooms: &[Room], handle: &AppHandle) -> Result<(), 
         // A server is a space that is not a child of any other space
         if is_space
             && !all_children.contains(room_id)
-            && let Some(node) = build_async_node(room_id, &channels, &ordered_parent_to_children).await
+            && let Some(node) =
+                build_async_node(room_id, &channels, &ordered_parent_to_children).await
         {
             top_level_servers.push(node);
         }
@@ -168,7 +174,6 @@ pub async fn send_sidebar(all_rooms: &[Room], handle: &AppHandle) -> Result<(), 
         };
         ts(b).cmp(&ts(a))
     });
-
 
     let sidebar_state = SidebarState {
         dms,
@@ -216,14 +221,17 @@ async fn build_async_node(
             }
         }
 
-
         RoomKind::Space {
             user_ids_in_calls: user_ids_in_calls.into_iter().collect(),
             children: children_nodes,
         }
     } else {
         if room.is_call() {
-            let joined_user_ids = room.active_room_call_participants().iter().map(|v| v.to_string()).collect();
+            let joined_user_ids = room
+                .active_room_call_participants()
+                .iter()
+                .map(|v| v.to_string())
+                .collect();
             RoomKind::VoiceChannel { joined_user_ids }
         } else {
             RoomKind::TextChannel {
@@ -245,7 +253,7 @@ async fn build_async_node(
 
 fn should_sidebar_update(room_updates: &RoomUpdates) -> bool {
     if !room_updates.left.is_empty() || !room_updates.invited.is_empty() {
-            return true;
+        return true;
     }
 
     for update in room_updates.joined.values() {
@@ -255,16 +263,18 @@ fn should_sidebar_update(room_updates: &RoomUpdates) -> bool {
 
         for raw_event in &update.ephemeral {
             if let Ok(Some(event_type)) = raw_event.get_field::<String>("type")
-                && event_type == "m.receipt" {
-                    return true;
-                }
+                && event_type == "m.receipt"
+            {
+                return true;
+            }
         }
 
         for raw_event in &update.account_data {
-                if let Ok(Some(event_type)) = raw_event.get_field::<String>("type")
-                && (event_type == "m.direct" || event_type == "m.fully_read") {
-                    return true;
-                }
+            if let Ok(Some(event_type)) = raw_event.get_field::<String>("type")
+                && (event_type == "m.direct" || event_type == "m.fully_read")
+            {
+                return true;
+            }
         }
     }
 

@@ -1,10 +1,10 @@
 use matrix_sdk::{
-    event_handler::Ctx,
-    ruma::{events::room::member::OriginalSyncRoomMemberEvent, RoomId},
     Room, RoomMemberships,
+    event_handler::Ctx,
+    ruma::{RoomId, events::room::member::OriginalSyncRoomMemberEvent},
 };
 use shared::user_profile::UserProfile;
-use tauri::{command, AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, command};
 
 use crate::{MatrixClientState, TauriError};
 

@@ -72,7 +72,9 @@ impl AppState {
     }
 
     pub fn active_room_id_untracked(&self) -> Option<String> {
-        self.active_room.get_untracked().map(|room| room.room_id.clone())
+        self.active_room
+            .get_untracked()
+            .map(|room| room.room_id.clone())
     }
 
     pub fn set_active_room_with_id(&self, room_id: Option<String>) {
@@ -94,7 +96,10 @@ impl AppState {
             return;
         };
 
-        let key = self.active_server_id.get_untracked().unwrap_or("dms".to_string());
+        let key = self
+            .active_server_id
+            .get_untracked()
+            .unwrap_or("dms".to_string());
 
         self.breadcrums.update(|bc| {
             bc.last_space_ids.insert(key, room_id.clone());
@@ -171,7 +176,8 @@ impl AppState {
         spawn_local(async move {
             let args = serde_wasm_bindgen::to_value(&json!({
                 "breadcrumbs": breadcrumbs
-            })).expect("Failed to serialize breadcrumbs");
+            }))
+            .expect("Failed to serialize breadcrumbs");
 
             if let Err(err) = call_tauri("set_breadcrumbs", args).await {
                 error!("Error saving breadcrumbs: {:?}", err);
@@ -189,7 +195,8 @@ impl AppState {
         spawn_local(async move {
             let args = serde_wasm_bindgen::to_value(&json!({
                 "server_order": order
-            })).expect("Failed to serialize server order");
+            }))
+            .expect("Failed to serialize server order");
 
             if let Err(err) = call_tauri("set_server_order", args).await {
                 error!("Error saving server order: {:?}", err);
@@ -247,9 +254,9 @@ impl AppState {
                 let Some(other_user_id) = other_user_ids.first() else {
                     return RoomHeader::Unknown;
                 };
-                let profile = member_store.get_profile(&active_room_id, &other_user_id);
+                let profile = member_store.get_profile(&active_room_id, other_user_id);
 
-                return RoomHeader::DM(profile);
+                RoomHeader::DM(profile)
             }
             RoomKind::TextChannel { .. } => RoomHeader::TextChannel(room.get_name()),
             RoomKind::VoiceChannel { .. } => RoomHeader::VoiceChannel(room.get_name()),

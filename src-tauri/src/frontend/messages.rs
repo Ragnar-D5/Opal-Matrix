@@ -6,7 +6,11 @@ use tokio_util::sync::CancellationToken;
 use ego_tree::NodeRef;
 use log::{error, warn};
 use matrix_sdk::ruma::{
-    OwnedEventId, OwnedUserId, RoomId, events::{AnyMessageLikeEventContent, Mentions, room::message::{RoomMessageEventContent, RoomMessageEventContentWithoutRelation}}
+    OwnedEventId, OwnedUserId, RoomId,
+    events::{
+        AnyMessageLikeEventContent, Mentions,
+        room::message::{RoomMessageEventContent, RoomMessageEventContentWithoutRelation},
+    },
 };
 use scraper::{Html, Node};
 use shared::timeline::{RichTextSpan, UiTimelineDiff, UiTimelineItem};
@@ -42,7 +46,9 @@ pub async fn commit_message(
 
     if let Some(reply_to_id) = replies_to {
         let content = RoomMessageEventContentWithoutRelation::text_html(body, formatted_body);
-        timeline.send_reply(content, OwnedEventId::try_from(reply_to_id)?).await?;
+        timeline
+            .send_reply(content, OwnedEventId::try_from(reply_to_id)?)
+            .await?;
     } else {
         let mut message_content = RoomMessageEventContent::text_html(body, formatted_body);
         message_content.mentions = Some(mentions.clone());
@@ -75,11 +81,16 @@ pub async fn edit_message(
 
     let (body, formatted_body) = process_string_to_message(&html, &mut mentions, &mut spans);
 
-
-    let mut messge_content = RoomMessageEventContentWithoutRelation::text_html(body, formatted_body);
+    let mut messge_content =
+        RoomMessageEventContentWithoutRelation::text_html(body, formatted_body);
     messge_content.mentions = Some(mentions);
 
-    timeline.edit(&TimelineEventItemId::EventId(OwnedEventId::try_from(event_id)?), EditedContent::RoomMessage(messge_content)).await?;
+    timeline
+        .edit(
+            &TimelineEventItemId::EventId(OwnedEventId::try_from(event_id)?),
+            EditedContent::RoomMessage(messge_content),
+        )
+        .await?;
 
     Ok(())
 }
@@ -279,7 +290,12 @@ pub async fn toggle_reaction(
     event_id: String,
     reaction: String,
 ) -> Result<(), TauriError> {
-    log::debug!("Toggling reaction '{}' on event {} in room {}", reaction, event_id, room_id);
+    log::debug!(
+        "Toggling reaction '{}' on event {} in room {}",
+        reaction,
+        event_id,
+        room_id
+    );
     let room = matrix_client
         .read()
         .await
@@ -288,7 +304,12 @@ pub async fn toggle_reaction(
 
     let timeline = timeline_manager.get_or_create_timeline(&room).await?;
 
-    timeline.toggle_reaction(&TimelineEventItemId::EventId(OwnedEventId::try_from(event_id)?), &reaction).await?;
+    timeline
+        .toggle_reaction(
+            &TimelineEventItemId::EventId(OwnedEventId::try_from(event_id)?),
+            &reaction,
+        )
+        .await?;
 
     Ok(())
 }

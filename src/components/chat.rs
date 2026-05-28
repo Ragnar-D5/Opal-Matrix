@@ -16,7 +16,7 @@ use crate::{
     },
     hooks::use_tauri_event,
     state::{AppState, MemberProfileHandle, MemberStore, RoomHeader},
-    tauri_functions::{get_members_for_room, get_timeline, scroll_up, toggle_reaction},
+    tauri_functions::{get_members_for_room, get_timeline, pick_file, scroll_up, toggle_reaction},
 };
 
 use colorsys::Hsl;
@@ -1426,7 +1426,14 @@ fn ChatInput() -> impl IntoView {
                 class="text-(--bright-text-color) w-full min-h-13 border-1 border-(--tile-border-color) rounded-b-(--ui-border-radius) bg-[rgba(0, 0, 0, 0.6)] flex flex-row bg-(--ui-floating-bg) items-center gap-3 px-3 cursor-text"
                 class=("rounded-t-(--ui-border-radius)", move || input_info.get().is_none())
             >
-                <Icon icon=UPLOAD_SIMPLE size="20px" color="var(--ui-base-color)" />
+                <button on:click = move |_| {spawn_local(
+                    async move {
+                    if let Err(e) = pick_file().await {
+                        log::error!("File picking failed: {}", e);
+                    }})}
+                >
+                    <Icon icon=UPLOAD_SIMPLE size="20px" color="var(--ui-base-color)" />
+                </button>
                 <div class="relative flex-1 min-w-0 flex items-center">
                     <Show when=move || is_empty.get()>
                         <div class="text-muted absolute left-0 top-0 pointer-events-none select-none py-3">

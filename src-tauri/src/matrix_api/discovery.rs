@@ -2,11 +2,11 @@ use matrix_sdk::Client as MatrixClient;
 
 use log::trace;
 use matrix_sdk::ruma::api::{
+    IncomingResponse, OutgoingRequest, SupportedVersions,
     auth_scheme::SendAccessToken,
     client::discovery::get_supported_versions::{
         Request as VersionsRequest, Response as VersionsResponse,
     },
-    IncomingResponse, OutgoingRequest, SupportedVersions,
 };
 use serde::Deserialize;
 use tauri::State;
@@ -14,7 +14,7 @@ use tauri_plugin_http::reqwest::{self, Client};
 use tokio::sync::RwLock;
 use url::Url;
 
-use crate::{reqwest_response_to_http_response, AsInfo, TauriError};
+use crate::{AsInfo, TauriError, reqwest_response_to_http_response};
 
 #[derive(Debug, Deserialize)]
 pub struct WellKnown {

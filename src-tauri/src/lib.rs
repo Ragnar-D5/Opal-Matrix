@@ -176,7 +176,7 @@ async fn try_restore(
     app_handle: AppHandle,
     matrix_client: State<'_, RwLock<MatrixClient>>,
 ) -> Result<RestoreResponse, TauriError> {
-    let session_result = tokio::task::spawn_blocking(|| keyring::get_last_active_session())
+    let session_result = tokio::task::spawn_blocking(keyring::get_last_active_session)
         .await
         .expect("Keyring blocking task panicked");
 
@@ -428,6 +428,7 @@ pub fn run() {
     init_keyring();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_http::init())
@@ -565,6 +566,7 @@ pub fn run() {
             frontend::messages::toggle_reaction,
             frontend::commands::get_commands,
             frontend::members::get_members_for_room,
+            frontend::dialog::open_file_dialog,
             // matrix API commands
             matrix_api::discovery::choose_home_server,
             // matrix_api::messages::fetch_messages,
