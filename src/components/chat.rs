@@ -221,6 +221,19 @@ fn render_message_content(
                     class="max-w-sm rounded-md border border-[var(--tile-border-color)]"
                 />
             </div>
+            <div class="text-normal leading-relaxed break-words">
+                {spans
+                    .clone()
+                    .into_iter()
+                    .map(|v| v.render(store.clone(), room_id.clone()))
+                    .collect_view()}
+                {if content.is_edited {
+                    view! { <span class="text-xs text-muted ml-2 italic">"(edited)"</span> }
+                        .into_any()
+                } else {
+                    ().into_any()
+                }} {spans.clone().into_iter().map(render_link).collect_view()}
+            </div>
         }
             .into_any(),
         // Not implemented yet
