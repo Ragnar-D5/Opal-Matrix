@@ -198,7 +198,7 @@ fn render_message_content(
             </div>
         }
             .into_any(),
-        // Not implemented yet
+        // TODO: Not implemented yet
         UiMessageType::Gallery => view! {
             <div class="text-normal leading-relaxed break-words italic">
                 {spans
@@ -236,7 +236,7 @@ fn render_message_content(
             </div>
         }
             .into_any(),
-        // Not implemented yet
+        // TODO: Not implemented yet
         UiMessageType::Location(_) => view! {
             <div class="text-normal leading-relaxed break-words italic">
                 {spans
@@ -247,7 +247,7 @@ fn render_message_content(
             </div>
         }
             .into_any(),
-        // Not implemented yet
+        // TODO: Not implemented yet
         UiMessageType::LiveLocation { .. } => view! {
             <div class="text-normal leading-relaxed break-words italic">
                 {spans
@@ -258,7 +258,7 @@ fn render_message_content(
             </div>
         }
             .into_any(),
-        // Not implemented yet
+        // TODO: Not implemented yet
         UiMessageType::Notice => view! {
             <div class="text-normal leading-relaxed break-words italic text-muted">
                 {spans
@@ -269,7 +269,7 @@ fn render_message_content(
             </div>
         }
             .into_any(),
-        // Not implemented yet
+        // TODO: Not implemented yet
         UiMessageType::Poll { .. } => view! {
             <div class="text-normal leading-relaxed break-words italic text-muted">
                 {spans
@@ -287,7 +287,7 @@ fn render_message_content(
             </div>
         }
             .into_any(),
-        // Not implemented yet
+        // TODO: Not implemented yet
         UiMessageType::ServerNotice { .. } =>  view! {
             <div class="text-normal leading-relaxed break-words italic text-muted">
                 {spans
