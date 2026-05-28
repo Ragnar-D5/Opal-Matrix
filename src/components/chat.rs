@@ -1304,6 +1304,22 @@ pub enum ChatInputInfo {
     },
 }
 
+#[derive(Clone, Debug)]
+pub enum AttachmentSource {
+    LocalFile(String),
+    Url(String),
+    RawBlob(web_sys::Blob)
+}
+
+#[derive(Clone, Debug)]
+struct Attachment {
+    id: String,
+    file_name: String,
+    mime_type: String,
+    size: u64,
+    preview_url: Option<String>,
+}
+
 #[component]
 fn ChatInput() -> impl IntoView {
     let state: AppState = expect_context();
