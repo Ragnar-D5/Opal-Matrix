@@ -61,7 +61,7 @@ const PLATFORM: &str = "android";
 const PLATFORM: &str = "ios";
 
 // Set initial display name for new devices to "Opal on <Platform>".
-const DEVICE_DISPLAY_NAME: &str = formatcp!("Opal matrix on {PLATFORM}");
+const DEVICE_DISPLAY_NAME: &str = formatcp!("Opal Matrix on {PLATFORM}");
 
 /// Helper function to convert a reqwest::Response into an http::Response<Bytes>.
 ///
