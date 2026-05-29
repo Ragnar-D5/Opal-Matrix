@@ -263,6 +263,8 @@ pub fn handle_keydown(
                 };
 
                 el.set_inner_html("<br>");
+                let atts = attachments.get_untracked();
+                attachments.set(vec![]);
                 if let Some(room_id) = state.active_room_id_untracked() {
                     state.drafts.update(|drafts| {
                         drafts.remove(&room_id);
@@ -293,8 +295,8 @@ pub fn handle_keydown(
                                 warn!("Failed to commit message: {e}");
                             };
 
-                            for attachment in attachments.get_untracked() {
-                                let file = attachment.into_file_metadata();
+                            for att in atts {
+                                let file = att.into_file_metadata();
 
                                 if let Err(e) = send_attachment(file, &room_id).await {
                                     warn!("Failed to send attachment: {e}");
