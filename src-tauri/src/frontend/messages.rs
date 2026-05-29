@@ -1,6 +1,10 @@
-use futures::StreamExt;
-use matrix_sdk::{Client as MatrixClient, room::edit::EditedContent};
-use matrix_sdk_ui::timeline::TimelineEventItemId;
+use std::{io::Cursor, path::PathBuf, str::FromStr};
+
+use futures::{StreamExt};
+use image::ImageReader;
+use matrix_sdk::{Client as MatrixClient, attachment::{AttachmentInfo, BaseFileInfo, BaseImageInfo, BaseVideoInfo}, room::edit::EditedContent, };
+use matrix_sdk_ui::timeline::{AttachmentConfig, AttachmentSource, TimelineEventItemId};
+use mime::Mime;
 use tokio_util::sync::CancellationToken;
 
 use ego_tree::NodeRef;
@@ -13,7 +17,7 @@ use matrix_sdk::ruma::{
     },
 };
 use scraper::{Html, Node};
-use shared::timeline::{RichTextSpan, UiTimelineDiff, UiTimelineItem};
+use shared::{api::{FileMetadata, UiAttachmentSource}, timeline::{RichTextSpan, UiTimelineDiff, UiTimelineItem}};
 use tauri::{AppHandle, Emitter, State, command};
 use tokio::sync::RwLock;
 
@@ -56,6 +60,87 @@ pub async fn commit_message(
         let content = AnyMessageLikeEventContent::RoomMessage(message_content);
         timeline.send(content).await?;
     }
+
+    Ok(())
+}
+
+#[command(rename_all = "snake_case")]
+pub async fn send_attachment(
+    matrix_client: State<'_, RwLock<MatrixClient>>,
+    timeline_manager: State<'_, TimelineManager>,
+    file: FileMetadata,
+    room_id: String,
+) -> Result<(), TauriError> {
+    let client = matrix_client.read().await;
+    let room = client
+        .get_room(&RoomId::parse(&room_id)?)
+        .ok_or("Room not found")?;
+
+    let timeline = timeline_manager.get_or_create_timeline(&room).await?;
+
+    let raw_bytes = match &file.source {
+        UiAttachmentSource::LocalFile(path) => {
+            let path = PathBuf::from(path);
+
+            tokio::fs::read(&path).await?
+        }
+        UiAttachmentSource::RawBytes(bytes) => bytes.clone(),
+    };
+
+    let size = raw_bytes.len() as u32;
+
+    let mime_type = Mime::from_str(&file.mime_type)?;
+    let file_type = mime_type.type_();
+
+    let info = match file_type {
+        mime::IMAGE => {
+            let dimensions = ImageReader::new(Cursor::new(raw_bytes)).with_guessed_format()?.into_dimensions().ok();
+
+            let info = BaseImageInfo {
+                width: dimensions.map(|(w, _)| w.into()),
+                height: dimensions.map(|(_, h)| h.into()),
+                size: Some(size.into()),
+                blurhash: None,
+                is_animated: None,
+            };
+
+            AttachmentInfo::Image(info)
+        }
+        mime::VIDEO => {
+            let info = BaseVideoInfo {
+                height: None,
+                width: None,
+                size: None,
+                blurhash: None,
+                duration: None,
+            };
+
+            AttachmentInfo::Video(info)
+        }
+        _ => {
+            AttachmentInfo::File(BaseFileInfo {
+                size: Some(size.into()),
+            })
+        }
+    };
+
+    let config = AttachmentConfig {
+        txn_id: None,
+        info: Some(info),
+        thumbnail: None,
+        caption: None,
+        in_reply_to: None,
+        mentions: None,
+    };
+
+    let source = match file.source {
+        UiAttachmentSource::LocalFile(path) => {
+             AttachmentSource::File(PathBuf::from(path))
+        }
+        UiAttachmentSource::RawBytes(bytes) => AttachmentSource::Data { bytes, filename: file.file_name }
+    };
+
+    timeline.send_attachment(source, mime_type, config).await?;
 
     Ok(())
 }

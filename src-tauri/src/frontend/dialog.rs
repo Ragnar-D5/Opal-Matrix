@@ -1,6 +1,6 @@
 use std::fs;
 
-use shared::api::FileMetadata;
+use shared::api::{FileMetadata, UiAttachmentSource};
 use tauri::{command, AppHandle};
 use tauri_plugin_dialog::DialogExt;
 use tokio::sync::oneshot;
@@ -39,7 +39,7 @@ pub async fn open_file_dialog(app: AppHandle) -> Result<Vec<FileMetadata>, Tauri
 
             let size = fs::metadata(path).map(|m| m.len()).unwrap_or(0);
             Some(FileMetadata {
-                path: path.to_string_lossy().into_owned(),
+                source: UiAttachmentSource::LocalFile(path.to_string_lossy().to_string()),
                 file_name,
                 mime_type,
                 size,

@@ -1,9 +1,9 @@
-use phosphor_leptos::{HASH, Icon, IconData, IconWeight, MATRIX_LOGO, SPEAKER_HIGH};
+use phosphor_leptos::{Icon, IconData, IconWeight, HASH, MATRIX_LOGO, SPEAKER_HIGH};
 use shared::get_color;
 
-use crate::components::FloatingTile;
 use crate::components::presence::PresenceBadge;
 use crate::components::user_profile::UserProfileMaybeExt;
+use crate::components::FloatingTile;
 use crate::state::{AppState, MemberStore};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -83,6 +83,7 @@ pub fn IndicatorPill(
     }
 }
 
+#[allow(dead_code)]
 #[derive(Clone)]
 pub enum CutoutBadgeContent {
     Number(u64),

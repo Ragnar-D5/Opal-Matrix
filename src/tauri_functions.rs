@@ -10,7 +10,7 @@ use crate::app::{call_tauri, call_tauri_no_args};
 
 pub async fn commit_message(
     message: String,
-    room_id: String,
+    room_id: &str,
     replies_to: Option<String>,
 ) -> Result<(), String> {
     let args = serde_wasm_bindgen::to_value(
@@ -25,11 +25,7 @@ pub async fn commit_message(
     Ok(())
 }
 
-pub async fn edit_message(
-    message: String,
-    room_id: String,
-    event_id: String,
-) -> Result<(), String> {
+pub async fn edit_message(message: String, room_id: &str, event_id: String) -> Result<(), String> {
     let args = serde_wasm_bindgen::to_value(
         &json!({ "html": message, "room_id": room_id, "event_id": event_id }),
     )
@@ -153,4 +149,15 @@ pub async fn pick_files() -> Result<Vec<FileMetadata>, String> {
         .map_err(|e| format!("Failed to parse response: {:?}", e))?;
 
     Ok(paths)
+}
+
+pub async fn send_attachment(file: FileMetadata, room_id: &str) -> Result<(), String> {
+    let args = serde_wasm_bindgen::to_value(&json!({ "file": file, "room_id": room_id }))
+        .map_err(|e| format!("Failed to serialize request: {:?}", e))?;
+
+    call_tauri("send_attachment", args)
+        .await
+        .map_err(|e| format!("Tauri call failed: {:?}", e))?;
+
+    Ok(())
 }

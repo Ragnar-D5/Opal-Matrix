@@ -283,7 +283,7 @@ fn should_sidebar_update(room_updates: &RoomUpdates) -> bool {
 
 pub async fn handle_room_updates(room_updates: &RoomUpdates, client: &Client, handle: &AppHandle) {
     if should_sidebar_update(room_updates) {
-        log::debug!("Significant room update detected, refreshing sidebar");
+        log::debug!("Refreshing sidebar");
         if let Err(e) = send_sidebar(&client.joined_rooms(), handle).await {
             log::error!("Failed to send sidebar update: {:?}", e);
         }

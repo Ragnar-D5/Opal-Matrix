@@ -32,11 +32,6 @@ pub fn handle_presences(presence_events: &Vec<Raw<PresenceEvent>>, app_handle: &
         }
     }
 
-    log::debug!(
-        "Prepared presence update batch for {} users",
-        presence_batch.len()
-    );
-
     if !presence_batch.is_empty() {
         send_presence_update(app_handle.clone(), &presence_batch).unwrap_or_else(|e| {
             log::error!("Failed to send presence update: {:?}", e);

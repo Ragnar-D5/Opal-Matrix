@@ -8,11 +8,11 @@ use wasm_bindgen::JsCast;
 use web_sys::{HtmlDivElement, HtmlElement, KeyboardEvent};
 use web_sys::{Node, window};
 
-use crate::components::chat::ChatInputInfo;
+use crate::components::chat::{Attachment, ChatInputInfo};
 use crate::components::input::menu::MenuType;
 use crate::components::input::menu::{SelectedItem, commit_selection};
-use crate::state::{AppState, MemberStore};
-use crate::tauri_functions::{commit_message, edit_message};
+use crate::state::{AppState, MemberStore, MessageDraft};
+use crate::tauri_functions::{commit_message, edit_message, send_attachment};
 
 pub(crate) mod menu;
 
@@ -43,7 +43,7 @@ fn check_if_empty(el: &HtmlElement, is_empty: RwSignal<bool>) -> bool {
     empty
 }
 
-pub fn handle_input(input_ref: NodeRef<Div>, is_empty: RwSignal<bool>, state: AppState) {
+pub fn handle_input(input_ref: NodeRef<Div>, is_empty: RwSignal<bool>, state: AppState, attachments: RwSignal<Vec<Attachment>>) {
     let Some(el) = input_ref.get() else { return };
     let doc = document();
 
@@ -104,14 +104,17 @@ pub fn handle_input(input_ref: NodeRef<Div>, is_empty: RwSignal<bool>, state: Ap
 
     restore_caret_position(&el, caret_pos);
 
-    let empty = check_if_empty(&el, is_empty);
+    let empty = check_if_empty(&el, is_empty) && attachments.get_untracked().is_empty();
 
     if let Some(room_id) = state.active_room_id_untracked() {
         state.drafts.update(|drafts| {
             if empty {
                 drafts.remove(&room_id);
             } else {
-                drafts.insert(room_id, el.inner_html());
+                drafts.insert(room_id, MessageDraft {
+                    content: el.inner_html(),
+                    attachments: attachments.get_untracked(),
+                });
             }
         });
     }
@@ -213,7 +216,8 @@ pub fn handle_keydown(
     state: AppState,
     store: MemberStore,
     is_empty: RwSignal<bool>,
-    input_info: RwSignal<Option<ChatInputInfo>>
+    input_info: RwSignal<Option<ChatInputInfo>>,
+    attachments: RwSignal<Vec<Attachment>>,
 ) {
     let Some(el) = input_ref.get() else { return };
 
@@ -265,28 +269,41 @@ pub fn handle_keydown(
                     });
                 }
 
+                let content_empty = message.trim().is_empty();
+                let attachments_empty = attachments.get_untracked().is_empty();
+
                 match input_info.get_untracked() {
-                    Some(ChatInputInfo::ReplyingTo { event_id, .. }) => {
+                    Some(ChatInputInfo::ReplyingTo { event_id, .. }) if !content_empty => {
                         spawn_local(async move {
-                            if let Err(e) = commit_message(message, room_id, Some(event_id)).await {
+                            if let Err(e) = commit_message(message, &room_id, Some(event_id)).await {
                                 warn!("Failed to commit message: {e}");
                             };
                         });
                     }
-                    Some(ChatInputInfo::Editing { event_id, .. }) => {
+                    Some(ChatInputInfo::Editing { event_id, .. }) if !content_empty => {
                         spawn_local(async move {
-                            if let Err(e) = edit_message(message, room_id, event_id).await {
+                            if let Err(e) = edit_message(message, &room_id, event_id).await {
                                 warn!("Failed to commit message: {e}");
                             };
                         });
                     }
-                    _ => {
+                    _ if !content_empty || !attachments_empty => {
                         spawn_local(async move {
-                            if let Err(e) = commit_message(message, room_id, None).await {
+                            if let Err(e) = commit_message(message, &room_id, None).await {
                                 warn!("Failed to commit message: {e}");
                             };
+
+                            for attachment in attachments.get_untracked() {
+                                let file = attachment.into_file_metadata();
+
+                                if let Err(e) = send_attachment(file, &room_id).await {
+                                    warn!("Failed to send attachment: {e}");
+                                }
+                            }
                         });
+
                     }
+                    _ => { /* Don't send empty message */ }
                 }
 
                 input_info.set(None);

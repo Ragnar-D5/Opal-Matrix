@@ -10,10 +10,24 @@ use shared::{
 };
 
 use crate::{
-    app::{CurrentWindow, call_tauri},
-    tauri_functions::get_members_for_room,
+    app::{CurrentWindow, call_tauri}, components::chat::Attachment, tauri_functions::get_members_for_room
 };
 use leptos::prelude::*;
+
+#[derive(Clone, Debug)]
+pub struct MessageDraft {
+    pub content: String,
+    pub attachments: Vec<Attachment>,
+}
+
+impl Default for MessageDraft {
+    fn default() -> Self {
+        Self {
+            content: "<br>".to_string(),
+            attachments: Vec::new(),
+        }
+    }
+}
 
 #[derive(Clone, Debug, Copy)]
 pub struct AppState {
@@ -32,7 +46,7 @@ pub struct AppState {
 
     pub is_focused: RwSignal<bool>,
 
-    pub drafts: RwSignal<HashMap<String, String>>,
+    pub drafts: RwSignal<HashMap<String, MessageDraft>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -204,45 +218,7 @@ impl AppState {
         });
     }
 
-    pub fn get_active_profile(&self, member_store: MemberStore) -> Option<MemberProfileHandle> {
-        let current_room_id = self.active_room_id()?;
-
-        for dm in self
-            .sidebar_state
-            .get()
-            .dms
-            .iter()
-            .filter(|d| d.room_id == current_room_id)
-        {
-            if let Some(user_id) = &dm.dm_user_id() {
-                if user_id.is_empty() {
-                    continue;
-                }
-
-                return Some(MemberProfileHandle {
-                    user_id: user_id.clone(),
-                    profile: member_store.get_profile(&current_room_id, user_id),
-                });
-            }
-        }
-
-        None
-    }
-
     pub fn get_room_header(&self, member_store: MemberStore) -> RoomHeader {
-        // if let Some(profile) = self.get_active_profile(member_store) {
-        //     return RoomHeader::DM(profile);
-        // }
-
-        // let Some(active_room_id) = self.active_room_id() else {
-        //     return RoomHeader::Unknown;
-        // };
-
-        // let sidebar_state = self.sidebar_state.get();
-        // let Some(node) = find_node_in_nodes(&sidebar_state.servers, &active_room_id) else {
-        //     return RoomHeader::Unknown;
-        // };
-
         let Some(room) = self.active_room.get() else {
             return RoomHeader::Unknown;
         };

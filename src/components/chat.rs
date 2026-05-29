@@ -28,7 +28,7 @@ use chrono::{DateTime, Local, TimeZone};
 use leptos::{ev, html::Div, prelude::*, task::spawn_local};
 use leptos_use::{UseIntersectionObserverReturn, use_event_listener, use_intersection_observer};
 use shared::{
-    api::FileMetadata, get_color, sidebar::RoomKind, timeline::{
+    api::{UiAttachmentSource, FileMetadata}, get_color, sidebar::RoomKind, timeline::{
         DetailState, EventContent, MessageContent, ReactionInfo, ReplyInfo, RichTextSpan,
         SystemMessage, UiMessageType, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind,
     }, user_profile::PresenceStatus
@@ -1337,26 +1337,28 @@ pub fn format_bytes(bytes: u64) -> String {
     }
 }
 
-#[derive(Clone, Debug)]
-pub enum AttachmentSource {
-    LocalFile(String),
-    RawBlob(web_sys::Blob),
-}
+
 
 #[derive(Clone, Debug)]
-struct Attachment {
+pub struct Attachment {
     id: String,
     file_name: String,
     mime_type: String,
     size: u64,
     preview_url: Option<String>,
-    source: AttachmentSource,
+    source: UiAttachmentSource,
 }
 
 impl Attachment {
+    pub fn into_file_metadata(&self) -> FileMetadata {
+        FileMetadata { source: self.source.clone(), file_name: self.file_name.clone(), mime_type: self.mime_type.clone(), size: self.size }
+    }
+
     fn from_file_metadata(metadata: FileMetadata) -> Self {
-        let path = metadata.path;
-        let preview_url = Some(convertFileSrc(&path));
+    let preview_url = match metadata.source.clone() {
+        UiAttachmentSource::LocalFile(path) => Some(convertFileSrc(&path)),
+        UiAttachmentSource::RawBytes(bytes) => todo!(),
+    };
 
         Self {
             id: uuid::Uuid::new_v4().to_string(),
@@ -1364,7 +1366,7 @@ impl Attachment {
             mime_type: metadata.mime_type,
             size: metadata.size,
             preview_url,
-            source: AttachmentSource::LocalFile(path),
+            source: metadata.source,
         }
     }
 
@@ -1500,17 +1502,24 @@ fn ChatInput() -> impl IntoView {
     let is_empty = RwSignal::new(true);
     provide_context(is_empty);
 
+    let attachments: RwSignal<Vec<Attachment>> = RwSignal::new(Vec::new());
+
     // Load on room change
     Effect::new(move |_| {
         let room_id = state.active_room_id();
-        let draft = room_id.and_then(|rid| state.drafts.with_untracked(|d| d.get(&rid).cloned()));
+        let draft = room_id.and_then(|rid| state.drafts.with_untracked(|d| d.get(&rid).cloned())).unwrap_or_default();
 
         let Some(el) = input_ref.get() else {
             return;
         };
-        el.set_inner_html(draft.clone().unwrap_or("<br>".into()).as_str());
 
-        is_empty.set(draft.is_none() || draft.as_deref() == Some("<br>"));
+        log::debug!("Loaded draft: {:?}", draft.clone());
+
+        let content = draft.content;
+        el.set_inner_html(&content);
+
+        is_empty.set(content.is_empty() || &content == "<br>");
+        attachments.set(draft.attachments);
 
         let win = window();
         let doc = document();
@@ -1565,7 +1574,6 @@ fn ChatInput() -> impl IntoView {
         }.into_any()
     };
 
-    let attachments: RwSignal<Vec<Attachment>> = RwSignal::new(Vec::new());
 
     let attachment_view = move || {
         let atts = attachments.get();
@@ -1592,6 +1600,13 @@ fn ChatInput() -> impl IntoView {
                         new_atts.push(Attachment::from_file_metadata(file));
                     }
                     attachments.set(new_atts);
+
+                    if let Some(room_id) = state.active_room_id_untracked() {
+                        let mut drafts = state.drafts.get_untracked();
+                        let draft = drafts.entry(room_id).or_default();
+                        draft.attachments = attachments.get_untracked();
+                        state.drafts.set(drafts);
+                    }
                 }
                 Err(e) => log::error!("File picking failed: {}", e),
             }
@@ -1625,7 +1640,7 @@ fn ChatInput() -> impl IntoView {
                         node_ref=input_ref
                         contenteditable="true"
                         class="text-(--bright-text-color) outline-none w-full whitespace-pre-wrap break-words py-3 max-h-100 overflow-y-auto"
-                        on:input=move |_| handle_input(input_ref, is_empty, state)
+                        on:input=move |_| handle_input(input_ref, is_empty, state, attachments)
                         on:keydown=move |ev| handle_keydown(
                             ev,
                             input_ref,
@@ -1637,6 +1652,7 @@ fn ChatInput() -> impl IntoView {
                             store.clone(),
                             is_empty,
                             input_info,
+                            attachments,
                         )
                     ></div>
                 </div>

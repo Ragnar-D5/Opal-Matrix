@@ -57,8 +57,14 @@ impl LinkPreviewResponse {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct FileMetadata {
-    pub path: String,
+    pub source: UiAttachmentSource,
     pub file_name: String,
     pub mime_type: String,
     pub size: u64,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub enum UiAttachmentSource {
+    LocalFile(String),
+    RawBytes(Vec<u8>),
 }
