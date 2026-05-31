@@ -43,7 +43,7 @@ use tauri_plugin_notification::{NotificationExt, PermissionState};
 
 use crate::matrix_api::keyring::{self, StoredSession, init_keyring};
 use crate::matrix_api::matrixrtc::join_matrixrtc_call;
-use crate::state::{AppState, TaskManager, TimelineManager};
+use crate::state::{AppState, CallAudioState, TaskManager, TimelineManager};
 use crate::sync::attach_callbacks;
 
 pub type MatrixClientState<'a> = State<'a, RwLock<MatrixClient>>;
@@ -539,6 +539,7 @@ pub fn run() {
             app.manage(RwLock::new(client));
             app.manage(TimelineManager::default());
             app.manage(TaskManager::default());
+            app.manage(CallAudioState::default());
 
             #[cfg(not(target_os = "android"))]
             let main_window = app

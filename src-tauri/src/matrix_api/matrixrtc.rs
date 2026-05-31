@@ -1,5 +1,11 @@
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use futures::StreamExt;
+use livekit::track::RemoteTrack;
+use livekit::webrtc::audio_stream::native::NativeAudioStream;
+use livekit::{PlatformAudio, RoomEvent};
 use log::debug;
 use matrix_sdk::ruma::MilliSecondsSinceUnixEpoch;
 use matrix_sdk::ruma::api::client::discovery::discover_homeserver::RtcFocusInfo;
@@ -11,15 +17,19 @@ use matrix_sdk::ruma::events::call::member::{
 use matrix_sdk::ruma::events::relation::Reference;
 use matrix_sdk::ruma::events::rtc::notification::RtcNotificationEventContent;
 use matrix_sdk::{Client, ruma::RoomId};
+use ringbuf::HeapRb;
+use ringbuf::traits::{Consumer, Observer, Producer, Split};
 use tauri::{State, command};
 use tauri_plugin_http::reqwest;
 use tokio::sync::RwLock;
 
 use crate::TauriError;
+use crate::state::CallAudioState;
 
 #[command(rename_all = "snake_case")]
 pub(crate) async fn join_matrixrtc_call(
     matrix_client: State<'_, RwLock<Client>>,
+    audio_state: State<'_, CallAudioState>,
     room_id: String,
 ) -> Result<serde_json::Value, TauriError> {
     // Changed return type to pass the JWT data back
@@ -147,27 +157,134 @@ pub(crate) async fn join_matrixrtc_call(
 
     room.send(notification_event).await?;
 
-    // use livekit::prelude::*;
+    let audio = PlatformAudio::new()?;
 
-    // let (room, mut room_events) = Room::connect(&service_url, &jwt, RoomOptions::default())
-    //     .await
-    //     .map_err(|e| e.to_string())?;
-    // while let Some(event) = room_events.recv().await {
-    //     match event {
-    //         RoomEvent::TrackSubscribed {
-    //             track,
-    //             publication,
-    //             participant,
-    //         } => {
-    //             debug!(
-    //                 "track: {:?}, publication: {:?}, participant: {:?}",
-    //                 track, publication, participant
-    //             );
-    //             // ...
-    //         }
-    //         _ => {}
-    //     }
-    // }
+    let (livekit_room, mut event_receiver) =
+        livekit::Room::connect(&service_url, &jwt, livekit::RoomOptions::default()).await?;
+    log::info!("Connected to room: {:?}", livekit_room);
+
+    let ring = HeapRb::<i16>::new(48000 * 4); // Large enough lock-free buffer
+    let (producer, mut consumer) = ring.split();
+    let shared_producer = Arc::new(Mutex::new(producer));
+
+    let host = cpal::default_host();
+
+    let mut out_channels = None;
+    let mut out_sample_rate = None;
+
+    if let Some(out_device) = host.default_output_device() {
+        if let Ok(out_config) = out_device.default_output_config() {
+            out_channels = Some(out_config.channels());
+            out_sample_rate = Some(out_config.sample_rate());
+            let prebuffer_threshold =
+                (out_channels.unwrap() as u32 * out_sample_rate.unwrap()) / 20;
+
+            let mut is_buffering = true;
+
+            let output_stream = out_device
+                .build_output_stream(
+                    &out_config.into(),
+                    move |data: &mut [f32], _| {
+                        // 1. Wait for the safety net to fill before playing
+                        if is_buffering {
+                            if consumer.occupied_len() >= prebuffer_threshold as usize {
+                                is_buffering = false; // We have enough audio, start playing!
+                            } else {
+                                // Output silence while buffering
+                                for sample in data.iter_mut() {
+                                    *sample = 0.0;
+                                }
+                                return;
+                            }
+                        }
+
+                        // 2. Play the audio
+                        for sample in data.iter_mut() {
+                            match consumer.try_pop() {
+                                Some(pcm) => {
+                                    *sample = pcm as f32 / i16::MAX as f32;
+                                }
+                                None => {
+                                    // Underflow! We completely ran out of audio.
+                                    // Play silence and go back into buffering mode to rebuild the safety net.
+                                    *sample = 0.0;
+                                    is_buffering = true;
+                                }
+                            }
+                        }
+                    },
+                    |err| log::error!("Speaker stream error: {}", err),
+                    None,
+                )
+                .map_err(|e| format!("Failed to build speaker stream: {}", e))?;
+
+            output_stream
+                .play()
+                .map_err(|e| format!("Failed to play speakers: {}", e))?;
+
+            // Store stream to keep it alive
+            *audio_state.output_stream.lock().await = Some(output_stream);
+        }
+    }
+
+    let target_channels = out_channels.unwrap_or(2) as u32;
+
+    tokio::spawn(async move {
+        while let Some(ev) = event_receiver.recv().await {
+            log::info!("Recieved livekit event: {:?}", ev);
+            match ev {
+                RoomEvent::TrackSubscribed {
+                    track,
+                    publication,
+                    participant,
+                } => {
+                    match track {
+                        RemoteTrack::Audio(audio_track) => {
+                            let rtc_track = audio_track.rtc_track();
+                            let mut audio_stream = NativeAudioStream::new(
+                                rtc_track,
+                                out_sample_rate.unwrap_or(48000) as i32,
+                                out_channels.unwrap_or(2) as i32,
+                            );
+
+                            let prod_clone = shared_producer.clone();
+
+                            tokio::spawn(async move {
+                                while let Some(audio_frame) = audio_stream.next().await {
+                                    // Push Livekit audio samples into our shared OS speaker queue
+                                    if let Ok(mut prod) = prod_clone.lock() {
+                                        let actual_channels = audio_frame.num_channels;
+
+                                        if actual_channels == 1 && target_channels == 2 {
+                                            // FIX: Upmix Mono to Stereo by duplicating each sample
+                                            for &sample in audio_frame.data.as_ref() {
+                                                let _ = prod.try_push(sample); // Left ear
+                                                let _ = prod.try_push(sample); // Right ear
+                                            }
+                                        } else if actual_channels == 2 && target_channels == 1 {
+                                            // FIX: Downmix Stereo to Mono by averaging L and R
+                                            let data = audio_frame.data.as_ref();
+                                            for chunk in data.chunks_exact(2) {
+                                                let mixed = ((chunk[0] as i32 + chunk[1] as i32)
+                                                    / 2)
+                                                    as i16;
+                                                let _ = prod.try_push(mixed);
+                                            }
+                                        } else {
+                                            // Channels match, push everything at once
+                                            let _ = prod.push_slice(audio_frame.data.as_ref());
+                                        }
+                                    }
+                                }
+                            });
+                        }
+                        _ => (),
+                    }
+                }
+                _ => (),
+            }
+        }
+    });
 
     Ok(response_json)
 }
