@@ -7,24 +7,24 @@ use livekit::track::RemoteTrack;
 use livekit::webrtc::audio_stream::native::NativeAudioStream;
 use livekit::{PlatformAudio, RoomEvent};
 use log::debug;
-use matrix_sdk::ruma::MilliSecondsSinceUnixEpoch;
 use matrix_sdk::ruma::api::client::discovery::discover_homeserver::RtcFocusInfo;
-use matrix_sdk::ruma::events::Mentions;
 use matrix_sdk::ruma::events::call::member::{
     ActiveLivekitFocus, Application, CallApplicationContent, CallMemberEventContent,
     CallMemberStateKey, Focus, LivekitFocus,
 };
 use matrix_sdk::ruma::events::relation::Reference;
 use matrix_sdk::ruma::events::rtc::notification::RtcNotificationEventContent;
-use matrix_sdk::{Client, ruma::RoomId};
-use ringbuf::HeapRb;
+use matrix_sdk::ruma::events::Mentions;
+use matrix_sdk::ruma::MilliSecondsSinceUnixEpoch;
+use matrix_sdk::{ruma::RoomId, Client};
 use ringbuf::traits::{Consumer, Observer, Producer, Split};
-use tauri::{State, command};
+use ringbuf::HeapRb;
+use tauri::{command, State};
 use tauri_plugin_http::reqwest;
 use tokio::sync::RwLock;
 
-use crate::TauriError;
 use crate::state::CallAudioState;
+use crate::TauriError;
 
 #[command(rename_all = "snake_case")]
 pub(crate) async fn join_matrixrtc_call(
@@ -32,13 +32,10 @@ pub(crate) async fn join_matrixrtc_call(
     audio_state: State<'_, CallAudioState>,
     room_id: String,
 ) -> Result<serde_json::Value, TauriError> {
-    // Changed return type to pass the JWT data back
     log::info!("Started Call");
 
-    // Read the client lock once for setup data
     let client = matrix_client.read().await;
 
-    // Get the device_id from your current active Matrix session
     let device_id = client
         .device_id()
         .map(|d| d.to_string())
@@ -63,9 +60,6 @@ pub(crate) async fn join_matrixrtc_call(
         .await
         .map_err(|e| format!("OpenID token request failed: {}", e))?;
 
-    // Drop the read guard before initiating outbound network requests
-
-    // 2. Format the payload EXACTLY like Element Web
     let auth_payload = serde_json::json!({
         "room": room_id,
         "openid_token": {
@@ -77,9 +71,6 @@ pub(crate) async fn join_matrixrtc_call(
         "device_id": device_id
     });
 
-    log::debug!("Sending payload: {:?}", auth_payload);
-
-    // 3. POST the payload to the SFU server
     let http_client = reqwest::Client::new();
     let res = http_client
         .post(&jwt_url)
@@ -94,7 +85,6 @@ pub(crate) async fn join_matrixrtc_call(
         return Err(format!("SFU Server rejected request ({}): {}", status, err_body).into());
     }
 
-    // 4. Parse the working {"url": "...", "jwt": "..."} response
     let response_json: serde_json::Value = res
         .json()
         .await
@@ -105,15 +95,9 @@ pub(crate) async fn join_matrixrtc_call(
     let service_url = response_json["url"].as_str().ok_or("No url returned")?;
     let jwt = response_json["jwt"].as_str().ok_or("No jwt returned")?;
 
-    debug!("url: {service_url}, token: {jwt}");
-
     let room = client
         .get_room(&RoomId::parse(room_id.clone())?)
         .ok_or("Room not found or not joined")?;
-
-    // // 3. Define your Call Properties
-    // // 'call_id' is a unique string identifying this specific session.
-    // let call_id = "main_room_video_call";
 
     let call_content = CallMemberEventContent::new(
         Application::Call(CallApplicationContent::new(
@@ -123,16 +107,12 @@ pub(crate) async fn join_matrixrtc_call(
         client.device_id().ok_or("No DeviceId")?.into(),
         matrix_sdk::ruma::events::call::member::ActiveFocus::Livekit(ActiveLivekitFocus::new()),
         vec![Focus::Livekit(LivekitFocus::new(
-            room_id,
+            room_id.clone(),
             service_url.to_string(),
         ))],
         None,
         None,
     );
-
-    // // 4. Send the State Event
-    // // MatrixRTC state events require a state_key, which is usually set to the Call ID string.
-    // println!("Signaling modern group call start...");
 
     let response = room
         .send_state_event_for_key(
@@ -157,131 +137,109 @@ pub(crate) async fn join_matrixrtc_call(
 
     room.send(notification_event).await?;
 
-    let audio = PlatformAudio::new()?;
+    let host = cpal::default_host();
+    let out_device = host
+        .default_output_device()
+        .ok_or("No default output device found")?;
 
-    let (livekit_room, mut event_receiver) =
-        livekit::Room::connect(&service_url, &jwt, livekit::RoomOptions::default()).await?;
-    log::info!("Connected to room: {:?}", livekit_room);
+    let out_config = out_device
+        .default_output_config()
+        .map_err(|e| format!("No output config: {}", e))?;
 
-    let ring = HeapRb::<i16>::new(48000 * 4); // Large enough lock-free buffer
+    let sample_rate = out_config.sample_rate(); // should be 48 000
+    let channels = out_config.channels() as u32;
+
+    log::info!("CPAL output: {} Hz, {} ch", sample_rate, channels);
+
+    let ring = HeapRb::<f32>::new(sample_rate as usize * channels as usize * 4);
     let (producer, mut consumer) = ring.split();
     let shared_producer = Arc::new(Mutex::new(producer));
 
-    let host = cpal::default_host();
+    // ~50 ms prebuffer (sample_rate * channels / 20) before starting playback.
+    let prebuffer_threshold = (sample_rate * channels / 50) as usize;
+    let mut is_buffering = true;
 
-    let mut out_channels = None;
-    let mut out_sample_rate = None;
-
-    if let Some(out_device) = host.default_output_device() {
-        if let Ok(out_config) = out_device.default_output_config() {
-            out_channels = Some(out_config.channels());
-            out_sample_rate = Some(out_config.sample_rate());
-            let prebuffer_threshold =
-                (out_channels.unwrap() as u32 * out_sample_rate.unwrap()) / 20;
-
-            let mut is_buffering = true;
-
-            let output_stream = out_device
-                .build_output_stream(
-                    &out_config.into(),
-                    move |data: &mut [f32], _| {
-                        // 1. Wait for the safety net to fill before playing
-                        if is_buffering {
-                            if consumer.occupied_len() >= prebuffer_threshold as usize {
-                                is_buffering = false; // We have enough audio, start playing!
-                            } else {
-                                // Output silence while buffering
-                                for sample in data.iter_mut() {
-                                    *sample = 0.0;
-                                }
-                                return;
-                            }
+    let output_stream = out_device
+        .build_output_stream(
+            &out_config.into(),
+            move |data: &mut [f32], _| {
+                if is_buffering {
+                    if consumer.occupied_len() >= prebuffer_threshold {
+                        is_buffering = false;
+                    } else {
+                        data.fill(0.0);
+                        return;
+                    }
+                }
+                for sample in data.iter_mut() {
+                    match consumer.try_pop() {
+                        Some(s) => *sample = s * 0.85,
+                        None => {
+                            *sample = 0.0;
+                            is_buffering = true;
                         }
+                    }
+                }
+            },
+            |err| log::error!("Speaker stream error: {err}"),
+            None,
+        )
+        .map_err(|e| format!("Failed to build output stream: {}", e))?;
 
-                        // 2. Play the audio
-                        for sample in data.iter_mut() {
-                            match consumer.try_pop() {
-                                Some(pcm) => {
-                                    *sample = pcm as f32 / i16::MAX as f32;
-                                }
-                                None => {
-                                    // Underflow! We completely ran out of audio.
-                                    // Play silence and go back into buffering mode to rebuild the safety net.
-                                    *sample = 0.0;
-                                    is_buffering = true;
-                                }
-                            }
-                        }
-                    },
-                    |err| log::error!("Speaker stream error: {}", err),
-                    None,
-                )
-                .map_err(|e| format!("Failed to build speaker stream: {}", e))?;
+    output_stream
+        .play()
+        .map_err(|e| format!("Failed to start output stream: {}", e))?;
 
-            output_stream
-                .play()
-                .map_err(|e| format!("Failed to play speakers: {}", e))?;
+    *audio_state.output_stream.lock().await = Some(output_stream);
 
-            // Store stream to keep it alive
-            *audio_state.output_stream.lock().await = Some(output_stream);
-        }
-    }
+    // --- LiveKit connection ---
 
-    let target_channels = out_channels.unwrap_or(2) as u32;
+    let (livekit_room, mut event_receiver) =
+        livekit::Room::connect(service_url, jwt, livekit::RoomOptions::default()).await?;
+    log::info!("Connected to LiveKit room: {:?}", livekit_room);
 
     tokio::spawn(async move {
         while let Some(ev) = event_receiver.recv().await {
-            log::info!("Recieved livekit event: {:?}", ev);
-            match ev {
-                RoomEvent::TrackSubscribed {
-                    track,
-                    publication,
-                    participant,
-                } => {
-                    match track {
-                        RemoteTrack::Audio(audio_track) => {
-                            let rtc_track = audio_track.rtc_track();
-                            let mut audio_stream = NativeAudioStream::new(
-                                rtc_track,
-                                out_sample_rate.unwrap_or(48000) as i32,
-                                out_channels.unwrap_or(2) as i32,
-                            );
+            if let RoomEvent::TrackSubscribed { track, .. } = ev && let RemoteTrack::Audio(audio_track) = track {
+                let rtc_track = audio_track.rtc_track();
 
-                            let prod_clone = shared_producer.clone();
+                // Tell NativeAudioStream to deliver at 48 kHz / stereo.
+                // Because this matches what CPAL was configured for above, the
+                // WebRTC engine performs no resampling — the main source of the
+                // robotic artifact is gone.
+                let mut audio_stream =
+                    NativeAudioStream::new(rtc_track, sample_rate as i32, channels as i32);
 
-                            tokio::spawn(async move {
-                                while let Some(audio_frame) = audio_stream.next().await {
-                                    // Push Livekit audio samples into our shared OS speaker queue
-                                    if let Ok(mut prod) = prod_clone.lock() {
-                                        let actual_channels = audio_frame.num_channels;
+                log::info!(
+                    "NativeAudioStream configured: {} Hz, {} ch",
+                    sample_rate,
+                    channels
+                );
 
-                                        if actual_channels == 1 && target_channels == 2 {
-                                            // FIX: Upmix Mono to Stereo by duplicating each sample
-                                            for &sample in audio_frame.data.as_ref() {
-                                                let _ = prod.try_push(sample); // Left ear
-                                                let _ = prod.try_push(sample); // Right ear
-                                            }
-                                        } else if actual_channels == 2 && target_channels == 1 {
-                                            // FIX: Downmix Stereo to Mono by averaging L and R
-                                            let data = audio_frame.data.as_ref();
-                                            for chunk in data.chunks_exact(2) {
-                                                let mixed = ((chunk[0] as i32 + chunk[1] as i32)
-                                                    / 2)
-                                                    as i16;
-                                                let _ = prod.try_push(mixed);
-                                            }
-                                        } else {
-                                            // Channels match, push everything at once
-                                            let _ = prod.push_slice(audio_frame.data.as_ref());
-                                        }
-                                    }
-                                }
-                            });
+                let prod_clone = shared_producer.clone();
+
+                tokio::spawn(async move {
+                    while let Some(frame) = audio_stream.next().await {
+                        let Ok(mut prod) = prod_clone.lock() else { continue };
+
+                        if frame.num_channels == 1 && channels == 2 {
+                            for &s in frame.data.as_ref() {
+                                let f = s as f32 / 32_768.0;
+                                // push_overwrite keeps the buffer fresh — if
+                                // the consumer falls behind for any reason,
+                                // we discard the oldest samples rather than
+                                // dropping the newest (which is what caused
+                                // the growing delay in the previous version).
+                                prod.try_push(f);
+                                prod.try_push(f);
+                            }
+                        } else {
+                            for &s in frame.data.as_ref() {
+                                prod.try_push(s as f32 / 32_768.0);
+                            }
                         }
-                        _ => (),
                     }
-                }
-                _ => (),
+                });
             }
         }
     });
