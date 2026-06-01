@@ -145,20 +145,23 @@ pub(crate) async fn join_matrixrtc_call(
         let kp_clone = key_provider.clone();
         client.add_event_handler(
             move |ev: matrix_sdk::ruma::events::ToDeviceEvent<RtcEncryptionKeyEventContent>| {
-                let base64_key = &ev.content.media_key.key;
+                let kp_clone = kp_clone.clone();
 
-                // CRITICAL FIX: LiveKit needs the key mapped to the sender's LiveKit Identity.
-                // In MSC4143, the LiveKit Identity matches the `member_id` field in the payload.
-                // Do NOT use `ev.sender` here!
-                let livekit_identity = ParticipantIdentity::from(ev.content.member_id.clone());
+                async move {
+                    let base64_key = &ev.content.media_key.key;
 
-                if let Ok(decoded_key) = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, base64_key) {
-                    log::info!("Registering E2EE key for LiveKit participant: {}", livekit_identity);
+                    // CRITICAL FIX: LiveKit needs the key mapped to the sender's LiveKit Identity.
+                    // In MSC4143, the LiveKit Identity matches the `member_id` field in the payload.
+                    // Do NOT use `ev.sender` here!
+                    let livekit_identity = ParticipantIdentity::from(ev.content.member_id.clone());
 
-                    // Assign the key specifically to their identity
-                    kp_clone.set_key(&livekit_identity, ev.content.media_key.index as i32, decoded_key);
+                    if let Ok(decoded_key) = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, base64_key) {
+                        log::info!("Registering E2EE key for LiveKit participant: {}", livekit_identity);
+
+                        // Assign the key specifically to their identity
+                        kp_clone.set_key(&livekit_identity, ev.content.media_key.index as i32, decoded_key);
+                    }
                 }
-                async {}
             }
         );
         //
