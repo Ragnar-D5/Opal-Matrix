@@ -42,7 +42,7 @@ use tauri_plugin_log::{Target, TargetKind};
 use tauri_plugin_notification::{NotificationExt, PermissionState};
 
 use crate::matrix_api::keyring::{self, StoredSession, init_keyring};
-use crate::matrix_api::matrixrtc::join_matrixrtc_call;
+use crate::matrix_api::matrixrtc::{join_matrixrtc_call, leave_matrixrtc_call};
 use crate::state::{AppState, CallAudioState, TaskManager, TimelineManager};
 use crate::sync::attach_callbacks;
 
@@ -559,6 +559,7 @@ pub fn run() {
             set_room_id,
             set_frontend_focused,
             join_matrixrtc_call,
+            leave_matrixrtc_call,
             // frontend commands
             frontend::messages::commit_message,
             frontend::messages::send_attachment,

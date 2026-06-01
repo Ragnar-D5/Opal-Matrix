@@ -1,5 +1,5 @@
 use crate::{
-    app::{call_tauri,  convertFileSrc},
+    app::{call_tauri, convertFileSrc},
     components::{
         FloatingTile, TextCircle, TextCircleProps,
         input::{
@@ -21,17 +21,22 @@ use crate::{
 
 use colorsys::Hsl;
 use phosphor_leptos::{
-    ARROW_BEND_UP_LEFT, HASH, INFO, Icon, IconWeight, MATRIX_LOGO, PENCIL_SIMPLE, PHONE, SMILEY, SPEAKER_HIGH, TRASH, UPLOAD_SIMPLE, WARNING_CIRCLE, X_CIRCLE
+    ARROW_BEND_UP_LEFT, HASH, INFO, Icon, IconWeight, MATRIX_LOGO, PENCIL_SIMPLE, PHONE,
+    PHONE_DISCONNECT, SMILEY, SPEAKER_HIGH, TRASH, UPLOAD_SIMPLE, WARNING_CIRCLE, X_CIRCLE,
 };
 
 use chrono::{DateTime, Local, TimeZone};
 use leptos::{ev, html::Div, prelude::*, task::spawn_local};
 use leptos_use::{UseIntersectionObserverReturn, use_event_listener, use_intersection_observer};
 use shared::{
-    api::{UiAttachmentSource, FileMetadata}, get_color, sidebar::RoomKind, timeline::{
+    api::{FileMetadata, UiAttachmentSource},
+    get_color,
+    sidebar::RoomKind,
+    timeline::{
         DetailState, EventContent, MessageContent, ReactionInfo, ReplyInfo, RichTextSpan,
         SystemMessage, UiMessageType, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind,
-    }, user_profile::PresenceStatus
+    },
+    user_profile::PresenceStatus,
 };
 use std::collections::HashMap;
 use web_sys::IntersectionObserverEntry;
@@ -1303,6 +1308,34 @@ fn ChatHeader(
                     </div>
                 </button>
             </div>
+            <div class="self-center h-full">
+                <button
+                    class="transition-opacity h-full mr-1"
+                    class=("text-(--ui-hover-color)", move || info_hovered.get())
+                    class=("text-(--ui-base-color)", move || !info_hovered.get())
+                    on:click=move |_| {
+                        let value = serde_wasm_bindgen::to_value(
+                            &serde_json::json!({"room_id": &state.active_room_id().unwrap()}),
+                        );
+                        spawn_local(async move {
+                            log::debug!(
+                                "{:?}", call_tauri("leave_matrixrtc_call", value.unwrap()).await
+                            );
+                        })
+                    }
+                    on:mouseenter=move |_| set_info_hovered.set(true)
+                    on:mouseleave=move |_| set_info_hovered.set(false)
+                >
+                    <div class="h-full justify-center items-center flex cursor-pointer">
+                        <Icon
+                            icon=PHONE_DISCONNECT
+                            size="80%"
+                            color="currentColor"
+                            weight=IconWeight::Duotone
+                        />
+                    </div>
+                </button>
+            </div>
         </FloatingTile>
     }
 }
@@ -1337,8 +1370,6 @@ pub fn format_bytes(bytes: u64) -> String {
     }
 }
 
-
-
 #[derive(Clone, Debug)]
 pub struct Attachment {
     id: String,
@@ -1351,14 +1382,19 @@ pub struct Attachment {
 
 impl Attachment {
     pub fn into_file_metadata(&self) -> FileMetadata {
-        FileMetadata { source: self.source.clone(), file_name: self.file_name.clone(), mime_type: self.mime_type.clone(), size: self.size }
+        FileMetadata {
+            source: self.source.clone(),
+            file_name: self.file_name.clone(),
+            mime_type: self.mime_type.clone(),
+            size: self.size,
+        }
     }
 
     fn from_file_metadata(metadata: FileMetadata) -> Self {
-    let preview_url = match metadata.source.clone() {
-        UiAttachmentSource::LocalFile(path) => Some(convertFileSrc(&path)),
-        UiAttachmentSource::RawBytes(bytes) => todo!(),
-    };
+        let preview_url = match metadata.source.clone() {
+            UiAttachmentSource::LocalFile(path) => Some(convertFileSrc(&path)),
+            UiAttachmentSource::RawBytes(bytes) => todo!(),
+        };
 
         Self {
             id: uuid::Uuid::new_v4().to_string(),
@@ -1507,7 +1543,9 @@ fn ChatInput() -> impl IntoView {
     // Load on room change
     Effect::new(move |_| {
         let room_id = state.active_room_id();
-        let draft = room_id.and_then(|rid| state.drafts.with_untracked(|d| d.get(&rid).cloned())).unwrap_or_default();
+        let draft = room_id
+            .and_then(|rid| state.drafts.with_untracked(|d| d.get(&rid).cloned()))
+            .unwrap_or_default();
 
         let Some(el) = input_ref.get() else {
             return;
@@ -1573,7 +1611,6 @@ fn ChatInput() -> impl IntoView {
             </div>
         }.into_any()
     };
-
 
     let attachment_view = move || {
         let atts = attachments.get();

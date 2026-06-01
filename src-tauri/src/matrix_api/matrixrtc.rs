@@ -3,28 +3,27 @@ use std::time::Duration;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use futures::StreamExt;
+use livekit::RoomEvent;
 use livekit::track::RemoteTrack;
 use livekit::webrtc::audio_stream::native::NativeAudioStream;
-use livekit::{PlatformAudio, RoomEvent};
-use log::debug;
+use matrix_sdk::ruma::MilliSecondsSinceUnixEpoch;
 use matrix_sdk::ruma::api::client::discovery::discover_homeserver::RtcFocusInfo;
+use matrix_sdk::ruma::events::Mentions;
 use matrix_sdk::ruma::events::call::member::{
     ActiveLivekitFocus, Application, CallApplicationContent, CallMemberEventContent,
     CallMemberStateKey, Focus, LivekitFocus,
 };
 use matrix_sdk::ruma::events::relation::Reference;
 use matrix_sdk::ruma::events::rtc::notification::RtcNotificationEventContent;
-use matrix_sdk::ruma::events::Mentions;
-use matrix_sdk::ruma::MilliSecondsSinceUnixEpoch;
-use matrix_sdk::{ruma::RoomId, Client};
-use ringbuf::traits::{Consumer, Observer, Producer, Split};
+use matrix_sdk::{Client, ruma::RoomId};
 use ringbuf::HeapRb;
-use tauri::{command, State};
+use ringbuf::traits::{Consumer, Observer, Producer, Split};
+use tauri::{State, command};
 use tauri_plugin_http::reqwest;
 use tokio::sync::RwLock;
 
-use crate::state::CallAudioState;
 use crate::TauriError;
+use crate::state::CallAudioState;
 
 #[command(rename_all = "snake_case")]
 pub(crate) async fn join_matrixrtc_call(
@@ -32,7 +31,7 @@ pub(crate) async fn join_matrixrtc_call(
     audio_state: State<'_, CallAudioState>,
     room_id: String,
 ) -> Result<serde_json::Value, TauriError> {
-    log::info!("Started Call");
+    log::info!("Started joining call");
 
     let client = matrix_client.read().await;
 
@@ -90,10 +89,10 @@ pub(crate) async fn join_matrixrtc_call(
         .await
         .map_err(|e| format!("Failed to parse SFU response JSON: {}", e))?;
 
-    log::info!("Successfully acquired LiveKit token!");
-
     let service_url = response_json["url"].as_str().ok_or("No url returned")?;
     let jwt = response_json["jwt"].as_str().ok_or("No jwt returned")?;
+
+    log::info!("Successfully acquired LiveKit token!");
 
     let room = client
         .get_room(&RoomId::parse(room_id.clone())?)
@@ -200,7 +199,9 @@ pub(crate) async fn join_matrixrtc_call(
 
     tokio::spawn(async move {
         while let Some(ev) = event_receiver.recv().await {
-            if let RoomEvent::TrackSubscribed { track, .. } = ev && let RemoteTrack::Audio(audio_track) = track {
+            if let RoomEvent::TrackSubscribed { track, .. } = ev
+                && let RemoteTrack::Audio(audio_track) = track
+            {
                 let rtc_track = audio_track.rtc_track();
 
                 // Tell NativeAudioStream to deliver at 48 kHz / stereo.
@@ -220,7 +221,9 @@ pub(crate) async fn join_matrixrtc_call(
 
                 tokio::spawn(async move {
                     while let Some(frame) = audio_stream.next().await {
-                        let Ok(mut prod) = prod_clone.lock() else { continue };
+                        let Ok(mut prod) = prod_clone.lock() else {
+                            continue;
+                        };
 
                         if frame.num_channels == 1 && channels == 2 {
                             for &s in frame.data.as_ref() {
@@ -230,12 +233,12 @@ pub(crate) async fn join_matrixrtc_call(
                                 // we discard the oldest samples rather than
                                 // dropping the newest (which is what caused
                                 // the growing delay in the previous version).
-                                prod.try_push(f);
-                                prod.try_push(f);
+                                let _ = prod.try_push(f);
+                                // prod.try_push(f);
                             }
                         } else {
                             for &s in frame.data.as_ref() {
-                                prod.try_push(s as f32 / 32_768.0);
+                                let _ = prod.try_push(s as f32 / 32_768.0);
                             }
                         }
                     }
@@ -245,4 +248,30 @@ pub(crate) async fn join_matrixrtc_call(
     });
 
     Ok(response_json)
+}
+
+#[command(rename_all = "snake_case")]
+pub(crate) async fn leave_matrixrtc_call(
+    matrix_client: State<'_, RwLock<Client>>,
+    room_id: String,
+) -> Result<(), TauriError> {
+    let client = matrix_client.read().await;
+    let room = client
+        .get_room(&RoomId::parse(room_id.clone())?)
+        .ok_or("Room not found or not joined")?;
+
+    let call_content = CallMemberEventContent::new_empty(None); // use this to specify leave reason like disconnects
+
+    let _response = room
+        .send_state_event_for_key(
+            &CallMemberStateKey::new(
+                client.user_id().ok_or("No UserId")?.into(),
+                Some(client.device_id().ok_or("No DeviceId")?.into()),
+                true,
+            ),
+            call_content,
+        )
+        .await?;
+
+    Ok(())
 }
