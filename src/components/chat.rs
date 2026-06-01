@@ -540,6 +540,11 @@ fn render_system_message(
             </div>
         }
         .into_any(),
+        SystemMessage::CallMember => view! {
+            <div class="flex flex-row gap-1">
+                {user_div(&sender_id_str)} <span>"joined a call"</span>
+            </div>
+        }.into_any(),
         SystemMessage::PolicyRuleRoom => view! {
             <div class="flex flex-row gap-1">
                 {user_div(&sender_id_str)} <span>"changed the room's policy"</span>
@@ -769,7 +774,22 @@ fn render_system_message(
             <div class="flex flex-row gap-1">
                 {user_div(&sender_id_str)} <span>"performed an unknown system action"</span>
             </div>
-        }.into_any()
+        }.into_any(),
+        SystemMessage::BeaconInfo => view! {
+            <div class="flex flex-row gap-1">
+                {user_div(&sender_id_str)} <span>"shared a live location"</span>
+            </div>
+        }.into_any(),
+        SystemMessage::MemberHints => view! {
+            <div class="flex flex-row gap-1">
+                {user_div(&sender_id_str)} <span>"updated their member hints"</span>
+            </div>
+        }.into_any(),
+        SystemMessage::RoomImagePack => view! {
+            <div class="flex flex-row gap-1">
+                {user_div(&sender_id_str)} <span>"updated the room's image pack"</span>
+            </div>
+        }.into_any(),
     };
 
     view! { <div class="flex text-muted items-center justify-center my-2">{content.into_any()}</div> }

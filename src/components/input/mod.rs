@@ -271,7 +271,7 @@ pub fn handle_keydown(
                     });
                 }
 
-                let content_empty = message.trim().is_empty();
+                let content_empty = message.trim().is_empty() || message == "<br>" || message == "<br><br>" || message == "<br type=\"_moz\">";
                 let attachments_empty = attachments.get_untracked().is_empty();
 
                 match input_info.get_untracked() {
@@ -289,23 +289,24 @@ pub fn handle_keydown(
                             };
                         });
                     }
-                    _ if !content_empty || !attachments_empty => {
+                    _ => {
                         spawn_local(async move {
-                            if let Err(e) = commit_message(message, &room_id, None).await {
+                            if !content_empty && let Err(e) = commit_message(message, &room_id, None).await {
                                 warn!("Failed to commit message: {e}");
                             };
 
-                            for att in atts {
-                                let file = att.into_file_metadata();
+                            if !attachments_empty {
+                                for att in atts {
+                                    let file = att.into_file_metadata();
 
-                                if let Err(e) = send_attachment(file, &room_id).await {
-                                    warn!("Failed to send attachment: {e}");
+                                    if let Err(e) = send_attachment(file, &room_id).await {
+                                        warn!("Failed to send attachment: {e}");
+                                    }
                                 }
                             }
                         });
 
                     }
-                    _ => { /* Don't send empty message */ }
                 }
 
                 input_info.set(None);

@@ -10,7 +10,7 @@ use matrix_sdk::ruma::{
             EncryptedFileInfo, MediaSource,
         },
         rtc::notification::CallIntent,
-        StateEventContentChange,
+        StateEventContentChange, StateEventType,
     },
     room::JoinRule,
     MilliSecondsSinceUnixEpoch,
@@ -735,7 +735,24 @@ fn timeline_item_content_to_ui(value: &TimelineItemContent) -> EventContent {
                     EventContent::SystemMessage(SystemMessage::Redacted)
                 }
             },
-            _ => EventContent::SystemMessage(SystemMessage::Unknown),
+            other => match other.event_type() {
+                StateEventType::CallMember => {
+                    EventContent::SystemMessage(SystemMessage::CallMember)
+                }
+                StateEventType::BeaconInfo => {
+                    EventContent::SystemMessage(SystemMessage::BeaconInfo)
+                }
+                StateEventType::MemberHints => {
+                    EventContent::SystemMessage(SystemMessage::MemberHints)
+                }
+                // StateEventType::RoomImagePack => {
+                //     EventContent::SystemMessage(SystemMessage::RoomImagePack)
+                // }
+                other => {
+                    log::warn!("Unhandled state event content change: {:?}", other);
+                    EventContent::SystemMessage(SystemMessage::Unknown)
+                }
+            },
         },
     }
 }

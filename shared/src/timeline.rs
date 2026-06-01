@@ -386,6 +386,7 @@ pub enum SystemMessage {
     },
     ProfileChange(ProfileChange),
     CallInvite,
+    CallMember,
     RtcNotification {
         call_intent: Option<UiCallIntent>,
         declined_by: Vec<String>,
@@ -444,6 +445,9 @@ pub enum SystemMessage {
     },
     Redacted,
     Unknown,
+    RoomImagePack,
+    BeaconInfo,
+    MemberHints,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
