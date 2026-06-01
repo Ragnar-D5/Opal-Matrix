@@ -4,8 +4,10 @@ use std::time::Duration;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use futures::StreamExt;
 use livekit::RoomEvent;
-use livekit::track::RemoteTrack;
+use livekit::track::{LocalAudioTrack, LocalTrack, RemoteTrack};
+use livekit::webrtc::audio_source::native::NativeAudioSource;
 use livekit::webrtc::audio_stream::native::NativeAudioStream;
+use livekit::webrtc::prelude::{AudioFrame, AudioSourceOptions};
 use matrix_sdk::ruma::MilliSecondsSinceUnixEpoch;
 use matrix_sdk::ruma::api::client::discovery::discover_homeserver::RtcFocusInfo;
 use matrix_sdk::ruma::events::Mentions;
@@ -191,14 +193,67 @@ pub(crate) async fn join_matrixrtc_call(
 
     *audio_state.output_stream.lock().await = Some(output_stream);
 
+    let in_device = host.default_input_device().ok_or("No input device found")?;
+    let in_config = in_device.default_input_config()?;
+
+    let native_audio_source = NativeAudioSource::new(AudioSourceOptions::default(), 48000, 2, 100);
+    let local_audio_track = LocalAudioTrack::create_audio_track(
+        "mic",
+        livekit::RtcAudioSource::Native(native_audio_source.clone()),
+    );
+
+    let channels = in_config.channels() as u32;
+    let sample_rate = in_config.sample_rate();
+
+    let input_stream = in_device
+        .build_input_stream(
+            &in_config.into(),
+            move |data: &[f32], _| {
+                // Convert cpal f32 float PCM to i16 PCM for WebRTC
+                let i16_data: Vec<i16> =
+                    data.iter().map(|&s| (s * i16::MAX as f32) as i16).collect();
+
+                let frame = AudioFrame {
+                    data: i16_data.into(),
+                    sample_rate,
+                    num_channels: channels,
+                    samples_per_channel: (data.len() as u32) / channels,
+                };
+                native_audio_source.capture_frame(&frame);
+            },
+            |err| log::error!("Mic stream error: {}", err),
+            None,
+        )
+        .map_err(|e| format!("Failed to build mic stream: {}", e))?;
+
+    input_stream
+        .play()
+        .map_err(|e| format!("Failed to play mic: {}", e))?;
+
+    // Store stream to keep it alive
+    *audio_state.input_stream.lock().await = Some(input_stream);
+
     // --- LiveKit connection ---
 
     let (livekit_room, mut event_receiver) =
         livekit::Room::connect(service_url, jwt, livekit::RoomOptions::default()).await?;
     log::info!("Connected to LiveKit room: {:?}", livekit_room);
 
+    livekit_room
+        .local_participant()
+        .publish_track(
+            LocalTrack::Audio(local_audio_track),
+            livekit::options::TrackPublishOptions {
+                source: livekit::track::TrackSource::Microphone,
+                ..Default::default()
+            },
+        )
+        .await
+        .map_err(|e| format!("Failed to publish mic: {}", e))?;
+
     tokio::spawn(async move {
         while let Some(ev) = event_receiver.recv().await {
+            log::debug!("Livekit event received: {ev:?}");
             if let RoomEvent::TrackSubscribed { track, .. } = ev
                 && let RemoteTrack::Audio(audio_track) = track
             {
@@ -253,8 +308,12 @@ pub(crate) async fn join_matrixrtc_call(
 #[command(rename_all = "snake_case")]
 pub(crate) async fn leave_matrixrtc_call(
     matrix_client: State<'_, RwLock<Client>>,
+    audio_state: State<'_, CallAudioState>,
     room_id: String,
 ) -> Result<(), TauriError> {
+    *audio_state.input_stream.lock().await = None;
+    *audio_state.output_stream.lock().await = None;
+
     let client = matrix_client.read().await;
     let room = client
         .get_room(&RoomId::parse(room_id.clone())?)
