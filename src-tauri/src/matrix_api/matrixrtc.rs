@@ -1,5 +1,6 @@
 use livekit::e2ee::key_provider::{KeyProvider, KeyProviderOptions};
 use livekit::e2ee::{EncryptionType, key_provider};
+use livekit::id::ParticipantIdentity;
 use matrix_sdk::ruma::api::client::to_device::send_event_to_device::v3::Request;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
@@ -139,7 +140,28 @@ pub(crate) async fn join_matrixrtc_call(
         .await?;
 
         let key_provider = KeyProvider::new(KeyProviderOptions::default());
-        key_provider.set_shared_key(local_call_key.into(), 0);
+        // key_provider.set_shared_key(raw_key.into(), 0);
+        //
+        let kp_clone = key_provider.clone();
+        client.add_event_handler(
+            move |ev: matrix_sdk::ruma::events::ToDeviceEvent<RtcEncryptionKeyEventContent>| {
+                let base64_key = &ev.content.media_key.key;
+
+                // CRITICAL FIX: LiveKit needs the key mapped to the sender's LiveKit Identity.
+                // In MSC4143, the LiveKit Identity matches the `member_id` field in the payload.
+                // Do NOT use `ev.sender` here!
+                let livekit_identity = ParticipantIdentity::from(ev.content.member_id.clone());
+
+                if let Ok(decoded_key) = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, base64_key) {
+                    log::info!("Registering E2EE key for LiveKit participant: {}", livekit_identity);
+
+                    // Assign the key specifically to their identity
+                    kp_clone.set_key(&livekit_identity, ev.content.media_key.index as i32, decoded_key);
+                }
+                async {}
+            }
+        );
+        //
         e2ee_options = Some(E2eeOptions {
             encryption_type: EncryptionType::Gcm,
             key_provider,
@@ -207,7 +229,7 @@ pub(crate) async fn join_matrixrtc_call(
         matrix_sdk::ruma::events::call::member::ActiveFocus::Livekit(ActiveLivekitFocus::new()),
         vec![Focus::Livekit(LivekitFocus::new(
             room_id.clone(),
-            service_url.to_string(),
+            default_livekit_focus_info.service_url.to_string(),
         ))],
         None,
         None,
@@ -381,6 +403,17 @@ pub(crate) async fn join_matrixrtc_call(
     let (livekit_room, mut event_receiver) =
         livekit::Room::connect(service_url, jwt, room_options).await?;
     log::info!("Connected to LiveKit room: {:?}", livekit_room);
+
+    if room.encryption_state().is_encrypted() {
+        let my_identity = livekit_room.local_participant().identity();
+
+        let e2ee_manager = livekit_room.e2ee_manager();
+        if let Some(kp) = e2ee_manager.key_provider() {
+            log::info!("Setting local encryption key for identity: {}", my_identity);
+            // 0 is the key_index. It must match the index you sent over Matrix.
+            kp.set_key(&my_identity, 0, raw_key.to_vec());
+        }
+    };
 
     livekit_room
         .local_participant()
