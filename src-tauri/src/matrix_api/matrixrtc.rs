@@ -196,30 +196,39 @@ pub(crate) async fn join_matrixrtc_call(
     let in_device = host.default_input_device().ok_or("No input device found")?;
     let in_config = in_device.default_input_config()?;
 
-    let native_audio_source = NativeAudioSource::new(AudioSourceOptions::default(), 48000, 2, 100);
+    let in_sample_rate = in_config.sample_rate(); // Extracts the u32 sample rate
+    let in_channels = in_config.channels() as u32;
+
+    log::info!("CPAL input: {} Hz, {} ch", in_sample_rate, in_channels);
+
+    // 1. Match the WebRTC audio source parameters identically to the hardware configuration
+    let native_audio_source = NativeAudioSource::new(
+        AudioSourceOptions::default(),
+        in_sample_rate,
+        in_channels,
+        10,
+    );
     let local_audio_track = LocalAudioTrack::create_audio_track(
         "mic",
         livekit::RtcAudioSource::Native(native_audio_source.clone()),
     );
 
-    let channels = in_config.channels() as u32;
-    let sample_rate = in_config.sample_rate();
+    // 2. Compute the precise sample count for WebRTC's strict 10ms constraint
+    let samples_per_10ms = ((in_sample_rate * in_channels) / 100) as usize;
+
+    // 3. Create a lock-free ring buffer to bridge the CPAL thread to Tokio land
+    let input_ring = HeapRb::<i16>::new(samples_per_10ms * 8);
+    let (mut input_producer, mut input_consumer) = input_ring.split();
 
     let input_stream = in_device
         .build_input_stream(
             &in_config.into(),
             move |data: &[f32], _| {
-                // Convert cpal f32 float PCM to i16 PCM for WebRTC
-                let i16_data: Vec<i16> =
-                    data.iter().map(|&s| (s * i16::MAX as f32) as i16).collect();
-
-                let frame = AudioFrame {
-                    data: i16_data.into(),
-                    sample_rate,
-                    num_channels: channels,
-                    samples_per_channel: (data.len() as u32) / channels,
-                };
-                native_audio_source.capture_frame(&frame);
+                for &sample in data {
+                    let s = (sample * i16::MAX as f32) as i16;
+                    // Lock-free, non-blocking push ensures zero dropouts in CPAL
+                    let _ = input_producer.try_push(s);
+                }
             },
             |err| log::error!("Mic stream error: {}", err),
             None,
@@ -230,9 +239,43 @@ pub(crate) async fn join_matrixrtc_call(
         .play()
         .map_err(|e| format!("Failed to play mic: {}", e))?;
 
-    // Store stream to keep it alive
+    // Keep input stream alive in your shared state
     *audio_state.input_stream.lock().await = Some(input_stream);
 
+    // 4. Spawn a dedicated async worker task to read frames and await WebRTC transmission
+    let native_source_clone = native_audio_source.clone();
+    tokio::spawn(async move {
+        let mut frame_buffer = Vec::with_capacity(samples_per_10ms);
+        loop {
+            // Fill our accumulator up to a perfect 10ms chunk boundary
+            while frame_buffer.len() < samples_per_10ms {
+                if let Some(s) = input_consumer.try_pop() {
+                    frame_buffer.push(s);
+                } else {
+                    break;
+                }
+            }
+
+            // Once we have an exact 10ms block, dispatch it to WebRTC
+            if frame_buffer.len() == samples_per_10ms {
+                let frame = AudioFrame {
+                    data: frame_buffer.clone().into(),
+                    sample_rate: in_sample_rate,
+                    num_channels: in_channels,
+                    samples_per_channel: in_sample_rate / 100,
+                };
+                frame_buffer.clear();
+
+                // Safely await here without threatening the high-priority audio pipeline
+                if let Err(e) = native_source_clone.capture_frame(&frame).await {
+                    log::error!("Failed to capture audio frame: {:?}", e);
+                }
+            } else {
+                // Back off momentarily if the ring buffer is running dry to avoid pegging the CPU
+                tokio::time::sleep(Duration::from_millis(2)).await;
+            }
+        }
+    });
     // --- LiveKit connection ---
 
     let (livekit_room, mut event_receiver) =
