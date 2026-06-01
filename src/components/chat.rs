@@ -33,8 +33,7 @@ use shared::{
     get_color,
     sidebar::RoomKind,
     timeline::{
-        DetailState, EventContent, MessageContent, ReactionInfo, ReplyInfo, RichTextSpan,
-        SystemMessage, UiMessageType, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind,
+        DetailState, EventContent, MessageContent, ReactionInfo, ReplyInfo, RichTextSpan, SystemMessage, UiCallIntent, UiMembershipChange, UiMessageType, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind
     },
     user_profile::PresenceStatus,
 };
@@ -488,41 +487,295 @@ fn get_date_from_ts(ts: i64) -> DateTime<Local> {
 }
 
 fn render_system_message(
+    sender_id: Option<String>,
     content: SystemMessage,
-    _store: MemberStore,
-    _room_id: String,
+    store: MemberStore,
+    room_id: String,
 ) -> impl IntoView {
-    let text = match content {
-        SystemMessage::MembershipChange { user_id, change } => format!(
-            "{} {}",
-            user_id,
-            change
-                .map(|v| v.display_string())
-                .unwrap_or_else(|| "changed membership".to_string()),
-        ),
-        SystemMessage::ProfileChange(change) => change.display_string(),
-        SystemMessage::RtcNotification {
-            call_intent,
-            declined_by,
-        } => format!(
-            "{} Call declined {}",
-            call_intent.map(|v| v.to_string()).unwrap_or_default(),
-            if !declined_by.is_empty() {
-                format!("by {}", declined_by.join(", "))
-            } else {
-                "".to_string()
-            }
-        ),
-        SystemMessage::OtherEvent => "[unsupported message]".to_string(),
-        SystemMessage::CallInvite => "Call started".to_string(),
+    let sender_id_str = sender_id.clone().unwrap_or_default();
+
+    let user_div = |user_id: &str| {
+        let profile_sig = store.get_profile(&room_id, user_id);
+        let name_sig = profile_sig.clone();
+
+        view! {
+            <div class="flex items-center gap-1 pr-1">
+                {move || profile_sig.get().render_icon(20)} {move || name_sig.get().render_name(16)}
+            </div>
+        }
     };
 
-    view! {
-        <div class="flex items-center justify-center my-2">
-            <span class="text-muted text-xxl bdf-text">{text}</span>
-        </div>
-    }
+    let content = match content {
+        SystemMessage::MembershipChange { user_id, change } => {
+            let text = if let Some(membership) = change {
+                match membership {
+                    UiMembershipChange::None => "had no membership change",
+                    UiMembershipChange::Banned => "was banned",
+                    UiMembershipChange::Joined => "joined the room",
+                    UiMembershipChange::Invited => "was invited",
+                    UiMembershipChange::Left => "left the room",
+                    UiMembershipChange::Kicked => "was kicked",
+                    UiMembershipChange::Error => "had a membership change",
+                    UiMembershipChange::InvitationAccepted => "accepted the invitation",
+                    UiMembershipChange::InvitationRejected => "rejected the invitation",
+                    UiMembershipChange::InvitationRevoked => "had their invitation revoked",
+                    UiMembershipChange::KickedAndBanned => "was kicked and banned",
+                    UiMembershipChange::KnockAccepted => "accepted the knock",
+                    UiMembershipChange::KnockDenied => "denied the knock",
+                    UiMembershipChange::KnockRetracted => "retracted the knock",
+                    UiMembershipChange::Knocked => "knocked on the door",
+                    UiMembershipChange::NotImplemented => "had a membership change",
+                    UiMembershipChange::Unbanned => "was unbanned",
+                }
+            } else {
+                "changed membership"
+            };
+
+            view! { <div class="flex flex-row gap-1">{user_div(&user_id)} <span>{text}</span></div> }
+            .into_any()
+        }
+        SystemMessage::CallInvite => view! {
+            <div class="flex flex-row gap-1">
+                {user_div(&sender_id_str)} <span>"started a call"</span>
+            </div>
+        }
+        .into_any(),
+        SystemMessage::PolicyRuleRoom => view! {
+            <div class="flex flex-row gap-1">
+                {user_div(&sender_id_str)} <span>"changed the room's policy"</span>
+            </div>
+        }
+        .into_any(),
+        SystemMessage::PolicyRuleServer => view! {
+            <div class="flex flex-row gap-1">
+                {user_div(&sender_id_str)} <span>"changed the server's policy"</span>
+            </div>
+        }
+        .into_any(),
+        SystemMessage::PolicyRuleUser => view! {
+            <div class="flex flex-row gap-1">
+                {user_div(&sender_id_str)} <span>"changed their policy"</span>
+            </div>
+        }
+        .into_any(),
+        SystemMessage::ProfileChange(change) => {
+            let text = change.display_string();
+
+            view! { <div class="flex flex-row gap-1">{user_div(&change.user_id)} <span>{text}</span></div> }
+            .into_any()
+        }
+        SystemMessage::Redacted => view! {
+            <div class="flex flex-row gap-1">
+                {user_div(&sender_id_str)} <span>"had a message redacted"</span>
+            </div>
+        }
+        .into_any(),
+        SystemMessage::RoomAvatar { .. } => view! {
+            <div class="flex flex-row gap-1">
+                {user_div(&sender_id_str)} <span>"changed the room avatar"</span>
+            </div>
+        }
+        .into_any(),
+        SystemMessage::RoomCanonicalAlias { alias } => {
+            let text = format!("changed the room alias{}", if let Some(alias) = alias {
+                format!(" to {alias}")
+            } else {
+                "".to_string()
+            });
+
+            view! { <div class="flex flex-row gap-1">{user_div(&sender_id_str)} <span>{text}</span></div> }
+        .into_any()},
+        SystemMessage::RoomCreate {
+            additional_creators,
+            room_type,
+        } => {
+            let type_string = match room_type {
+                None => "a room".to_string(),
+                Some(room_type) => format!("a {} room", room_type),
+            };
+
+            let additional = if additional_creators.is_empty() {
+                "".to_string()
+            } else {
+                format!(" with {}", additional_creators.join(" ,"))
+            };
+
+            view! {
+                <div class="flex flex-row gap-1">
+                    {user_div(&sender_id_str)}
+                    <span>{format!("created {type_string}{additional}")}</span>
+                </div>
+            }
+            .into_any()
+        }
+        SystemMessage::RoomEncryption { algorithm } => view! {
+            <div class="flex flex-row gap-1">
+                {user_div(&sender_id_str)}
+                <span>{format!("enabled encryption with {algorithm}")}</span>
+            </div>
+        }
+        .into_any(),
+        SystemMessage::RoomGuestAccess { guest_access } => view! {
+            <div class="flex flex-row gap-1">
+                {user_div(&sender_id_str)}
+                <span>{format!("changed guest access to: {guest_access}")}</span>
+            </div>
+        }
+        .into_any(),
+        SystemMessage::RoomHistoryVisibility { visibility } => view! {
+            <div class="flex flex-row gap-1">
+                {user_div(&sender_id_str)}
+                <span>{format!("changed history visibility to: {visibility}")}</span>
+            </div>
+        }
+        .into_any(),
+        SystemMessage::RoomJoinRules { join_rule } => view! {
+            <div class="flex flex-row gap-1">
+                {user_div(&sender_id_str)}
+                <span>{format!("changed join rules to: {join_rule}")}</span>
+            </div>
+        }
+        .into_any(),
+        SystemMessage::RoomName { name } => view! {
+            <div class="flex flex-row gap-1">
+                {user_div(&sender_id_str)}
+                <span>{format!("changed the room name to: {name}")}</span>
+            </div>
+        }
+        .into_any(),
+        SystemMessage::RoomPinnedEvents { .. } => view! {
+            <div class="flex flex-row gap-1">
+                {user_div(&sender_id_str)} <span>"changed pinned events"</span>
+            </div>
+        }
+        .into_any(),
+        SystemMessage::RoomPowerLevels => view! {
+            <div class="flex flex-row gap-1">
+                {user_div(&sender_id_str)} <span>"changed the room power levels"</span>
+            </div>
+        }
+        .into_any(),
+        SystemMessage::RoomServerAcl => view! {
+            <div class="flex flex-row gap-1">
+                {user_div(&sender_id_str)} <span>"changed the room server ACL"</span>
+            </div>
+        }
+        .into_any(),
+        SystemMessage::RoomThirdPartyInvite { display_name } => view! {
+            <div class="flex flex-row gap-1">
+                {user_div(&sender_id_str)}
+                <span>{format!("invited {display_name} to the room")}</span>
+            </div>
+        }
+        .into_any(),
+        SystemMessage::RoomTombstone {
+            body,
+            replacement_room,
+        } => view! {
+            <div>
+                {user_div(&sender_id_str)}
+                <span>
+                    {format!(
+                        "closed the room. Reason: {body}. Replacement room: {replacement_room}",
+                    )}
+                </span>
+            </div>
+        }.into_any(),
+        SystemMessage::RoomTopic { topic } => view! {
+            <div class="flex flex-row gap-1">
+                {user_div(&sender_id_str)}
+                <span>{format!("changed the room topic to: {topic}")}</span>
+            </div>
+        }.into_any(),
+        SystemMessage::RtcNotification { call_intent, declined_by } => {
+            let intent_string = if let Some(intent) = call_intent {
+                match intent {
+                    UiCallIntent::Audio => "started an audio call",
+                    UiCallIntent::Video => "started a video call",
+                    UiCallIntent::Unknown => "started a call",
+                }
+            } else {
+                "started a call"
+            };
+
+            let declined_string = if !declined_by.is_empty() {
+                format!(" which was declined by {}", declined_by.join(", "))
+            } else {
+                "".to_string()
+            };
+
+            view! {
+                <div class="flex flex-row gap-1">
+                    {user_div(&sender_id_str)}
+                    <span>{format!("started {intent_string}{declined_string}")}</span>
+                </div>
+            }.into_any()
+        }
+        SystemMessage::SpaceChild { via, order, suggested } => {
+            let via_string = if !via.is_empty() {
+                format!(" via {}", via.join(", "))
+            } else {
+                "".to_string()
+            };
+
+            let order_string = if let Some(order) = order {
+                format!(" with order {}", order)
+            } else {
+                "".to_string()
+            };
+
+            let suggested_string = if suggested {
+                " (suggested)".to_string()
+            } else {
+                "".to_string()
+            };
+
+            view! {
+                <div class="flex flex-row gap-1">
+                    {user_div(&sender_id_str)}
+                    <span>
+                        {format!(
+                            "added this room as a child of a space{via_string}{order_string}{suggested_string}",
+                        )}
+                    </span>
+                </div>
+            }.into_any()
+        }
+        SystemMessage::SpaceParent { via, canonical } => {
+            let via_string = if !via.is_empty() {
+                format!(" via {}", via.join(", "))
+            } else {
+                "".to_string()
+            };
+
+            let canonical_string = if canonical {
+                " (canonical)".to_string()
+            } else {
+                "".to_string()
+            };
+
+            view! {
+                <div class="flex flex-row gap-1">
+                    {user_div(&sender_id_str)}
+                    <span>
+                        {format!(
+                            "added this room as a parent of a space{via_string}{canonical_string}",
+                        )}
+                    </span>
+                </div>
+            }.into_any()
+        }
+        SystemMessage::Unknown => view! {
+            <div class="flex flex-row gap-1">
+                {user_div(&sender_id_str)} <span>"performed an unknown system action"</span>
+            </div>
+        }.into_any()
+    };
+
+    view! { <div class="flex text-muted items-center justify-center my-2">{content.into_any()}</div> }
+    .into_any()
 }
+
 
 fn render_timeline_event(
     store: MemberStore,
@@ -581,6 +834,7 @@ fn render_timeline_event(
                         </div>
                     }.into_any(),
                     EventContent::SystemMessage(ev) => render_system_message(
+                        event.get_sender_id(),
                         ev.clone(),
                         store_for_content.clone(),
                         room_id_for_content.clone()

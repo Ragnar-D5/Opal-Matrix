@@ -1,25 +1,30 @@
 use matrix_sdk::{
-    Client as MatrixClient, SessionChange,
     config::SyncSettings,
     ruma::{events::space::parent::SyncSpaceParentEvent, presence::PresenceState},
+    Client as MatrixClient, SessionChange,
 };
 use std::pin::pin;
-use tauri::{AppHandle, async_runtime::spawn};
+use tauri::{async_runtime::spawn, AppHandle};
 
 use crate::{
-    TauriError,
     frontend::{
         members::on_member_update,
         presence::handle_presences,
         sidebar::{handle_room_updates, send_sidebar},
     },
-    matrix_api::keyring::{StoredSession, save_session},
+    matrix_api::{
+        keyring::{save_session, StoredSession},
+        matrixrtc::cleanup_ghost_calls,
+    },
+    TauriError,
 };
 use futures_util::StreamExt;
 
 pub async fn attach_callbacks(client: &MatrixClient, handle: &AppHandle) -> Result<(), TauriError> {
     let mut session_subscriber = client.subscribe_to_session_changes();
     let client_clone = client.clone();
+
+    cleanup_ghost_calls(client).await;
 
     spawn(async move {
         while let Ok(change) = session_subscriber.recv().await {

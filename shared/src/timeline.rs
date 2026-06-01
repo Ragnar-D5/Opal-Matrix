@@ -4,7 +4,7 @@ use colorsys::Hsl;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::get_color;
+use crate::{get_color, user_profile::UserProfile};
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct AbstractProgress {
@@ -294,7 +294,7 @@ impl ProfileChange {
             }
         }
 
-        format!("{} {}", self.user_id, changes.join(" and "))
+        changes.join(" and ")
     }
 }
 
@@ -316,6 +316,69 @@ impl std::fmt::Display for UiCallIntent {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub enum UiGuestAccess {
+    CanJoin,
+    Forbidden,
+    Unknown,
+}
+
+impl std::fmt::Display for UiGuestAccess {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            UiGuestAccess::CanJoin => write!(f, "Guests can join"),
+            UiGuestAccess::Forbidden => write!(f, "Guests cannot join"),
+            UiGuestAccess::Unknown => write!(f, "Guest access unknown"),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub enum UiHistoryVisibility {
+    Invited,
+    Joined,
+    Shared,
+    WorldReadable,
+    Unknown,
+}
+
+impl std::fmt::Display for UiHistoryVisibility {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            UiHistoryVisibility::Invited => write!(f, "Only invited members can see history"),
+            UiHistoryVisibility::Joined => write!(f, "Only joined members can see history"),
+            UiHistoryVisibility::Shared => write!(f, "Shared history"),
+            UiHistoryVisibility::WorldReadable => write!(f, "World readable history"),
+            UiHistoryVisibility::Unknown => write!(f, "Unknown history visibility"),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub enum UiJoinRule {
+    Public,
+    Knock,
+    Invite,
+    Private,
+    Restricted,
+    KnockRestricted,
+    Unknown,
+}
+
+impl std::fmt::Display for UiJoinRule {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            UiJoinRule::Public => write!(f, "Public"),
+            UiJoinRule::Knock => write!(f, "Knock"),
+            UiJoinRule::Invite => write!(f, "Invite"),
+            UiJoinRule::Private => write!(f, "Private"),
+            UiJoinRule::Restricted => write!(f, "Restricted"),
+            UiJoinRule::KnockRestricted => write!(f, "Knock Restricted"),
+            UiJoinRule::Unknown => write!(f, "Unknown"),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub enum SystemMessage {
     MembershipChange {
         user_id: String,
@@ -327,7 +390,60 @@ pub enum SystemMessage {
         call_intent: Option<UiCallIntent>,
         declined_by: Vec<String>,
     },
-    OtherEvent,
+    PolicyRuleRoom,
+    PolicyRuleServer,
+    PolicyRuleUser,
+    RoomAvatar {
+        url: Option<String>,
+    },
+    RoomCanonicalAlias {
+        alias: Option<String>,
+    },
+    RoomCreate {
+        additional_creators: Vec<String>,
+        room_type: Option<String>,
+    },
+    RoomEncryption {
+        algorithm: String,
+    },
+    RoomGuestAccess {
+        guest_access: UiGuestAccess,
+    },
+    RoomHistoryVisibility {
+        visibility: UiHistoryVisibility,
+    },
+    RoomJoinRules {
+        join_rule: UiJoinRule,
+    },
+    RoomName {
+        name: String,
+    },
+    RoomPinnedEvents {
+        pinned_events: Vec<String>,
+    },
+    RoomPowerLevels,
+    RoomServerAcl,
+    RoomThirdPartyInvite {
+        display_name: String,
+    },
+    RoomTombstone {
+        body: String,
+        replacement_room: String,
+    },
+    RoomTopic {
+        topic: String,
+    },
+    SpaceChild {
+        via: Vec<String>,
+        order: Option<String>,
+        suggested: bool,
+    },
+    SpaceParent {
+        via: Vec<String>,
+        canonical: bool,
+    },
+    Redacted,
+    Unknown,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -440,6 +556,17 @@ impl TimelineEvent {
     pub fn get_sender_id(&self) -> Option<String> {
         match &self.sender {
             DetailState::Ready(sender) => Some(sender.id.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn get_sender_profile(&self) -> Option<UserProfile> {
+        match &self.sender {
+            DetailState::Ready(sender) => Some(UserProfile {
+                user_id: sender.id.clone(),
+                display_name: sender.display_name.clone(),
+                avatar_url: sender.avatar_url.clone(),
+            }),
             _ => None,
         }
     }

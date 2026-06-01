@@ -377,3 +377,37 @@ pub(crate) async fn leave_matrixrtc_call(
 
     Ok(())
 }
+
+pub async fn cleanup_ghost_calls(client: &matrix_sdk::Client) {
+    let Some(device_id) = client.device_id() else {
+        return;
+    };
+    let Some(user_id) = client.user_id() else {
+        return;
+    };
+
+    let state_key = format!("_{}_{}", user_id, device_id);
+
+    for room in client.joined_rooms() {
+        if let Ok(Some(raw_event)) = room
+            .get_state_event(
+                matrix_sdk::ruma::events::StateEventType::CallMember,
+                &state_key,
+            )
+            .await
+        {
+            if let Ok(json_event) = serde_json::to_value(&raw_event)
+                && let Some(content) = json_event.get("content")
+                && content.as_object().is_some_and(|obj| obj.is_empty())
+            {
+                continue;
+            }
+
+            log::info!("Cleaning up ghost participant in room: {}", room.room_id());
+
+            let _ = room
+                .send_state_event_raw("m.call.member", &state_key, serde_json::json!({}))
+                .await;
+        }
+    }
+}

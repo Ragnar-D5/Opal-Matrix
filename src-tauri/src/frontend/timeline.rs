@@ -1,22 +1,27 @@
 use std::{collections::HashMap, sync::Arc};
 
 use matrix_sdk::ruma::{
-    MilliSecondsSinceUnixEpoch,
     events::{
         poll::start::PollKind,
         room::{
-            EncryptedFileInfo, MediaSource,
+            guest_access::GuestAccess,
+            history_visibility::HistoryVisibility,
             message::{MessageFormat, MessageType},
+            EncryptedFileInfo, MediaSource,
         },
         rtc::notification::CallIntent,
+        StateEventContentChange,
     },
+    room::JoinRule,
+    MilliSecondsSinceUnixEpoch,
 };
 use matrix_sdk_ui::{
     eyeball_im::VectorDiff,
     timeline::{
-        BeaconInfo, EmbeddedEvent, EventSendState, EventTimelineItem, InReplyToDetails,
-        MemberProfileChange, MembershipChange, MsgLikeKind, ReactionsByKeyBySender,
-        TimelineDetails, TimelineItem, TimelineItemContent, TimelineItemKind, VirtualTimelineItem,
+        AnyOtherStateEventContentChange, BeaconInfo, EmbeddedEvent, EventSendState,
+        EventTimelineItem, InReplyToDetails, MemberProfileChange, MembershipChange, MsgLikeKind,
+        ReactionsByKeyBySender, TimelineDetails, TimelineItem, TimelineItemContent,
+        TimelineItemKind, VirtualTimelineItem,
     },
 };
 use shared::{
@@ -25,8 +30,9 @@ use shared::{
         AbstractProgress, Change, DetailState, EventContent, EventFlags, EventState,
         MediaUploadProgress, MessageContent, ProfileChange, ReactionInfo, ReplyInfo, ReplyPreview,
         RichTextSpan, Sender, SystemMessage, TimelineEvent, UiBeaconInfo, UiCallIntent,
-        UiMediaSource, UiMembershipChange, UiMessageType, UiPollKind, UiPollResult, UiTimelineDiff,
-        UiTimelineItem, UiTimelineItemKind,
+        UiGuestAccess, UiHistoryVisibility, UiJoinRule, UiMediaSource, UiMembershipChange,
+        UiMessageType, UiPollKind, UiPollResult, UiTimelineDiff, UiTimelineItem,
+        UiTimelineItemKind,
     },
 };
 use uuid::Uuid;
@@ -522,9 +528,215 @@ fn timeline_item_content_to_ui(value: &TimelineItemContent) -> EventContent {
             state_key,
             error: error.to_string(),
         },
-        TimelineItemContent::OtherState(_) => {
-            EventContent::SystemMessage(SystemMessage::OtherEvent)
-        }
+        TimelineItemContent::OtherState(other) => match other.content() {
+            AnyOtherStateEventContentChange::PolicyRuleRoom(change) => match change {
+                StateEventContentChange::Original { .. } => {
+                    EventContent::SystemMessage(SystemMessage::PolicyRuleRoom)
+                }
+                StateEventContentChange::Redacted(_) => {
+                    EventContent::SystemMessage(SystemMessage::Redacted)
+                }
+            },
+            AnyOtherStateEventContentChange::PolicyRuleServer(change) => match change {
+                StateEventContentChange::Original { .. } => {
+                    EventContent::SystemMessage(SystemMessage::PolicyRuleServer)
+                }
+                StateEventContentChange::Redacted(_) => {
+                    EventContent::SystemMessage(SystemMessage::Redacted)
+                }
+            },
+            AnyOtherStateEventContentChange::PolicyRuleUser(change) => match change {
+                StateEventContentChange::Original { .. } => {
+                    EventContent::SystemMessage(SystemMessage::PolicyRuleUser)
+                }
+                StateEventContentChange::Redacted(_) => {
+                    EventContent::SystemMessage(SystemMessage::Redacted)
+                }
+            },
+            AnyOtherStateEventContentChange::RoomAvatar(change) => match change {
+                StateEventContentChange::Original { content, .. } => {
+                    EventContent::SystemMessage(SystemMessage::RoomAvatar {
+                        url: content.url.clone().map(|u| u.to_string()),
+                    })
+                }
+                StateEventContentChange::Redacted(_) => {
+                    EventContent::SystemMessage(SystemMessage::Redacted)
+                }
+            },
+            AnyOtherStateEventContentChange::RoomCanonicalAlias(change) => match change {
+                StateEventContentChange::Original { content, .. } => {
+                    EventContent::SystemMessage(SystemMessage::RoomCanonicalAlias {
+                        alias: content.alias.clone().map(|a| a.to_string()),
+                    })
+                }
+                StateEventContentChange::Redacted(_) => {
+                    EventContent::SystemMessage(SystemMessage::Redacted)
+                }
+            },
+            AnyOtherStateEventContentChange::RoomCreate(change) => match change {
+                StateEventContentChange::Original { content, .. } => {
+                    EventContent::SystemMessage(SystemMessage::RoomCreate {
+                        additional_creators: content
+                            .additional_creators
+                            .iter()
+                            .map(|u| u.to_string())
+                            .collect(),
+                        room_type: content.room_type.clone().map(|t| t.to_string()),
+                    })
+                }
+                StateEventContentChange::Redacted(_) => {
+                    EventContent::SystemMessage(SystemMessage::Redacted)
+                }
+            },
+            AnyOtherStateEventContentChange::RoomEncryption(change) => match change {
+                StateEventContentChange::Original { content, .. } => {
+                    EventContent::SystemMessage(SystemMessage::RoomEncryption {
+                        algorithm: content.algorithm.to_string(),
+                    })
+                }
+                StateEventContentChange::Redacted(_) => {
+                    EventContent::SystemMessage(SystemMessage::Redacted)
+                }
+            },
+            AnyOtherStateEventContentChange::RoomGuestAccess(change) => match change {
+                StateEventContentChange::Original { content, .. } => {
+                    EventContent::SystemMessage(SystemMessage::RoomGuestAccess {
+                        guest_access: match content.guest_access {
+                            GuestAccess::CanJoin => UiGuestAccess::CanJoin,
+                            GuestAccess::Forbidden => UiGuestAccess::Forbidden,
+                            _ => UiGuestAccess::Unknown,
+                        },
+                    })
+                }
+                StateEventContentChange::Redacted(_) => {
+                    EventContent::SystemMessage(SystemMessage::Redacted)
+                }
+            },
+            AnyOtherStateEventContentChange::RoomHistoryVisibility(change) => match change {
+                StateEventContentChange::Original { content, .. } => {
+                    EventContent::SystemMessage(SystemMessage::RoomHistoryVisibility {
+                        visibility: match content.history_visibility {
+                            HistoryVisibility::Invited => UiHistoryVisibility::Invited,
+                            HistoryVisibility::Joined => UiHistoryVisibility::Joined,
+                            HistoryVisibility::Shared => UiHistoryVisibility::Shared,
+                            HistoryVisibility::WorldReadable => UiHistoryVisibility::WorldReadable,
+                            _ => UiHistoryVisibility::Unknown,
+                        },
+                    })
+                }
+                StateEventContentChange::Redacted(_) => {
+                    EventContent::SystemMessage(SystemMessage::Redacted)
+                }
+            },
+            AnyOtherStateEventContentChange::RoomJoinRules(change) => match change {
+                StateEventContentChange::Original { content, .. } => {
+                    EventContent::SystemMessage(SystemMessage::RoomJoinRules {
+                        join_rule: match content.join_rule {
+                            JoinRule::Invite => UiJoinRule::Invite,
+                            JoinRule::Knock => UiJoinRule::Knock,
+                            JoinRule::Public => UiJoinRule::Public,
+                            JoinRule::Restricted(_) => UiJoinRule::Restricted,
+                            JoinRule::KnockRestricted(_) => UiJoinRule::KnockRestricted,
+                            _ => UiJoinRule::Unknown,
+                        },
+                    })
+                }
+                StateEventContentChange::Redacted(_) => {
+                    EventContent::SystemMessage(SystemMessage::Redacted)
+                }
+            },
+            AnyOtherStateEventContentChange::RoomName(change) => match change {
+                StateEventContentChange::Original { content, .. } => {
+                    EventContent::SystemMessage(SystemMessage::RoomName {
+                        name: content.name.clone(),
+                    })
+                }
+                StateEventContentChange::Redacted(_) => {
+                    EventContent::SystemMessage(SystemMessage::Redacted)
+                }
+            },
+            AnyOtherStateEventContentChange::RoomPinnedEvents(change) => match change {
+                StateEventContentChange::Original { content, .. } => {
+                    EventContent::SystemMessage(SystemMessage::RoomPinnedEvents {
+                        pinned_events: content.pinned.iter().map(|e| e.to_string()).collect(),
+                    })
+                }
+                StateEventContentChange::Redacted(_) => {
+                    EventContent::SystemMessage(SystemMessage::Redacted)
+                }
+            },
+            AnyOtherStateEventContentChange::RoomPowerLevels(change) => match change {
+                StateEventContentChange::Original { .. } => {
+                    EventContent::SystemMessage(SystemMessage::RoomPowerLevels)
+                }
+                StateEventContentChange::Redacted(_) => {
+                    EventContent::SystemMessage(SystemMessage::Redacted)
+                }
+            },
+            AnyOtherStateEventContentChange::RoomServerAcl(change) => match change {
+                StateEventContentChange::Original { .. } => {
+                    EventContent::SystemMessage(SystemMessage::RoomServerAcl)
+                }
+                StateEventContentChange::Redacted(_) => {
+                    EventContent::SystemMessage(SystemMessage::Redacted)
+                }
+            },
+            AnyOtherStateEventContentChange::RoomThirdPartyInvite(change) => match change {
+                StateEventContentChange::Original { content, .. } => {
+                    EventContent::SystemMessage(SystemMessage::RoomThirdPartyInvite {
+                        display_name: content.display_name.clone(),
+                    })
+                }
+                StateEventContentChange::Redacted(_) => {
+                    EventContent::SystemMessage(SystemMessage::Redacted)
+                }
+            },
+            AnyOtherStateEventContentChange::RoomTombstone(change) => match change {
+                StateEventContentChange::Original { content, .. } => {
+                    EventContent::SystemMessage(SystemMessage::RoomTombstone {
+                        body: content.body.clone(),
+                        replacement_room: content.replacement_room.to_string(),
+                    })
+                }
+                StateEventContentChange::Redacted(_) => {
+                    EventContent::SystemMessage(SystemMessage::Redacted)
+                }
+            },
+            AnyOtherStateEventContentChange::RoomTopic(change) => match change {
+                StateEventContentChange::Original { content, .. } => {
+                    EventContent::SystemMessage(SystemMessage::RoomTopic {
+                        topic: content.topic.clone(),
+                    })
+                }
+                StateEventContentChange::Redacted(_) => {
+                    EventContent::SystemMessage(SystemMessage::Redacted)
+                }
+            },
+            AnyOtherStateEventContentChange::SpaceChild(change) => match change {
+                StateEventContentChange::Original { content, .. } => {
+                    EventContent::SystemMessage(SystemMessage::SpaceChild {
+                        via: content.via.iter().map(|u| u.to_string()).collect(),
+                        order: content.order.clone().map(|o| o.to_string()),
+                        suggested: content.suggested,
+                    })
+                }
+                StateEventContentChange::Redacted(_) => {
+                    EventContent::SystemMessage(SystemMessage::Redacted)
+                }
+            },
+            AnyOtherStateEventContentChange::SpaceParent(change) => match change {
+                StateEventContentChange::Original { content, .. } => {
+                    EventContent::SystemMessage(SystemMessage::SpaceParent {
+                        via: content.via.iter().map(|u| u.to_string()).collect(),
+                        canonical: content.canonical,
+                    })
+                }
+                StateEventContentChange::Redacted(_) => {
+                    EventContent::SystemMessage(SystemMessage::Redacted)
+                }
+            },
+            _ => EventContent::SystemMessage(SystemMessage::Unknown),
+        },
     }
 }
 
