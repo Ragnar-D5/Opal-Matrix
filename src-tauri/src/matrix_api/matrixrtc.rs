@@ -150,7 +150,7 @@ pub(crate) async fn join_matrixrtc_call(
     let sample_rate = out_config.sample_rate(); // should be 48 000
     let channels = out_config.channels() as u32;
 
-    log::info!("CPAL output: {} Hz, {} ch", sample_rate, channels);
+    log::debug!("CPAL output: {} Hz, {} ch", sample_rate, channels);
 
     let ring = HeapRb::<f32>::new(sample_rate as usize * channels as usize * 4);
     let (producer, mut consumer) = ring.split();
@@ -199,7 +199,7 @@ pub(crate) async fn join_matrixrtc_call(
     let in_sample_rate = in_config.sample_rate(); // Extracts the u32 sample rate
     let in_channels = in_config.channels() as u32;
 
-    log::info!("CPAL input: {} Hz, {} ch", in_sample_rate, in_channels);
+    log::debug!("CPAL input: {} Hz, {} ch", in_sample_rate, in_channels);
 
     // 1. Match the WebRTC audio source parameters identically to the hardware configuration
     let native_audio_source = NativeAudioSource::new(
@@ -280,7 +280,7 @@ pub(crate) async fn join_matrixrtc_call(
 
     let (livekit_room, mut event_receiver) =
         livekit::Room::connect(service_url, jwt, livekit::RoomOptions::default()).await?;
-    log::info!("Connected to LiveKit room: {:?}", livekit_room);
+    log::debug!("Connected to LiveKit room: {:?}", livekit_room);
 
     livekit_room
         .local_participant()
@@ -309,7 +309,7 @@ pub(crate) async fn join_matrixrtc_call(
                 let mut audio_stream =
                     NativeAudioStream::new(rtc_track, sample_rate as i32, channels as i32);
 
-                log::info!(
+                log::debug!(
                     "NativeAudioStream configured: {} Hz, {} ch",
                     sample_rate,
                     channels
@@ -403,7 +403,7 @@ pub async fn cleanup_ghost_calls(client: &matrix_sdk::Client) {
                 continue;
             }
 
-            log::info!("Cleaning up ghost participant in room: {}", room.room_id());
+            log::debug!("Cleaning up ghost participant in room: {}", room.room_id());
 
             let _ = room
                 .send_state_event_raw("m.call.member", &state_key, serde_json::json!({}))

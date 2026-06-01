@@ -590,8 +590,8 @@ fn render_system_message(
             room_type,
         } => {
             let type_string = match room_type {
-                None => "a room".to_string(),
-                Some(room_type) => format!("a {} room", room_type),
+                None => "the room".to_string(),
+                Some(room_type) => format!("the room ({})", room_type),
             };
 
             let additional = if additional_creators.is_empty() {
@@ -1635,7 +1635,7 @@ pub struct Attachment {
 }
 
 impl Attachment {
-    pub fn into_file_metadata(&self) -> FileMetadata {
+    pub fn into_file_metadata(self) -> FileMetadata {
         FileMetadata {
             source: self.source.clone(),
             file_name: self.file_name.clone(),
