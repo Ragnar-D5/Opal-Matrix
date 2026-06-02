@@ -871,7 +871,6 @@ fn render_timeline_event(
     let room_id = room_id.to_string();
     let own_user_id = own_user_id.to_string();
     let edit_room_id = room_id.clone();
-    let flags_own_user_id = own_user_id.clone();
 
     let reactions_view = move || {
         render_reactions(
@@ -917,17 +916,10 @@ fn render_timeline_event(
 
     let is_empty: RwSignal<bool> = expect_context();
 
-    let flags_sender_id = sender_id.clone().unwrap_or_default();
-
     let flags = Memo::new(move |_| {
         let item = item_sig.get();
 
-        let mut flags = item.flags();
-        let is_own_message = flags_sender_id == flags_own_user_id;
-
-        flags.is_editable = flags.is_editable && is_own_message;
-
-        flags
+        item.flags()
     });
 
     view! {
@@ -977,10 +969,21 @@ fn render_timeline_event(
                 }
             }}
 
-            <div class="absolute -top-4 right-4 flex items-center gap-1 bg-(--ui-solid-bg) p-1 rounded-(--gap) text-muted text-xs border border-(--tile-border-color) opacity-0 group-hover/msg:opacity-100">
-                <button class="hover:bg-(--ui-solid-hover-bg) cursor-pointer p-0.5 rounded-(--gap) hover:text-normal">
-                    <Icon icon=SMILEY size="20px"></Icon>
-                </button>
+            <div
+                class="absolute -top-4 right-4 flex items-center gap-1 bg-(--ui-solid-bg) p-1 rounded-(--gap) text-muted text-xs border border-(--tile-border-color) opacity-0 group-hover/msg:opacity-100"
+                class=(
+                    "hidden",
+                    move || {
+                        let flags = flags.get();
+                        !flags.is_reactable && !flags.can_be_replied_to && !flags.is_editable
+                    },
+                )
+            >
+                <Show when=move || flags.get().is_reactable>
+                    <button class="hover:bg-(--ui-solid-hover-bg) cursor-pointer p-0.5 rounded-(--gap) hover:text-normal">
+                        <Icon icon=SMILEY size="20px"></Icon>
+                    </button>
+                </Show>
                 <Show when=move || {
                     flags.get().can_be_replied_to
                 }>
@@ -1207,6 +1210,8 @@ fn TimeLine() -> impl IntoView {
         };
 
         messages.update(|msgs| {
+            log::debug!("Applying timeline diffs: {diffs:#?}");
+
             for diff in diffs {
                 match diff {
                     UiTimelineDiff::Append { values } => {

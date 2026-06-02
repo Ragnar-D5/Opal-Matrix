@@ -17,7 +17,7 @@ use matrix_sdk::ruma::{
     },
 };
 use scraper::{Html, Node};
-use shared::{api::{FileMetadata, UiAttachmentSource}, timeline::{RichTextSpan, UiTimelineDiff, UiTimelineItem}};
+use shared::{api::{FileMetadata, UiAttachmentSource}, timeline::{RichTextSpan, UiTimelineDiff, UiTimelineItem, coalesce_diffs}};
 use tauri::{AppHandle, Emitter, State, command};
 use tokio::sync::RwLock;
 
@@ -345,7 +345,8 @@ pub async fn get_timeline(
                     tokio::pin!(stream);
 
                     while let Some(update) = stream.next().await {
-                        send_timeline_diffs(handle.clone(), update.iter().map(timeline_diff_to_ui).collect());
+                        let diffs = coalesce_diffs(update.iter().map(timeline_diff_to_ui).collect());
+                        send_timeline_diffs(handle.clone(), diffs);
                     }
                 }))
                 .await;

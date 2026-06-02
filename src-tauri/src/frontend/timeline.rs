@@ -760,10 +760,11 @@ fn timeline_item_content_to_ui(value: &TimelineItemContent) -> EventContent {
 fn event_timeline_item_to_ui(item: &EventTimelineItem) -> TimelineEvent {
     let sender_id = item.sender();
 
-    TimelineEvent {
+    let mut event = TimelineEvent {
         state: item.send_state().map(event_send_state_to_ui),
         timestamp: item.timestamp().as_secs().into(),
         flags: EventFlags {
+            is_reactable: false,
             is_editable: item.is_editable(),
             is_highlighted: item.is_highlighted(),
             can_be_replied_to: item.can_be_replied_to(),
@@ -784,7 +785,11 @@ fn event_timeline_item_to_ui(item: &EventTimelineItem) -> TimelineEvent {
         },
 
         content: timeline_item_content_to_ui(item.content()),
-    }
+    };
+
+    event.calculate_flags(item.is_own());
+
+    event
 }
 
 pub fn timeline_item_to_ui(item: &TimelineItem) -> UiTimelineItem {
@@ -801,9 +806,17 @@ pub fn timeline_item_to_ui(item: &TimelineItem) -> UiTimelineItem {
         }
     };
 
+    let id = item.unique_id().clone().0;
+    let event_id = match item.kind() {
+        TimelineItemKind::Virtual(_) => "virtual".to_string(),
+        TimelineItemKind::Event(event) => event
+            .event_id()
+            .map(|e| e.to_string())
+            .unwrap_or("temp".to_string()),
+    };
     UiTimelineItem {
         id: item.unique_id().clone().0,
-        render_key: Uuid::new_v4(),
+        render_key: format!("{}-{}", event_id, id),
 
         kind,
     }

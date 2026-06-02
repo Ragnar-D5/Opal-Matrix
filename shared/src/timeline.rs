@@ -2,7 +2,6 @@ use std::collections::HashMap;
 
 use colorsys::Hsl;
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 use crate::{get_color, user_profile::UserProfile};
 
@@ -40,9 +39,10 @@ pub struct Sender {
     pub avatar_url: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
 pub struct EventFlags {
     pub is_editable: bool,
+    pub is_reactable: bool,
     pub is_highlighted: bool,
     pub can_be_replied_to: bool,
     pub contains_only_emojis: bool,
@@ -574,6 +574,65 @@ impl TimelineEvent {
             _ => None,
         }
     }
+
+    pub fn calculate_flags(&mut self, is_own: bool) {
+        let can_be_replied_to = self.flags.can_be_replied_to
+            && match &self.content {
+                EventContent::MsgLike(content) => matches!(
+                    &content.msg_type,
+                    UiMessageType::Text
+                        | UiMessageType::Emote
+                        | UiMessageType::Notice
+                        | UiMessageType::Poll { .. }
+                        | UiMessageType::Audio { .. }
+                        | UiMessageType::File { .. }
+                        | UiMessageType::Gallery
+                        | UiMessageType::Image { .. }
+                        | UiMessageType::LiveLocation { .. }
+                        | UiMessageType::Location(_)
+                        | UiMessageType::Sticker { .. }
+                        | UiMessageType::Video { .. }
+                        | UiMessageType::FailedToDecrypt
+                ),
+                _ => false,
+            };
+
+        let is_editable = is_own
+            && self.flags.is_editable
+            && match &self.content {
+                EventContent::MsgLike(content) => matches!(
+                    &content.msg_type,
+                    UiMessageType::Text
+                        | UiMessageType::Emote
+                        | UiMessageType::Notice
+                        | UiMessageType::Poll { .. }
+                ),
+                _ => false,
+            };
+
+        let is_reactable = match &self.content {
+            EventContent::MsgLike(content) if !content.is_redacted => matches!(
+                &content.msg_type,
+                UiMessageType::Text
+                    | UiMessageType::Emote
+                    | UiMessageType::Notice
+                    | UiMessageType::Poll { .. }
+                    | UiMessageType::Audio { .. }
+                    | UiMessageType::File { .. }
+                    | UiMessageType::Gallery
+                    | UiMessageType::Image { .. }
+                    | UiMessageType::LiveLocation { .. }
+                    | UiMessageType::Location(_)
+                    | UiMessageType::Sticker { .. }
+                    | UiMessageType::Video { .. }
+            ),
+            _ => false,
+        };
+
+        self.flags.can_be_replied_to = can_be_replied_to;
+        self.flags.is_editable = is_editable;
+        self.flags.is_reactable = is_reactable;
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -587,7 +646,7 @@ pub enum UiTimelineItemKind {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct UiTimelineItem {
     pub id: String,
-    pub render_key: Uuid,
+    pub render_key: String,
 
     pub kind: UiTimelineItemKind,
 }
@@ -612,12 +671,7 @@ impl UiTimelineItem {
     pub fn flags(&self) -> EventFlags {
         match &self.kind {
             UiTimelineItemKind::Event(event) => event.flags.clone(),
-            _ => EventFlags {
-                is_editable: false,
-                is_highlighted: false,
-                can_be_replied_to: false,
-                contains_only_emojis: false,
-            },
+            _ => EventFlags::default(),
         }
     }
 }
@@ -636,4 +690,38 @@ pub enum UiTimelineDiff {
     Remove { index: usize },
     Truncate { length: usize },
     Reset { values: Vec<UiTimelineItem> },
+}
+
+pub fn coalesce_diffs(diffs: Vec<UiTimelineDiff>) -> Vec<UiTimelineDiff> {
+    let mut optimized = Vec::new();
+
+    let mut iter = diffs.into_iter().peekable();
+    while let Some(diff) = iter.next() {
+        match diff {
+            UiTimelineDiff::Remove { index } => {
+                // If the very next diff inserts or pushes back into the exact same spot,
+                // it's just a replacement. Turn it into a Set.
+                match iter.peek() {
+                    Some(UiTimelineDiff::Insert {
+                        index: i_idx,
+                        value,
+                    }) if index == *i_idx => {
+                        let value = value.clone();
+                        iter.next(); // Consume the Insert
+                        optimized.push(UiTimelineDiff::Set { index, value });
+                    }
+                    Some(UiTimelineDiff::PushBack { value }) => {
+                        // Assuming Remove was the last item, PushBack puts it right back
+                        let value = value.clone();
+                        iter.next(); // Consume the PushBack
+                        optimized.push(UiTimelineDiff::Set { index, value });
+                    }
+                    _ => optimized.push(diff),
+                }
+            }
+            _ => optimized.push(diff),
+        }
+    }
+
+    optimized
 }
