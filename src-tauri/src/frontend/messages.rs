@@ -1,8 +1,8 @@
-use std::{io::Cursor, path::PathBuf, str::FromStr};
+use std::{collections::HashMap, io::Cursor, path::PathBuf, str::FromStr};
 
 use futures::{StreamExt};
 use image::ImageReader;
-use matrix_sdk::{Client as MatrixClient, attachment::{AttachmentInfo, BaseFileInfo, BaseImageInfo, BaseVideoInfo}, room::edit::EditedContent, };
+use matrix_sdk::{Client as MatrixClient, attachment::{AttachmentInfo, BaseFileInfo, BaseImageInfo, BaseVideoInfo}, room::edit::EditedContent, ruma::events::room::MediaSource, };
 use matrix_sdk_ui::timeline::{AttachmentConfig, AttachmentSource, TimelineEventItemId};
 use mime::Mime;
 use tokio_util::sync::CancellationToken;
@@ -20,11 +20,12 @@ use scraper::{Html, Node};
 use shared::{api::{FileMetadata, UiAttachmentSource}, timeline::{RichTextSpan, UiTimelineDiff, UiTimelineItem, coalesce_diffs}};
 use tauri::{AppHandle, Emitter, State, command};
 use tokio::sync::RwLock;
+use uuid::Uuid;
 
 use crate::{
     TauriError,
     frontend::timeline::{timeline_diff_to_ui, timeline_item_to_ui},
-    state::{TaskManager, TimelineManager},
+    state::{MediaManager, TaskManager, TimelineManager},
 };
 
 #[command(rename_all = "snake_case")]
@@ -309,6 +310,7 @@ pub async fn get_timeline(
     matrix_client: State<'_, RwLock<MatrixClient>>,
     timeline_manager: State<'_, TimelineManager>,
     task_manager: State<'_, TaskManager>,
+    media_manager: State<'_, MediaManager>,
     handle: AppHandle,
     room_id: String,
 ) -> Result<Vec<UiTimelineItem>, TauriError> {
@@ -318,6 +320,8 @@ pub async fn get_timeline(
     task_manager
         .replace_task("get_timeline", token.clone())
         .await;
+
+    let mut media_store: HashMap<Uuid, MediaSource> = media_manager.sources.read().await.clone();
 
     tokio::select! {
         _ = token.cancelled() => {
@@ -340,12 +344,21 @@ pub async fn get_timeline(
 
             let (messages, stream) = timeline.subscribe().await;
 
+            let media_for_stream = (*media_manager).clone();
             timeline_manager
                 .set_stream_handle(tokio::spawn(async move {
                     tokio::pin!(stream);
 
                     while let Some(update) = stream.next().await {
-                        let diffs = coalesce_diffs(update.iter().map(timeline_diff_to_ui).collect());
+                        let mut new_sources = HashMap::new();
+                        let diffs = coalesce_diffs(update.iter().map(|v| {
+                            let (res, ext) = timeline_diff_to_ui(v);
+                            new_sources.extend(ext);
+                            res
+                        }).collect());
+                        if !new_sources.is_empty() {
+                            media_for_stream.sources.write().await.extend(new_sources);
+                        }
                         send_timeline_diffs(handle.clone(), diffs);
                     }
                 }))
@@ -353,7 +366,24 @@ pub async fn get_timeline(
 
             log::debug!("Fetched {} messages for room {}", messages.len(), room_id);
 
-            Ok(messages.iter().map(|v| timeline_item_to_ui(v)).collect())
+            let messages = messages.iter().map(|v| timeline_item_to_ui(v, &mut media_store)).collect();
+
+            media_manager.sources.write().await.extend(media_store);
+
+            fn log_source(source: &MediaSource) -> String {
+                match source {
+                    MediaSource::Plain(url) => format!("Plain URL: {}", url),
+                    MediaSource::Encrypted(file_info) => format!("Encrypted Hashes: {:?}, Info: {:?}, Url: {:?}", file_info.hashes, file_info.info.data(), file_info.url),
+                }
+            }
+
+            // Log all media sources
+            log::debug!("Current media sources after fetching timeline:");
+            for (id, source) in media_manager.sources.read().await.iter() {
+                log::debug!("Media ID: {}, Source: {}", id, log_source(source));
+            }
+
+            Ok(messages)
         } => {
             result
         }

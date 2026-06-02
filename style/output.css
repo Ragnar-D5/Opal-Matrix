@@ -907,6 +907,12 @@
   .bg-black {
     background-color: var(--color-black);
   }
+  .bg-black\/50 {
+    background-color: color-mix(in srgb, #000 50%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      background-color: color-mix(in oklab, var(--color-black) 50%, transparent);
+    }
+  }
   .bg-gray-700 {
     background-color: var(--color-gray-700);
   }
@@ -1393,6 +1399,13 @@
     &:is(:where(.group):hover *) {
       @media (hover: hover) {
         --tw-ring-color: var(--ui-solid-hover-bg);
+      }
+    }
+  }
+  .group-hover\/image\:opacity-100 {
+    &:is(:where(.group\/image):hover *) {
+      @media (hover: hover) {
+        opacity: 100%;
       }
     }
   }

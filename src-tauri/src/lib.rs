@@ -43,7 +43,8 @@ use tauri_plugin_notification::{NotificationExt, PermissionState};
 
 use crate::matrix_api::keyring::{self, StoredSession, init_keyring};
 use crate::matrix_api::matrixrtc::{join_matrixrtc_call, leave_matrixrtc_call};
-use crate::state::{AppState, CallAudioState, TaskManager, TimelineManager};
+use crate::matrix_api::media::{get_media_from_uuid_str, get_media_from_uuid_thmubnail_str};
+use crate::state::{AppState, CallAudioState, MediaManager, TaskManager, TimelineManager};
 use crate::sync::attach_callbacks;
 
 pub type MatrixClientState<'a> = State<'a, RwLock<MatrixClient>>;
@@ -540,6 +541,7 @@ pub fn run() {
             app.manage(TimelineManager::default());
             app.manage(TaskManager::default());
             app.manage(CallAudioState::default());
+            app.manage(MediaManager::default());
 
             #[cfg(not(target_os = "android"))]
             let main_window = app
@@ -584,8 +586,129 @@ pub fn run() {
             move |ctx, request: tauri::http::Request<Vec<u8>>, responder| {
                 let app_handle = ctx.app_handle().clone();
                 let uri = request.uri().to_string();
+                let range_header = request
+                    .headers()
+                    .get("range")
+                    .and_then(|v| v.to_str().ok())
+                    .and_then(|v| v.strip_prefix("bytes="))
+                    .and_then(|v| {
+                        let mut parts = v.splitn(2, '-');
+                        let start: usize = parts.next()?.parse().ok()?;
+                        let end: usize = parts.next().and_then(|e| e.parse().ok()).unwrap_or(usize::MAX);
+                        Some((start, end))
+                    });
 
                 tauri::async_runtime::spawn(async move {
+                    log::debug!("MXC protocol request: {}", uri);
+
+                    let client = app_handle
+                        .state::<tokio::sync::RwLock<matrix_sdk::Client>>()
+                        .read()
+                        .await
+                        .clone();
+
+                    // Check if the client uri is mxc://media or mxc://thumbnail or something else
+                    if !uri.starts_with("mxc://") {
+                        responder.respond(
+                            tauri::http::Response::builder()
+                                .status(400)
+                                .body(Vec::new())
+                                .unwrap(),
+                        );
+                        return;
+                    }
+
+                    let media_manager = app_handle.state::<MediaManager>();
+
+                    if let Some(id_str) = uri.strip_prefix("mxc://media/") {
+                        match get_media_from_uuid_str(&client, id_str, &media_manager).await {
+                            Ok(bytes) => {
+                                let content_type = detect_content_type(&bytes);
+                                if content_type == "application/octet-stream" {
+                                    log::debug!("Unknown format for UUID {}, first 16 bytes: {:02x?}", id_str, &bytes[..bytes.len().min(16)]);
+                                }
+                                let is_video = content_type.starts_with("video/");
+                                if is_video {
+                                    if let Some((start, end)) = range_header && start > 0 {
+                                        let end = end.min(bytes.len().saturating_sub(1));
+                                        let total = bytes.len();
+                                        let chunk = bytes[start..=end].to_vec();
+                                        responder.respond(
+                                            tauri::http::Response::builder()
+                                                .status(206)
+                                                .header("Content-Type", content_type)
+                                                .header("Content-Range", format!("bytes {}-{}/{}", start, end, total))
+                                                .header("Content-Length", chunk.len().to_string())
+                                                .header("Accept-Ranges", "bytes")
+                                                .header("Access-Control-Allow-Origin", "*")
+                                                .body(chunk)
+                                                .unwrap(),
+                                        );
+                                    } else {
+                                        let len = bytes.len();
+                                        responder.respond(
+                                            tauri::http::Response::builder()
+                                                .status(200)
+                                                .header("Content-Type", content_type)
+                                                .header("Content-Length", len.to_string())
+                                                .header("Accept-Ranges", "bytes")
+                                                .header("Access-Control-Allow-Origin", "*")
+                                                .body(bytes)
+                                                .unwrap(),
+                                        );
+                                    }
+                                } else {
+                                    let len = bytes.len();
+                                    responder.respond(
+                                        tauri::http::Response::builder()
+                                            .status(200)
+                                            .header("Content-Type", content_type)
+                                            .header("Content-Length", len.to_string())
+                                            .header("Access-Control-Allow-Origin", "*")
+                                            .body(bytes)
+                                            .unwrap(),
+                                    );
+                                }
+                            }
+                            Err(e) => {
+                                log::error!("Failed to fetch media for UUID {}: {:?}", id_str, e);
+                                responder.respond(
+                                    tauri::http::Response::builder()
+                                        .status(500)
+                                        .body(Vec::<u8>::new())
+                                        .unwrap(),
+                                );
+                            }
+                        };
+                        return;
+                    } else if let Some(param_str) = uri.strip_prefix("mxc://thumbnail/") {
+                        match get_media_from_uuid_thmubnail_str(&client, param_str, &media_manager).await {
+                            Ok(bytes) => {
+                                let content_type = detect_content_type(&bytes);
+                                responder.respond(
+                                    tauri::http::Response::builder()
+                                        .status(200)
+                                        .header("Content-Type", content_type)
+                                        .header("Content-Length", bytes.len().to_string())
+                                        .header("Access-Control-Allow-Origin", "*")
+                                        .body(bytes)
+                                        .unwrap(),
+                                );
+                            }
+                            Err(e) => {
+                                log::error!("Failed to fetch thumbnail media for {}: {:?}", param_str, e);
+                                responder.respond(
+                                    tauri::http::Response::builder()
+                                        .status(500)
+                                        .body(Vec::<u8>::new())
+                                        .unwrap(),
+                                );
+                            }
+                        };
+                        return;
+                    }
+
+
                     // 1. Parse the requested URI [cite: 221]
                     let parsed_url = match Url::parse(&uri) {
                         Ok(u) => u,
@@ -626,11 +749,6 @@ pub fn run() {
                     }
 
                     // 3. Retrieve MatrixClient directly from Tauri state [cite: 128, 212]
-                    let client = app_handle
-                        .state::<tokio::sync::RwLock<matrix_sdk::Client>>()
-                        .read()
-                        .await
-                        .clone();
 
                     // 4. Build the MediaRequest
                     let source = MediaSource::Plain(owned_mxc_uri);

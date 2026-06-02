@@ -1,10 +1,11 @@
-use matrix_sdk::ruma::OwnedRoomId;
+use matrix_sdk::ruma::{events::room::MediaSource, OwnedRoomId};
 use matrix_sdk::Room;
 use matrix_sdk_ui::{timeline::TimelineBuilder, Timeline};
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use tauri::async_runtime::{Mutex, RwLock};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
+use uuid::Uuid;
 
 use crate::TauriError;
 
@@ -89,4 +90,17 @@ impl TaskManager {
 pub struct CallAudioState {
     pub input_stream: Mutex<Option<cpal::Stream>>,
     pub output_stream: Mutex<Option<cpal::Stream>>,
+}
+
+#[derive(Clone)]
+pub struct MediaManager {
+    pub sources: Arc<RwLock<HashMap<Uuid, MediaSource>>>,
+}
+
+impl Default for MediaManager {
+    fn default() -> Self {
+        MediaManager {
+            sources: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
 }

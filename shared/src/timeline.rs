@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use colorsys::Hsl;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::{get_color, user_profile::UserProfile};
 
@@ -125,6 +126,7 @@ pub enum RichTextSpan {
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum UiMediaSource {
+    Uuid(Uuid),
     Plain(String),
     Encrypted { url: String, k: String, iv: String },
 }
@@ -138,6 +140,7 @@ impl UiMediaSource {
                 urlencoding::encode(k),
                 urlencoding::encode(iv)
             ),
+            UiMediaSource::Uuid(uuid) => format!("mxc://media/{}", uuid),
         }
     }
 }

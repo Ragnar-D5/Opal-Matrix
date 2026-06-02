@@ -7,7 +7,7 @@ use matrix_sdk::ruma::{
             guest_access::GuestAccess,
             history_visibility::HistoryVisibility,
             message::{MessageFormat, MessageType},
-            EncryptedFileInfo, MediaSource,
+            MediaSource,
         },
         rtc::notification::CallIntent,
         StateEventContentChange, StateEventType,
@@ -35,6 +35,7 @@ use shared::{
         UiTimelineItemKind,
     },
 };
+use uuid::Uuid;
 
 fn membership_change_to_ui(value: MembershipChange) -> UiMembershipChange {
     match value {
@@ -234,26 +235,6 @@ fn member_profile_change_to_ui(value: MemberProfileChange) -> ProfileChange {
     }
 }
 
-fn media_source_to_ui(value: MediaSource) -> UiMediaSource {
-    match value {
-        MediaSource::Plain(url) => UiMediaSource::Plain(url.to_string()),
-        MediaSource::Encrypted(file) => {
-            let url = file.url.to_string();
-
-            let EncryptedFileInfo::V2(info) = file.info else {
-                return UiMediaSource::Plain(url);
-            };
-
-            UiMediaSource::Encrypted {
-                url,
-                k: info.k.to_string(),
-                iv: info.iv.to_string(),
-                // hash: hash.to_string(),
-            }
-        }
-    }
-}
-
 fn poll_kind_to_ui(value: PollKind) -> UiPollKind {
     match value {
         PollKind::Undisclosed => UiPollKind::Undisclosed,
@@ -302,7 +283,10 @@ fn from_call_intent_to_ui(value: CallIntent) -> UiCallIntent {
     }
 }
 
-fn timeline_item_content_to_ui(value: &TimelineItemContent) -> EventContent {
+fn timeline_item_content_to_ui(
+    value: &TimelineItemContent,
+    media_store: &mut HashMap<Uuid, MediaSource>,
+) -> EventContent {
     match value.clone() {
         TimelineItemContent::MsgLike(content) => {
             let mut is_redacted = false;
@@ -313,17 +297,21 @@ fn timeline_item_content_to_ui(value: &TimelineItemContent) -> EventContent {
                     is_edited = msg.is_edited();
 
                     match msg.msgtype().clone() {
-                        MessageType::Audio(content) => (
-                            parse_plain_text_to_spans(&content.body),
-                            UiMessageType::Audio {
-                                source: media_source_to_ui(content.source.clone()),
-                                filename: content.filename().to_string(),
-                                duration: content
-                                    .info
-                                    .map(|v| v.duration.map(|d| d.as_secs()))
-                                    .unwrap_or_default(),
-                            },
-                        ),
+                        MessageType::Audio(content) => {
+                            let media_id = Uuid::new_v4();
+                            media_store.insert(media_id, content.source.clone());
+                            (
+                                parse_plain_text_to_spans(&content.body),
+                                UiMessageType::Audio {
+                                    source: UiMediaSource::Uuid(media_id),
+                                    filename: content.filename().to_string(),
+                                    duration: content
+                                        .info
+                                        .map(|v| v.duration.map(|d| d.as_secs()))
+                                        .unwrap_or_default(),
+                                },
+                            )
+                        }
                         MessageType::Emote(content) => (
                             parse_plain_text_to_spans(&content.body),
                             UiMessageType::Emote,
@@ -331,10 +319,13 @@ fn timeline_item_content_to_ui(value: &TimelineItemContent) -> EventContent {
                         MessageType::File(content) => {
                             let info = content.info.clone().unwrap_or_default();
 
+                            let media_id = Uuid::new_v4();
+                            media_store.insert(media_id, content.source.clone());
+
                             (
                                 parse_plain_text_to_spans(&content.body),
                                 UiMessageType::File {
-                                    source: media_source_to_ui(content.source.clone()),
+                                    source: UiMediaSource::Uuid(media_id),
                                     filename: content.filename().to_string(),
                                     mime_type: info.mimetype.map(|m| m.to_string()),
                                     size: info.size.map(|s| s.into()),
@@ -343,6 +334,9 @@ fn timeline_item_content_to_ui(value: &TimelineItemContent) -> EventContent {
                         }
                         MessageType::Image(content) => {
                             let info = content.info.clone().unwrap_or_default();
+
+                            let media_id = Uuid::new_v4();
+                            media_store.insert(media_id, content.source.clone());
 
                             let body = if content.filename() == content.body {
                                 Vec::new()
@@ -354,7 +348,7 @@ fn timeline_item_content_to_ui(value: &TimelineItemContent) -> EventContent {
                                 body,
                                 UiMessageType::Image {
                                     filename: content.filename().to_string(),
-                                    source: media_source_to_ui(content.source),
+                                    source: UiMediaSource::Uuid(media_id),
                                     width: info.width.map(|w| w.into()),
                                     height: info.height.map(|h| h.into()),
                                     size: info.size.map(|s| s.into()),
@@ -406,10 +400,13 @@ fn timeline_item_content_to_ui(value: &TimelineItemContent) -> EventContent {
                         MessageType::Video(content) => {
                             let info = content.info.clone().unwrap_or_default();
 
+                            let media_id = Uuid::new_v4();
+                            media_store.insert(media_id, content.source.clone());
+
                             (
                                 parse_plain_text_to_spans(&content.body),
                                 UiMessageType::Video {
-                                    source: media_source_to_ui(content.source.clone()),
+                                    source: UiMediaSource::Uuid(media_id),
                                     filename: content.filename().to_string(),
                                     width: info.width.map(|w| w.into()),
                                     height: info.height.map(|h| h.into()),
@@ -429,10 +426,13 @@ fn timeline_item_content_to_ui(value: &TimelineItemContent) -> EventContent {
                     let content = sticker.content();
                     let info = content.info.clone();
 
+                    let media_id = Uuid::new_v4();
+                    media_store.insert(media_id, content.source.clone().into());
+
                     (
                         vec![RichTextSpan::Plain(content.body.clone())],
                         UiMessageType::Sticker {
-                            source: media_source_to_ui(content.source.clone().into()),
+                            source: UiMediaSource::Uuid(media_id),
                             width: info.width.map(|w| w.into()),
                             height: info.height.map(|h| h.into()),
                             size: info.size.map(|s| s.into()),
@@ -762,7 +762,10 @@ fn timeline_item_content_to_ui(value: &TimelineItemContent) -> EventContent {
     }
 }
 
-fn event_timeline_item_to_ui(item: &EventTimelineItem) -> TimelineEvent {
+fn event_timeline_item_to_ui(
+    item: &EventTimelineItem,
+    media_store: &mut HashMap<Uuid, MediaSource>,
+) -> TimelineEvent {
     let sender_id = item.sender();
 
     let mut event = TimelineEvent {
@@ -789,7 +792,7 @@ fn event_timeline_item_to_ui(item: &EventTimelineItem) -> TimelineEvent {
             }),
         },
 
-        content: timeline_item_content_to_ui(item.content()),
+        content: timeline_item_content_to_ui(item.content(), media_store),
     };
 
     event.calculate_flags(item.is_own());
@@ -797,7 +800,10 @@ fn event_timeline_item_to_ui(item: &EventTimelineItem) -> TimelineEvent {
     event
 }
 
-pub fn timeline_item_to_ui(item: &TimelineItem) -> UiTimelineItem {
+pub fn timeline_item_to_ui(
+    item: &TimelineItem,
+    media_store: &mut HashMap<Uuid, MediaSource>,
+) -> UiTimelineItem {
     let kind = match item.kind() {
         TimelineItemKind::Virtual(event) => match event {
             VirtualTimelineItem::ReadMarker => UiTimelineItemKind::ReadMarker,
@@ -807,7 +813,7 @@ pub fn timeline_item_to_ui(item: &TimelineItem) -> UiTimelineItem {
             VirtualTimelineItem::TimelineStart => UiTimelineItemKind::TimelineStart,
         },
         TimelineItemKind::Event(event) => {
-            UiTimelineItemKind::Event(Box::new(event_timeline_item_to_ui(event)))
+            UiTimelineItemKind::Event(Box::new(event_timeline_item_to_ui(event, media_store)))
         }
     };
 
@@ -827,32 +833,44 @@ pub fn timeline_item_to_ui(item: &TimelineItem) -> UiTimelineItem {
     }
 }
 
-pub fn timeline_diff_to_ui(diff: &VectorDiff<Arc<TimelineItem>>) -> UiTimelineDiff {
-    match diff {
+pub fn timeline_diff_to_ui(
+    diff: &VectorDiff<Arc<TimelineItem>>,
+) -> (UiTimelineDiff, HashMap<Uuid, MediaSource>) {
+    let mut media_store = HashMap::new();
+
+    let res = match diff {
         VectorDiff::Append { values } => UiTimelineDiff::Append {
-            values: values.iter().map(|v| timeline_item_to_ui(v)).collect(),
+            values: values
+                .iter()
+                .map(|v| timeline_item_to_ui(v, &mut media_store))
+                .collect(),
         },
         VectorDiff::Clear => UiTimelineDiff::Clear,
         VectorDiff::PushFront { value } => UiTimelineDiff::PushFront {
-            value: timeline_item_to_ui(value),
+            value: timeline_item_to_ui(value, &mut media_store),
         },
         VectorDiff::PushBack { value } => UiTimelineDiff::PushBack {
-            value: timeline_item_to_ui(value),
+            value: timeline_item_to_ui(value, &mut media_store),
         },
         VectorDiff::PopFront => UiTimelineDiff::PopFront,
         VectorDiff::PopBack => UiTimelineDiff::PopBack,
         VectorDiff::Insert { index, value } => UiTimelineDiff::Insert {
             index: *index,
-            value: timeline_item_to_ui(value),
+            value: timeline_item_to_ui(value, &mut media_store),
         },
         VectorDiff::Set { index, value } => UiTimelineDiff::Set {
             index: *index,
-            value: timeline_item_to_ui(value),
+            value: timeline_item_to_ui(value, &mut media_store),
         },
         VectorDiff::Remove { index } => UiTimelineDiff::Remove { index: *index },
         VectorDiff::Truncate { length } => UiTimelineDiff::Truncate { length: *length },
         VectorDiff::Reset { values } => UiTimelineDiff::Reset {
-            values: values.iter().map(|v| timeline_item_to_ui(v)).collect(),
+            values: values
+                .iter()
+                .map(|v| timeline_item_to_ui(v, &mut media_store))
+                .collect(),
         },
-    }
+    };
+
+    (res, media_store)
 }

@@ -213,29 +213,44 @@ fn render_message_content(
             filename,
             source,
             ..
-        } => view! {
-            <div class="mt-1">
-                <img
-                    src=source.url()
-                    alt=filename.clone()
-                    class="max-w-sm rounded-md border border-[var(--tile-border-color)]"
-                />
-            </div>
-            <div class="text-normal leading-relaxed break-words">
-                {spans
-                    .clone()
-                    .into_iter()
-                    .map(|v| v.render(store.clone(), room_id.clone()))
-                    .collect_view()}
-                {if content.is_edited {
-                    view! { <span class="text-xs text-muted ml-2 italic">"(edited)"</span> }
-                        .into_any()
-                } else {
-                    ().into_any()
-                }} {spans.clone().into_iter().map(render_link).collect_view()}
-            </div>
-        }
-            .into_any(),
+        } => {
+            let source_clone = source.clone();
+            view! {
+                <div class="mt-1">
+                    <div class="relative inline-block group/image">
+                        <img
+                            src=source.url()
+                            alt=filename.clone()
+                            class="max-w-sm rounded-md border border-[var(--tile-border-color)] relative group/image"
+                            on:error=move |e| {
+                                log::error!(
+                                    "Image failed to load: {}, {}", source.url(), e.to_js_string()
+                                )
+                            }
+                            on:load=move |_| {
+                                log::debug!("Image loaded successfully: {}", source_clone.url())
+                            }
+                        />
+                        <div class="absolute bottom-1 left-1 bg-black/50 opacity-0 group-hover/image:opacity-100 transition-opacity rounded-md">
+                            <span class="text-white text-sm p-2">{filename.clone()}</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="text-normal leading-relaxed break-words">
+                    {spans
+                        .clone()
+                        .into_iter()
+                        .map(|v| v.render(store.clone(), room_id.clone()))
+                        .collect_view()}
+                    {if content.is_edited {
+                        view! { <span class="text-xs text-muted ml-2 italic">"(edited)"</span> }
+                            .into_any()
+                    } else {
+                        ().into_any()
+                    }} {spans.clone().into_iter().map(render_link).collect_view()}
+                </div>
+            }
+            .into_any()},
         // TODO: Not implemented yet
         UiMessageType::Location(_) => view! {
             <div class="text-normal leading-relaxed break-words italic">
@@ -1217,8 +1232,6 @@ fn TimeLine() -> impl IntoView {
 
         owner.with(|| {
             messages.update(|msgs| {
-                log::debug!("Applying timeline diffs: {diffs:#?}");
-
                 for diff in diffs {
                     match diff {
                         UiTimelineDiff::Append { values } => {

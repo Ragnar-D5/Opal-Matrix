@@ -575,7 +575,7 @@ async fn send_encryption_keys(
             continue;
         };
 
-        if sender == own_id && own_device == &content.device_id {
+        if sender == own_id && own_device == content.device_id {
             continue;
         }
 
