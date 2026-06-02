@@ -272,7 +272,6 @@ pub fn handle_keydown(
                 }
 
                 let content_empty = message.trim().is_empty() || message == "<br>" || message == "<br><br>" || message == "<br type=\"_moz\">";
-                let attachments_empty = attachments.get_untracked().is_empty();
 
                 match input_info.get_untracked() {
                     Some(ChatInputInfo::ReplyingTo { event_id, .. }) if !content_empty => {
@@ -295,13 +294,11 @@ pub fn handle_keydown(
                                 warn!("Failed to commit message: {e}");
                             };
 
-                            if !attachments_empty {
-                                for att in atts {
-                                    let file = att.into_file_metadata();
+                            for att in atts {
+                                let file = att.into_file_metadata();
 
-                                    if let Err(e) = send_attachment(file, &room_id).await {
-                                        warn!("Failed to send attachment: {e}");
-                                    }
+                                if let Err(e) = send_attachment(file, &room_id).await {
+                                    warn!("Failed to send attachment: {e}");
                                 }
                             }
                         });

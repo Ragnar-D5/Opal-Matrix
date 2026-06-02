@@ -889,6 +889,7 @@ fn render_timeline_event(
     };
 
     let input_info: RwSignal<Option<ChatInputInfo>> = expect_context();
+    let attachments: RwSignal<Vec<Attachment>> = expect_context();
     let input_ref: NodeRef<Div> = expect_context();
 
     let current_highlight = Memo::new({
@@ -996,6 +997,7 @@ fn render_timeline_event(
 
                         view! {
                             <button
+                                id=format!("reply-btn-{}", item_id)
                                 class="hover:bg-(--ui-solid-hover-bg) cursor-pointer p-0.5 rounded-(--gap) hover:text-normal"
                                 on:click=move |_| {
                                     let Some(event_id) = reply_event_id.clone() else {
@@ -1012,9 +1014,7 @@ fn render_timeline_event(
                                                 item_id: item_id.clone(),
                                             }),
                                         );
-                                    if let Some(el) = input_ref.get() {
-                                        el.focus().ok();
-                                    }
+                                    input_ref.get().map(|el| el.focus().ok());
                                 }
                             >
                                 <Icon icon=ARROW_BEND_UP_LEFT size="20px"></Icon>
@@ -1045,6 +1045,10 @@ fn render_timeline_event(
                                                 item_id: item_id.clone(),
                                             }),
                                         );
+                                    attachments.set(Vec::new());
+                                    if let Some(el) = input_ref.get() {
+                                        el.focus().ok();
+                                    }
                                     if let Some(el) = input_ref.get() {
                                         el.focus().ok();
                                         let spans = item_sig.get_untracked().body();
@@ -1204,57 +1208,61 @@ fn TimeLine() -> impl IntoView {
 
     let messages: RwSignal<Vec<RwSignal<UiTimelineItem>>> = RwSignal::new(Vec::new());
 
+    let owner = Owner::current().expect("TimeLine must have an owner");
+
     Effect::new(move |_| {
         let Some(diffs) = messages_update_event.get() else {
             return;
         };
 
-        messages.update(|msgs| {
-            log::debug!("Applying timeline diffs: {diffs:#?}");
+        owner.with(|| {
+            messages.update(|msgs| {
+                log::debug!("Applying timeline diffs: {diffs:#?}");
 
-            for diff in diffs {
-                match diff {
-                    UiTimelineDiff::Append { values } => {
-                        let extention: Vec<RwSignal<UiTimelineItem>> =
-                            values.iter().map(|v| RwSignal::new(v.clone())).collect();
-                        msgs.extend(extention);
-                    }
-                    UiTimelineDiff::Set { index, value } => {
-                        if let Some(item) = msgs.get_mut(index) {
-                            item.set(value);
+                for diff in diffs {
+                    match diff {
+                        UiTimelineDiff::Append { values } => {
+                            let extention: Vec<RwSignal<UiTimelineItem>> =
+                                values.iter().map(|v| RwSignal::new(v.clone())).collect();
+                            msgs.extend(extention);
                         }
-                    }
-                    UiTimelineDiff::PushBack { value } => msgs.push(RwSignal::new(value)),
-                    UiTimelineDiff::Remove { index } => {
-                        if index < msgs.len() {
-                            msgs.remove(index);
+                        UiTimelineDiff::Set { index, value } => {
+                            if let Some(item) = msgs.get_mut(index) {
+                                item.set(value);
+                            }
                         }
-                    }
-                    UiTimelineDiff::Clear => msgs.clear(),
-                    UiTimelineDiff::Insert { index, value } => {
-                        if index <= msgs.len() {
-                            msgs.insert(index, RwSignal::new(value));
+                        UiTimelineDiff::PushBack { value } => msgs.push(RwSignal::new(value)),
+                        UiTimelineDiff::Remove { index } => {
+                            if index < msgs.len() {
+                                msgs.remove(index);
+                            }
                         }
-                    }
-                    UiTimelineDiff::PopBack => {
-                        msgs.pop();
-                    }
-                    UiTimelineDiff::PopFront => {
-                        if !msgs.is_empty() {
-                            msgs.remove(0);
+                        UiTimelineDiff::Clear => msgs.clear(),
+                        UiTimelineDiff::Insert { index, value } => {
+                            if index <= msgs.len() {
+                                msgs.insert(index, RwSignal::new(value));
+                            }
                         }
-                    }
-                    UiTimelineDiff::PushFront { value } => msgs.insert(0, RwSignal::new(value)),
-                    UiTimelineDiff::Reset { values } => {
-                        msgs.clear();
+                        UiTimelineDiff::PopBack => {
+                            msgs.pop();
+                        }
+                        UiTimelineDiff::PopFront => {
+                            if !msgs.is_empty() {
+                                msgs.remove(0);
+                            }
+                        }
+                        UiTimelineDiff::PushFront { value } => msgs.insert(0, RwSignal::new(value)),
+                        UiTimelineDiff::Reset { values } => {
+                            msgs.clear();
 
-                        let extention: Vec<RwSignal<UiTimelineItem>> =
-                            values.iter().map(|v| RwSignal::new(v.clone())).collect();
-                        msgs.extend(extention);
+                            let extention: Vec<RwSignal<UiTimelineItem>> =
+                                values.iter().map(|v| RwSignal::new(v.clone())).collect();
+                            msgs.extend(extention);
+                        }
+                        UiTimelineDiff::Truncate { length } => msgs.truncate(length),
                     }
-                    UiTimelineDiff::Truncate { length } => msgs.truncate(length),
                 }
-            }
+            });
         });
     });
 
@@ -1818,6 +1826,7 @@ fn ChatInput() -> impl IntoView {
     provide_context(is_empty);
 
     let attachments: RwSignal<Vec<Attachment>> = RwSignal::new(Vec::new());
+    provide_context(attachments);
 
     // Load on room change
     Effect::new(move |_| {
@@ -1829,8 +1838,6 @@ fn ChatInput() -> impl IntoView {
         let Some(el) = input_ref.get() else {
             return;
         };
-
-        log::debug!("Loaded draft: {:?}", draft.clone());
 
         let content = draft.content;
         el.set_inner_html(&content);
@@ -1929,6 +1936,8 @@ fn ChatInput() -> impl IntoView {
         });
     };
 
+    let is_editing = Memo::new(move |_| matches!(input_info.get(), Some(ChatInputInfo::Editing { .. })));
+
     view! {
         <div class="p-2 pt-0 w-full relative">
             {move || input_info_content()} {move || attachment_view()}
@@ -1941,8 +1950,14 @@ fn ChatInput() -> impl IntoView {
                 )
             >
                 <button
-                    class="cursor-pointer hover:color-(--text-bright)"
-                    on:click=move |_| add_files_to_attachment()
+                    class="hover:color-(--text-bright)"
+                    class=("cursor-not-allowed", move || is_editing.get())
+                    class=("cursor-pointer", move || !is_editing.get())
+                    on:click=move |_| {
+                        if !is_editing.get() {
+                            add_files_to_attachment()
+                        }
+                    }
                 >
                     <Icon icon=UPLOAD_SIMPLE size="20px" color="var(--ui-base-color)" />
                 </button>

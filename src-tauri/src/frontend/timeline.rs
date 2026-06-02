@@ -35,7 +35,6 @@ use shared::{
         UiTimelineItemKind,
     },
 };
-use uuid::Uuid;
 
 fn membership_change_to_ui(value: MembershipChange) -> UiMembershipChange {
     match value {
@@ -345,8 +344,14 @@ fn timeline_item_content_to_ui(value: &TimelineItemContent) -> EventContent {
                         MessageType::Image(content) => {
                             let info = content.info.clone().unwrap_or_default();
 
+                            let body = if content.filename() == content.body {
+                                Vec::new()
+                            } else {
+                                parse_plain_text_to_spans(&content.body)
+                            };
+
                             (
-                                parse_plain_text_to_spans(&content.body),
+                                body,
                                 UiMessageType::Image {
                                     filename: content.filename().to_string(),
                                     source: media_source_to_ui(content.source),
