@@ -345,8 +345,7 @@ pub async fn get_timeline(
                     tokio::pin!(stream);
 
                     while let Some(update) = stream.next().await {
-                        send_timeline_diffs(handle.clone(), update.iter().map(timeline_diff_to_ui).collect())
-                            .await;
+                        send_timeline_diffs(handle.clone(), update.iter().map(timeline_diff_to_ui).collect());
                     }
                 }))
                 .await;
@@ -360,7 +359,7 @@ pub async fn get_timeline(
     }
 }
 
-async fn send_timeline_diffs(handle: AppHandle, diffs: Vec<UiTimelineDiff>) {
+fn send_timeline_diffs(handle: AppHandle, diffs: Vec<UiTimelineDiff>) {
     log::debug!("Emitting timeline update with {} diffs", diffs.len());
     if let Err(e) = handle.emit("timeline_update", diffs) {
         error!("Failed to emit timeline update: {:?}", e);
