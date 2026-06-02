@@ -143,6 +143,25 @@ impl UiMediaSource {
             UiMediaSource::Uuid(uuid) => format!("mxc://media/{}", uuid),
         }
     }
+
+    pub fn thumbnail_url(&self, width: u64, height: u64) -> String {
+        match self {
+            UiMediaSource::Uuid(uuid) => {
+                format!("mxc://thumbnail/{}?width={}&height={}", uuid, width, height)
+            }
+            other => other.url(),
+        }
+    }
+}
+
+pub fn fit_dimensions(w: u64, h: u64, max_w: u64, max_h: u64) -> (u64, u64) {
+    if w == 0 || h == 0 {
+        return (max_w, max_h);
+    }
+    let scale = (max_w as f64 / w as f64)
+        .min(max_h as f64 / h as f64)
+        .min(1.0);
+    ((w as f64 * scale) as u64, (h as f64 * scale) as u64)
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]

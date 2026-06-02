@@ -138,6 +138,8 @@ fn render_message_content(
     room_id: String,
 ) -> impl IntoView {
     let spans = content.body;
+    const MAX_W: u64 = 400;
+    const MAX_H: u64 = 300;
 
     match content.msg_type {
         UiMessageType::Audio { source, filename, duration } => {
@@ -212,23 +214,31 @@ fn render_message_content(
         UiMessageType::Image {
             filename,
             source,
+            width,
+            height,
             ..
         } => {
-            let source_clone = source.clone();
+            let (thumb_w, thumb_h) = shared::timeline::fit_dimensions(
+                width.unwrap_or(MAX_W),
+                height.unwrap_or(MAX_H),
+                MAX_W,
+                MAX_H,
+            );
+            let thumb_src = source.thumbnail_url(thumb_w, thumb_h);
+            let full_src = source.url();
             view! {
                 <div class="mt-1">
                     <div class="relative inline-block group/image">
                         <img
-                            src=source.url()
+                            src=thumb_src.clone()
                             alt=filename.clone()
-                            class="max-w-sm rounded-md border border-[var(--tile-border-color)] relative group/image"
+                            width=thumb_w
+                            height=thumb_h
+                            class="rounded-md border border-[var(--tile-border-color)] relative group/image"
                             on:error=move |e| {
                                 log::error!(
                                     "Image failed to load: {}, {}", source.url(), e.to_js_string()
                                 )
-                            }
-                            on:load=move |_| {
-                                log::debug!("Image loaded successfully: {}", source_clone.url())
                             }
                         />
                         <div class="absolute bottom-1 left-1 bg-black/50 opacity-0 group-hover/image:opacity-100 transition-opacity rounded-md">
@@ -338,32 +348,46 @@ fn render_message_content(
             </div>
         }
             .into_any(),
-        UiMessageType::Video { source, .. } => {
+        UiMessageType::Video { source, width, height, .. } => {
+            const MAX_W: u64 = 400;
+            const MAX_H: u64 = 300;
+            let (vid_w, vid_h) = shared::timeline::fit_dimensions(
+                width.unwrap_or(MAX_W),
+                height.unwrap_or(MAX_H),
+                MAX_W,
+                MAX_H,
+            );
             let mxc_url = source.url();
             let blob_url = LocalResource::new(move || {
                 let url = mxc_url.clone();
                 async move { mxc_to_blob_url(url).await }
             });
-
             view! {
-                <Suspense fallback=|| {
-                    view! { <div class="text-muted text-sm italic">"Loading video..."</div> }
+                <Suspense fallback=move || {
+                    view! {
+                        <div
+                            class="mt-1 rounded-md border border-[var(--tile-border-color)] flex items-center justify-center text-muted text-sm italic"
+                            style=format!("width:{}px;height:{}px", vid_w, vid_h)
+                        >
+                            "Loading video..."
+                        </div>
+                    }
                 }>
                     {move || {
-                        blob_url
-                            .get()
-                            .flatten()
-                            .map(|url| {
-                                view! {
-                                    <div class="mt-1">
-                                        <video
-                                            src=url
-                                            controls=true
-                                            class="max-w-sm rounded-md border border-[var(--tile-border-color)]"
-                                        />
-                                    </div>
-                                }
-                            })
+                        blob_url.get().flatten().map(|url| {
+                            view! {
+                                <div class="mt-1">
+                                    <video
+                                        src=url
+                                        controls=true
+                                        preload="none"
+                                        width=vid_w
+                                        height=vid_h
+                                        class="rounded-md border border-[var(--tile-border-color)]"
+                                    />
+                                </div>
+                            }
+                        })
                     }}
                 </Suspense>
             }.into_any()

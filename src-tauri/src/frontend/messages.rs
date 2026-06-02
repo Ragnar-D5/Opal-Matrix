@@ -370,19 +370,6 @@ pub async fn get_timeline(
 
             media_manager.sources.write().await.extend(media_store);
 
-            fn log_source(source: &MediaSource) -> String {
-                match source {
-                    MediaSource::Plain(url) => format!("Plain URL: {}", url),
-                    MediaSource::Encrypted(file_info) => format!("Encrypted Hashes: {:?}, Info: {:?}, Url: {:?}", file_info.hashes, file_info.info.data(), file_info.url),
-                }
-            }
-
-            // Log all media sources
-            log::debug!("Current media sources after fetching timeline:");
-            for (id, source) in media_manager.sources.read().await.iter() {
-                log::debug!("Media ID: {}, Source: {}", id, log_source(source));
-            }
-
             Ok(messages)
         } => {
             result
