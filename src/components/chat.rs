@@ -15,7 +15,7 @@ use crate::{
         },
     },
     hooks::use_tauri_event,
-    state::{AppState, MemberProfileHandle, MemberStore, RoomHeader},
+    state::{AppState, LighboxImage, MemberProfileHandle, MemberStore, RoomHeader},
     tauri_functions::{get_members_for_room, get_timeline, pick_files, scroll_up, toggle_reaction},
 };
 
@@ -136,6 +136,8 @@ fn render_message_content(
     content: MessageContent,
     store: MemberStore,
     room_id: String,
+    sender_id: Option<String>,
+    timestamp: u64,
 ) -> impl IntoView {
     let spans = content.body;
     const MAX_W: u64 = 400;
@@ -216,6 +218,7 @@ fn render_message_content(
             source,
             width,
             height,
+            size,
             ..
         } => {
             let (thumb_w, thumb_h) = shared::timeline::fit_dimensions(
@@ -225,7 +228,11 @@ fn render_message_content(
                 MAX_H,
             );
             let thumb_src = source.thumbnail_url(thumb_w, thumb_h);
-            let full_src = source.url();
+            let state: AppState = expect_context();
+
+            let lightbox = state.lightbox_image;
+            let lightbox_source = source.clone();
+            let box_file_name = filename.clone();
             view! {
                 <div class="mt-1">
                     <div class="relative inline-block group/image">
@@ -234,7 +241,19 @@ fn render_message_content(
                             alt=filename.clone()
                             width=thumb_w
                             height=thumb_h
-                            class="rounded-md border border-[var(--tile-border-color)] relative group/image"
+                            class="rounded-md border border-[var(--tile-border-color)] relative group/image cursor-pointer"
+                            on:click=move |_| {
+                                lightbox
+                                    .set(
+                                        Some(LighboxImage {
+                                            name: box_file_name.clone(),
+                                            sender_id: sender_id.clone(),
+                                            timestamp,
+                                            size,
+                                            source: lightbox_source.clone(),
+                                        }),
+                                    )
+                            }
                             on:error=move |e| {
                                 log::error!(
                                     "Image failed to load: {}, {}", source.url(), e.to_js_string()
@@ -242,7 +261,7 @@ fn render_message_content(
                             }
                         />
                         <div class="absolute bottom-1 left-1 bg-black/50 opacity-0 group-hover/image:opacity-100 transition-opacity rounded-md">
-                            <span class="text-white text-sm p-2">{filename.clone()}</span>
+                            <span class="text-white text-sm px-1">{filename.clone()}</span>
                         </div>
                     </div>
                 </div>
@@ -374,20 +393,23 @@ fn render_message_content(
                     }
                 }>
                     {move || {
-                        blob_url.get().flatten().map(|url| {
-                            view! {
-                                <div class="mt-1">
-                                    <video
-                                        src=url
-                                        controls=true
-                                        preload="none"
-                                        width=vid_w
-                                        height=vid_h
-                                        class="rounded-md border border-[var(--tile-border-color)]"
-                                    />
-                                </div>
-                            }
-                        })
+                        blob_url
+                            .get()
+                            .flatten()
+                            .map(|url| {
+                                view! {
+                                    <div class="mt-1">
+                                        <video
+                                            src=url
+                                            controls=true
+                                            preload="metadata"
+                                            width=vid_w
+                                            height=vid_h
+                                            class="rounded-md border border-[var(--tile-border-color)]"
+                                        />
+                                    </div>
+                                }
+                            })
                     }}
                 </Suspense>
             }.into_any()
@@ -878,11 +900,16 @@ fn render_timeline_event(
     let rendered_content = move || {
         item_sig.with(|item| {
             if let UiTimelineItemKind::Event(event) = &item.kind {
+                let sender_id = event.get_sender_id();
+                let timestamp = event.timestamp;
+
                 match &event.content {
                     EventContent::MsgLike(ev) => render_message_content(
                         *ev.clone(),
                         store_for_content.clone(),
                         room_id_for_content.clone(),
+                        sender_id,
+                        timestamp,
                     ).into_any(),
                     EventContent::FailedToParseMessageLike { event_type, error } => view! { <div class="text-red-500 italic">{format!("Failed to render {event_type}: {error}")}</div> }.into_any(),
                     EventContent::FailedToParseState { event_type, state_key, error } => view! {
@@ -893,7 +920,7 @@ fn render_timeline_event(
                         </div>
                     }.into_any(),
                     EventContent::SystemMessage(ev) => render_system_message(
-                        event.get_sender_id(),
+                        sender_id,
                         ev.clone(),
                         store_for_content.clone(),
                         room_id_for_content.clone()

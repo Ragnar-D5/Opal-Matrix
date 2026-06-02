@@ -1,8 +1,20 @@
+use base64::{engine::general_purpose, Engine};
 use matrix_sdk::{
     media::{MediaFormat, MediaRequestParameters, MediaThumbnailSettings},
-    ruma::{events::room::MediaSource, media::Method},
+    ruma::{
+        events::room::{
+            EncryptedFile, EncryptedFileHashes, EncryptedFileInfo, MediaSource, V2EncryptedFileInfo,
+        },
+        media::Method,
+        serde::{
+            base64::{Standard, UrlSafe},
+            Base64,
+        },
+        OwnedMxcUri,
+    },
     Client,
 };
+use shared::timeline::UiMediaSource;
 use uuid::Uuid;
 
 use crate::{state::MediaManager, TauriError};
@@ -32,7 +44,6 @@ pub async fn get_media_from_uuid_str(
         .ok_or(format!("No media found for UUID: {}", uuid_str))?
         .clone();
 
-    log::debug!("Fetching media for UUID {}: {:?}", uuid_str, media_source);
     drop(sources);
 
     let bytes = get_media(client, media_source, MediaFormat::File).await?;
@@ -99,4 +110,65 @@ pub async fn get_media_from_uuid_thmubnail_str(
         MediaFormat::Thumbnail(settings),
     )
     .await
+}
+
+pub async fn get_media_bytes(
+    client: &Client,
+    source: UiMediaSource,
+    media_manager: &MediaManager,
+) -> Result<Vec<u8>, TauriError> {
+    let format = MediaFormat::File;
+
+    match source {
+        UiMediaSource::Encrypted { url, k, iv } => {
+            let Ok(k) = general_purpose::URL_SAFE.decode(k)?.try_into() else {
+                return Err("Invalid key format".into());
+            };
+            let Ok(iv) = general_purpose::URL_SAFE.decode(iv)?.try_into() else {
+                return Err("Invalid IV format".into());
+            };
+
+            let k: Base64<UrlSafe, [u8; 32]> = Base64::new(k);
+            let iv: Base64<Standard, [u8; 16]> = Base64::new(iv);
+
+            let request = MediaRequestParameters {
+                source: MediaSource::Encrypted(Box::new(EncryptedFile::new(
+                    OwnedMxcUri::from(url),
+                    EncryptedFileInfo::V2(V2EncryptedFileInfo::new(k, iv)),
+                    EncryptedFileHashes::new(),
+                ))),
+                format,
+            };
+
+            client
+                .media()
+                .get_media_content(&request, false)
+                .await
+                .map_err(|e| format!("Failed to fetch encrypted media: {:?}", e).into())
+        }
+        UiMediaSource::Plain(path) => {
+            let request = MediaRequestParameters {
+                source: MediaSource::Plain(OwnedMxcUri::from(path)),
+                format,
+            };
+
+            client
+                .media()
+                .get_media_content(&request, false)
+                .await
+                .map_err(|e| format!("Failed to fetch media: {:?}", e).into())
+        }
+        UiMediaSource::Uuid(uuid) => {
+            let sources = media_manager.sources.read().await;
+
+            let media_source = sources
+                .get(&uuid)
+                .ok_or(format!("No media found for UUID: {}", uuid))?
+                .clone();
+
+            drop(sources);
+
+            get_media(client, media_source, format).await
+        }
+    }
 }

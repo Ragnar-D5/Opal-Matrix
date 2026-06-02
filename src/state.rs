@@ -4,9 +4,7 @@ use leptos::task::spawn_local;
 use log::error;
 use serde_json::json;
 use shared::{
-    account_data::{Breadcrumbs, ServerOrder},
-    sidebar::{RoomKind, RoomNode, SidebarState},
-    user_profile::{PresenceInfo, UserProfile},
+    account_data::{Breadcrumbs, ServerOrder}, sidebar::{RoomKind, RoomNode, SidebarState}, timeline::UiMediaSource, user_profile::{PresenceInfo, UserProfile}
 };
 
 use crate::{
@@ -47,6 +45,17 @@ pub struct AppState {
     pub is_focused: RwSignal<bool>,
 
     pub drafts: RwSignal<HashMap<String, MessageDraft>>,
+
+    pub lightbox_image: RwSignal<Option<LighboxImage>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct LighboxImage {
+    pub name: String,
+    pub sender_id: Option<String>,
+    pub timestamp: u64,
+    pub size: Option<u64>,
+    pub source: UiMediaSource,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -78,6 +87,7 @@ impl AppState {
             sidebar_state: RwSignal::new(SidebarState::default()),
             is_focused: RwSignal::new(true),
             drafts: RwSignal::new(HashMap::new()),
+            lightbox_image: RwSignal::new(None),
         }
     }
 

@@ -1,24 +1,23 @@
 use std::fs;
 
-use shared::api::{FileMetadata, UiAttachmentSource};
-use tauri::{command, AppHandle};
+use matrix_sdk::Client;
+use shared::{
+    api::{FileMetadata, UiAttachmentSource},
+    timeline::UiMediaSource,
+};
+use tauri::{command, AppHandle, State};
 use tauri_plugin_dialog::DialogExt;
-use tokio::sync::oneshot;
+use tokio::sync::RwLock;
 
-use crate::TauriError;
+use crate::{matrix_api::media::get_media_bytes, state::MediaManager, TauriError};
 
 #[command(rename_all = "snake_case")]
 pub async fn open_file_dialog(app: AppHandle) -> Result<Vec<FileMetadata>, TauriError> {
-    let (tx, rx) = oneshot::channel();
-
-    app.dialog()
+    let files = app
+        .dialog()
         .file()
-        .set_title("Select a file")
-        .pick_files(move |result| {
-            let _ = tx.send(result);
-        });
-
-    let files = rx.await?;
+        .set_title("Select files")
+        .blocking_pick_files();
 
     let paths = files
         .unwrap_or_default()
@@ -50,4 +49,37 @@ pub async fn open_file_dialog(app: AppHandle) -> Result<Vec<FileMetadata>, Tauri
     log::debug!("Paths selected: {:?}", paths);
 
     Ok(paths)
+}
+
+#[command(rename_all = "snake_case")]
+pub async fn save_file_to_picked_dest(
+    app: AppHandle,
+    source: UiMediaSource,
+    file_name: String,
+    media_manager: State<'_, MediaManager>,
+    client: State<'_, RwLock<Client>>,
+) -> Result<(), TauriError> {
+    let Some(path) = app
+        .dialog()
+        .file()
+        .set_title("Select destination")
+        .set_file_name(file_name)
+        .blocking_save_file()
+    else {
+        log::debug!("No destination selected");
+        return Ok(());
+    };
+
+    let Some(path) = path.as_path() else {
+        log::debug!("Invalid destination path");
+        return Ok(());
+    };
+
+    let bytes = get_media_bytes(&client.read().await.clone(), source, &media_manager).await?;
+
+    log::debug!("Destination selected: {}", path.to_string_lossy());
+
+    fs::write(path, bytes)?;
+
+    Ok(())
 }

@@ -572,6 +572,7 @@ pub fn run() {
             frontend::commands::get_commands,
             frontend::members::get_members_for_room,
             frontend::dialog::open_file_dialog,
+            frontend::dialog::save_file_to_picked_dest,
             // matrix API commands
             matrix_api::discovery::choose_home_server,
             // matrix_api::messages::fetch_messages,
@@ -599,8 +600,6 @@ pub fn run() {
                     });
 
                 tauri::async_runtime::spawn(async move {
-                    log::debug!("MXC protocol request: {}", uri);
-
                     let client = app_handle
                         .state::<tokio::sync::RwLock<matrix_sdk::Client>>()
                         .read()
@@ -789,12 +788,6 @@ pub fn run() {
                                     log::error!("Invalid key/iv length for decryption");
                                 }
                             }
-
-                            log::debug!(
-                                "MXC media request: uri={}, range_header={:?}",
-                                uri,
-                                request.headers().get("range").and_then(|v| v.to_str().ok())
-                            );
 
                             // After fetching bytes and decrypting them, replace the final responder.respond() with:
                             let range_header = request

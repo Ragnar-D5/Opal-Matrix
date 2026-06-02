@@ -1,5 +1,6 @@
 use crate::components::authentication::Authentication;
 use crate::components::loading::Loading;
+use crate::components::previews::ImageLightbox;
 use crate::components::shader::BackgroundShader;
 use shared::api::RestoreResponse;
 use shared::sidebar::SidebarState;
@@ -297,6 +298,7 @@ fn HomePage() -> impl IntoView {
             <div data-tauri-drag-region class="absolute top-0 left-0 right-0 h-3 z-50"></div>
             <Sidebar />
             <Chat />
+            <ImageLightbox />
         </div>
     }
 }

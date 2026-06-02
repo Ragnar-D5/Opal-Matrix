@@ -2,7 +2,7 @@ use serde_json::json;
 use shared::{
     api::{FileMetadata, LinkPreviewResponse},
     commands::Command,
-    timeline::UiTimelineItem,
+    timeline::{UiMediaSource, UiTimelineItem},
     user_profile::UserProfile,
 };
 
@@ -160,4 +160,21 @@ pub async fn send_attachment(file: FileMetadata, room_id: &str) -> Result<(), St
         .map_err(|e| format!("Tauri call failed: {:?}", e))?;
 
     Ok(())
+}
+
+pub async fn save_file_to_picked_dest(
+    source: UiMediaSource,
+    file_name: &str,
+) -> Result<Option<String>, String> {
+    let args = serde_wasm_bindgen::to_value(&json!({ "source": source, "file_name": file_name }))
+        .map_err(|e| format!("Failed to serialize request: {:?}", e))?;
+
+    let res = call_tauri("save_file_to_picked_dest", args)
+        .await
+        .map_err(|e| format!("Tauri call failed: {:?}", e))?;
+
+    let path: Option<String> = serde_wasm_bindgen::from_value(res)
+        .map_err(|e| format!("Failed to parse response: {:?}", e))?;
+
+    Ok(path)
 }

@@ -1,3 +1,5 @@
+use base64::Engine;
+use base64::engine::general_purpose;
 use livekit::e2ee::key_provider::{KeyProvider, KeyProviderOptions};
 use livekit::e2ee::{EncryptionType, key_provider};
 use livekit::id::ParticipantIdentity;
@@ -125,7 +127,7 @@ pub(crate) async fn join_matrixrtc_call(
 
     if room.encryption_state().is_encrypted() {
         let local_call_key =
-            base64::Engine::encode(&base64::engine::general_purpose::STANDARD, raw_key);
+            general_purpose::STANDARD.encode(&raw_key);
 
         let mut key_send_index = 0;
 
