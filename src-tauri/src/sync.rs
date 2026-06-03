@@ -84,7 +84,11 @@ pub async fn attach_callbacks(client: &MatrixClient, handle: &AppHandle) -> Resu
             match sync_item {
                 Ok(sync_result) => {
                     log::debug!("Received sync");
-                    handle_to_device_messages(sync_result.to_device, handle_clone.clone()).await;
+                    if let Err(e) =
+                        handle_to_device_messages(sync_result.to_device, handle_clone.clone()).await
+                    {
+                        log::error!("Failed to handle to-device messages: {:?}", e);
+                    };
                     handle_presences(&sync_result.presence, &handle_clone);
                     handle_room_updates(&sync_result.rooms, &client_sync_clone, &handle_clone)
                         .await;

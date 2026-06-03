@@ -1,10 +1,8 @@
 use base64::Engine;
-use base64::alphabet::STANDARD;
 use base64::engine::general_purpose;
 use livekit::e2ee::EncryptionType;
 use livekit::e2ee::key_provider::{KeyProvider, KeyProviderOptions};
-use livekit::id::ParticipantIdentity;
-use log::{debug, error, info};
+use log::{debug};
 use matrix_sdk::deserialized_responses::ProcessedToDeviceEvent;
 use matrix_sdk::ruma::api::client::to_device::send_event_to_device::v3::Request;
 use std::collections::BTreeMap;
@@ -28,7 +26,7 @@ use matrix_sdk::ruma::events::rtc::notification::RtcNotificationEventContent;
 use matrix_sdk::ruma::events::{
     AnyStateEventContent, AnyToDeviceEventContent, Mentions, StateEventType,
 };
-use matrix_sdk::ruma::serde::{JsonCastable, Raw};
+use matrix_sdk::ruma::serde::Raw;
 use matrix_sdk::ruma::to_device::DeviceIdOrAllDevices;
 use matrix_sdk::ruma::{
     DeviceId, MilliSecondsSinceUnixEpoch, OwnedTransactionId, OwnedUserId, UserId,
@@ -130,7 +128,7 @@ pub(crate) async fn join_matrixrtc_call(
         .map_err(|e| format!("Failed to generate cryptographic key: {}", e))?;
 
     if room.encryption_state().is_encrypted() {
-        let local_call_key = general_purpose::STANDARD.encode(&raw_key);
+        let local_call_key = general_purpose::STANDARD.encode(raw_key);
 
         let mut key_send_index = 0;
 
@@ -695,17 +693,17 @@ pub struct CallSessionInfo {
     pub scope: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct SenderDeviceKeys {
-    pub algorithms: Vec<String>,
-    pub device_id: String,
-    pub keys: HashMap<String, String>,
-    pub signatures: HashMap<String, HashMap<String, String>>,
-    pub unsigned: Option<UnsignedData>,
-    pub user_id: String,
-}
+// #[derive(Debug, Serialize, Deserialize, Clone)]
+// pub struct SenderDeviceKeys {
+//     pub algorithms: Vec<String>,
+//     pub device_id: String,
+//     pub keys: HashMap<String, String>,
+//     pub signatures: HashMap<String, HashMap<String, String>>,
+//     pub unsigned: Option<UnsignedData>,
+//     pub user_id: String,
+// }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct UnsignedData {
-    pub device_display_name: Option<String>,
-}
+// #[derive(Debug, Serialize, Deserialize, Clone)]
+// pub struct UnsignedData {
+//     pub device_display_name: Option<String>,
+// }

@@ -6,6 +6,7 @@ use matrix_sdk::{
             EncryptedFile, EncryptedFileHashes, EncryptedFileInfo, MediaSource, V2EncryptedFileInfo,
         },
         media::Method,
+        profile::ProfileFieldName,
         serde::{
             base64::{Standard, UrlSafe},
             Base64,
@@ -180,11 +181,10 @@ pub async fn get_user_avatar(
     let user_id = UserId::parse(user_id)?;
     let Some(value) = client
         .account()
-        .fetch_profile_field_of(
-            user_id,
-            matrix_sdk::ruma::profile::ProfileFieldName::AvatarUrl,
-        )
-        .await?
+        .fetch_profile_field_of(user_id, ProfileFieldName::AvatarUrl)
+        .await
+        .ok()
+        .unwrap_or_default()
     else {
         return Ok(None);
     };
