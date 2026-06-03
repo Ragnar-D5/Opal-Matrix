@@ -23,7 +23,6 @@ pub struct RoomNode {
     pub room_id: String,
     pub name: Option<String>,
     pub topic: Option<String>,
-    pub avatar_url: Option<String>,
 
     pub highlight_count: u64,
     pub notification_count: u64,

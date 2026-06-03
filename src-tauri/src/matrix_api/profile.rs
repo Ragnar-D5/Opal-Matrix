@@ -1,6 +1,7 @@
+use std::sync::{Arc, Mutex};
+
 use matrix_sdk::{
-    Client,
-    ruma::{UserId, events::room::member::OriginalSyncRoomMemberEvent},
+    event_handler::Ctx, ruma::events::room::member::OriginalSyncRoomMemberEvent, Client,
 };
 use shared::user_profile::UserProfile;
 use tauri::{AppHandle, Emitter};
@@ -29,20 +30,68 @@ pub async fn send_user_to_frontend(handle: &AppHandle, client: &Client) -> Resul
     send_user_profile_update(handle, update)
 }
 
-pub fn client_user_profile_event_handle(
-    handle: &AppHandle,
-    own_id: &str,
+pub async fn client_user_profile_event_handle(
     event: OriginalSyncRoomMemberEvent,
+    handle: Ctx<AppHandle>,
+    client: Client,
+    debounce: Ctx<Arc<Mutex<ProfileDebounce>>>,
 ) {
+    let Some(own_id) = client.user_id().map(|i| i.to_string()) else {
+        log::error!("Received profile event but client has no user ID");
+        return;
+    };
+
     if event.state_key.as_str() != own_id {
         return;
     }
-    let profile = UserProfile {
-        display_name: event.content.displayname.clone(),
-        avatar_url: event.content.avatar_url.as_ref().map(|m| m.to_string()),
-        user_id: own_id.to_string(),
-    };
-    if let Err(e) = send_user_profile_update(handle, profile) {
+
+    if let Some(prev) = event.prev_content() {
+        if prev.membership != event.content.membership {
+            return;
+        }
+        if prev.displayname == event.content.displayname
+            && prev.avatar_url == event.content.avatar_url
+        {
+            return;
+        }
+    }
+
+    {
+        let mut state = debounce.lock().unwrap();
+        if state.timer_running {
+            state.pending = true;
+            return;
+        }
+        state.timer_running = true;
+    }
+
+    if let Err(e) = send_user_to_frontend(&handle, &client).await {
         log::error!("Failed to send user profile update: {e:?}");
-    };
+    }
+
+    let debounce_clone = debounce.clone();
+    let handle_clone = handle.clone();
+    let client_clone = client.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+        let should_emit = {
+            let mut state = debounce_clone.lock().unwrap();
+            let pending = state.pending;
+            state.pending = false;
+            state.timer_running = false;
+            pending
+        };
+
+        if should_emit
+            && let Err(e) = send_user_to_frontend(&handle_clone, &client_clone).await {
+                log::error!("Failed to send user profile update after debounce: {e:?}");
+            }
+    });
+}
+
+#[derive(Debug, Default)]
+pub struct ProfileDebounce {
+    pending: bool,
+    timer_running: bool,
 }

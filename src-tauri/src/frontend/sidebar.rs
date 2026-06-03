@@ -1,3 +1,6 @@
+use async_recursion::async_recursion;
+use matrix_sdk::ruma::events::room::MediaSource;
+use uuid::Uuid;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 
@@ -13,10 +16,13 @@ use tauri::AppHandle;
 use tauri::Emitter;
 
 use crate::TauriError;
+use crate::state::MediaManager;
 
-pub async fn send_sidebar(all_rooms: &[Room], handle: &AppHandle) -> Result<(), TauriError> {
+pub async fn send_sidebar(all_rooms: &[Room], handle: &AppHandle, media_manager: &MediaManager) -> Result<(), TauriError> {
     let mut channels = HashMap::new();
     let mut dms = Vec::new();
+
+    let mut media_store = HashMap::new();
 
     for room in all_rooms.iter() {
         if room.compute_is_dm().await? {
@@ -30,15 +36,10 @@ pub async fn send_sidebar(all_rooms: &[Room], handle: &AppHandle) -> Result<(), 
                 log::warn!("DM room {} has no direct targets", room.room_id());
                 continue;
             };
-            let Some(first_other_user) = room.get_member(first_id).await? else {
-                log::warn!("DM room {} has no valid first other user", room.room_id());
-                continue;
-            };
 
             dms.push(RoomNode {
                 room_id: room.room_id().to_string(),
                 name: room.display_name().await.ok().map(|n| n.to_string()),
-                avatar_url: first_other_user.avatar_url().map(|u| u.to_string()),
                 highlight_count: unread_counts.highlight_count,
                 notification_count: unread_counts.notification_count,
                 topic: room.topic(),
@@ -142,7 +143,7 @@ pub async fn send_sidebar(all_rooms: &[Room], handle: &AppHandle) -> Result<(), 
         if is_space
             && !all_children.contains(room_id)
             && let Some(node) =
-                build_async_node(room_id, &channels, &ordered_parent_to_children).await
+                build_async_node(room_id, &channels, &ordered_parent_to_children, &mut media_store).await
         {
             top_level_servers.push(node);
         }
@@ -153,11 +154,11 @@ pub async fn send_sidebar(all_rooms: &[Room], handle: &AppHandle) -> Result<(), 
     for (room_id, room) in &channels {
         if !room.is_space() && !all_children.contains(room_id) {
             let unread_counts = room.unread_notification_counts();
+
             orphaned_channels.push(RoomNode {
                 room_id: room_id.clone(),
                 name: room.display_name().await.ok().map(|n| n.to_string()),
                 topic: room.topic(),
-                avatar_url: room.avatar_url().map(|u| u.to_string()),
                 highlight_count: unread_counts.highlight_count,
                 notification_count: unread_counts.notification_count,
                 kind: RoomKind::TextChannel {
@@ -181,18 +182,19 @@ pub async fn send_sidebar(all_rooms: &[Room], handle: &AppHandle) -> Result<(), 
         orphaned_rooms: orphaned_channels,
     };
 
+    media_manager.sources.write().await.extend(media_store);
     handle.emit("sidebar_update", sidebar_state)?;
 
     Ok(())
 }
 
-use async_recursion::async_recursion;
 
 #[async_recursion]
 async fn build_async_node(
     room_id: &str,
     channels: &HashMap<String, &Room>,
     parent_to_children: &HashMap<String, Vec<(String, Option<String>)>>,
+    media_store: &mut HashMap<Uuid, MediaSource>,
 ) -> Option<RoomNode> {
     let room = channels.get(room_id)?;
     let unread_counts = room.unread_notification_counts();
@@ -207,7 +209,7 @@ async fn build_async_node(
         if let Some(child_ids) = parent_to_children.get(room_id) {
             for (child_id, _) in child_ids {
                 if let Some(child_node) =
-                    build_async_node(child_id, channels, parent_to_children).await
+                    build_async_node(child_id, channels, parent_to_children, media_store).await
                 {
                     highlight_count += child_node.highlight_count;
                     notification_count += child_node.notification_count;
@@ -244,7 +246,6 @@ async fn build_async_node(
         room_id: room_id.to_string(),
         name: room.display_name().await.ok().map(|n| n.to_string()),
         topic: room.topic(),
-        avatar_url: room.avatar_url().map(|u| u.to_string()),
         highlight_count,
         notification_count,
         kind: room_kind,
@@ -281,10 +282,10 @@ fn should_sidebar_update(room_updates: &RoomUpdates) -> bool {
     false
 }
 
-pub async fn handle_room_updates(room_updates: &RoomUpdates, client: &Client, handle: &AppHandle) {
+pub async fn handle_room_updates(room_updates: &RoomUpdates, client: &Client, handle: &AppHandle, media_manager: &MediaManager) {
     if should_sidebar_update(room_updates) {
         log::debug!("Refreshing sidebar");
-        if let Err(e) = send_sidebar(&client.joined_rooms(), handle).await {
+        if let Err(e) = send_sidebar(&client.joined_rooms(), handle, media_manager).await {
             log::error!("Failed to send sidebar update: {:?}", e);
         }
     }

@@ -17,9 +17,7 @@ fn DmDiv(dm: RoomNode) -> impl IntoView {
     let members: MemberStore = expect_context();
 
     let id = dm.room_id.to_string();
-    let avatar_url = dm.avatar_url.clone();
     let name = dm.name.clone().unwrap_or_else(|| "Unnamed".to_string());
-    let initial = name.chars().next().unwrap_or('?').to_string();
 
     let is_active = Memo::new(move |_| state.active_room_id() == Some(id.clone()));
 
@@ -30,9 +28,23 @@ fn DmDiv(dm: RoomNode) -> impl IntoView {
     let members = members.clone();
     let presence = members.get_presence(&user_id);
 
-    let avatar_content = match avatar_url {
-        Some(url) => view! { <img class="avatar-img w-8 h-8 rounded-full object-cover" src=url alt=name.clone() /> }.into_any(),
-        None => view! { <TextCircle text=initial color=color class="rounded-full w-8 h-8" /> }.into_any(),
+    let failed = RwSignal::new(false);
+    let first_char = name.chars().next().unwrap_or('?').to_string();
+    let avatar_content = view! {
+        <img
+            class="avatar-img w-8 h-8 rounded-full object-cover"
+            class:hidden=failed
+            src=format!("mxc://room/{}", dm.room_id)
+            alt=name.clone()
+            on:error=move |_| failed.set(true)
+            on:load=move |_| failed.set(false)
+        />
+        <TextCircle
+            text=first_char
+            color=color
+            class="rounded-full w-8 h-8"
+            class:hidden=move || !failed.get()
+        />
     };
 
     view! {
@@ -197,96 +209,93 @@ pub fn ServerIcon(server_id: String) -> impl IntoView {
             .unwrap_or(false)
     });
 
+    let content = move || {
+        let server_id_for_click = server_id_for_click.clone();
+
+        let Some(server) = server.get() else {
+            return view! { <div class="relative w-10 h-10"></div> }.into_any();
+        };
+
+        let name = server.name.clone().unwrap_or("?".to_string());
+        let color = get_color(&server_id);
+
+        let br_corner = if server.highlight_count > 0 {
+            Some(CutoutBadgeCorner {
+                fg_color: "white".to_string(),
+                bg_color: "var(--mention-color)".to_string(),
+                content: CutoutBadgeContent::Number(server.highlight_count),
+            })
+        } else {
+            None
+        };
+        let tr_corner = if let RoomKind::Space {
+            user_ids_in_calls, ..
+        } = &server.kind
+        {
+            if !user_ids_in_calls.is_empty() {
+                let user_in_call = user_ids_in_calls.contains(&state.user_id.get());
+                Some(CutoutBadgeCorner {
+                    fg_color: "white".to_string(),
+                    bg_color: if user_in_call {
+                        "var(--online-color)".to_string()
+                    } else {
+                        "var(--offline-color)".to_string()
+                    },
+                    content: CutoutBadgeContent::Icon(SPEAKER_HIGH),
+                })
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        let failed = RwSignal::new(false);
+        let first_char = name.chars().next().unwrap_or('?').to_string();
+        let avatar_content = view! {
+            <img
+                class="avatar-img object-cover w-full h-full"
+                draggable="false"
+                class:hidden=failed
+                src=format!("mxc://room/{}", server_id)
+                alt=name.clone()
+                on:error=move |_| failed.set(true)
+                on:load=move |_| failed.set(false)
+            />
+            <TextCircle
+                text=first_char
+                color=color
+                class="rounded-[25%] w-full h-full select-none"
+                class:hidden=move || !failed.get()
+            />
+        };
+
+        view! {
+            <div class="relative w-10 h-10">
+                <CutoutBadge bottom_right=br_corner top_right=tr_corner class="justify-center flex">
+                    <div
+                        class="server-btn flex items-center justify-center w-10 h-10 text-gray-800 font-semibold rounded-[25%] cursor-pointer transition-colors"
+                        class=("bg-[var(--color-icon-selected)]", move || is_active.get())
+                        class=("bg-[var(--color-icon-bg)]", move || !is_active.get())
+                        class=("hover:bg-[var(--color-icon-hover)]", move || !is_active.get())
+                        on:click=move |_| {
+                            state.set_active_server_id(Some(server_id_for_click.clone()))
+                        }
+                    >
+                        <div class="avatar-circle w-full h-full rounded-[25%] overflow-hidden">
+                            {avatar_content}
+                        </div>
+                    </div>
+                </CutoutBadge>
+            </div>
+        }
+            .into_any()
+    };
+
     view! {
         <div class="relative flex items-center justify-center group w-full">
             <IndicatorPill is_active=is_active has_notifications=has_notifications />
-
-            {move || {
-                let server_id_for_click = server_id_for_click.clone();
-                let Some(server) = server.get() else {
-                    return view! { <div class="relative w-10 h-10"></div> }.into_any();
-                };
-                let name = server.name.clone().unwrap_or("?".to_string());
-                let initial = name.chars().next().unwrap_or('?').to_string();
-                let color = get_color(&server_id);
-                let br_corner = if server.highlight_count > 0 {
-                    Some(CutoutBadgeCorner {
-                        fg_color: "white".to_string(),
-                        bg_color: "var(--mention-color)".to_string(),
-                        content: CutoutBadgeContent::Number(server.highlight_count),
-                    })
-                } else {
-                    None
-                };
-                let tr_corner = if let RoomKind::Space { user_ids_in_calls, .. } = &server.kind {
-                    if !user_ids_in_calls.is_empty() {
-                        let user_in_call = user_ids_in_calls.contains(&state.user_id.get());
-                        Some(CutoutBadgeCorner {
-                            fg_color: "white".to_string(),
-                            bg_color: if user_in_call {
-                                "var(--online-color)".to_string()
-                            } else {
-                                "var(--offline-color)".to_string()
-                            },
-                            content: CutoutBadgeContent::Icon(SPEAKER_HIGH),
-                        })
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                };
-
-                view! {
-                    <div class="relative w-10 h-10">
-                        <CutoutBadge
-                            bottom_right=br_corner
-                            top_right=tr_corner
-                            class="justify-center flex"
-                        >
-                            <div
-                                class="server-btn flex items-center justify-center w-10 h-10 text-gray-800 font-semibold rounded-[25%] cursor-pointer transition-colors"
-                                class=("bg-[var(--color-icon-selected)]", move || is_active.get())
-                                class=("bg-[var(--color-icon-bg)]", move || !is_active.get())
-                                class=(
-                                    "hover:bg-[var(--color-icon-hover)]",
-                                    move || !is_active.get(),
-                                )
-                                on:click=move |_| {
-                                    state.set_active_server_id(Some(server_id_for_click.clone()))
-                                }
-                            >
-                                <div class="avatar-circle w-full h-full rounded-[25%] overflow-hidden">
-                                    {match server.avatar_url {
-                                        Some(url) => {
-                                            view! {
-                                                <img
-                                                    draggable="false"
-                                                    class="avatar-img object-cover w-full h-full"
-                                                    src=url
-                                                    alt=name.clone()
-                                                />
-                                            }
-                                                .into_any()
-                                        }
-                                        None => {
-                                            view! {
-                                                <TextCircle
-                                                    text=initial
-                                                    color=color
-                                                    class="rounded-[25%] w-full h-full"
-                                                />
-                                            }
-                                                .into_any()
-                                        }
-                                    }}
-                                </div>
-                            </div>
-                        </CutoutBadge>
-                    </div>
-                }
-                    .into_any()
-            }}
+            {content}
         </div>
     }
 }
@@ -526,31 +535,26 @@ pub fn Sidebar() -> impl IntoView {
                                             class="avatar-circle w-10 h-10 rounded-full"
                                             style:justify-content="center"
                                         >
-                                            {match dm.avatar_url {
-                                                Some(url) => {
-                                                    view! {
-                                                        <img
-                                                            class="avatar-img w-full h-full object-cover"
-                                                            src=url
-                                                            alt=dm.name.clone()
-                                                        />
-                                                    }
-                                                        .into_any()
+                                            {
+                                                let failed = RwSignal::new(false);
+                                                let url = format!("mxc://room/{}", dm.room_id);
+                                                view! {
+                                                    <img
+                                                        class="avatar-img w-full h-full object-cover"
+                                                        class:hidden=failed
+                                                        src=url
+                                                        alt=dm.name.clone()
+                                                        on:error=move |_| failed.set(true)
+                                                        on:load=move |_| failed.set(false)
+                                                    />
+                                                    <TextCircle
+                                                        text=initial
+                                                        color=get_color(&dm.room_id)
+                                                        class="rounded-full w-10 h-10"
+                                                        class:hidden=move || !failed.get()
+                                                    />
                                                 }
-                                                None => {
-                                                    let color = get_color(
-                                                        &dm.topic.unwrap_or_else(|| "Unnamed".to_string()),
-                                                    );
-                                                    view! {
-                                                        <TextCircle
-                                                            text=initial
-                                                            color=color
-                                                            class="rounded-full w-10 h-10"
-                                                        />
-                                                    }
-                                                        .into_any()
-                                                }
-                                            }}
+                                            }
                                         </div>
                                     </CutoutBadge>
                                 </div>

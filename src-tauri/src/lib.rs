@@ -9,6 +9,7 @@ use matrix_sdk::ruma::events::room::MediaSource;
 use matrix_sdk::ruma::media::Method;
 use matrix_sdk::ruma::{OwnedDeviceId, UserId};
 use matrix_sdk::{AuthSession, Client as MatrixClient, SessionMeta, SessionTokens};
+use percent_encoding::percent_decode_str;
 use shared::api::RestoreResponse;
 use shared::api::errors::LoginError;
 use std::collections::HashMap;
@@ -43,7 +44,7 @@ use tauri_plugin_notification::{NotificationExt, PermissionState};
 
 use crate::matrix_api::keyring::{self, StoredSession, init_keyring};
 use crate::matrix_api::matrixrtc::{join_matrixrtc_call, leave_matrixrtc_call};
-use crate::matrix_api::media::{get_media_from_uuid_str, get_media_from_uuid_thmubnail_str};
+use crate::matrix_api::media::{get_media_from_uuid_str, get_media_from_uuid_thmubnail_str, get_member_avatar, get_room_avatar, get_user_avatar};
 use crate::state::{AppState, CallAudioState, MediaManager, TaskManager, TimelineManager};
 use crate::sync::attach_callbacks;
 
@@ -176,6 +177,7 @@ where
 async fn try_restore(
     app_handle: AppHandle,
     matrix_client: State<'_, RwLock<MatrixClient>>,
+    media_manager: State<'_, MediaManager>,
 ) -> Result<RestoreResponse, TauriError> {
     let session_result = tokio::task::spawn_blocking(keyring::get_last_active_session)
         .await
@@ -209,7 +211,9 @@ async fn try_restore(
         },
     });
     new_client.restore_session(session).await?;
-    attach_callbacks(&new_client, &app_handle).await?;
+
+    let media_manager_clone = (*media_manager).clone();
+    attach_callbacks(&new_client, &app_handle, media_manager_clone).await?;
 
     let user_id = new_client.user_id().unwrap().to_string();
 
@@ -226,6 +230,7 @@ async fn login(
     app_handle: AppHandle,
     matrix_client: State<'_, RwLock<MatrixClient>>,
     handle: AppHandle,
+    media_manager: State<'_, MediaManager>
 ) -> Result<String, LoginError> {
     info!("Logging in new");
 
@@ -311,7 +316,8 @@ async fn login(
         })?;
     log::debug!("Device verified, starting sync loop");
 
-    attach_callbacks(&new_client, &handle).await.map_err(|e| {
+    let media_manager_clone = (*media_manager).clone();
+    attach_callbacks(&new_client, &handle, media_manager_clone).await.map_err(|e| {
         error!("Failed to start sync loop: {:?}", e);
         LoginError::BackendError
     })?;
@@ -587,6 +593,8 @@ pub fn run() {
             move |ctx, request: tauri::http::Request<Vec<u8>>, responder| {
                 let app_handle = ctx.app_handle().clone();
                 let uri = request.uri().to_string();
+                let uri = percent_decode_str(&uri).decode_utf8_lossy().into_owned();
+
                 let range_header = request
                     .headers()
                     .get("range")
@@ -679,7 +687,6 @@ pub fn run() {
                                 );
                             }
                         };
-                        return;
                     } else if let Some(param_str) = uri.strip_prefix("mxc://thumbnail/") {
                         match get_media_from_uuid_thmubnail_str(&client, param_str, &media_manager).await {
                             Ok(bytes) => {
@@ -704,144 +711,16 @@ pub fn run() {
                                 );
                             }
                         };
-                        return;
-                    }
+                    } else if let Some(string) = uri.strip_prefix("mxc://user/") {
+                        let res = if let Some((user_id, room_id)) = string.split_once("/room/") {
+                            get_member_avatar(&client, room_id, user_id).await
+                        } else {
+                            get_user_avatar(&client, string).await
+                        };
 
-
-                    // 1. Parse the requested URI [cite: 221]
-                    let parsed_url = match Url::parse(&uri) {
-                        Ok(u) => u,
-                        Err(_) => {
-                            responder.respond(
-                                tauri::http::Response::builder()
-                                    .status(400)
-                                    .body(Vec::new())
-                                    .unwrap(),
-                            );
-                            return;
-                        }
-                    };
-
-                    let server_name = parsed_url.host_str().unwrap_or("");
-                    let media_id = parsed_url.path().trim_start_matches('/');
-
-                    // 2. Reconstruct to a pure MXC string and parse into Ruma's OwnedMxcUri
-                    let mxc_string = format!("mxc://{}/{}", server_name, media_id);
-                    let owned_mxc_uri: OwnedMxcUri = OwnedMxcUri::from(mxc_string);
-
-                    let mut is_thumbnail = false;
-                    let mut width: u32 = 800;
-                    let mut height: u32 = 800;
-                    let mut enc_key = None;
-                    let mut enc_iv = None;
-
-                    // Parse frontend parameters
-                    for (k, v) in parsed_url.query_pairs() {
-                        match k.as_ref() {
-                            "thumbnail" => is_thumbnail = v == "true",
-                            "width" => width = v.parse().unwrap_or(800),
-                            "height" => height = v.parse().unwrap_or(800),
-                            "key" => enc_key = Some(v.into_owned()),
-                            "iv" => enc_iv = Some(v.into_owned()),
-                            _ => {}
-                        }
-                    }
-
-                    // 3. Retrieve MatrixClient directly from Tauri state [cite: 128, 212]
-
-                    // 4. Build the MediaRequest
-                    let source = MediaSource::Plain(owned_mxc_uri);
-                    let format = if is_thumbnail {
-                        MediaFormat::Thumbnail(MediaThumbnailSettings {
-                            method: Method::Scale,
-                            width: width.into(),
-                            height: height.into(),
-                            animated: false,
-                        })
-                    } else {
-                        MediaFormat::File
-                    };
-
-                    let media_request = MediaRequestParameters { source, format };
-
-                    // 5. Fetch using the Matrix SDK (handles tokens and caching natively)
-                    match client.media().get_media_content(&media_request, true).await {
-                        Ok(mut bytes) => {
-                            // Custom AES-256-CTR Decryption logic [cite: 237, 238, 241, 242]
-                            if let (Some(k), Some(iv)) = (enc_key, enc_iv)
-                                && let (Ok(key_bytes), Ok(iv_bytes)) = (
-                                    general_purpose::URL_SAFE_NO_PAD.decode(&k),
-                                    general_purpose::STANDARD_NO_PAD.decode(&iv),
-                                )
-                            {
-                                if key_bytes.len() == 32 && iv_bytes.len() >= 8 {
-                                    let mut padded_iv = [0u8; 16];
-                                    let copy_len = std::cmp::min(iv_bytes.len(), 16);
-                                    padded_iv[..copy_len].copy_from_slice(&iv_bytes[..copy_len]);
-
-                                    if let Ok(mut cipher) =
-                                        Aes256Ctr::new_from_slices(&key_bytes, &padded_iv)
-                                    {
-                                        cipher.apply_keystream(&mut bytes);
-                                    }
-                                } else {
-                                    log::error!("Invalid key/iv length for decryption");
-                                }
-                            }
-
-                            // After fetching bytes and decrypting them, replace the final responder.respond() with:
-                            let range_header = request
-                                .headers()
-                                .get("range")
-                                .and_then(|v| v.to_str().ok())
-                                .and_then(|v| v.strip_prefix("bytes="))
-                                .and_then(|v| {
-                                    let mut parts = v.splitn(2, '-');
-                                    let start: usize = parts.next()?.parse().ok()?;
-                                    let end: usize = parts
-                                        .next()
-                                        .and_then(|e| e.parse().ok())
-                                        .unwrap_or(bytes.len().saturating_sub(1));
-                                    Some((start, end))
-                                });
-
-                            let content_type = detect_content_type(&bytes);
-                            let is_video = content_type.starts_with("video/");
-
-                            if is_video {
-                                if let Some((start, end)) = range_header
-                                    && start > 0
-                                {
-                                    let end = end.min(bytes.len().saturating_sub(1));
-                                    let chunk = bytes[start..=end].to_vec();
-                                    let total = bytes.len();
-                                    responder.respond(
-                                        tauri::http::Response::builder()
-                                            .status(206)
-                                            .header("Content-Type", content_type)
-                                            .header(
-                                                "Content-Range",
-                                                format!("bytes {}-{}/{}", start, end, total),
-                                            )
-                                            .header("Content-Length", chunk.len().to_string())
-                                            .header("Accept-Ranges", "bytes")
-                                            .header("Access-Control-Allow-Origin", "*")
-                                            .body(chunk)
-                                            .unwrap(),
-                                    );
-                                } else {
-                                    responder.respond(
-                                        tauri::http::Response::builder()
-                                            .status(200)
-                                            .header("Content-Type", content_type)
-                                            .header("Content-Length", bytes.len().to_string())
-                                            .header("Accept-Ranges", "bytes")
-                                            .header("Access-Control-Allow-Origin", "*")
-                                            .body(bytes)
-                                            .unwrap(),
-                                    );
-                                }
-                            } else {
+                        match res {
+                            Ok(Some(bytes)) => {
+                                let content_type = detect_content_type(&bytes);
                                 responder.respond(
                                     tauri::http::Response::builder()
                                         .status(200)
@@ -852,16 +731,64 @@ pub fn run() {
                                         .unwrap(),
                                 );
                             }
+                            Ok(None) => {
+                                responder.respond(
+                                    tauri::http::Response::builder()
+                                        .status(404)
+                                        .body(Vec::<u8>::new())
+                                        .unwrap(),
+                                );
+                            }
+                            Err(e) => {
+                                log::error!("Failed to fetch avatar for {}: {:?}", string, e);
+                                responder.respond(
+                                    tauri::http::Response::builder()
+                                        .status(500)
+                                        .body(Vec::<u8>::new())
+                                        .unwrap(),
+                                );
+                            }
                         }
-                        Err(e) => {
-                            log::error!("Matrix SDK rejected media request: {}", e);
-                            responder.respond(
-                                tauri::http::Response::builder()
-                                    .status(500)
-                                    .body(Vec::<u8>::new())
-                                    .unwrap(),
-                            );
+                    } else if let Some(room_id) = uri.strip_prefix("mxc://room/") {
+                        match get_room_avatar(&client, room_id).await {
+                            Ok(Some(bytes)) => {
+                                let content_type = detect_content_type(&bytes);
+                                responder.respond(
+                                    tauri::http::Response::builder()
+                                        .status(200)
+                                        .header("Content-Type", content_type)
+                                        .header("Content-Length", bytes.len().to_string())
+                                        .header("Access-Control-Allow-Origin", "*")
+                                        .body(bytes)
+                                        .unwrap(),
+                                );
+                            }
+                            Ok(None) => {
+                                responder.respond(
+                                    tauri::http::Response::builder()
+                                        .status(404)
+                                        .body(Vec::<u8>::new())
+                                        .unwrap(),
+                                );
+                            }
+                            Err(e) => {
+                                log::error!("Failed to fetch room avatar for ID {}: {:?}", room_id, e);
+                                responder.respond(
+                                    tauri::http::Response::builder()
+                                        .status(500)
+                                        .body(Vec::<u8>::new())
+                                        .unwrap(),
+                                );
+                            }
                         }
+                    } else {
+                        log::error!("Invalid mxc URI format: {}", uri);
+                        responder.respond(
+                            tauri::http::Response::builder()
+                                .status(400)
+                                .body(Vec::new())
+                                .unwrap(),
+                        );
                     }
                 });
             },

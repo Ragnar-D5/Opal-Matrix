@@ -262,7 +262,7 @@ pub struct ReplyInfo {
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct ReactionInfo {
-    pub sendere_id: String,
+    pub sender_id: String,
     pub timestamp: u64,
 }
 

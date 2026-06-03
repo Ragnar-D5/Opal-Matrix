@@ -10,9 +10,9 @@ use matrix_sdk::{
             base64::{Standard, UrlSafe},
             Base64,
         },
-        OwnedMxcUri,
+        OwnedMxcUri, RoomId, UserId,
     },
-    Client,
+    Client, RoomMemberships,
 };
 use shared::timeline::UiMediaSource;
 use uuid::Uuid;
@@ -171,4 +171,95 @@ pub async fn get_media_bytes(
             get_media(client, media_source, format).await
         }
     }
+}
+
+pub async fn get_user_avatar(
+    client: &Client,
+    user_id: &str,
+) -> Result<Option<Vec<u8>>, TauriError> {
+    let user_id = UserId::parse(user_id)?;
+    let Some(value) = client
+        .account()
+        .fetch_profile_field_of(
+            user_id,
+            matrix_sdk::ruma::profile::ProfileFieldName::AvatarUrl,
+        )
+        .await?
+    else {
+        return Ok(None);
+    };
+
+    let value = value.value();
+
+    let mxc_str = match value.as_str() {
+        Some(s) => s,
+        None => return Err("Failed to convert url to string".into()),
+    };
+
+    log::debug!("Fetched avatar URL: {}", mxc_str);
+
+    let request = MediaRequestParameters {
+        source: MediaSource::Plain(OwnedMxcUri::from(mxc_str)),
+        format: MediaFormat::File,
+    };
+
+    match client.media().get_media_content(&request, true).await {
+        Ok(media) => Ok(Some(media)),
+        Err(e) => Err(format!("Failed to fetch avatar media: {:?}", e).into()),
+    }
+}
+
+pub async fn get_room_avatar(
+    client: &Client,
+    room_id: &str,
+) -> Result<Option<Vec<u8>>, TauriError> {
+    let room_id = RoomId::parse(room_id)?;
+
+    let Some(room) = client.get_room(&room_id) else {
+        return Ok(None);
+    };
+
+    let own_user_id = client.user_id().ok_or("Client has no user ID")?;
+
+    if room.compute_is_dm().await? {
+        let members = room.members(RoomMemberships::JOIN).await?;
+        let Some(member) = members.iter().find(|rm| rm.user_id() != own_user_id) else {
+            return room
+                .avatar(MediaFormat::File)
+                .await
+                .map_err(|e| format!("Failed to fetch server avatar: {:?}", e).into());
+        };
+
+        member
+            .avatar(MediaFormat::File)
+            .await
+            .map_err(|e| format!("Failed to get member avatar: {:?}", e).into())
+    } else {
+        room.avatar(MediaFormat::File)
+            .await
+            .map_err(|e| format!("Failed to fetch server avatar: {:?}", e).into())
+    }
+}
+
+pub async fn get_member_avatar(
+    client: &Client,
+    room_id: &str,
+    user_id: &str,
+) -> Result<Option<Vec<u8>>, TauriError> {
+    let room_id = RoomId::parse(room_id)?;
+    let user_id = UserId::parse(user_id)?;
+
+    let Some(room) = client.get_room(&room_id) else {
+        return Ok(None);
+    };
+
+    let members = room.members(RoomMemberships::JOIN).await?;
+    let Some(member) = members.iter().find(|m| m.user_id() == user_id) else {
+        return Ok(None);
+    };
+
+    member
+        .avatar(MediaFormat::File)
+        .await
+        .map_err(|e| format!("Failed to get member avatar: {:?}", e).into())
 }

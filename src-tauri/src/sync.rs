@@ -1,27 +1,33 @@
 use matrix_sdk::{
-    Client as MatrixClient, SessionChange,
     config::SyncSettings,
     ruma::{events::space::parent::SyncSpaceParentEvent, presence::PresenceState},
+    Client as MatrixClient, SessionChange,
 };
 use std::pin::pin;
-use tauri::{AppHandle, async_runtime::spawn};
+use std::sync::{Arc, Mutex};
+use tauri::{async_runtime::spawn, AppHandle};
 
 use crate::{
-    TauriError,
     frontend::{
         members::on_member_update,
         presence::handle_presences,
         sidebar::{handle_room_updates, send_sidebar},
     },
     matrix_api::{
-        keyring::{StoredSession, save_session},
+        keyring::{save_session, StoredSession},
         matrixrtc::cleanup_ghost_calls,
-        profile::client_user_profile_event_handle,
+        profile::{client_user_profile_event_handle, send_user_to_frontend, ProfileDebounce},
     },
+    state::MediaManager,
+    TauriError,
 };
 use futures_util::StreamExt;
 
-pub async fn attach_callbacks(client: &MatrixClient, handle: &AppHandle) -> Result<(), TauriError> {
+pub async fn attach_callbacks(
+    client: &MatrixClient,
+    handle: &AppHandle,
+    media_manager: MediaManager,
+) -> Result<(), TauriError> {
     let mut session_subscriber = client.subscribe_to_session_changes();
     let client_clone = client.clone();
 
@@ -54,42 +60,52 @@ pub async fn attach_callbacks(client: &MatrixClient, handle: &AppHandle) -> Resu
 
     let client_sync_clone = client.clone();
     let handle_clone = handle.clone();
+
+    let media_for_handler = media_manager.clone();
     client.add_event_handler(async move |_: SyncSpaceParentEvent| {
-        send_sidebar(&client_sync_clone.joined_rooms(), &handle_clone)
-            .await
-            .unwrap_or_else(|e| {
-                log::error!("Failed to send sidebar after space parent event: {:?}", e);
-            });
+        if let Err(e) = send_sidebar(
+            &client_sync_clone.joined_rooms(),
+            &handle_clone,
+            &media_for_handler,
+        )
+        .await
+        {
+            log::error!("Failed to update sidebar on space parent event: {:?}", e);
+        }
     });
 
-    send_sidebar(&client.joined_rooms(), handle).await?;
+    send_sidebar(&client.joined_rooms(), handle, &media_manager).await?;
+
+    send_user_to_frontend(handle, client).await?;
 
     let client_sync_clone = client.clone();
     let handle_clone = handle.clone();
+    let media_manager_clone = media_manager.clone();
     tauri::async_runtime::spawn(async move {
         let sync_settings = SyncSettings::default()
             .set_presence(PresenceState::Online)
             .ignore_timeout_on_first_sync(true)
             .timeout(std::time::Duration::from_secs(30));
 
-        // 1. Get the stream (Note: depending on your matrix-sdk version,
-        // you might not need `.await` on this specific line)
         let sync_stream = client_sync_clone.sync_stream(sync_settings).await;
 
-        // 2. PIN THE STREAM!
         let mut sync_stream = pin!(sync_stream);
 
         log::info!("Started background sync stream");
 
-        // 3. Now .next().await will work perfectly
         while let Some(sync_item) = sync_stream.next().await {
             match sync_item {
                 Ok(sync_result) => {
                     log::debug!("Received sync");
 
                     handle_presences(&sync_result.presence, &handle_clone);
-                    handle_room_updates(&sync_result.rooms, &client_sync_clone, &handle_clone)
-                        .await;
+                    handle_room_updates(
+                        &sync_result.rooms,
+                        &client_sync_clone,
+                        &handle_clone,
+                        &media_manager_clone,
+                    )
+                    .await;
                 }
                 Err(e) => {
                     log::error!("Sync loop exited with error: {}", e);
@@ -100,8 +116,8 @@ pub async fn attach_callbacks(client: &MatrixClient, handle: &AppHandle) -> Resu
 
     client.add_event_handler_context(handle.clone());
 
-    let own_id = client.user_id().ok_or("Not logged in")?.to_string();
-    client.add_event_handler_context(&own_id);
+    let debounce = Arc::new(Mutex::new(ProfileDebounce::default()));
+    client.add_event_handler_context(debounce);
 
     client.add_event_handler(on_member_update);
     client.add_event_handler(client_user_profile_event_handle);

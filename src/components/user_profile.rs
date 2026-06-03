@@ -86,12 +86,36 @@ impl UserProfileExt for UserProfile {
     }
 
     fn render_icon(self, size: usize) -> impl IntoView {
-        render_profile_icon(
-            self.avatar_url.clone(),
-            self.get_name(),
-            size,
-            self.get_color(),
-        )
+        let url = format!("mxc://user/{}", self.user_id);
+        let name = self.get_name();
+        let size_str = format!("{}px", size);
+
+        let first_char = name.chars().next().unwrap_or('?').to_string();
+        let color = self.get_color();
+
+        let circle_style = format!("height: {}; width: {};", size_str, size_str);
+
+        let failed = RwSignal::new(true);
+
+        view! {
+            <img
+                class="rounded-full object-cover bg-transparent block select-none"
+                class:hidden=failed
+                src=url
+                style:height=size_str.clone()
+                style:width=size_str
+                alt=name
+                on:error=move |_| failed.set(true)
+                on:load=move |_| failed.set(false)
+            />
+            <TextCircle
+                text=first_char
+                color=color
+                class="rounded-full select-none"
+                class:hidden=move || !failed.get()
+                style=circle_style
+            />
+        }
     }
 
     fn render_name(self, font_size: usize) -> impl IntoView {

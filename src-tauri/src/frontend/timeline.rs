@@ -204,7 +204,7 @@ fn get_reactions(reactions: ReactionsByKeyBySender) -> HashMap<String, Vec<React
             let mut reactors: Vec<ReactionInfo> = by_sender
                 .iter()
                 .map(|(sender, info)| ReactionInfo {
-                    sendere_id: sender.to_string(),
+                    sender_id: sender.to_string(),
                     timestamp: info.timestamp.as_secs().into(),
                 })
                 .collect();

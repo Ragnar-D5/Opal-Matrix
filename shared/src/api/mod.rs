@@ -1,6 +1,21 @@
 use std::collections::HashMap;
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
+
+fn deserialize_u32_or_string<'de, D: Deserializer<'de>>(d: D) -> Result<Option<u32>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum StringOrU32 {
+        Num(u32),
+        Str(String),
+    }
+
+    Ok(match Option::<StringOrU32>::deserialize(d)? {
+        Some(StringOrU32::Num(n)) => Some(n),
+        Some(StringOrU32::Str(s)) => s.parse().ok(),
+        None => None,
+    })
+}
 
 pub mod errors;
 pub mod signals;
@@ -22,9 +37,9 @@ pub struct LinkPreviewResponse {
     pub description: Option<String>,
     #[serde(rename = "og:image")]
     pub image_url: Option<String>,
-    #[serde(rename = "og:image:width")]
+    #[serde(rename = "og:image:width", deserialize_with = "deserialize_u32_or_string", default)]
     pub image_width: Option<u32>,
-    #[serde(rename = "og:image:height")]
+    #[serde(rename = "og:image:height", deserialize_with = "deserialize_u32_or_string", default)]
     pub image_height: Option<u32>,
     #[serde(rename = "og:url")]
     pub url: Option<String>,

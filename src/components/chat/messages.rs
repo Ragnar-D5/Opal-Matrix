@@ -3,9 +3,8 @@ use std::collections::HashMap;
 use chrono::{DateTime, Local, TimeZone};
 use colorsys::Hsl;
 use leptos::{html::Div, prelude::*};
-use wasm_bindgen::JsCast;
 use phosphor_leptos::{
-    ARROW_BEND_UP_LEFT, ARROW_RIGHT, HASH, Icon, IconWeight, PENCIL_SIMPLE, SMILEY, SPEAKER_HIGH,
+    Icon, IconWeight, ARROW_BEND_UP_LEFT, ARROW_RIGHT, HASH, PENCIL_SIMPLE, SMILEY, SPEAKER_HIGH,
     TRASH, WARNING_CIRCLE,
 };
 use shared::{
@@ -17,18 +16,19 @@ use shared::{
         UiTimelineItemKind,
     },
 };
+use wasm_bindgen::JsCast;
 
 use crate::{
     app::format_date,
     components::{
-        TextCircle, TextCircleProps,
         chat::{Attachment, ChatInputInfo},
         input::move_caret_to_end,
         previews::render_link,
-        text::{RichTextExt, richt_text_spans_to_html},
+        text::{richt_text_spans_to_html, RichTextExt},
         user_profile::{
-            UserProfileExt, UserProfileMaybeExt, render_profile_icon, render_profile_name,
+            render_profile_icon, render_profile_name, UserProfileExt, UserProfileMaybeExt,
         },
+        TextCircle, TextCircleProps,
     },
     state::{AppState, LighboxImage, MemberStore},
     tauri_functions::toggle_reaction,
@@ -231,7 +231,8 @@ fn render_message_content(
                             height=thumb_h
                             class="rounded-md border border-[var(--tile-border-color)] relative group/image cursor-pointer"
                             on:click=move |e: web_sys::MouseEvent| {
-                                let origin_rect = e.target()
+                                let origin_rect = e
+                                    .target()
                                     .and_then(|t| t.dyn_into::<web_sys::HtmlElement>().ok())
                                     .map(|el| {
                                         let r = el.get_bounding_client_rect();
@@ -446,7 +447,7 @@ fn render_reactions(
 
             let prof_room_id = room_id.clone();
 
-            let contains_user = reactors.iter().any(|v| *v.sendere_id == user_id);
+            let contains_user = reactors.iter().any(|v| *v.sender_id == user_id);
 
             let reactor_pics = move || {
                 let mut pics = Vec::new();
@@ -455,7 +456,7 @@ fn render_reactions(
                     .iter()
                     .filter_map(|info| {
                         store
-                            .get_profile(&prof_room_id, &info.sendere_id)
+                            .get_profile(&prof_room_id, &info.sender_id)
                             .get()
                             .map(|p| {
                                 let icon = p.clone().render_icon(20);
@@ -491,7 +492,7 @@ fn render_reactions(
                 pics.collect_view()
             };
 
-            let contains_user = reactors.iter().any(|v| *v.sendere_id == user_id);
+            let contains_user = reactors.iter().any(|v| *v.sender_id == user_id);
 
             view! {
                 <button
@@ -599,7 +600,11 @@ fn render_system_message(
                 "changed membership"
             };
 
-            view! { <div class="flex flex-row gap-1 items-center">{before} {user_div(&user_id)} <span>{text}</span></div> }
+            view! {
+                <div class="flex flex-row gap-1 items-center">
+                    {before} {user_div(&user_id)} <span>{text}</span>
+                </div>
+            }
             .into_any()
         }
         SystemMessage::CallInvite => view! {
@@ -963,6 +968,7 @@ fn render_timeline_event(
     let room_id = room_id.to_string();
     let own_user_id = own_user_id.to_string();
     let edit_room_id = room_id.clone();
+    let reactions_room_id = room_id.clone();
 
     let reactions_view = move || {
         render_reactions(
@@ -974,7 +980,7 @@ fn render_timeline_event(
                 }
             }),
             store_clone.clone(),
-            room_id.clone(),
+            reactions_room_id.clone(),
             own_user_id.clone(),
             event_id_clone.clone(),
         )
@@ -1014,6 +1020,8 @@ fn render_timeline_event(
 
         item.flags()
     });
+
+    let sender_profile_sig = store.get_profile(&room_id, &sender_id.clone().unwrap_or_default());
 
     view! {
         <div
@@ -1168,7 +1176,7 @@ fn render_timeline_event(
             <div class="flex gap-[var(--gap)]">
                 <div class="shrink-0 mr-2 w-[40px] mt-[5px]">
                     {if show_header {
-                        render_profile_icon(avatar_url, name.clone(), 40, color.clone()).into_any()
+                        view! { {move || sender_profile_sig.get().render_icon(40)} }.into_any()
                     } else {
                         ().into_any()
                     }}
@@ -1310,7 +1318,12 @@ pub fn render_timeline_item(
             view! {
                 <div class="flex flex-col items-start px-4 pt-10 pb-6 gap-2 pt-30">
                     <div class="w-16 h-16 rounded-full bg-(--ui-solid-bg)  border border-(--tile-border-color) flex items-center justify-center mb-2">
-                        <Icon icon=icon size="36px" weight=IconWeight::Bold color="var(--text-color)" />
+                        <Icon
+                            icon=icon
+                            size="36px"
+                            weight=IconWeight::Bold
+                            color="var(--text-color)"
+                        />
                     </div>
                     <h2 class="text-3xl font-bold text-bright">{heading}</h2>
                     <p class="text-muted text-sm">{subtitle}</p>
