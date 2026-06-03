@@ -61,6 +61,9 @@ pub struct LighboxImage {
     pub timestamp: u64,
     pub size: Option<u64>,
     pub source: UiMediaSource,
+    pub origin_rect: Option<(f64, f64, f64, f64)>, // left, top, width, height of clicked thumbnail
+    pub width: Option<u64>,
+    pub height: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

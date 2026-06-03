@@ -160,10 +160,13 @@ pub fn ImageLightbox() -> impl IntoView {
     let state: AppState = expect_context();
     let lightbox = state.lightbox_image;
     let zoomed = RwSignal::new(false);
+    let img_ref = NodeRef::<leptos::html::Img>::new();
+    let overlay_visible = RwSignal::new(false);
 
     Effect::new(move |_| {
         if lightbox.get().is_none() {
             zoomed.set(false);
+            overlay_visible.set(false);
             return;
         }
 
@@ -180,12 +183,73 @@ pub fn ImageLightbox() -> impl IntoView {
             .add_event_listener_with_callback("keydown", handler.as_ref().unchecked_ref())
             .ok();
         handler.forget();
+
+        let origin = lightbox.get_untracked().and_then(|i| i.origin_rect);
+
+        // FLIP animation: requestAnimationFrame fires before the first paint, so the user
+        // never sees the image at its final position before the animation starts.
+        let raf_cb = wasm_bindgen::closure::Closure::once(move || {
+            overlay_visible.set(true);
+
+            let Some(img) = img_ref.get_untracked() else { return };
+            // Cast to web_sys::HtmlElement to access DOM .style property and .offset_width
+            let el: &web_sys::HtmlElement = img.unchecked_ref();
+            let style = el.style();
+            let final_rect = el.get_bounding_client_rect();
+
+            if let Some((ox, oy, ow, oh)) = origin {
+                let final_cx = final_rect.left() + final_rect.width() / 2.0;
+                let final_cy = final_rect.top() + final_rect.height() / 2.0;
+                let dx = ox + ow / 2.0 - final_cx;
+                let dy = oy + oh / 2.0 - final_cy;
+                let sx = if final_rect.width() > 0.0 {
+                    (ow / final_rect.width()).clamp(0.01, 4.0)
+                } else {
+                    1.0
+                };
+                let sy = if final_rect.height() > 0.0 {
+                    (oh / final_rect.height()).clamp(0.01, 4.0)
+                } else {
+                    1.0
+                };
+
+                let _ = style.set_property("transition", "none");
+                let _ = style.set_property(
+                    "transform",
+                    &format!("translate({}px, {}px) scale({:.4}, {:.4})", dx, dy, sx, sy),
+                );
+                let _ = style.set_property("opacity", "0");
+                let _ = el.offset_width(); // flush layout to commit the start state
+
+                let _ = style.set_property(
+                    "transition",
+                    "transform 0.28s cubic-bezier(0.4,0,0.2,1), opacity 0.2s ease",
+                );
+                let _ = style.set_property("transform", "none");
+                let _ = style.set_property("opacity", "1");
+            } else {
+                let _ = style.set_property("opacity", "0");
+                let _ = el.offset_width();
+                let _ = style.set_property("transition", "opacity 0.2s ease");
+                let _ = style.set_property("opacity", "1");
+            }
+        });
+
+        web_sys::window()
+            .unwrap()
+            .request_animation_frame(raf_cb.as_ref().unchecked_ref())
+            .ok();
+        raf_cb.forget();
     });
 
     view! {
         <Show when=move || lightbox.get().is_some()>
             <div
-                class="fixed inset-0 z-[200] bg-black/85 flex flex-col"
+                class="fixed inset-0 z-[200] flex flex-col"
+                style=move || format!(
+                    "transition: background-color 0.2s ease; background: {};",
+                    if overlay_visible.get() { "rgba(0,0,0,0.85)" } else { "rgba(0,0,0,0)" },
+                )
                 on:click=move |_| lightbox.set(None)
             >
                 {move || {
@@ -214,13 +278,16 @@ pub fn ImageLightbox() -> impl IntoView {
                                 let url = img.source.url();
                                 view! {
                                     <img
+                                        node_ref=img_ref
                                         src=url
-                                        class="max-w-[90vw] cursor-zoom-in max-h-[calc(90vh-3rem)] object-contain shadow-[0_0_15px_3px_rgba(255,255,255,0.3)] transition-transform duration-200"
+                                        width=img.width
+                                        height=img.height
+                                        class="max-w-[90vw] max-h-[calc(90vh-3rem)] object-contain shadow-[0_0_15px_3px_rgba(255,255,255,0.3)]"
                                         style=move || {
                                             if zoomed.get() {
-                                                "transform: scale(2); cursor: zoom-out"
+                                                "transform: scale(2); cursor: zoom-out;"
                                             } else {
-                                                "cursor: zoom-in"
+                                                "cursor: zoom-in;"
                                             }
                                         }
                                         on:click=move |e| {

@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use chrono::{DateTime, Local, TimeZone};
 use colorsys::Hsl;
 use leptos::{html::Div, prelude::*};
+use wasm_bindgen::JsCast;
 use phosphor_leptos::{
     ARROW_BEND_UP_LEFT, ARROW_RIGHT, Icon, IconWeight, PENCIL_SIMPLE, SMILEY, TRASH, WARNING_CIRCLE,
 };
@@ -216,6 +217,8 @@ fn render_message_content(
             let lightbox = state.lightbox_image;
             let lightbox_source = source.clone();
             let box_file_name = filename.clone();
+            let box_width = width;
+            let box_height = height;
             view! {
                 <div class="mt-1">
                     <div class="relative inline-block group/image">
@@ -225,7 +228,13 @@ fn render_message_content(
                             width=thumb_w
                             height=thumb_h
                             class="rounded-md border border-[var(--tile-border-color)] relative group/image cursor-pointer"
-                            on:click=move |_| {
+                            on:click=move |e: web_sys::MouseEvent| {
+                                let origin_rect = e.target()
+                                    .and_then(|t| t.dyn_into::<web_sys::HtmlElement>().ok())
+                                    .map(|el| {
+                                        let r = el.get_bounding_client_rect();
+                                        (r.left(), r.top(), r.width(), r.height())
+                                    });
                                 lightbox
                                     .set(
                                         Some(LighboxImage {
@@ -234,6 +243,9 @@ fn render_message_content(
                                             timestamp,
                                             size,
                                             source: lightbox_source.clone(),
+                                            origin_rect,
+                                            width: box_width,
+                                            height: box_height,
                                         }),
                                     )
                             }
