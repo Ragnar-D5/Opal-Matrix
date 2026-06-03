@@ -4,7 +4,7 @@ use colorsys::Hsl;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{get_color, user_profile::UserProfile};
+use crate::get_color;
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct AbstractProgress {
