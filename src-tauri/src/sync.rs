@@ -15,8 +15,8 @@ use crate::{
     },
     matrix_api::{
         keyring::{StoredSession, save_session},
-        matrixrtc::cleanup_ghost_calls,
         profile::client_user_profile_event_handle,
+        matrixrtc::{cleanup_ghost_calls, handle_to_device_messages},
     },
 };
 use futures_util::StreamExt;
@@ -86,7 +86,7 @@ pub async fn attach_callbacks(client: &MatrixClient, handle: &AppHandle) -> Resu
             match sync_item {
                 Ok(sync_result) => {
                     log::debug!("Received sync");
-
+                    handle_to_device_messages(sync_result.to_device, handle_clone.clone()).await;
                     handle_presences(&sync_result.presence, &handle_clone);
                     handle_room_updates(&sync_result.rooms, &client_sync_clone, &handle_clone)
                         .await;

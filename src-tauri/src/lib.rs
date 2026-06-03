@@ -44,7 +44,9 @@ use tauri_plugin_notification::{NotificationExt, PermissionState};
 use crate::matrix_api::keyring::{self, StoredSession, init_keyring};
 use crate::matrix_api::matrixrtc::{join_matrixrtc_call, leave_matrixrtc_call};
 use crate::matrix_api::media::{get_media_from_uuid_str, get_media_from_uuid_thmubnail_str};
-use crate::state::{AppState, CallAudioState, MediaManager, TaskManager, TimelineManager};
+use crate::state::{
+    AppState, CallAudioState, LiveKitRoomManager, MediaManager, TaskManager, TimelineManager,
+};
 use crate::sync::attach_callbacks;
 
 pub type MatrixClientState<'a> = State<'a, RwLock<MatrixClient>>;
@@ -489,8 +491,8 @@ pub fn run() {
                         }),
                     ])
                     .level_for("reqwest", log::LevelFilter::Off)
-                    .level_for("libwebrtc", log::LevelFilter::Off)
-                    .level_for("livekit", log::LevelFilter::Off)
+                    // .level_for("libwebrtc", log::LevelFilter::Off)
+                    // .level_for("livekit", log::LevelFilter::Off)
                     .level_for("rustls_platform_verifier", log::LevelFilter::Off)
                     .level_for("html5ever", log::LevelFilter::Off)
                     .level_for("matrix_sdk", log::LevelFilter::Debug)
@@ -542,6 +544,7 @@ pub fn run() {
             app.manage(TaskManager::default());
             app.manage(CallAudioState::default());
             app.manage(MediaManager::default());
+            app.manage(LiveKitRoomManager::default());
 
             #[cfg(not(target_os = "android"))]
             let main_window = app
@@ -595,7 +598,10 @@ pub fn run() {
                     .and_then(|v| {
                         let mut parts = v.splitn(2, '-');
                         let start: usize = parts.next()?.parse().ok()?;
-                        let end: usize = parts.next().and_then(|e| e.parse().ok()).unwrap_or(usize::MAX);
+                        let end: usize = parts
+                            .next()
+                            .and_then(|e| e.parse().ok())
+                            .unwrap_or(usize::MAX);
                         Some((start, end))
                     });
 
@@ -624,11 +630,17 @@ pub fn run() {
                             Ok(bytes) => {
                                 let content_type = detect_content_type(&bytes);
                                 if content_type == "application/octet-stream" {
-                                    log::debug!("Unknown format for UUID {}, first 16 bytes: {:02x?}", id_str, &bytes[..bytes.len().min(16)]);
+                                    log::debug!(
+                                        "Unknown format for UUID {}, first 16 bytes: {:02x?}",
+                                        id_str,
+                                        &bytes[..bytes.len().min(16)]
+                                    );
                                 }
                                 let is_video = content_type.starts_with("video/");
                                 if is_video {
-                                    if let Some((start, end)) = range_header && start > 0 {
+                                    if let Some((start, end)) = range_header
+                                        && start > 0
+                                    {
                                         let end = end.min(bytes.len().saturating_sub(1));
                                         let total = bytes.len();
                                         let chunk = bytes[start..=end].to_vec();
@@ -636,7 +648,10 @@ pub fn run() {
                                             tauri::http::Response::builder()
                                                 .status(206)
                                                 .header("Content-Type", content_type)
-                                                .header("Content-Range", format!("bytes {}-{}/{}", start, end, total))
+                                                .header(
+                                                    "Content-Range",
+                                                    format!("bytes {}-{}/{}", start, end, total),
+                                                )
                                                 .header("Content-Length", chunk.len().to_string())
                                                 .header("Accept-Ranges", "bytes")
                                                 .header("Access-Control-Allow-Origin", "*")
@@ -681,7 +696,9 @@ pub fn run() {
                         };
                         return;
                     } else if let Some(param_str) = uri.strip_prefix("mxc://thumbnail/") {
-                        match get_media_from_uuid_thmubnail_str(&client, param_str, &media_manager).await {
+                        match get_media_from_uuid_thmubnail_str(&client, param_str, &media_manager)
+                            .await
+                        {
                             Ok(bytes) => {
                                 let content_type = detect_content_type(&bytes);
                                 responder.respond(
@@ -695,7 +712,11 @@ pub fn run() {
                                 );
                             }
                             Err(e) => {
-                                log::error!("Failed to fetch thumbnail media for {}: {:?}", param_str, e);
+                                log::error!(
+                                    "Failed to fetch thumbnail media for {}: {:?}",
+                                    param_str,
+                                    e
+                                );
                                 responder.respond(
                                     tauri::http::Response::builder()
                                         .status(500)
@@ -706,7 +727,6 @@ pub fn run() {
                         };
                         return;
                     }
-
 
                     // 1. Parse the requested URI [cite: 221]
                     let parsed_url = match Url::parse(&uri) {
