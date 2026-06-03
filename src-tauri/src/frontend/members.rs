@@ -25,6 +25,7 @@ pub async fn get_members_for_room(
     let members: Vec<UserProfile> = sdk_members
         .into_iter()
         .map(|m| UserProfile {
+            room_id: room_id.clone(),
             user_id: m.user_id().to_string(),
             display_name: m.display_name().map(|v| v.to_string()),
         })
@@ -43,6 +44,7 @@ pub async fn on_member_update(
     let content = event.content;
 
     let profile = UserProfile {
+        room_id: room.room_id().to_string(),
         user_id: event.state_key.to_string(),
         display_name: content.displayname,
     };

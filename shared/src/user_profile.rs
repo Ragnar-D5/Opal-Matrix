@@ -18,6 +18,7 @@ pub struct PresenceInfo {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct UserProfile {
+    pub room_id: String,
     pub user_id: String,
     pub display_name: Option<String>,
 }

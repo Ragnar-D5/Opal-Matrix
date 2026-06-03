@@ -342,6 +342,7 @@ impl MemberStore {
 
         if room_id == user_id {
             return ArcRwSignal::new(Some(UserProfile {
+                room_id: room_id.to_string(),
                 display_name: Some("room".into()),
                 user_id: room_id.to_string(),
             }));

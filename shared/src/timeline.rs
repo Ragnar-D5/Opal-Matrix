@@ -586,16 +586,6 @@ impl TimelineEvent {
         }
     }
 
-    pub fn get_sender_profile(&self) -> Option<UserProfile> {
-        match &self.sender {
-            DetailState::Ready(sender) => Some(UserProfile {
-                user_id: sender.id.clone(),
-                display_name: sender.display_name.clone(),
-            }),
-            _ => None,
-        }
-    }
-
     pub fn calculate_flags(&mut self, is_own: bool) {
         let can_be_replied_to = self.flags.can_be_replied_to
             && match &self.content {

@@ -75,6 +75,7 @@ impl UserProfileExt for UserProfile {
 
     fn room(room_id: String) -> Self {
         Self {
+            room_id: room_id.clone(),
             user_id: room_id,
             display_name: Some("room".into()),
         }
@@ -85,7 +86,7 @@ impl UserProfileExt for UserProfile {
     }
 
     fn render_icon(self, size: usize) -> impl IntoView {
-        let url = format!("mxc://user/{}", self.user_id);
+        let url = format!("mxc://user/{}/room/{}", self.user_id, self.room_id);
         let name = self.get_name();
         let size_str = format!("{}px", size);
 
