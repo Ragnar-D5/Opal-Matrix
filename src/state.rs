@@ -44,6 +44,7 @@ pub struct AppState {
 
     pub breadcrums: RwSignal<Breadcrumbs>,
     pub server_order: RwSignal<ServerOrder>,
+    pub data_initialized: RwSignal<bool>,
 
     pub sidebar_state: RwSignal<SidebarState>,
 
@@ -92,6 +93,7 @@ impl AppState {
             active_server_id: RwSignal::new(None),
             breadcrums: RwSignal::new(Breadcrumbs::default()),
             server_order: RwSignal::new(ServerOrder::default()),
+            data_initialized: RwSignal::new(false),
             sidebar_state: RwSignal::new(SidebarState::default()),
             is_focused: RwSignal::new(true),
             drafts: RwSignal::new(HashMap::new()),
@@ -204,6 +206,9 @@ impl AppState {
     }
 
     fn save_breadcrumbs(&self) {
+        if !self.data_initialized.get_untracked() {
+            return;
+        }
         let breadcrumbs = self.breadcrums.get_untracked();
         spawn_local(async move {
             let args = serde_wasm_bindgen::to_value(&json!({
@@ -223,6 +228,9 @@ impl AppState {
     }
 
     fn save_server_order(&self) {
+        if !self.data_initialized.get_untracked() {
+            return;
+        }
         let order = self.server_order.get_untracked();
         spawn_local(async move {
             let args = serde_wasm_bindgen::to_value(&json!({
@@ -259,7 +267,11 @@ impl AppState {
     }
 
     pub fn update_active_room(&self) {
-        let current_room_id = self.active_room_id_untracked();
+        // Fall back to the most recent breadcrumb room so the correct room is
+        // restored when the sidebar arrives after the initial data load (or when
+        // set_active_room_with_id was called while the sidebar was still empty).
+        let current_room_id = self.active_room_id_untracked()
+            .or_else(|| self.breadcrums.get_untracked().recent_rooms.first().cloned());
 
         if let Some(room_id) = current_room_id {
             let sidebar_state = self.sidebar_state.get();
@@ -277,6 +289,23 @@ impl AppState {
         } else {
             self.active_room.set(None);
         }
+    }
+
+    /// Finds the top-level server room_id that contains `room_id` by searching
+    /// the sidebar directly. Returns `None` if the room is a DM or not found.
+    pub fn find_server_id_for_room(&self, room_id: &str) -> Option<String> {
+        let sidebar = self.sidebar_state.get_untracked();
+        for server in &sidebar.servers {
+            if server.room_id == room_id {
+                return Some(server.room_id.clone());
+            }
+            if let RoomKind::Space { children, .. } = &server.kind {
+                if find_node_in_nodes(children, room_id).is_some() {
+                    return Some(server.room_id.clone());
+                }
+            }
+        }
+        None
     }
 }
 

@@ -195,7 +195,10 @@ pub fn App() -> impl IntoView {
                 .collect();
 
             if final_order != current_order.servers {
-                state.set_server_order(final_order);
+                // Only update in-memory order; don't save — saving happens only
+                // after data_initialized is true (i.e., after initial load) and
+                // only when the user explicitly reorders via drag-and-drop.
+                state.server_order.set(ServerOrder { servers: final_order });
             }
 
             state.sidebar_state.set(new_state);
@@ -235,24 +238,28 @@ pub fn App() -> impl IntoView {
                 Ok(js_val) => {
                     let breadcrumbs: Breadcrumbs = serde_wasm_bindgen::from_value(js_val).unwrap();
 
-                    state.set_active_room_with_id(breadcrumbs.recent_rooms.first().cloned());
-
-                    if let Some(room_id) = breadcrumbs.recent_rooms.first().cloned() {
-                        state.set_active_room_with_id(Some(room_id.clone()));
-
-                        for (server, last_room) in breadcrumbs.clone().last_space_ids {
-                            if last_room == room_id {
-                                if server == "dms" {
-                                    state.active_server_id.set(None);
-                                } else {
-                                    state.active_server_id.set(Some(server.clone()));
-                                }
-                                break;
-                            }
-                        }
+                    // Restore the active server before setting the room so that
+                    // set_active_room_with_id stores the breadcrumb under the right key.
+                    // Search the sidebar first (reliable even if last_space_ids is stale),
+                    // then fall back to last_space_ids for the case where the sidebar
+                    // hasn't arrived yet.
+                    if let Some(room_id) = breadcrumbs.recent_rooms.first() {
+                        let server_id = state
+                            .find_server_id_for_room(room_id)
+                            .or_else(|| {
+                                breadcrumbs.last_space_ids.iter()
+                                    .find(|(_, last_room)| last_room.as_str() == room_id.as_str())
+                                    .filter(|(server, _)| server.as_str() != "dms")
+                                    .map(|(server, _)| server.clone())
+                            });
+                        state.active_server_id.set(server_id);
                     }
 
-                    state.breadcrums.set(breadcrumbs);
+                    // Load saved breadcrumbs into state before set_active_room_with_id
+                    // so any mutation it makes starts from the correct baseline.
+                    state.breadcrums.set(breadcrumbs.clone());
+
+                    state.set_active_room_with_id(breadcrumbs.recent_rooms.first().cloned());
                 }
                 Err(err) => {
                     error!("Error fetching breadcrumbs: {:?}", err);
@@ -268,6 +275,9 @@ pub fn App() -> impl IntoView {
                     error!("Error fetching server order: {:?}", err);
                 }
             };
+
+            // Allow saves only after both breadcrumbs and server order are loaded.
+            state.data_initialized.set(true);
 
             let _ = call_tauri_no_args("send_frontend").await;
         });
