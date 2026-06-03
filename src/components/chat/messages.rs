@@ -5,10 +5,12 @@ use colorsys::Hsl;
 use leptos::{html::Div, prelude::*};
 use wasm_bindgen::JsCast;
 use phosphor_leptos::{
-    ARROW_BEND_UP_LEFT, ARROW_RIGHT, Icon, IconWeight, PENCIL_SIMPLE, SMILEY, TRASH, WARNING_CIRCLE,
+    ARROW_BEND_UP_LEFT, ARROW_RIGHT, HASH, Icon, IconWeight, PENCIL_SIMPLE, SMILEY, SPEAKER_HIGH,
+    TRASH, WARNING_CIRCLE,
 };
 use shared::{
     get_color,
+    sidebar::RoomKind,
     timeline::{
         DetailState, EventContent, MessageContent, ReactionInfo, ReplyInfo, RichTextSpan,
         SystemMessage, UiCallIntent, UiMembershipChange, UiMessageType, UiTimelineItem,
@@ -1281,13 +1283,41 @@ pub fn render_timeline_item(
             </div>
         }
         .into_any(),
-        UiTimelineItemKind::TimelineStart => view! {
-            <div class="flex items-center gap-2 my-4 drop-shadow">
-                <div class="flex-1 border-t-1 border-[var(--muted-text-color)] bdf"></div>
-                <span class="text-muted text-sm bdf-text">"Start of Timeline"</span>
-                <div class="flex-1 border-t-1 border-[var(--muted-text-color)] bdf"></div>
-            </div>
-        }.into_any(),
+        UiTimelineItemKind::TimelineStart => {
+            let room = state.active_room.get_untracked();
+            let (icon, name, is_dm) = if let Some(ref room) = room {
+                let is_dm = matches!(room.kind, RoomKind::Dm { .. });
+                let icon = match &room.kind {
+                    RoomKind::VoiceChannel { .. } => SPEAKER_HIGH,
+                    _ => HASH,
+                };
+                (icon, room.get_name(), is_dm)
+            } else {
+                (HASH, "this channel".to_string(), false)
+            };
+
+            let heading = if is_dm {
+                format!("Welcome to your chat with {}!", name)
+            } else {
+                format!("Welcome to #{}!", name)
+            };
+            let subtitle = if is_dm {
+                format!("This is the beginning of your direct message history with {}.", name)
+            } else {
+                format!("This is the start of the #{} channel.", name)
+            };
+
+            view! {
+                <div class="flex flex-col items-start px-4 pt-10 pb-6 gap-2 pt-30">
+                    <div class="w-16 h-16 rounded-full bg-(--ui-solid-bg)  border border-(--tile-border-color) flex items-center justify-center mb-2">
+                        <Icon icon=icon size="36px" weight=IconWeight::Bold color="var(--text-color)" />
+                    </div>
+                    <h2 class="text-3xl font-bold text-bright">{heading}</h2>
+                    <p class="text-muted text-sm">{subtitle}</p>
+                </div>
+            }
+            .into_any()
+        }
         UiTimelineItemKind::Event(_) => render_timeline_event(store, &room_id, &user_id, item_sig, show_header).into_any()
     }
 }
