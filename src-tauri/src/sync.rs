@@ -16,6 +16,7 @@ use crate::{
     matrix_api::{
         keyring::{StoredSession, save_session},
         matrixrtc::cleanup_ghost_calls,
+        profile::client_user_profile_event_handle,
     },
 };
 use futures_util::StreamExt;
@@ -98,7 +99,12 @@ pub async fn attach_callbacks(client: &MatrixClient, handle: &AppHandle) -> Resu
     });
 
     client.add_event_handler_context(handle.clone());
+
+    let own_id = client.user_id().ok_or("Not logged in")?.to_string();
+    client.add_event_handler_context(&own_id);
+
     client.add_event_handler(on_member_update);
+    client.add_event_handler(client_user_profile_event_handle);
 
     Ok(())
 }
