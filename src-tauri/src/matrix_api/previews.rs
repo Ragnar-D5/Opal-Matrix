@@ -1,17 +1,23 @@
+use matrix_sdk::ruma::OwnedMxcUri;
+use matrix_sdk::ruma::{
+    api::client::authenticated_media::get_media_preview::v1::Request as GetMediaPreviewRequest,
+    events::room::MediaSource,
+};
 use matrix_sdk::Client as MatrixClient;
-use matrix_sdk::ruma::api::client::authenticated_media::get_media_preview::v1::Request as GetMediaPreviewRequest;
 use regex::Regex;
 use shared::api::LinkPreviewResponse;
-use tauri::{State, command};
+use tauri::{command, State};
 use tokio::sync::RwLock;
+use uuid::Uuid;
 
-use crate::{BrandColorsMap, TauriError};
+use crate::{state::MediaManager, BrandColorsMap, TauriError};
 
 /// Tauri command to get a URL preview for a given URL.
 #[command]
 pub async fn get_url_preview(
     matrix_client: State<'_, RwLock<MatrixClient>>,
     color_map: State<'_, BrandColorsMap>,
+    meia_manager: State<'_, MediaManager>,
     url: String,
 ) -> Result<LinkPreviewResponse, TauriError> {
     let reddit_replacement = Regex::new(r"(?i)(https?://)?(?:[a-z0-9-]+.)*\breddit.com\b").unwrap();
@@ -29,6 +35,17 @@ pub async fn get_url_preview(
 
     let mut preview: LinkPreviewResponse = serde_json::from_str(data.get())?;
     preview.resolve_color(&url, &color_map.0);
+
+    let media_id = Uuid::new_v4();
+
+    let image_url = OwnedMxcUri::from(preview.image_url.clone().unwrap_or_default().as_str());
+    meia_manager
+        .sources
+        .write()
+        .await
+        .insert(media_id, MediaSource::Plain(image_url));
+
+    preview.image_url = Some(format!("mxc://media/{}", media_id));
 
     Ok(preview)
 }
