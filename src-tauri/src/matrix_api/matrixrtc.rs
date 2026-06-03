@@ -1,7 +1,7 @@
 use base64::Engine;
 use base64::engine::general_purpose;
+use livekit::e2ee::EncryptionType;
 use livekit::e2ee::key_provider::{KeyProvider, KeyProviderOptions};
-use livekit::e2ee::{EncryptionType, key_provider};
 use livekit::id::ParticipantIdentity;
 use matrix_sdk::ruma::api::client::to_device::send_event_to_device::v3::Request;
 use std::collections::BTreeMap;
@@ -126,8 +126,7 @@ pub(crate) async fn join_matrixrtc_call(
         .map_err(|e| format!("Failed to generate cryptographic key: {}", e))?;
 
     if room.encryption_state().is_encrypted() {
-        let local_call_key =
-            general_purpose::STANDARD.encode(&raw_key);
+        let local_call_key = general_purpose::STANDARD.encode(&raw_key);
 
         let mut key_send_index = 0;
 
@@ -157,14 +156,24 @@ pub(crate) async fn join_matrixrtc_call(
                     // Do NOT use `ev.sender` here!
                     let livekit_identity = ParticipantIdentity::from(ev.content.member_id.clone());
 
-                    if let Ok(decoded_key) = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, base64_key) {
-                        log::info!("Registering E2EE key for LiveKit participant: {}", livekit_identity);
+                    if let Ok(decoded_key) = base64::Engine::decode(
+                        &base64::engine::general_purpose::STANDARD,
+                        base64_key,
+                    ) {
+                        log::info!(
+                            "Registering E2EE key for LiveKit participant: {}",
+                            livekit_identity
+                        );
 
                         // Assign the key specifically to their identity
-                        kp_clone.set_key(&livekit_identity, ev.content.media_key.index as i32, decoded_key);
+                        kp_clone.set_key(
+                            &livekit_identity,
+                            ev.content.media_key.index as i32,
+                            decoded_key,
+                        );
                     }
                 }
-            }
+            },
         );
         //
         e2ee_options = Some(E2eeOptions {

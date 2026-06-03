@@ -2,6 +2,7 @@ use crate::components::authentication::Authentication;
 use crate::components::loading::Loading;
 use crate::components::previews::ImageLightbox;
 use crate::components::shader::BackgroundShader;
+use chrono::{DateTime, Local};
 use shared::api::RestoreResponse;
 use shared::sidebar::SidebarState;
 use std::collections::HashMap;
@@ -46,6 +47,31 @@ pub enum CurrentWindow {
     Login,
     Home,
     Loading,
+}
+
+pub fn format_date(date: DateTime<Local>) -> String {
+    match (date.date_naive() - Local::now().date_naive()).num_days() {
+        0 => date.format("Today, %H:%M").to_string(),
+        -1 => date.format("Yesterday, %H:%M").to_string(),
+        _ => date.format("%d/%m/%Y, %H:%M").to_string(),
+    }
+}
+
+pub fn format_bytes(bytes: u64) -> String {
+    const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
+    let mut size = bytes as f64;
+    let mut unit_index = 0;
+
+    while size >= 1024.0 && unit_index < UNITS.len() - 1 {
+        size /= 1024.0;
+        unit_index += 1;
+    }
+
+    if unit_index == 0 {
+        format!("{} {}", size as u64, UNITS[unit_index])
+    } else {
+        format!("{:.2} {}", size, UNITS[unit_index])
+    }
 }
 
 #[component]

@@ -4,11 +4,16 @@ use leptos::task::spawn_local;
 use log::error;
 use serde_json::json;
 use shared::{
-    account_data::{Breadcrumbs, ServerOrder}, sidebar::{RoomKind, RoomNode, SidebarState}, timeline::UiMediaSource, user_profile::{PresenceInfo, UserProfile}
+    account_data::{Breadcrumbs, ServerOrder},
+    sidebar::{RoomKind, RoomNode, SidebarState},
+    timeline::UiMediaSource,
+    user_profile::{PresenceInfo, UserProfile},
 };
 
 use crate::{
-    app::{CurrentWindow, call_tauri}, components::chat::Attachment, tauri_functions::get_members_for_room
+    app::{CurrentWindow, call_tauri},
+    components::chat::Attachment,
+    tauri_functions::get_members_for_room,
 };
 use leptos::prelude::*;
 
@@ -288,9 +293,11 @@ fn find_node_in_nodes<'a>(nodes: &'a [RoomNode], room_id: &str) -> Option<&'a Ro
     None
 }
 
+type MemberStoreRoomEntry = HashMap<String, ArcRwSignal<Option<UserProfile>>>;
+
 #[derive(Default, Clone)]
 pub struct MemberStore {
-    pub rooms: RwSignal<HashMap<String, HashMap<String, ArcRwSignal<Option<UserProfile>>>>>,
+    pub rooms: RwSignal<HashMap<String, MemberStoreRoomEntry>>,
     pub presences: RwSignal<HashMap<String, ArcRwSignal<PresenceInfo>>>,
 
     pub fetching: RwSignal<HashSet<String>>,
