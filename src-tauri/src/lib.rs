@@ -3,10 +3,6 @@
 use const_format::formatcp;
 use log::{error, trace};
 use matrix_sdk::authentication::matrix::MatrixSession;
-use matrix_sdk::media::{MediaFormat, MediaRequestParameters, MediaThumbnailSettings};
-use matrix_sdk::ruma::OwnedMxcUri;
-use matrix_sdk::ruma::events::room::MediaSource;
-use matrix_sdk::ruma::media::Method;
 use matrix_sdk::ruma::{OwnedDeviceId, UserId};
 use matrix_sdk::{AuthSession, Client as MatrixClient, SessionMeta, SessionTokens};
 use percent_encoding::percent_decode_str;
@@ -18,10 +14,6 @@ use std::sync::Arc;
 use tauri::async_runtime::block_on;
 use tokio::sync::RwLock;
 
-use aes::Aes256;
-use aes::cipher::{KeyIvInit, StreamCipher};
-use base64::Engine;
-use base64::engine::general_purpose;
 use bytes::Bytes;
 use chrono::Local;
 use log::info;
@@ -34,8 +26,6 @@ pub mod state;
 pub(crate) mod sync;
 
 use tauri_plugin_http::reqwest::{self, Response};
-
-type Aes256Ctr = ctr::Ctr64BE<Aes256>;
 
 pub const APP_NAME: &str = "opal-matrix";
 
@@ -177,7 +167,6 @@ where
 async fn try_restore(
     app_handle: AppHandle,
     matrix_client: State<'_, RwLock<MatrixClient>>,
-    media_manager: State<'_, MediaManager>,
 ) -> Result<RestoreResponse, TauriError> {
     let session_result = tokio::task::spawn_blocking(keyring::get_last_active_session)
         .await
@@ -212,8 +201,7 @@ async fn try_restore(
     });
     new_client.restore_session(session).await?;
 
-    let media_manager_clone = (*media_manager).clone();
-    attach_callbacks(&new_client, &app_handle, media_manager_clone).await?;
+    attach_callbacks(&new_client, &app_handle).await?;
 
     let user_id = new_client.user_id().unwrap().to_string();
 
@@ -230,7 +218,6 @@ async fn login(
     app_handle: AppHandle,
     matrix_client: State<'_, RwLock<MatrixClient>>,
     handle: AppHandle,
-    media_manager: State<'_, MediaManager>
 ) -> Result<String, LoginError> {
     info!("Logging in new");
 
@@ -316,8 +303,7 @@ async fn login(
         })?;
     log::debug!("Device verified, starting sync loop");
 
-    let media_manager_clone = (*media_manager).clone();
-    attach_callbacks(&new_client, &handle, media_manager_clone).await.map_err(|e| {
+    attach_callbacks(&new_client, &handle).await.map_err(|e| {
         error!("Failed to start sync loop: {:?}", e);
         LoginError::BackendError
     })?;

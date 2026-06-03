@@ -1,10 +1,10 @@
 use matrix_sdk::{
-    Room, RoomMemberships,
     event_handler::Ctx,
-    ruma::{RoomId, events::room::member::OriginalSyncRoomMemberEvent},
+    ruma::{events::room::member::OriginalSyncRoomMemberEvent, RoomId},
+    Room, RoomMemberships,
 };
 use shared::user_profile::UserProfile;
-use tauri::{AppHandle, Emitter, command};
+use tauri::{command, AppHandle, Emitter};
 
 use crate::{MatrixClientState, TauriError};
 
@@ -26,7 +26,6 @@ pub async fn get_members_for_room(
         .into_iter()
         .map(|m| UserProfile {
             user_id: m.user_id().to_string(),
-            avatar_url: m.avatar_url().map(|v| v.to_string()),
             display_name: m.display_name().map(|v| v.to_string()),
         })
         .collect();
@@ -45,7 +44,6 @@ pub async fn on_member_update(
 
     let profile = UserProfile {
         user_id: event.state_key.to_string(),
-        avatar_url: content.avatar_url.map(|v| v.to_string()),
         display_name: content.displayname,
     };
 

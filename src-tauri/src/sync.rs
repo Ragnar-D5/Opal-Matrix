@@ -18,16 +18,11 @@ use crate::{
         matrixrtc::cleanup_ghost_calls,
         profile::{client_user_profile_event_handle, send_user_to_frontend, ProfileDebounce},
     },
-    state::MediaManager,
     TauriError,
 };
 use futures_util::StreamExt;
 
-pub async fn attach_callbacks(
-    client: &MatrixClient,
-    handle: &AppHandle,
-    media_manager: MediaManager,
-) -> Result<(), TauriError> {
+pub async fn attach_callbacks(client: &MatrixClient, handle: &AppHandle) -> Result<(), TauriError> {
     let mut session_subscriber = client.subscribe_to_session_changes();
     let client_clone = client.clone();
 
@@ -61,26 +56,18 @@ pub async fn attach_callbacks(
     let client_sync_clone = client.clone();
     let handle_clone = handle.clone();
 
-    let media_for_handler = media_manager.clone();
     client.add_event_handler(async move |_: SyncSpaceParentEvent| {
-        if let Err(e) = send_sidebar(
-            &client_sync_clone.joined_rooms(),
-            &handle_clone,
-            &media_for_handler,
-        )
-        .await
-        {
+        if let Err(e) = send_sidebar(&client_sync_clone.joined_rooms(), &handle_clone).await {
             log::error!("Failed to update sidebar on space parent event: {:?}", e);
         }
     });
 
-    send_sidebar(&client.joined_rooms(), handle, &media_manager).await?;
+    send_sidebar(&client.joined_rooms(), handle).await?;
 
     send_user_to_frontend(handle, client).await?;
 
     let client_sync_clone = client.clone();
     let handle_clone = handle.clone();
-    let media_manager_clone = media_manager.clone();
     tauri::async_runtime::spawn(async move {
         let sync_settings = SyncSettings::default()
             .set_presence(PresenceState::Online)
@@ -99,13 +86,8 @@ pub async fn attach_callbacks(
                     log::debug!("Received sync");
 
                     handle_presences(&sync_result.presence, &handle_clone);
-                    handle_room_updates(
-                        &sync_result.rooms,
-                        &client_sync_clone,
-                        &handle_clone,
-                        &media_manager_clone,
-                    )
-                    .await;
+                    handle_room_updates(&sync_result.rooms, &client_sync_clone, &handle_clone)
+                        .await;
                 }
                 Err(e) => {
                     log::error!("Sync loop exited with error: {}", e);

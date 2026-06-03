@@ -20,7 +20,6 @@ pub struct PresenceInfo {
 pub struct UserProfile {
     pub user_id: String,
     pub display_name: Option<String>,
-    pub avatar_url: Option<String>,
 }
 
 impl UserProfile {
@@ -29,5 +28,9 @@ impl UserProfile {
             .as_ref()
             .cloned()
             .unwrap_or_else(|| self.user_id.clone())
+    }
+
+    pub fn get_avatar_url(&self, room_id: &str) -> String {
+        format!("mxc://user/{}/room/{room_id}", self.user_id)
     }
 }

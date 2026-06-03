@@ -77,7 +77,6 @@ impl UserProfileExt for UserProfile {
         Self {
             user_id: room_id,
             display_name: Some("room".into()),
-            avatar_url: None,
         }
     }
 

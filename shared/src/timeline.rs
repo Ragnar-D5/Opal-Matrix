@@ -591,7 +591,6 @@ impl TimelineEvent {
             DetailState::Ready(sender) => Some(UserProfile {
                 user_id: sender.id.clone(),
                 display_name: sender.display_name.clone(),
-                avatar_url: sender.avatar_url.clone(),
             }),
             _ => None,
         }

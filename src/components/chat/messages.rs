@@ -898,7 +898,7 @@ fn render_timeline_event(
 ) -> impl IntoView {
     let hovered = RwSignal::new(false);
 
-    let (show_highlight, date, sender_id, name, avatar_url, color, reply_info, event_id) = item_sig
+    let (show_highlight, date, sender_id, name, color, reply_info, event_id) = item_sig
         .with_untracked(|item| {
             if let UiTimelineItemKind::Event(event) = &item.kind {
                 let sender_id = event.get_sender_id();
@@ -910,7 +910,6 @@ fn render_timeline_event(
                     get_date_from_ts(event.timestamp as i64),
                     sender_id,
                     name,
-                    event.get_sender_avatar_url(),
                     event
                         .get_sender_id()
                         .map(|v| get_color(&v))

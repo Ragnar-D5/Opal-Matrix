@@ -299,11 +299,10 @@ impl AppState {
             if server.room_id == room_id {
                 return Some(server.room_id.clone());
             }
-            if let RoomKind::Space { children, .. } = &server.kind {
-                if find_node_in_nodes(children, room_id).is_some() {
+            if let RoomKind::Space { children, .. } = &server.kind
+                && find_node_in_nodes(children, room_id).is_some() {
                     return Some(server.room_id.clone());
                 }
-            }
         }
         None
     }
@@ -345,7 +344,6 @@ impl MemberStore {
             return ArcRwSignal::new(Some(UserProfile {
                 display_name: Some("room".into()),
                 user_id: room_id.to_string(),
-                avatar_url: None,
             }));
         }
 
