@@ -1,6 +1,6 @@
-use matrix_sdk::ruma::{events::room::MediaSource, OwnedRoomId};
 use matrix_sdk::Room;
-use matrix_sdk_ui::{timeline::TimelineBuilder, Timeline};
+use matrix_sdk::ruma::{OwnedRoomId, events::room::MediaSource};
+use matrix_sdk_ui::{Timeline, timeline::TimelineBuilder};
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use tauri::async_runtime::{Mutex, RwLock};
 use tokio::task::JoinHandle;
@@ -104,3 +104,7 @@ impl Default for MediaManager {
         }
     }
 }
+
+use livekit::Room as LiveKitRoom;
+
+pub type LiveKitRoomManager = Arc<Mutex<HashMap<String, LiveKitRoom>>>;

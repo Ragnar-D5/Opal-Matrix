@@ -534,6 +534,7 @@ pub fn run() {
             app.manage(TaskManager::default());
             app.manage(CallAudioState::default());
             app.manage(MediaManager::default());
+            app.manage(LiveKitRoomManager::default());
 
             #[cfg(not(target_os = "android"))]
             let main_window = app

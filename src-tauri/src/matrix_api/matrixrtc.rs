@@ -1,8 +1,11 @@
 use base64::Engine;
+use base64::alphabet::STANDARD;
 use base64::engine::general_purpose;
 use livekit::e2ee::EncryptionType;
 use livekit::e2ee::key_provider::{KeyProvider, KeyProviderOptions};
 use livekit::id::ParticipantIdentity;
+use log::{debug, error, info};
+use matrix_sdk::deserialized_responses::ProcessedToDeviceEvent;
 use matrix_sdk::ruma::api::client::to_device::send_event_to_device::v3::Request;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
@@ -25,7 +28,7 @@ use matrix_sdk::ruma::events::rtc::notification::RtcNotificationEventContent;
 use matrix_sdk::ruma::events::{
     AnyStateEventContent, AnyToDeviceEventContent, Mentions, StateEventType,
 };
-use matrix_sdk::ruma::serde::Raw;
+use matrix_sdk::ruma::serde::{JsonCastable, Raw};
 use matrix_sdk::ruma::to_device::DeviceIdOrAllDevices;
 use matrix_sdk::ruma::{
     DeviceId, MilliSecondsSinceUnixEpoch, OwnedTransactionId, OwnedUserId, UserId,
@@ -33,17 +36,18 @@ use matrix_sdk::ruma::{
 use matrix_sdk::{Client, ruma::RoomId};
 use ringbuf::HeapRb;
 use ringbuf::traits::{Consumer, Observer, Producer, Split};
-use tauri::{State, command};
+use tauri::{AppHandle, Manager, State, command};
 use tauri_plugin_http::reqwest;
 use tokio::sync::RwLock;
 
 use crate::TauriError;
-use crate::state::CallAudioState;
+use crate::state::{CallAudioState, LiveKitRoomManager};
 
 #[command(rename_all = "snake_case")]
 pub(crate) async fn join_matrixrtc_call(
     matrix_client: State<'_, RwLock<Client>>,
     audio_state: State<'_, CallAudioState>,
+    livekit_room_manager: State<'_, LiveKitRoomManager>,
     room_id: String,
 ) -> Result<serde_json::Value, TauriError> {
     log::info!("Started joining call");
@@ -140,137 +144,18 @@ pub(crate) async fn join_matrixrtc_call(
         )
         .await?;
 
-        let key_provider = KeyProvider::new(KeyProviderOptions::default());
-        // key_provider.set_shared_key(raw_key.into(), 0);
-        //
-        let kp_clone = key_provider.clone();
-        client.add_event_handler(
-            move |ev: matrix_sdk::ruma::events::ToDeviceEvent<RtcEncryptionKeyEventContent>| {
-                let kp_clone = kp_clone.clone();
+        let key_provider = KeyProvider::new(KeyProviderOptions {
+            // shared_key: false,  // MatrixRTC uses unique keys per participant
+            key_ring_size: 128, // Prevents key index overflows (e.g., above index 16)
+            key_derivation_algorithm: livekit::e2ee::key_provider::KeyDerivationAlgorithm::HKDF, // Critical for Matrix matching
+            ..Default::default()
+        });
 
-                async move {
-                    let base64_key = &ev.content.media_key.key;
-
-                    // CRITICAL FIX: LiveKit needs the key mapped to the sender's LiveKit Identity.
-                    // In MSC4143, the LiveKit Identity matches the `member_id` field in the payload.
-                    // Do NOT use `ev.sender` here!
-                    let livekit_identity = ParticipantIdentity::from(ev.content.member_id.clone());
-
-                    if let Ok(decoded_key) = base64::Engine::decode(
-                        &base64::engine::general_purpose::STANDARD,
-                        base64_key,
-                    ) {
-                        log::info!(
-                            "Registering E2EE key for LiveKit participant: {}",
-                            livekit_identity
-                        );
-
-                        // Assign the key specifically to their identity
-                        kp_clone.set_key(
-                            &livekit_identity,
-                            ev.content.media_key.index as i32,
-                            decoded_key,
-                        );
-                    }
-                }
-            },
-        );
-        //
         e2ee_options = Some(E2eeOptions {
             encryption_type: EncryptionType::Gcm,
             key_provider,
         });
     }
-    // // Verify room encryption status asynchronously
-    //     log::info!("Matrix room is encrypted. Generating local ephemeral call key...");
-
-    //     // 1. FIX: Explicitly use the getrandom crate via global namespace path
-    //     let mut raw_key = [0u8; 32];
-    //     getrandom::fill(&mut raw_key)
-    //         .map_err(|e| format!("Failed to generate cryptographic key: {}", e))?;
-
-    // let local_call_key =
-    //     base64::Engine::encode(&base64::engine::general_purpose::STANDARD, raw_key);
-
-    //     let active_members = room
-    //         .members(RoomMemberships::JOIN)
-    //         .await
-    //         .unwrap_or_default();
-    //     let mut to_device_messages = BTreeMap::new();
-
-    //     for member in active_members {
-    //         if Some(member.user_id()) != client.user_id() {
-    //             let mut device_map = BTreeMap::new();
-
-    //             let payload = serde_json::json!({
-    //                 "room_id": room_id,
-    //                 "key": local_call_key
-    //             });
-
-    //             // FIX: Serialize to Raw, then use .cast() to match AnyToDeviceEventContent
-    //             let raw_payload = Raw::new(&payload)
-    //                 .map_err(|e| format!("Failed to serialize event payload: {}", e))?
-    //                 .cast::<AnyToDeviceEventContent>();
-
-    //             device_map.insert(DeviceIdOrAllDevices::AllDevices, raw_payload);
-    //             to_device_messages.insert(member.user_id().to_owned(), device_map);
-    //         }
-    //     }
-
-    //     // 3. FIX: Bypass private send_to_device method using the public client.send()
-    //     if !to_device_messages.is_empty() {
-    //         log::info!("Broadcasting ephemeral key to active room members...");
-
-    //         let event_type = ToDeviceEventType::from("org.matrix.rtc.call_key");
-    //         let txn_id = matrix_sdk_ui::timeline::TimelineEventItemId::new();
-
-    //         // Construct the official Ruma request payload
-    //         let request = ToDeviceRequest::new(event_type, txn_id, to_device_messages);
-
-    //         // Dispatch via the public client request runner
-    //         client.send(request, None).await.map_err(|e| {
-    //             format!("Failed to distribute ephemeral keys via client.send: {}", e)
-    //         })?;
-    //     }
-    // }
-
-    let call_content = CallMemberEventContent::new(
-        Application::Call(CallApplicationContent::new(
-            "".to_string(),
-            matrix_sdk::ruma::events::call::member::CallScope::Room,
-        )),
-        client.device_id().ok_or("No DeviceId")?.into(),
-        matrix_sdk::ruma::events::call::member::ActiveFocus::Livekit(ActiveLivekitFocus::new()),
-        vec![Focus::Livekit(LivekitFocus::new(
-            room_id.clone(),
-            default_livekit_focus_info.service_url.to_string(),
-        ))],
-        None,
-        None,
-    );
-
-    let response = room
-        .send_state_event_for_key(
-            &CallMemberStateKey::new(
-                client.user_id().ok_or("No UserId")?.into(),
-                Some(client.device_id().ok_or("No DeviceId")?.into()),
-                true,
-            ),
-            call_content,
-        )
-        .await?;
-
-    let mut notification_event = RtcNotificationEventContent::new(
-        MilliSecondsSinceUnixEpoch::now(),
-        Duration::from_mins(1),
-        matrix_sdk::ruma::events::rtc::notification::NotificationType::Ring,
-    );
-    notification_event.mentions = Some(Mentions::with_room_mention());
-    notification_event.call_intent =
-        Some(matrix_sdk::ruma::events::rtc::notification::CallIntent::Audio);
-    notification_event.relates_to = Some(Reference::new(response.event_id));
-
-    room.send(notification_event).await?;
 
     let host = cpal::default_host();
     let out_device = host
@@ -422,6 +307,7 @@ pub(crate) async fn join_matrixrtc_call(
         let my_identity = livekit_room.local_participant().identity();
 
         let e2ee_manager = livekit_room.e2ee_manager();
+        e2ee_manager.set_enabled(true);
         if let Some(kp) = e2ee_manager.key_provider() {
             log::info!("Setting local encryption key for identity: {}", my_identity);
             // 0 is the key_index. It must match the index you sent over Matrix.
@@ -440,6 +326,11 @@ pub(crate) async fn join_matrixrtc_call(
         )
         .await
         .map_err(|e| format!("Failed to publish mic: {}", e))?;
+
+    livekit_room_manager
+        .lock()
+        .await
+        .insert(room_id.clone(), livekit_room);
 
     tokio::spawn(async move {
         while let Some(ev) = event_receiver.recv().await {
@@ -469,6 +360,7 @@ pub(crate) async fn join_matrixrtc_call(
                         let Ok(mut prod) = prod_clone.lock() else {
                             continue;
                         };
+                        // debug!("{:?}", frame);
 
                         if frame.num_channels == 1 && channels == 2 {
                             for &s in frame.data.as_ref() {
@@ -491,6 +383,44 @@ pub(crate) async fn join_matrixrtc_call(
             }
         }
     });
+
+    let call_content = CallMemberEventContent::new(
+        Application::Call(CallApplicationContent::new(
+            "".to_string(),
+            matrix_sdk::ruma::events::call::member::CallScope::Room,
+        )),
+        client.device_id().ok_or("No DeviceId")?.into(),
+        matrix_sdk::ruma::events::call::member::ActiveFocus::Livekit(ActiveLivekitFocus::new()),
+        vec![Focus::Livekit(LivekitFocus::new(
+            room_id.clone(),
+            default_livekit_focus_info.service_url.to_string(),
+        ))],
+        None,
+        None,
+    );
+
+    let response = room
+        .send_state_event_for_key(
+            &CallMemberStateKey::new(
+                client.user_id().ok_or("No UserId")?.into(),
+                Some(client.device_id().ok_or("No DeviceId")?.into()),
+                true,
+            ),
+            call_content,
+        )
+        .await?;
+
+    let mut notification_event = RtcNotificationEventContent::new(
+        MilliSecondsSinceUnixEpoch::now(),
+        Duration::from_mins(1),
+        matrix_sdk::ruma::events::rtc::notification::NotificationType::Ring,
+    );
+    notification_event.mentions = Some(Mentions::with_room_mention());
+    notification_event.call_intent =
+        Some(matrix_sdk::ruma::events::rtc::notification::CallIntent::Audio);
+    notification_event.relates_to = Some(Reference::new(response.event_id));
+
+    room.send(notification_event).await?;
 
     Ok(response_json)
 }
@@ -611,11 +541,7 @@ async fn send_encryption_keys(
         );
     }
 
-    let request = Request::new_raw(
-        "org.matrix.msc4143.rtc.encryption_key".into(),
-        txn_id,
-        messages,
-    );
+    let request = Request::new_raw("io.element.call.encryption_keys".into(), txn_id, messages);
 
     client
         .send(request)
@@ -624,7 +550,7 @@ async fn send_encryption_keys(
 
     log::info!("Successfully distributed E2EE keys to all call participants.");
 
-    prev_index += 1;
+    // prev_index += 1;
     Ok(())
 }
 
@@ -660,4 +586,126 @@ pub async fn cleanup_ghost_calls(client: &matrix_sdk::Client) {
                 .await;
         }
     }
+}
+
+/// currently only handles call key updates
+pub async fn handle_to_device_messages(
+    events: Vec<ProcessedToDeviceEvent>,
+    app_handle: AppHandle,
+) -> Result<(), TauriError> {
+    debug!("Handling to-device events");
+    let key_updates = events
+        .into_iter()
+        .filter_map(|e| {
+            if let ProcessedToDeviceEvent::Decrypted { raw, .. } = e {
+                if raw.get_field::<String>("type").ok()?.as_deref()
+                    == Some("io.element.call.encryption_keys")
+                {
+                    let sender = raw.get_field("sender").unwrap().unwrap();
+                    let json_value: serde_json::Value = raw.deserialize_as().ok()?;
+                    let content_json = json_value.get("content")?.clone();
+                    let content: EncryptionKeysEventContent =
+                        serde_json::from_value(content_json).ok()?;
+                    Some((sender, content))
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<(String, EncryptionKeysEventContent)>>();
+
+    let state = app_handle
+        .try_state::<LiveKitRoomManager>()
+        .ok_or("Couldn't aquire LiveKitRoomManager from State")?;
+    let guard = state.lock().await;
+
+    for update_event in key_updates {
+        let room_id = update_event.1.room_id.clone();
+
+        let livekit_room = match guard.get(&room_id).ok_or(
+            "Received LiveKit key update but you are not taking part in the coresponding call",
+        ) {
+            Ok(room) => room,
+            Err(e) => {
+                log::info!("{e}");
+                continue;
+            }
+        };
+
+        debug!("{:?}", livekit_room.remote_participants());
+        debug!("{:?}", update_event);
+
+        let e2ee_manager = livekit_room.e2ee_manager();
+
+        let key_provider = match e2ee_manager.key_provider().ok_or("No key provider found") {
+            Ok(k) => k,
+            Err(e) => {
+                log::info!("{e}");
+                continue;
+            }
+        };
+
+        let livekit_id = format!(
+            "{}:{}",
+            update_event.0, update_event.1.member.claimed_device_id
+        );
+
+        key_provider.set_key(
+            &From::from(livekit_id.clone()),
+            update_event.1.keys.index as i32,
+            general_purpose::STANDARD
+                .decode(update_event.1.keys.key)
+                .unwrap(),
+        );
+        log::info!("Updated encryption key for {}", livekit_id);
+    }
+
+    debug!("Finished handling to-device events");
+    Ok(())
+}
+use std::collections::HashMap;
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct EncryptionKeysEventContent {
+    pub keys: EncryptionKeysInfo,
+    pub member: CallMemberInfo,
+    pub room_id: String,
+    pub sent_ts: u64,
+    pub session: CallSessionInfo,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct EncryptionKeysInfo {
+    pub index: u32,
+    pub key: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct CallMemberInfo {
+    pub claimed_device_id: String,
+    pub id: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct CallSessionInfo {
+    pub application: String,
+    pub call_id: String,
+    pub scope: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SenderDeviceKeys {
+    pub algorithms: Vec<String>,
+    pub device_id: String,
+    pub keys: HashMap<String, String>,
+    pub signatures: HashMap<String, HashMap<String, String>>,
+    pub unsigned: Option<UnsignedData>,
+    pub user_id: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct UnsignedData {
+    pub device_display_name: Option<String>,
 }
