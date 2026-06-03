@@ -215,7 +215,7 @@ pub fn ImageLightbox() -> impl IntoView {
                                 view! {
                                     <img
                                         src=url
-                                        class="max-w-[90vw] cursor-zoom-in max-h-[calc(90vh-3rem)] object-contain shadow-[0_0_15px_3px_rgba(255,255,255,0.5)] transition-transform duration-200"
+                                        class="max-w-[90vw] cursor-zoom-in max-h-[calc(90vh-3rem)] object-contain shadow-[0_0_15px_3px_rgba(255,255,255,0.3)] transition-transform duration-200"
                                         style=move || {
                                             if zoomed.get() {
                                                 "transform: scale(2); cursor: zoom-out"
