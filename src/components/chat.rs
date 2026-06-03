@@ -26,18 +26,21 @@ use phosphor_leptos::{
 };
 
 use chrono::{DateTime, Local, TimeZone};
-use leptos::{ev, html::Div, prelude::*, task::spawn_local};
+use leptos::{ev, html::Div, prelude::*, server_fn::codec::FromReq, task::spawn_local};
 use leptos_use::{UseIntersectionObserverReturn, use_event_listener, use_intersection_observer};
 use shared::{
     api::{FileMetadata, UiAttachmentSource},
     get_color,
     sidebar::RoomKind,
     timeline::{
-        DetailState, EventContent, MessageContent, ReactionInfo, ReplyInfo, RichTextSpan, SystemMessage, UiCallIntent, UiMembershipChange, UiMessageType, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind
+        DetailState, EventContent, MessageContent, ReactionInfo, ReplyInfo, RichTextSpan,
+        SystemMessage, UiCallIntent, UiMembershipChange, UiMessageType, UiTimelineDiff,
+        UiTimelineItem, UiTimelineItemKind,
     },
     user_profile::PresenceStatus,
 };
 use std::collections::HashMap;
+use wasm_bindgen_futures::JsFuture;
 use web_sys::IntersectionObserverEntry;
 
 fn format_date(date: DateTime<Local>) -> String {
@@ -605,7 +608,8 @@ fn render_system_message(
             <div class="flex flex-row gap-1">
                 {user_div(&sender_id_str)} <span>"joined a call"</span>
             </div>
-        }.into_any(),
+        }
+        .into_any(),
         SystemMessage::PolicyRuleRoom => view! {
             <div class="flex flex-row gap-1">
                 {user_div(&sender_id_str)} <span>"changed the room's policy"</span>
@@ -643,14 +647,18 @@ fn render_system_message(
         }
         .into_any(),
         SystemMessage::RoomCanonicalAlias { alias } => {
-            let text = format!("changed the room alias{}", if let Some(alias) = alias {
-                format!(" to {alias}")
-            } else {
-                "".to_string()
-            });
+            let text = format!(
+                "changed the room alias{}",
+                if let Some(alias) = alias {
+                    format!(" to {alias}")
+                } else {
+                    "".to_string()
+                }
+            );
 
             view! { <div class="flex flex-row gap-1">{user_div(&sender_id_str)} <span>{text}</span></div> }
-        .into_any()},
+        .into_any()
+        }
         SystemMessage::RoomCreate {
             additional_creators,
             room_type,
@@ -746,14 +754,19 @@ fn render_system_message(
                     )}
                 </span>
             </div>
-        }.into_any(),
+        }
+        .into_any(),
         SystemMessage::RoomTopic { topic } => view! {
             <div class="flex flex-row gap-1">
                 {user_div(&sender_id_str)}
                 <span>{format!("changed the room topic to: {topic}")}</span>
             </div>
-        }.into_any(),
-        SystemMessage::RtcNotification { call_intent, declined_by } => {
+        }
+        .into_any(),
+        SystemMessage::RtcNotification {
+            call_intent,
+            declined_by,
+        } => {
             let intent_string = if let Some(intent) = call_intent {
                 match intent {
                     UiCallIntent::Audio => "started an audio call",
@@ -775,9 +788,14 @@ fn render_system_message(
                     {user_div(&sender_id_str)}
                     <span>{format!("started {intent_string}{declined_string}")}</span>
                 </div>
-            }.into_any()
+            }
+            .into_any()
         }
-        SystemMessage::SpaceChild { via, order, suggested } => {
+        SystemMessage::SpaceChild {
+            via,
+            order,
+            suggested,
+        } => {
             let via_string = if !via.is_empty() {
                 format!(" via {}", via.join(", "))
             } else {
@@ -829,34 +847,38 @@ fn render_system_message(
                         )}
                     </span>
                 </div>
-            }.into_any()
+            }
+            .into_any()
         }
         SystemMessage::Unknown => view! {
             <div class="flex flex-row gap-1">
                 {user_div(&sender_id_str)} <span>"performed an unknown system action"</span>
             </div>
-        }.into_any(),
+        }
+        .into_any(),
         SystemMessage::BeaconInfo => view! {
             <div class="flex flex-row gap-1">
                 {user_div(&sender_id_str)} <span>"shared a live location"</span>
             </div>
-        }.into_any(),
+        }
+        .into_any(),
         SystemMessage::MemberHints => view! {
             <div class="flex flex-row gap-1">
                 {user_div(&sender_id_str)} <span>"updated their member hints"</span>
             </div>
-        }.into_any(),
+        }
+        .into_any(),
         SystemMessage::RoomImagePack => view! {
             <div class="flex flex-row gap-1">
                 {user_div(&sender_id_str)} <span>"updated the room's image pack"</span>
             </div>
-        }.into_any(),
+        }
+        .into_any(),
     };
 
     view! { <div class="flex text-muted items-center justify-center my-2">{content.into_any()}</div> }
     .into_any()
 }
-
 
 fn render_timeline_event(
     store: MemberStore,
@@ -1826,6 +1848,107 @@ impl Attachment {
     }
 }
 
+fn handle_paste(
+    ev: web_sys::ClipboardEvent,
+    attachments: RwSignal<Vec<Attachment>>,
+    state: AppState,
+) {
+    use wasm_bindgen::JsCast;
+
+    let Some(dt) = ev.clipboard_data() else { return };
+
+    // Non-WebKit path: items are populated (e.g. Chromium-based webviews, Firefox)
+    let items = dt.items();
+    if items.length() > 0 {
+        let mut file_count = 0;
+        for i in 0..items.length() {
+            let Some(item) = items.get(i) else { continue };
+            if item.kind() != "file" { continue }
+            let Ok(Some(file)) = item.get_as_file() else { continue };
+            file_count += 1;
+            let name = file.name();
+            let mime = file.type_();
+            let size = file.size() as u64;
+            let preview_url = web_sys::Url::create_object_url_with_blob(&file).ok();
+            spawn_local(async move {
+                let Ok(ab) = JsFuture::from(file.array_buffer()).await else { return };
+                let bytes = js_sys::Uint8Array::new(&ab).to_vec();
+                let att = Attachment {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    file_name: name,
+                    mime_type: mime,
+                    size,
+                    preview_url,
+                    source: UiAttachmentSource::RawBytes(bytes),
+                };
+                attachments.update(|v| v.push(att));
+                if let Some(room_id) = state.active_room_id() {
+                    state.drafts.update(|d| {
+                        d.entry(room_id).or_default().attachments = attachments.get_untracked();
+                    });
+                }
+            });
+        }
+        if file_count > 0 {
+            ev.prevent_default();
+        }
+        return;
+    }
+
+    // WebKitGTK path: items is always empty.
+    // If there's text in the clipboard, let the browser's default paste handle it.
+    let text = dt.get_data("text/plain").unwrap_or_default();
+    if !text.is_empty() {
+        return;
+    }
+
+    // No text — likely an image. Prevent the inline paste and read via the async Clipboard API.
+    ev.prevent_default();
+
+    spawn_local(async move {
+        let Some(window) = web_sys::window() else { return };
+        let clipboard = window.navigator().clipboard();
+        let Ok(val) = JsFuture::from(clipboard.read()).await else {
+            log::warn!("navigator.clipboard.read() failed");
+            return;
+        };
+
+        let clip_items = js_sys::Array::from(&val);
+        for i in 0..clip_items.length() {
+            let item: web_sys::ClipboardItem = clip_items.get(i).unchecked_into();
+            let types = item.types();
+            for j in 0..types.length() {
+                let mime = types.get(j).as_string().unwrap_or_default();
+                if !mime.starts_with("image/") { continue }
+
+                let Ok(blob_val) = JsFuture::from(item.get_type(&mime)).await else { continue };
+                let blob: web_sys::Blob = blob_val.unchecked_into();
+                let preview_url = web_sys::Url::create_object_url_with_blob(&blob).ok();
+
+                let Ok(ab) = JsFuture::from(blob.array_buffer()).await else { continue };
+                let bytes = js_sys::Uint8Array::new(&ab).to_vec();
+
+                let ext = mime.split('/').nth(1).unwrap_or("png");
+                let att = Attachment {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    file_name: format!("file.{ext}"),
+                    mime_type: mime,
+                    size: bytes.len() as u64,
+                    preview_url,
+                    source: UiAttachmentSource::RawBytes(bytes),
+                };
+                attachments.update(|v| v.push(att));
+                if let Some(room_id) = state.active_room_id() {
+                    state.drafts.update(|d| {
+                        d.entry(room_id).or_default().attachments = attachments.get_untracked();
+                    });
+                }
+                break;
+            }
+        }
+    });
+}
+
 #[component]
 fn ChatInput() -> impl IntoView {
     let state: AppState = expect_context();
@@ -2000,7 +2123,8 @@ fn ChatInput() -> impl IntoView {
         });
     };
 
-    let is_editing = Memo::new(move |_| matches!(input_info.get(), Some(ChatInputInfo::Editing { .. })));
+    let is_editing =
+        Memo::new(move |_| matches!(input_info.get(), Some(ChatInputInfo::Editing { .. })));
 
     view! {
         <div class="p-2 pt-0 w-full relative">
@@ -2036,6 +2160,7 @@ fn ChatInput() -> impl IntoView {
                         contenteditable="true"
                         class="text-(--bright-text-color) outline-none w-full whitespace-pre-wrap break-words py-3 max-h-100 overflow-y-auto"
                         on:input=move |_| handle_input(input_ref, is_empty, state, attachments)
+                        on:paste=move |ev| handle_paste(ev, attachments, state)
                         on:keydown=move |ev| handle_keydown(
                             ev,
                             input_ref,
