@@ -15,9 +15,7 @@ use crate::{
     },
     matrix_api::{
         keyring::{save_session, StoredSession},
-        matrixrtc::cleanup_ghost_calls,
         matrixrtc::{cleanup_ghost_calls, handle_to_device_messages},
-        profile::client_user_profile_event_handle,
         profile::{client_user_profile_event_handle, send_user_to_frontend, ProfileDebounce},
     },
     TauriError,
