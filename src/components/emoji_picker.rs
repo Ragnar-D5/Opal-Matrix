@@ -3,21 +3,11 @@ use std::collections::HashSet;
 use std::rc::Rc;
 
 use leptos::prelude::*;
-use phosphor_leptos::AIRPLANE;
-use phosphor_leptos::CARET_DOWN;
-use phosphor_leptos::CUBE;
-use phosphor_leptos::FLAG;
-use phosphor_leptos::GAME_CONTROLLER;
-use phosphor_leptos::HAMBURGER;
-use phosphor_leptos::HEART;
-use phosphor_leptos::Icon;
-use phosphor_leptos::IconWeight;
-use phosphor_leptos::IconWeightData;
-use phosphor_leptos::PERSON;
-use phosphor_leptos::PLANT;
-use phosphor_leptos::SMILEY;
-use wasm_bindgen::JsCast;
-use wasm_bindgen::JsValue;
+use phosphor_leptos::{
+    Icon, IconWeight, IconWeightData, AIRPLANE, CARET_DOWN, CUBE, FLAG, GAME_CONTROLLER, HAMBURGER,
+    HEART, PERSON, PLANT, SMILEY, SMILEY_SAD,
+};
+use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
 use web_sys::Element;
 
@@ -144,15 +134,17 @@ pub fn EmojiPickerPortal() -> impl IntoView {
         let vw = win.inner_width().unwrap().as_f64().unwrap_or(1920.0);
         let vh = win.inner_height().unwrap().as_f64().unwrap_or(1080.0);
 
-        let max_dim: f64 = 320.0; // 20rem (320px) for max-h-80 / max-w-80
+        let picker_dim: f64 = 350.0;
         let offset = 21.0;
 
-        let actual_w = max_dim.min(vw - offset * 2.0);
+        // Clamp the dimensions so it doesn't break on extreme mobile screens
+        let actual_w = picker_dim.min(vw - offset * 2.0);
+        let actual_h = picker_dim.min(vh - offset * 2.0);
 
         // --- Vertical Logic ---
         let space_below = vh - bottom;
         let space_above = top;
-        let place_below = space_below >= max_dim + offset || space_below > space_above;
+        let place_below = space_below >= actual_h + offset || space_below > space_above;
 
         let y_style = if place_below {
             format!("top:{}px;", bottom + offset)
@@ -161,23 +153,20 @@ pub fn EmojiPickerPortal() -> impl IntoView {
         };
 
         // --- Horizontal Logic ---
-        // Calculate where the right and left edges *should* be
         let target_right = right + offset;
         let target_left = left - offset;
 
         let x_style = if target_right <= vw - offset && target_right - actual_w >= offset {
-            // Default: Right edge of picker is `offset` pixels to the right of anchor's right edge
             format!("right:{}px;", vw - target_right)
         } else if target_left >= offset && target_left + actual_w <= vw - offset {
-            // Fallback: Left edge of picker is `offset` pixels to the left of anchor's left edge
             format!("left:{}px;", target_left)
         } else {
-            // Extreme Fallback: Clamp securely inside the viewport, favoring the right side
             let clamped_right = target_right.min(vw - offset).max(actual_w + offset);
             format!("right:{}px;", vw - clamped_right)
         };
 
-        format!("{x_style}{y_style}width:{actual_w}px;")
+        // Apply explicit width and height
+        format!("{x_style}{y_style}width:{actual_w}px;height:{actual_h}px;")
     };
 
     view! {
@@ -187,7 +176,7 @@ pub fn EmojiPickerPortal() -> impl IntoView {
 
             // picker panel
             <div
-                class="fixed z-[1000] flex flex-col bg-(--ui-floating-hover-bg) backdrop-blur-2xl border border-(--tile-border-color) rounded-(--floating-border-radius) shadow-xl overflow-hidden max-h-80 max-w-80 w-full"
+                class="fixed z-[1000] flex flex-col bg-(--ui-floating-hover-bg) backdrop-blur-2xl border border-(--tile-border-color) rounded-(--floating-border-radius) shadow-xl overflow-hidden"
                 style=style
             >
                 // search bar
@@ -211,42 +200,39 @@ pub fn EmojiPickerPortal() -> impl IntoView {
                 // main layout for sidebar + continuous scroll grid
                 <div class="flex flex-row overflow-hidden flex-1">
 
-                    // sidebar — hidden while searching
-                    <Show when=move || search.get().is_empty()>
-                        <div
-                            class="flex flex-col px-1 pt-1 pb-2 gap-1 border-r border-(--tile-border-color) flex-shrink-0 overflow-y-auto"
-                            style="scrollbar-width:none;"
-                        >
-                            {ALL_GROUPS
-                                .iter()
-                                .map(|&group| {
-                                    view! {
-                                        <button
-                                            class="p-1.5 rounded text-base cursor-pointer flex-shrink-0 transition-colors text-(--muted-text-color) hover:text-(--bright-text-color)"
-                                            class=(
-                                                "bg-(--ui-hover-bg)",
-                                                move || active_group.get() == group,
-                                            )
-                                            title=format!("{group:?}")
-                                            on:click=move |_| {
-                                                active_group.set(group);
-                                                // Locate the section ID and scroll it into view
-                                                if let Some(window) = web_sys::window()
-                                                    && let Some(document) = window.document() {
-                                                        let id = format!("emoji-group-{group:?}");
-                                                        if let Some(el) = document.get_element_by_id(&id) {
-                                                            el.scroll_into_view();
-                                                        }
-                                                    }
+                    <div
+                        class="flex flex-col px-1 pt-1 pb-2 gap-1 border-r border-(--tile-border-color) flex-shrink-0 overflow-y-auto"
+                        style="scrollbar-width:none;"
+                    >
+                        {ALL_GROUPS
+                            .iter()
+                            .map(|&group| {
+                                view! {
+                                    <button
+                                        class="p-1.5 rounded text-base cursor-pointer flex-shrink-0 transition-colors text-(--muted-text-color) hover:text-(--bright-text-color)"
+                                        class=(
+                                            "bg-(--ui-hover-bg)",
+                                            move || active_group.get() == group,
+                                        )
+                                        title=format!("{group:?}")
+                                        on:click=move |_| {
+                                            active_group.set(group);
+                                            if let Some(window) = web_sys::window()
+                                                && let Some(document) = window.document()
+                                            {
+                                                let id = format!("emoji-group-{group:?}");
+                                                if let Some(el) = document.get_element_by_id(&id) {
+                                                    el.scroll_into_view();
+                                                }
                                             }
-                                        >
-                                            <Icon icon=group_icon(group) weight=IconWeight::Fill />
-                                        </button>
-                                    }
-                                })
-                                .collect_view()}
-                        </div>
-                    </Show>
+                                        }
+                                    >
+                                        <Icon icon=group_icon(group) weight=IconWeight::Fill />
+                                    </button>
+                                }
+                            })
+                            .collect_view()}
+                    </div>
 
                     // emoji grid
                     <div
@@ -255,89 +241,124 @@ pub fn EmojiPickerPortal() -> impl IntoView {
                     >
                         {move || {
                             let q = search.get().to_lowercase();
-
                             if q.is_empty() {
+
                                 view! {
                                     <div class="flex flex-col pb-4">
-                                        {ALL_GROUPS.iter().map(|&group| {
-                                            let group_emojis: Vec<_> = emojis::iter()
-                                                .filter(|e| e.group() == group)
-                                                .collect();
+                                        {ALL_GROUPS
+                                            .iter()
+                                            .map(|&group| {
+                                                let group_emojis: Vec<_> = emojis::iter()
+                                                    .filter(|e| e.group() == group)
+                                                    .collect();
 
-                                            view! {
-                                                <div id=format!("emoji-group-{group:?}")>
-                                                    // Sticky group header / dropdown trigger
-                                                    <button
-                                                        class="sticky top-[-8px] z-10 w-full flex items-center bg-(--ui-floating-hover-bg) backdrop-blur-md py-1 mb-1 px-1 text-sm font-semibold text-(--text-color) hover:text-(--bright-text-color) cursor-pointer transition-colors"
-                                                        on:click=move |_| {
-                                                            collapsed_groups.update(|set| {
-                                                                if set.contains(&group) {
-                                                                    set.remove(&group);
-                                                                } else {
-                                                                    set.insert(group);
-                                                                }
-                                                            });
-                                                        }
-                                                    >
-                                                        <div class="flex items-center gap-2">
-                                                            <Icon icon=group_icon(group) weight=IconWeight::Fill />
-                                                            <span>{group_name(group)}</span>
-                                                        </div>
-                                                        <div
-                                                            class="transition-transform duration-200 flex items-center justify-center"
-                                                            class=("-rotate-90", move || collapsed_groups.with(|set| set.contains(&group)))
-                                                        >
-                                                            <Icon icon=CARET_DOWN weight=IconWeight::Bold />
-                                                        </div>
-                                                    </button>
-
-                                                    // Section grid — Hides when the group is in the collapsed set
-                                                    <div
-                                                        class="grid grid-cols-8 gap-0.5"
-                                                        class=("hidden", move || collapsed_groups.with(|set| set.contains(&group)))
-                                                        class=("mb-4", move || !collapsed_groups.with(|set| set.contains(&group)))
-                                                    >
-                                                        {group_emojis.into_iter().map(|emoji| {
-                                                            let s = emoji.as_str().to_string();
-                                                            let for_click = s.clone();
-                                                            view! {
-                                                                <button
-                                                                    class="text-xl w-8 h-8 flex items-center justify-center rounded hover:bg-(--ui-hover-bg) cursor-pointer transition-colors"
-                                                                    title=emoji.name()
-                                                                    on:click=move |_| state.close(Some(&for_click))
-                                                                >
-                                                                    {s}
-                                                                </button>
+                                                view! {
+                                                    <div id=format!("emoji-group-{group:?}")>
+                                                        // Sticky group header / dropdown trigger
+                                                        <button
+                                                            class="sticky top-[-8px] z-10 w-full flex items-center bg-(--ui-floating-hover-bg) backdrop-blur-md py-1 mb-1 px-1 text-sm font-semibold text-(--text-color) hover:text-(--bright-text-color) cursor-pointer transition-colors"
+                                                            on:click=move |_| {
+                                                                collapsed_groups
+                                                                    .update(|set| {
+                                                                        if set.contains(&group) {
+                                                                            set.remove(&group);
+                                                                        } else {
+                                                                            set.insert(group);
+                                                                        }
+                                                                    });
                                                             }
-                                                        }).collect_view()}
+                                                        >
+                                                            <div class="flex items-center gap-2">
+                                                                <Icon icon=group_icon(group) weight=IconWeight::Fill />
+                                                                <span>{group_name(group)}</span>
+                                                            </div>
+                                                            <div
+                                                                class="transition-transform duration-200 flex items-center justify-center"
+                                                                class=(
+                                                                    "-rotate-90",
+                                                                    move || collapsed_groups.with(|set| set.contains(&group)),
+                                                                )
+                                                            >
+                                                                <Icon icon=CARET_DOWN weight=IconWeight::Bold />
+                                                            </div>
+                                                        </button>
+
+                                                        // Section grid — Hides when the group is in the collapsed set
+                                                        <div
+                                                            class="grid grid-cols-8 gap-0.5"
+                                                            class=(
+                                                                "hidden",
+                                                                move || collapsed_groups.with(|set| set.contains(&group)),
+                                                            )
+                                                            class=(
+                                                                "mb-4",
+                                                                move || !collapsed_groups.with(|set| set.contains(&group)),
+                                                            )
+                                                        >
+                                                            {group_emojis
+                                                                .into_iter()
+                                                                .map(|emoji| {
+                                                                    let s = emoji.as_str().to_string();
+                                                                    let for_click = s.clone();
+                                                                    view! {
+                                                                        <button
+                                                                            class="text-xl w-8 h-8 flex items-center justify-center rounded hover:bg-(--ui-hover-bg) cursor-pointer transition-colors"
+                                                                            title=emoji.name()
+                                                                            on:click=move |_| state.close(Some(&for_click))
+                                                                        >
+                                                                            {s}
+                                                                        </button>
+                                                                    }
+                                                                })
+                                                                .collect_view()}
+                                                        </div>
                                                     </div>
-                                                </div>
-                                            }
-                                        }).collect_view()}
+                                                }
+                                            })
+                                            .collect_view()}
                                     </div>
-                                }.into_any()
+                                }
+                                    .into_any()
                             } else {
                                 let emojis: Vec<&'static emojis::Emoji> = emojis::iter()
                                     .filter(|e| e.name().to_lowercase().contains(q.as_str()))
                                     .collect();
-
-                                view! {
-                                    <div class="grid grid-cols-8 gap-0.5 pb-2">
-                                        {emojis.into_iter().map(|emoji| {
-                                            let s = emoji.as_str().to_string();
-                                            let for_click = s.clone();
-                                            view! {
-                                                <button
-                                                    class="text-xl w-8 h-8 flex items-center justify-center rounded hover:bg-(--ui-hover-bg) cursor-pointer"
-                                                    title=emoji.name()
-                                                    on:click=move |_| state.close(Some(&for_click))
-                                                >
-                                                    {s}
-                                                </button>
-                                            }
-                                        }).collect_view()}
-                                    </div>
-                                }.into_any()
+                                if !emojis.is_empty() {
+                                    view! {
+                                        <div class="grid grid-cols-8 gap-0.5 pb-2">
+                                            {emojis
+                                                .into_iter()
+                                                .map(|emoji| {
+                                                    let s = emoji.as_str().to_string();
+                                                    let for_click = s.clone();
+                                                    view! {
+                                                        <button
+                                                            class="text-xl w-8 h-8 flex items-center justify-center rounded hover:bg-(--ui-hover-bg) cursor-pointer"
+                                                            title=emoji.name()
+                                                            on:click=move |_| state.close(Some(&for_click))
+                                                        >
+                                                            {s}
+                                                        </button>
+                                                    }
+                                                })
+                                                .collect_view()}
+                                        </div>
+                                    }
+                                        .into_any()
+                                } else {
+                                    view! {
+                                        <div class="w-full h-full flex flex-col items-center justify-center text-(--muted-text-color)">
+                                            <Icon
+                                                icon=SMILEY_SAD
+                                                size="100px"
+                                                weight=IconWeight::Thin
+                                            />
+                                            <span>"No emojis match your search"</span>
+                                        </div>
+                                    }
+                                        .into_any()
+                                }
+                                    .into_any()
                             }
                         }}
                     </div>
