@@ -481,8 +481,8 @@ pub fn run() {
                         }),
                     ])
                     .level_for("reqwest", log::LevelFilter::Off)
-                    // .level_for("libwebrtc", log::LevelFilter::Off)
-                    // .level_for("livekit", log::LevelFilter::Off)
+                    .level_for("libwebrtc", log::LevelFilter::Info)
+                    .level_for("livekit", log::LevelFilter::Info)
                     .level_for("rustls_platform_verifier", log::LevelFilter::Off)
                     .level_for("html5ever", log::LevelFilter::Off)
                     .level_for("matrix_sdk", log::LevelFilter::Debug)
