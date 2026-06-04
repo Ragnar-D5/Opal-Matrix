@@ -26,7 +26,7 @@ use crate::{
         previews::render_link,
         text::{richt_text_spans_to_html, RichTextExt},
         user_profile::{
-            render_profile_icon, render_profile_name, UserProfileExt, UserProfileMaybeExt,
+            render_profile_icon, render_profile_name, MemberProfileExt, MemerProfileMaybeExt,
         },
         TextCircle, TextCircleProps,
     },

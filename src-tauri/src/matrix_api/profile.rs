@@ -18,7 +18,6 @@ pub async fn send_user_to_frontend(handle: &AppHandle, client: &Client) -> Resul
     let user_id = client.user_id().ok_or("Not logged in")?.to_string();
     let display_name = client.account().get_display_name().await?;
     let update = UserProfile {
-        room_id: "".to_string(),
         display_name,
         user_id,
     };

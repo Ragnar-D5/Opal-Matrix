@@ -8,7 +8,7 @@ use crate::{
             menu::{MenuType, SelectionMenu},
         },
         presence::PresenceBadge,
-        user_profile::{UserProfileExt, UserProfileMaybeExt},
+        user_profile::{MemberProfileExt, MemerProfileMaybeExt},
     },
     hooks::use_tauri_event,
     state::{AppState, MemberProfileHandle, MemberStore, RoomHeader},
@@ -322,7 +322,9 @@ fn ChatHeader(
                                 view! {
                                     {move || {
                                         if let Some(profile) = profile_sig.get() {
-                                            let presence = clone.clone().get_presence(&profile.user_id);
+                                            let presence = clone
+                                                .clone()
+                                                .get_presence(profile.user_id());
                                             view! {
                                                 <PresenceBadge presence=presence size=14.0>
                                                     {profile.render_icon(30)}
@@ -1102,7 +1104,7 @@ fn ChatInfo(header: Memo<RoomHeader>) -> impl IntoView {
                         <div class="absolute top-[73px] left-4">
                             {move || {
                                 if let Some(profile) = profile_sig_icon.get() {
-                                    let presence = store_clone.get_presence(&profile.user_id);
+                                    let presence = store_clone.get_presence(profile.user_id());
                                     view! {
                                         <PresenceBadge presence=presence size=25.0>
                                             {profile.render_icon(icon_size as usize)}
@@ -1161,12 +1163,12 @@ fn MemberList() -> impl IntoView {
             };
 
             members.iter().for_each(|member| {
-                let user_id = &member.user_id;
+                let user_id = member.user_id();
                 let presence = store.get_presence(user_id);
 
                 let el = (
                     MemberProfileHandle {
-                        user_id: user_id.clone(),
+                        user_id: user_id.to_string(),
                         profile: store.get_profile(&room_id, user_id),
                     },
                     presence.clone(),

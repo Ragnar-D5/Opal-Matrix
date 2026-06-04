@@ -1,6 +1,10 @@
 use colorsys::Hsl;
 use leptos::prelude::*;
-use shared::{get_color, timeline::RichTextSpan, user_profile::UserProfile};
+use shared::{
+    get_color,
+    timeline::RichTextSpan,
+    user_profile::{MemberProfile, UserProfile},
+};
 
 use super::TextCircle;
 
@@ -49,7 +53,7 @@ pub fn render_profile_name(name: String, color: Hsl, font_size: usize) -> impl I
     }
 }
 
-pub trait UserProfileExt {
+pub trait MemberProfileExt {
     fn render_icon(self, size: usize) -> impl IntoView;
     fn render_name(self, font_size: usize) -> impl IntoView;
     fn to_span(&self) -> RichTextSpan;
@@ -61,14 +65,14 @@ pub trait UserProfileExt {
     fn get_color(&self) -> Hsl;
 }
 
-impl UserProfileExt for UserProfile {
+impl MemberProfileExt for MemberProfile {
     fn to_span(&self) -> RichTextSpan {
         if self.is_room() {
             return RichTextSpan::RoomMention;
         }
 
         RichTextSpan::UserMention {
-            user_id: self.user_id.clone(),
+            user_id: self.profile.user_id.clone(),
             display_name: self.get_name(),
         }
     }
@@ -76,17 +80,19 @@ impl UserProfileExt for UserProfile {
     fn room(room_id: String) -> Self {
         Self {
             room_id: room_id.clone(),
-            user_id: room_id,
-            display_name: Some("room".into()),
+            profile: UserProfile {
+                user_id: room_id,
+                display_name: Some("room".into()),
+            },
         }
     }
 
     fn is_room(&self) -> bool {
-        self.user_id.starts_with("!")
+        self.profile.user_id.starts_with("!")
     }
 
     fn render_icon(self, size: usize) -> impl IntoView {
-        let url = format!("mxc://user/{}/room/{}", self.user_id, self.room_id);
+        let url = format!("mxc://user/{}/room/{}", self.profile.user_id, self.room_id);
         let name = self.get_name();
         let size_str = format!("{}px", size);
 
@@ -127,17 +133,17 @@ impl UserProfileExt for UserProfile {
             return Hsl::new(0.0, 0.0, 70.0, None);
         }
 
-        get_color(&self.user_id)
+        get_color(&self.profile.user_id)
     }
 }
 
-pub trait UserProfileMaybeExt {
+pub trait MemerProfileMaybeExt {
     fn render_icon(self, size: usize) -> impl IntoView;
     fn render_name(self, font_size: usize) -> impl IntoView;
     fn get_color(&self) -> Hsl;
 }
 
-impl UserProfileMaybeExt for Option<UserProfile> {
+impl MemerProfileMaybeExt for Option<MemberProfile> {
     fn render_icon(self, size: usize) -> impl IntoView {
         match self {
             Some(profile) => profile.render_icon(size).into_any(),

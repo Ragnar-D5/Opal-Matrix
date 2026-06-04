@@ -7,7 +7,7 @@ use shared::{
     account_data::{Breadcrumbs, ServerOrder},
     sidebar::{RoomKind, RoomNode, SidebarState},
     timeline::UiMediaSource,
-    user_profile::{PresenceInfo, UserProfile},
+    user_profile::{MemberProfile, PresenceInfo, UserProfile},
 };
 
 use crate::{
@@ -70,7 +70,7 @@ pub struct LighboxImage {
 #[derive(Debug, Clone, PartialEq)]
 pub struct MemberProfileHandle {
     pub user_id: String,
-    pub profile: ArcRwSignal<Option<UserProfile>>,
+    pub profile: ArcRwSignal<Option<MemberProfile>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -78,7 +78,7 @@ pub enum RoomHeader {
     Space(String),
     TextChannel(String),
     VoiceChannel(String),
-    DM(ArcRwSignal<Option<UserProfile>>),
+    DM(ArcRwSignal<Option<MemberProfile>>),
     Unknown,
 }
 
@@ -324,7 +324,7 @@ fn find_node_in_nodes<'a>(nodes: &'a [RoomNode], room_id: &str) -> Option<&'a Ro
     None
 }
 
-type MemberStoreRoomEntry = HashMap<String, ArcRwSignal<Option<UserProfile>>>;
+type MemberStoreRoomEntry = HashMap<String, ArcRwSignal<Option<MemberProfile>>>;
 
 #[derive(Default, Clone)]
 pub struct MemberStore {
@@ -335,16 +335,18 @@ pub struct MemberStore {
 }
 
 impl MemberStore {
-    pub fn get_profile(&self, room_id: &str, user_id: &str) -> ArcRwSignal<Option<UserProfile>> {
+    pub fn get_profile(&self, room_id: &str, user_id: &str) -> ArcRwSignal<Option<MemberProfile>> {
         if room_id.is_empty() {
             return ArcRwSignal::new(None);
         }
 
         if room_id == user_id {
-            return ArcRwSignal::new(Some(UserProfile {
+            return ArcRwSignal::new(Some(MemberProfile {
                 room_id: room_id.to_string(),
-                display_name: Some("room".into()),
-                user_id: room_id.to_string(),
+                profile: UserProfile {
+                    display_name: Some("room".into()),
+                    user_id: room_id.to_string(),
+                }
             }));
         }
 
@@ -388,7 +390,7 @@ impl MemberStore {
 
                             for profile in members.into_iter() {
                                 let profile_signal = room_entry
-                                    .entry(profile.user_id.clone())
+                                    .entry(profile.profile.user_id.clone())
                                     .or_insert_with(|| ArcRwSignal::new(Some(profile.clone())));
 
                                 profile_signal.set(Some(profile));
@@ -405,7 +407,7 @@ impl MemberStore {
         new_signal
     }
 
-    pub fn get_presence(&self, user_id: &String) -> ArcRwSignal<PresenceInfo> {
+    pub fn get_presence(&self, user_id: &str) -> ArcRwSignal<PresenceInfo> {
         let existing_signal = self.presences.with_untracked(|p| p.get(user_id).cloned());
 
         if let Some(sig) = existing_signal {
@@ -415,7 +417,7 @@ impl MemberStore {
         let new_signal = ArcRwSignal::new(PresenceInfo::default());
 
         self.presences.update(|presences| {
-            presences.insert(user_id.clone(), new_signal.clone());
+            presences.insert(user_id.to_string(), new_signal.clone());
         });
 
         new_signal

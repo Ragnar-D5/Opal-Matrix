@@ -3,7 +3,7 @@ use shared::{
     api::{FileMetadata, LinkPreviewResponse},
     commands::Command,
     timeline::{UiMediaSource, UiTimelineItem},
-    user_profile::UserProfile,
+    user_profile::MemberProfile,
 };
 
 use crate::app::{call_tauri, call_tauri_no_args};
@@ -113,7 +113,7 @@ pub async fn scroll_up(room_id: &str) -> Result<bool, String> {
     Ok(has_more)
 }
 
-pub async fn get_members_for_room(room_id: &str) -> Result<Vec<UserProfile>, String> {
+pub async fn get_members_for_room(room_id: &str) -> Result<Vec<MemberProfile>, String> {
     let args = serde_wasm_bindgen::to_value(&json!({ "room_id": room_id }))
         .map_err(|e| format!("Failed to serialize request: {:?}", e))?;
 
@@ -121,7 +121,7 @@ pub async fn get_members_for_room(room_id: &str) -> Result<Vec<UserProfile>, Str
         .await
         .map_err(|e| format!("Tauri call failed: {:?}", e))?;
 
-    let members: Vec<UserProfile> = serde_wasm_bindgen::from_value(res)
+    let members: Vec<MemberProfile> = serde_wasm_bindgen::from_value(res)
         .map_err(|e| format!("Failed to parse response: {:?}", e))?;
 
     Ok(members)

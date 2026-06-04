@@ -12,7 +12,7 @@ use log::error;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use shared::account_data::{Breadcrumbs, ServerOrder};
-use shared::user_profile::{PresenceInfo, UserProfile};
+use shared::user_profile::{MemberProfile, PresenceInfo};
 use wasm_bindgen::prelude::*;
 use web_sys::HtmlImageElement;
 
@@ -100,7 +100,7 @@ pub fn App() -> impl IntoView {
         }
     });
 
-    let profile_update = use_tauri_event::<(String, UserProfile)>("member_update");
+    let profile_update = use_tauri_event::<MemberProfile>("member_update");
 
     Effect::new(move |_| {
         let room_id = state.active_room_id();
@@ -113,9 +113,9 @@ pub fn App() -> impl IntoView {
     });
 
     Effect::new(move |_| {
-        if let Some((room_id, profile)) = profile_update.get() {
+        if let Some(profile) = profile_update.get() {
             store_for_profiles
-                .get_profile(&room_id, &profile.user_id)
+                .get_profile(&profile.room_id, &profile.profile.user_id)
                 .set(Some(profile.clone()));
         }
     });
@@ -198,7 +198,9 @@ pub fn App() -> impl IntoView {
                 // Only update in-memory order; don't save — saving happens only
                 // after data_initialized is true (i.e., after initial load) and
                 // only when the user explicitly reorders via drag-and-drop.
-                state.server_order.set(ServerOrder { servers: final_order });
+                state.server_order.set(ServerOrder {
+                    servers: final_order,
+                });
             }
 
             state.sidebar_state.set(new_state);
@@ -244,14 +246,14 @@ pub fn App() -> impl IntoView {
                     // then fall back to last_space_ids for the case where the sidebar
                     // hasn't arrived yet.
                     if let Some(room_id) = breadcrumbs.recent_rooms.first() {
-                        let server_id = state
-                            .find_server_id_for_room(room_id)
-                            .or_else(|| {
-                                breadcrumbs.last_space_ids.iter()
-                                    .find(|(_, last_room)| last_room.as_str() == room_id.as_str())
-                                    .filter(|(server, _)| server.as_str() != "dms")
-                                    .map(|(server, _)| server.clone())
-                            });
+                        let server_id = state.find_server_id_for_room(room_id).or_else(|| {
+                            breadcrumbs
+                                .last_space_ids
+                                .iter()
+                                .find(|(_, last_room)| last_room.as_str() == room_id.as_str())
+                                .filter(|(server, _)| server.as_str() != "dms")
+                                .map(|(server, _)| server.clone())
+                        });
                         state.active_server_id.set(server_id);
                     }
 

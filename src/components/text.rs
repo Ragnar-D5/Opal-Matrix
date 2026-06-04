@@ -3,7 +3,7 @@ use colorsys::ColorAlpha;
 use leptos::{prelude::*, task::spawn_local};
 use shared::timeline::RichTextSpan;
 
-use crate::{components::user_profile::UserProfileExt, state::MemberStore};
+use crate::{components::user_profile::MemberProfileExt, state::MemberStore};
 
 #[component]
 fn WordMention(

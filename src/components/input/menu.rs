@@ -3,7 +3,7 @@ use crate::{
         input::{get_caret_position, get_node_and_offset},
         presence::PresenceBadge,
         text::RichTextExt,
-        user_profile::UserProfileExt,
+        user_profile::MemberProfileExt,
     },
     state::{AppState, MemberStore},
     tauri_functions::{get_commands, get_members_for_room},
@@ -12,10 +12,10 @@ use leptos::html::Div;
 use leptos::prelude::*;
 use log::error;
 use nucleo_matcher::{Config, Matcher, Utf32Str};
-use shared::{commands::Command, user_profile::UserProfile};
+use shared::{commands::Command, user_profile::MemberProfile};
 use web_sys::{Document, HtmlDivElement, HtmlElement, Node, Range};
 
-use crate::components::user_profile::UserProfileMaybeExt;
+use crate::components::user_profile::MemerProfileMaybeExt;
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum MenuType {
@@ -31,13 +31,13 @@ impl MenuType {
 }
 
 pub enum SelectedItem {
-    User(UserProfile),
+    User(MemberProfile),
     Command(Command),
 }
 
-impl From<UserProfile> for SelectedItem {
-    fn from(user_profile: UserProfile) -> Self {
-        SelectedItem::User(user_profile)
+impl From<MemberProfile> for SelectedItem {
+    fn from(profile: MemberProfile) -> Self {
+        SelectedItem::User(profile)
     }
 }
 
@@ -218,9 +218,9 @@ trait RenderMenuRow {
     fn match_fields() -> Vec<fn(&Self) -> Option<String>>;
 }
 
-impl RenderMenuRow for UserProfile {
+impl RenderMenuRow for MemberProfile {
     fn id(&self) -> String {
-        self.user_id.clone()
+        self.user_id().to_string()
     }
 
     fn render_row(self, room_id: String, el: HtmlDivElement, idx: usize) -> impl IntoView {
@@ -228,8 +228,8 @@ impl RenderMenuRow for UserProfile {
         let store: MemberStore = expect_context();
         let selected_index: RwSignal<usize> = expect_context();
 
-        let presence = store.get_presence(&self.user_id);
-        let profile = store.get_profile(&room_id, &self.user_id).get();
+        let presence = store.get_presence(self.user_id());
+        let profile = store.get_profile(&room_id, self.user_id()).get();
         let p_clone = profile.clone();
         let m_clone = self.clone();
         let el = el.clone();
@@ -252,7 +252,7 @@ impl RenderMenuRow for UserProfile {
                 {move || {
                     let profile = profile.clone();
                     let presence = presence.clone();
-                    if state.active_room_id().unwrap_or_default() != m_clone.user_id {
+                    if state.active_room_id().unwrap_or_default() != m_clone.user_id() {
                         view! {
                             <PresenceBadge presence=presence size=15.0>
                                 {profile.render_icon(30)}
@@ -269,15 +269,15 @@ impl RenderMenuRow for UserProfile {
                     class=("text-(--ui-hover-color)", move || idx == selected_index.get())
                     class=("text-(--ui-base-color)", move || idx != selected_index.get())
                 >
-                    {self.user_id.clone()}
+                    {self.user_id().to_string()}
                 </span>
             </button>
         }
     }
 
     fn match_fields() -> Vec<fn(&Self) -> Option<String>> {
-        vec![|member| member.display_name.clone(), |member| {
-            Some(member.user_id.clone())
+        vec![|member| member.profile.display_name.clone(), |member| {
+            Some(member.user_id().to_string())
         }]
     }
 }
@@ -327,7 +327,7 @@ impl RenderMenuRow for Command {
 pub fn SelectionMenu(menu: RwSignal<MenuType>, input_ref: NodeRef<Div>) -> impl IntoView {
     let state: AppState = expect_context();
 
-    let mention_matches: RwSignal<Vec<UserProfile>> = expect_context();
+    let mention_matches: RwSignal<Vec<MemberProfile>> = expect_context();
     let command_matches: RwSignal<Vec<Command>> = expect_context();
 
     let matcher = StoredValue::new(Matcher::new(Config::DEFAULT));
@@ -337,7 +337,7 @@ pub fn SelectionMenu(menu: RwSignal<MenuType>, input_ref: NodeRef<Div>) -> impl 
         async move {
             if let Some(rid) = room_id {
                 let mut res = get_members_for_room(&rid).await.unwrap_or_default();
-                res.insert(0, UserProfile::room(rid));
+                res.insert(0, MemberProfile::room(rid));
                 res.sort_by_key(|a| a.get_name());
 
                 res

@@ -2,7 +2,7 @@ use phosphor_leptos::{Icon, IconData, IconWeight, HASH, MATRIX_LOGO, SPEAKER_HIG
 use shared::get_color;
 
 use crate::components::presence::PresenceBadge;
-use crate::components::user_profile::UserProfileMaybeExt;
+use crate::components::user_profile::MemerProfileMaybeExt;
 use crate::components::FloatingTile;
 use crate::state::{AppState, MemberStore};
 use leptos::prelude::*;

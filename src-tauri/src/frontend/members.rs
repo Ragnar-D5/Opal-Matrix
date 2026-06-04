@@ -3,7 +3,7 @@ use matrix_sdk::{
     ruma::{events::room::member::OriginalSyncRoomMemberEvent, RoomId},
     Room, RoomMemberships,
 };
-use shared::user_profile::UserProfile;
+use shared::user_profile::{MemberProfile, UserProfile};
 use tauri::{command, AppHandle, Emitter};
 
 use crate::{MatrixClientState, TauriError};
@@ -12,7 +12,7 @@ use crate::{MatrixClientState, TauriError};
 pub async fn get_members_for_room(
     client: MatrixClientState<'_>,
     room_id: String,
-) -> Result<Vec<UserProfile>, TauriError> {
+) -> Result<Vec<MemberProfile>, TauriError> {
     log::debug!("Getting members for room: {}", &room_id);
     let room = client
         .read()
@@ -22,12 +22,14 @@ pub async fn get_members_for_room(
 
     let sdk_members = room.members(RoomMemberships::ACTIVE).await?;
 
-    let members: Vec<UserProfile> = sdk_members
+    let members: Vec<MemberProfile> = sdk_members
         .into_iter()
-        .map(|m| UserProfile {
+        .map(|m| MemberProfile {
             room_id: room_id.clone(),
-            user_id: m.user_id().to_string(),
-            display_name: m.display_name().map(|v| v.to_string()),
+            profile: UserProfile {
+                user_id: m.user_id().to_string(),
+                display_name: m.display_name().map(|v| v.to_string()),
+            },
         })
         .collect();
 
@@ -43,22 +45,21 @@ pub async fn on_member_update(
 ) {
     let content = event.content;
 
-    let profile = UserProfile {
+    let profile = MemberProfile {
         room_id: room.room_id().to_string(),
-        user_id: event.state_key.to_string(),
-        display_name: content.displayname,
+        profile: UserProfile {
+            user_id: event.state_key.to_string(),
+            display_name: content.displayname,
+        },
     };
 
-    send_member_update(app_handle.0, (room.room_id().to_string(), profile)).unwrap_or_else(|e| {
+    send_member_update(&app_handle, profile).unwrap_or_else(|e| {
         log::error!("Failed to send member update: {:?}", e);
     });
 }
 
-pub fn send_member_update(
-    handle: AppHandle,
-    payload: (String, UserProfile),
-) -> Result<(), TauriError> {
-    log::debug!("Sending member update for {}", payload.0);
+pub fn send_member_update(handle: &AppHandle, payload: MemberProfile) -> Result<(), TauriError> {
+    log::debug!("Sending member update for {}", payload.room_id);
 
     handle.emit("member_update", payload)?;
 

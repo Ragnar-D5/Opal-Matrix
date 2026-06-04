@@ -3,7 +3,7 @@ use leptos::{html::Div, prelude::*, tachys::dom::document};
 use log::warn;
 use regex::Regex;
 use shared::commands::Command;
-use shared::user_profile::UserProfile;
+use shared::user_profile::MemberProfile;
 use wasm_bindgen::JsCast;
 use web_sys::{HtmlDivElement, HtmlElement, KeyboardEvent};
 use web_sys::{Node, window};
@@ -211,7 +211,7 @@ pub fn handle_keydown(
     input_ref: NodeRef<Div>,
     menu: RwSignal<MenuType>,
     selected_index: RwSignal<usize>,
-    mention_matches: RwSignal<Vec<UserProfile>>,
+    mention_matches: RwSignal<Vec<MemberProfile>>,
     command_matches: RwSignal<Vec<Command>>,
     state: AppState,
     store: MemberStore,

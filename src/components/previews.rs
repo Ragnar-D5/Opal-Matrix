@@ -1,12 +1,12 @@
 use leptos::{prelude::*, task::spawn_local};
-use phosphor_leptos::{DOWNLOAD_SIMPLE, Icon, IconWeight, X};
+use phosphor_leptos::{Icon, IconWeight, DOWNLOAD_SIMPLE, X};
 use shared::timeline::RichTextSpan;
 use shared::timeline::UiMediaSource;
 use wasm_bindgen::JsCast;
 
 use crate::app::format_bytes;
 use crate::{
-    components::user_profile::UserProfileMaybeExt,
+    components::user_profile::MemerProfileMaybeExt,
     state::{AppState, MemberStore},
     tauri_functions::{fetch_preview_data, save_file_to_picked_dest},
 };
@@ -191,7 +191,9 @@ pub fn ImageLightbox() -> impl IntoView {
         let raf_cb = wasm_bindgen::closure::Closure::once(move || {
             overlay_visible.set(true);
 
-            let Some(img) = img_ref.get_untracked() else { return };
+            let Some(img) = img_ref.get_untracked() else {
+                return;
+            };
             // Cast to web_sys::HtmlElement to access DOM .style property and .offset_width
             let el: &web_sys::HtmlElement = img.unchecked_ref();
             let style = el.style();
@@ -246,10 +248,12 @@ pub fn ImageLightbox() -> impl IntoView {
         <Show when=move || lightbox.get().is_some()>
             <div
                 class="fixed inset-0 z-[200] flex flex-col"
-                style=move || format!(
-                    "transition: background-color 0.2s ease; background: {};",
-                    if overlay_visible.get() { "rgba(0,0,0,0.85)" } else { "rgba(0,0,0,0)" },
-                )
+                style=move || {
+                    format!(
+                        "transition: background-color 0.2s ease; background: {};",
+                        if overlay_visible.get() { "rgba(0,0,0,0.85)" } else { "rgba(0,0,0,0)" },
+                    )
+                }
                 on:click=move |_| lightbox.set(None)
             >
                 {move || {
