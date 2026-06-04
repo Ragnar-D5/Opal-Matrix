@@ -604,17 +604,6 @@ pub fn run() {
                         .await
                         .clone();
 
-                    // Check if the client uri is mxc://media or mxc://thumbnail or something else
-                    if !uri.starts_with("mxc://") {
-                        responder.respond(
-                            tauri::http::Response::builder()
-                                .status(400)
-                                .body(Vec::new())
-                                .unwrap(),
-                        );
-                        return;
-                    }
-
                     let media_manager = app_handle.state::<MediaManager>();
 
                     if let Some(id_str) = uri.strip_prefix("mxc://media/") {
@@ -686,35 +675,26 @@ pub fn run() {
                                 );
                             }
                         };
-                    } else if let Some(param_str) = uri.strip_prefix("mxc://thumbnail/") {
-                        match get_media_from_uuid_thmubnail_str(&client, param_str, &media_manager).await {
-                            Ok(bytes) => {
-                                let content_type = detect_content_type(&bytes);
-                                responder.respond(
-                                    tauri::http::Response::builder()
-                                        .status(200)
-                                        .header("Content-Type", content_type)
-                                        .header("Content-Length", bytes.len().to_string())
-                                        .header("Access-Control-Allow-Origin", "*")
-                                        .body(bytes)
-                                        .unwrap(),
-                                );
+                    } else {
+                        let res = if let Some(param_str) = uri.strip_prefix("mxc://thumbnail/") {
+                            get_media_from_uuid_thmubnail_str(&client, param_str, &media_manager).await.map(Some)
+                        } else if let Some(string) = uri.strip_prefix("mxc://user/") {
+                            if let Some((user_id, room_id)) = string.split_once("/room/") {
+                                get_member_avatar(&client, room_id, user_id).await
+                            } else {
+                                get_user_avatar(&client, string).await
                             }
-                            Err(e) => {
-                                log::error!("Failed to fetch thumbnail media for {}: {:?}", param_str, e);
-                                responder.respond(
-                                    tauri::http::Response::builder()
-                                        .status(500)
-                                        .body(Vec::<u8>::new())
-                                        .unwrap(),
-                                );
-                            }
-                        };
-                    } else if let Some(string) = uri.strip_prefix("mxc://user/") {
-                        let res = if let Some((user_id, room_id)) = string.split_once("/room/") {
-                            get_member_avatar(&client, room_id, user_id).await
+                        } else if let Some(room_id) = uri.strip_prefix("mxc://room/") {
+                            get_room_avatar(&client, room_id).await
                         } else {
-                            get_user_avatar(&client, string).await
+                            log::error!("Invalid mxc URI format: {}", uri);
+                            responder.respond(
+                                tauri::http::Response::builder()
+                                    .status(400)
+                                    .body(Vec::new())
+                                    .unwrap(),
+                            );
+                            return;
                         };
 
                         match res {
@@ -739,7 +719,7 @@ pub fn run() {
                                 );
                             }
                             Err(e) => {
-                                log::error!("Failed to fetch avatar for {}: {:?}", string, e);
+                                log::error!("Failed to fetch media for URI {}: {:?}", uri, e);
                                 responder.respond(
                                     tauri::http::Response::builder()
                                         .status(500)
@@ -748,46 +728,6 @@ pub fn run() {
                                 );
                             }
                         }
-                    } else if let Some(room_id) = uri.strip_prefix("mxc://room/") {
-                        match get_room_avatar(&client, room_id).await {
-                            Ok(Some(bytes)) => {
-                                let content_type = detect_content_type(&bytes);
-                                responder.respond(
-                                    tauri::http::Response::builder()
-                                        .status(200)
-                                        .header("Content-Type", content_type)
-                                        .header("Content-Length", bytes.len().to_string())
-                                        .header("Access-Control-Allow-Origin", "*")
-                                        .body(bytes)
-                                        .unwrap(),
-                                );
-                            }
-                            Ok(None) => {
-                                responder.respond(
-                                    tauri::http::Response::builder()
-                                        .status(404)
-                                        .body(Vec::<u8>::new())
-                                        .unwrap(),
-                                );
-                            }
-                            Err(e) => {
-                                log::error!("Failed to fetch room avatar for ID {}: {:?}", room_id, e);
-                                responder.respond(
-                                    tauri::http::Response::builder()
-                                        .status(500)
-                                        .body(Vec::<u8>::new())
-                                        .unwrap(),
-                                );
-                            }
-                        }
-                    } else {
-                        log::error!("Invalid mxc URI format: {}", uri);
-                        responder.respond(
-                            tauri::http::Response::builder()
-                                .status(400)
-                                .body(Vec::new())
-                                .unwrap(),
-                        );
                     }
                 });
             },
