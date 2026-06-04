@@ -581,6 +581,9 @@
   .w-\[calc\(50\%-0\.5\*var\(--gap\)\)\] {
     width: calc(50% - 0.5 * var(--gap));
   }
+  .w-auto {
+    width: auto;
+  }
   .w-fit {
     width: fit-content;
   }
