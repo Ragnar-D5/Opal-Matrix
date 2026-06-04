@@ -40,6 +40,11 @@ pub struct AppState {
     pub user_id: RwSignal<String>,
 
     pub active_room: RwSignal<Option<RoomNode>>,
+    /// The id of the active room, kept decoupled from `active_room` so it only
+    /// fires when the room actually changes — not on the per-sync metadata churn
+    /// (unread counts, `last_ts`, …) that rebuilds the `RoomNode`. Always kept in
+    /// sync with `active_room` via [`AppState::set_active_room_node`].
+    pub active_room_id: RwSignal<Option<String>>,
     pub active_server_id: RwSignal<Option<String>>,
 
     pub breadcrums: RwSignal<Breadcrumbs>,
@@ -90,6 +95,7 @@ impl AppState {
             last_changed_time: RwSignal::new(0.0),
             user_id: RwSignal::new(String::new()),
             active_room: RwSignal::new(None),
+            active_room_id: RwSignal::new(None),
             active_server_id: RwSignal::new(None),
             breadcrums: RwSignal::new(Breadcrumbs::default()),
             server_order: RwSignal::new(ServerOrder::default()),
@@ -102,13 +108,28 @@ impl AppState {
     }
 
     pub fn active_room_id(&self) -> Option<String> {
-        self.active_room.get().map(|room| room.room_id.clone())
+        self.active_room_id.get()
     }
 
     pub fn active_room_id_untracked(&self) -> Option<String> {
-        self.active_room
-            .get_untracked()
-            .map(|room| room.room_id.clone())
+        self.active_room_id.get_untracked()
+    }
+
+    /// Update the active room node and its id together, firing each signal only
+    /// when its own value changed. `active_room` carries metadata that updates on
+    /// every sync (unread counts, `last_ts`, …); `active_room_id` only changes
+    /// when a different room becomes active, so id-only subscribers (the timeline
+    /// loader) don't react to that churn.
+    fn set_active_room_node(&self, node: Option<RoomNode>) {
+        let new_id = node.as_ref().map(|n| n.room_id.clone());
+
+        if self.active_room_id.with_untracked(|cur| cur != &new_id) {
+            self.active_room_id.set(new_id);
+        }
+
+        if self.active_room.with_untracked(|cur| cur != &node) {
+            self.active_room.set(node);
+        }
     }
 
     pub fn set_active_room_with_id(&self, room_id: Option<String>) {
@@ -124,7 +145,7 @@ impl AppState {
                         .cloned()
                 })
         });
-        self.active_room.set(active_room);
+        self.set_active_room_node(active_room);
 
         let Some(room_id) = room_id else {
             return;
@@ -273,9 +294,9 @@ impl AppState {
         let current_room_id = self.active_room_id_untracked()
             .or_else(|| self.breadcrums.get_untracked().recent_rooms.first().cloned());
 
-        if let Some(room_id) = current_room_id {
+        let new_active_room = if let Some(room_id) = current_room_id {
             let sidebar_state = self.sidebar_state.get();
-            let active_room = find_node_in_nodes(&sidebar_state.servers, &room_id)
+            find_node_in_nodes(&sidebar_state.servers, &room_id)
                 .cloned()
                 .or_else(|| {
                     sidebar_state
@@ -283,12 +304,16 @@ impl AppState {
                         .iter()
                         .find(|dm| dm.room_id == room_id)
                         .cloned()
-                });
-
-            self.active_room.set(active_room);
+                })
         } else {
-            self.active_room.set(None);
-        }
+            None
+        };
+
+        // The sidebar is rebuilt on every sync, so this runs constantly. The helper
+        // only fires each signal when its value actually changed, so an unchanged
+        // room won't reload the timeline and unchanged metadata won't re-render the
+        // header, member list, etc.
+        self.set_active_room_node(new_active_room);
     }
 
     /// Finds the top-level server room_id that contains `room_id` by searching

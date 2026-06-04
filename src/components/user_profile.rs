@@ -102,9 +102,23 @@ impl MemberProfileExt for MemberProfile {
         let circle_style = format!("height: {}; width: {};", size_str, size_str);
 
         let failed = RwSignal::new(true);
+        let img_ref = NodeRef::<leptos::html::Img>::new();
+
+        // A cached image can fire `load` before the on:load handler is attached
+        // (happens when this avatar is recreated on a re-render), leaving `failed`
+        // stuck on the fallback. Re-check `complete` once the element is mounted.
+        Effect::new(move |_| {
+            if let Some(img) = img_ref.get()
+                && img.complete()
+                && img.natural_width() > 0
+            {
+                failed.set(false);
+            }
+        });
 
         view! {
             <img
+                node_ref=img_ref
                 class="rounded-full object-cover bg-transparent block select-none"
                 class:hidden=failed
                 src=url
@@ -167,9 +181,23 @@ impl MemberProfileExt for UserProfile {
         let circle_style = format!("height: {}; width: {};", size_str, size_str);
 
         let failed = RwSignal::new(true);
+        let img_ref = NodeRef::<leptos::html::Img>::new();
+
+        // A cached image can fire `load` before the on:load handler is attached
+        // (happens when this avatar is recreated on a re-render), leaving `failed`
+        // stuck on the fallback. Re-check `complete` once the element is mounted.
+        Effect::new(move |_| {
+            if let Some(img) = img_ref.get()
+                && img.complete()
+                && img.natural_width() > 0
+            {
+                failed.set(false);
+            }
+        });
 
         view! {
             <img
+                node_ref=img_ref
                 class="rounded-full object-cover bg-transparent block select-none"
                 class:hidden=failed
                 src=url

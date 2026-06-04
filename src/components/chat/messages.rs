@@ -927,39 +927,51 @@ fn render_timeline_event(
     let room_id_for_content = room_id.to_string();
     let store_for_content = store.clone();
 
-    let rendered_content = move || {
+    // Inputs the message body needs, with reactions stripped out. Reactions are
+    // rendered separately (`reactions_view`), so excluding them here means a
+    // reaction-only change produces an equal value and this Memo won't notify —
+    // the body (and any image/video resources) is not re-rendered.
+    let content_for_render = Memo::new(move |_| {
         item_sig.with(|item| {
-            if let UiTimelineItemKind::Event(event) = &item.kind {
-                let sender_id = event.get_sender_id();
-                let timestamp = event.timestamp;
-
-                match &event.content {
-                    EventContent::MsgLike(ev) => render_message_content(
-                        *ev.clone(),
-                        store_for_content.clone(),
-                        room_id_for_content.clone(),
-                        sender_id,
-                        timestamp,
-                    ).into_any(),
-                    EventContent::FailedToParseMessageLike { event_type, error } => view! { <div class="text-red-500 italic">{format!("Failed to render {event_type}: {error}")}</div> }.into_any(),
-                    EventContent::FailedToParseState { event_type, state_key, error } => view! {
-                        <div class="text-red-500 italic">
-                            {format!(
-                                "Failed to render {event_type} with state key {state_key}: {error}",
-                            )}
-                        </div>
-                    }.into_any(),
-                    EventContent::SystemMessage(ev) => render_system_message(
-                        sender_id,
-                        ev.clone(),
-                        store_for_content.clone(),
-                        room_id_for_content.clone()
-                    ).into_any(),
-                }
-            } else {
-                ().into_any()
+            let UiTimelineItemKind::Event(event) = &item.kind else {
+                return None;
+            };
+            let mut content = event.content.clone();
+            if let EventContent::MsgLike(msg) = &mut content {
+                msg.reactions.clear();
             }
+            Some((event.get_sender_id(), event.timestamp, content))
         })
+    });
+
+    let rendered_content = move || {
+        let Some((sender_id, timestamp, content)) = content_for_render.get() else {
+            return ().into_any();
+        };
+
+        match content {
+            EventContent::MsgLike(ev) => render_message_content(
+                *ev,
+                store_for_content.clone(),
+                room_id_for_content.clone(),
+                sender_id,
+                timestamp,
+            ).into_any(),
+            EventContent::FailedToParseMessageLike { event_type, error } => view! { <div class="text-red-500 italic">{format!("Failed to render {event_type}: {error}")}</div> }.into_any(),
+            EventContent::FailedToParseState { event_type, state_key, error } => view! {
+                <div class="text-red-500 italic">
+                    {format!(
+                        "Failed to render {event_type} with state key {state_key}: {error}",
+                    )}
+                </div>
+            }.into_any(),
+            EventContent::SystemMessage(ev) => render_system_message(
+                sender_id,
+                ev,
+                store_for_content.clone(),
+                room_id_for_content.clone()
+            ).into_any(),
+        }
     };
 
     let store_clone = store.clone();

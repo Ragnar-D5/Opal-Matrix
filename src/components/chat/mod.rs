@@ -50,51 +50,64 @@ fn TimeLine() -> impl IntoView {
         };
 
         owner.with(|| {
-            messages.update(|msgs| {
-                for diff in diffs {
-                    match diff {
-                        UiTimelineDiff::Append { values } => {
-                            let extention: Vec<RwSignal<UiTimelineItem>> =
-                                values.iter().map(|v| RwSignal::new(v.clone())).collect();
-                            msgs.extend(extention);
-                        }
-                        UiTimelineDiff::Set { index, value } => {
-                            if let Some(item) = msgs.get_mut(index) {
+            for diff in diffs {
+                match diff {
+                    UiTimelineDiff::Set { index, value } => {
+                        messages.with_untracked(|msgs| {
+                            if let Some(item) = msgs.get(index) {
                                 item.set(value);
                             }
-                        }
-                        UiTimelineDiff::PushBack { value } => msgs.push(RwSignal::new(value)),
-                        UiTimelineDiff::Remove { index } => {
-                            if index < msgs.len() {
-                                msgs.remove(index);
-                            }
-                        }
-                        UiTimelineDiff::Clear => msgs.clear(),
-                        UiTimelineDiff::Insert { index, value } => {
+                        });
+                    }
+                    UiTimelineDiff::Append { values } => {
+                        messages.update(|msgs| {
+                            msgs.extend(values.iter().map(|v| RwSignal::new(v.clone())));
+                        });
+                    }
+                    UiTimelineDiff::PushBack { value } => {
+                        messages.update(|msgs| msgs.push(RwSignal::new(value)));
+                    }
+                    UiTimelineDiff::PushFront { value } => {
+                        messages.update(|msgs| msgs.insert(0, RwSignal::new(value)));
+                    }
+                    UiTimelineDiff::Insert { index, value } => {
+                        messages.update(|msgs| {
                             if index <= msgs.len() {
                                 msgs.insert(index, RwSignal::new(value));
                             }
-                        }
-                        UiTimelineDiff::PopBack => {
-                            msgs.pop();
-                        }
-                        UiTimelineDiff::PopFront => {
+                        });
+                    }
+                    UiTimelineDiff::Remove { index } => {
+                        messages.update(|msgs| {
+                            if index < msgs.len() {
+                                msgs.remove(index);
+                            }
+                        });
+                    }
+                    UiTimelineDiff::PopBack => {
+                        messages.update(|msgs| { msgs.pop(); });
+                    }
+                    UiTimelineDiff::PopFront => {
+                        messages.update(|msgs| {
                             if !msgs.is_empty() {
                                 msgs.remove(0);
                             }
-                        }
-                        UiTimelineDiff::PushFront { value } => msgs.insert(0, RwSignal::new(value)),
-                        UiTimelineDiff::Reset { values } => {
+                        });
+                    }
+                    UiTimelineDiff::Clear => {
+                        messages.update(|msgs| msgs.clear());
+                    }
+                    UiTimelineDiff::Reset { values } => {
+                        messages.update(|msgs| {
                             msgs.clear();
-
-                            let extention: Vec<RwSignal<UiTimelineItem>> =
-                                values.iter().map(|v| RwSignal::new(v.clone())).collect();
-                            msgs.extend(extention);
-                        }
-                        UiTimelineDiff::Truncate { length } => msgs.truncate(length),
+                            msgs.extend(values.iter().map(|v| RwSignal::new(v.clone())));
+                        });
+                    }
+                    UiTimelineDiff::Truncate { length } => {
+                        messages.update(|msgs| msgs.truncate(length));
                     }
                 }
-            });
+            }
         });
     });
 
@@ -223,6 +236,9 @@ fn TimeLine() -> impl IntoView {
         },
     );
 
+    // `active_room_id` is its own signal that only changes when the active room
+    // actually changes (not on per-sync RoomNode metadata churn), so this Effect
+    // reloads the timeline only on a real room switch.
     Effect::new(move |_| {
         if let Some(room_id) = state.active_room_id() {
             log::debug!("Loading room {}, resetting messages to empty", room_id);
