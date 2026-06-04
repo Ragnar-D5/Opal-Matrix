@@ -2,7 +2,7 @@ use std::{collections::HashMap, io::Cursor, path::PathBuf, str::FromStr};
 
 use futures::{StreamExt};
 use image::ImageReader;
-use matrix_sdk::{Client as MatrixClient, attachment::{AttachmentInfo, BaseFileInfo, BaseImageInfo, BaseVideoInfo}, room::edit::EditedContent, ruma::events::room::MediaSource, };
+use matrix_sdk::{Client as MatrixClient, attachment::{AttachmentInfo, BaseFileInfo, BaseImageInfo, BaseVideoInfo}, room::edit::EditedContent, ruma::{api::client::receipt::create_receipt::v3::ReceiptType, events::room::MediaSource}, };
 use matrix_sdk_ui::timeline::{AttachmentConfig, AttachmentSource, TimelineEventItemId};
 use mime::Mime;
 use tokio_util::sync::CancellationToken;
@@ -365,6 +365,8 @@ pub async fn get_timeline(
                 .await;
 
             log::debug!("Fetched {} messages for room {}", messages.len(), room_id);
+
+            timeline.mark_as_read(ReceiptType::FullyRead).await?;
 
             let messages = messages.iter().map(|v| timeline_item_to_ui(v, &mut media_store)).collect();
 

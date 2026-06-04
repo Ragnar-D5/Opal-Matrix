@@ -286,7 +286,7 @@ pub fn ImageLightbox() -> impl IntoView {
                                         src=url
                                         width=img.width
                                         height=img.height
-                                        class="max-w-[90vw] max-h-[calc(90vh-3rem)] object-contain shadow-[0_0_15px_3px_rgba(255,255,255,0.3)]"
+                                        class="max-w-[90vw] max-h-[calc(90vh-3rem)] rounded-(--ui-border-radius) object-contain shadow-[0_0_15px_3px_rgba(255,255,255,0.3)]"
                                         style=move || {
                                             if zoomed.get() {
                                                 "transform: scale(2); cursor: zoom-out;"
