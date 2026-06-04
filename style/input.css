@@ -6,8 +6,8 @@
     --bg-color: #1e1e2e;
     --tile-bg-color: rgba(0, 0, 0, 0.3);
     --dim-text-color: hsl(220, 15%, 40%);
-    --text-color: hsl(220, 25%, 60%);
-    --bright-text-color: hsl(220, 25%, 70%);
+    --text-color: hsl(220, 25%, 55%);
+    --bright-text-color: hsl(220, 25%, 80%);
     --tile-border-color: rgba(255, 255, 255, 0.175);
     --muted-text-color: hsl(220, 15%, 30%);
     --gap: 5px;

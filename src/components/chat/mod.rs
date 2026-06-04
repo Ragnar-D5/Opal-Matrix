@@ -3,6 +3,7 @@ use crate::{
     components::{
         FloatingTile,
         chat::messages::render_timeline_item,
+        emoji_picker::EmojiPickerState,
         input::{
             get_active_filter, get_caret_position, handle_input, handle_keydown,
             menu::{MenuType, SelectionMenu},
@@ -15,9 +16,10 @@ use crate::{
     tauri_functions::{get_members_for_room, get_timeline, pick_files, scroll_up},
 };
 
+use crate::components::emoji_picker::pick_emoji;
 use phosphor_leptos::{
-    HASH, INFO, Icon, IconWeight, MATRIX_LOGO, PHONE, PHONE_DISCONNECT, SPEAKER_HIGH, TRASH,
-    UPLOAD_SIMPLE, X_CIRCLE,
+    HASH, INFO, Icon, IconWeight, MATRIX_LOGO, PHONE, PHONE_DISCONNECT, SMILEY, SPEAKER_HIGH,
+    TRASH, UPLOAD_SIMPLE, X_CIRCLE,
 };
 
 use leptos::{ev, html::Div, prelude::*, task::spawn_local};
@@ -28,6 +30,7 @@ use shared::{
     timeline::{DetailState, EventContent, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind},
     user_profile::PresenceStatus,
 };
+use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::IntersectionObserverEntry;
 
@@ -85,7 +88,9 @@ fn TimeLine() -> impl IntoView {
                         });
                     }
                     UiTimelineDiff::PopBack => {
-                        messages.update(|msgs| { msgs.pop(); });
+                        messages.update(|msgs| {
+                            msgs.pop();
+                        });
                     }
                     UiTimelineDiff::PopFront => {
                         messages.update(|msgs| {
@@ -892,6 +897,8 @@ fn ChatInput() -> impl IntoView {
     let is_editing =
         Memo::new(move |_| matches!(input_info.get(), Some(ChatInputInfo::Editing { .. })));
 
+    let emoji_state: EmojiPickerState = expect_context();
+
     view! {
         <div class="p-2 pt-0 w-full relative">
             {move || input_info_content()} {move || attachment_view()}
@@ -904,7 +911,7 @@ fn ChatInput() -> impl IntoView {
                 )
             >
                 <button
-                    class="hover:color-(--text-bright)"
+                    class="text-(--ui-base-color) hover:text-(--bright-text-color) rounded-(--ui-border-radius) hover:bg-(--ui-solid-hover-bg) p-1"
                     class=("cursor-not-allowed", move || is_editing.get())
                     class=("cursor-pointer", move || !is_editing.get())
                     on:click=move |_| {
@@ -913,7 +920,7 @@ fn ChatInput() -> impl IntoView {
                         }
                     }
                 >
-                    <Icon icon=UPLOAD_SIMPLE size="20px" color="var(--ui-base-color)" />
+                    <Icon icon=UPLOAD_SIMPLE size="20px" />
                 </button>
                 <div class="relative flex-1 min-w-0 flex items-center">
                     <Show when=move || is_empty.get()>
@@ -942,6 +949,19 @@ fn ChatInput() -> impl IntoView {
                         )
                     ></div>
                 </div>
+                <button
+                    class="text-(--ui-base-color) hover:text-(--bright-text-color) rounded-(--ui-border-radius) hover:bg-(--ui-solid-hover-bg) p-1 cursor-pointer"
+                    on:click=move |ev| {
+                        let anchor: web_sys::Element = ev.target().unwrap().unchecked_into();
+                        spawn_local(async move {
+                            if let Some(emoji) = pick_emoji(&anchor, emoji_state).await {
+                                log::info!("Selected emoji: {emoji}");
+                            }
+                        });
+                    }
+                >
+                    <Icon icon=SMILEY size="20px" />
+                </button>
             </div>
         </div>
     }

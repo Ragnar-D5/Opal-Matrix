@@ -16,7 +16,11 @@ use shared::user_profile::{MemberProfile, PresenceInfo};
 use wasm_bindgen::prelude::*;
 use web_sys::HtmlImageElement;
 
-use crate::components::{chat::Chat, sidebar::Sidebar};
+use crate::components::{
+    chat::Chat,
+    emoji_picker::{EmojiPickerPortal, EmojiPickerState},
+    sidebar::Sidebar,
+};
 use crate::hooks::use_tauri_event;
 use crate::state::{AppState, ProfileStore};
 use crate::tauri_functions::{set_backend_room_id, set_focused_in_backend};
@@ -328,6 +332,9 @@ fn HomePage() -> impl IntoView {
         }
     };
 
+    let emoji_picker_state = EmojiPickerState::default();
+    provide_context(emoji_picker_state);
+
     view! {
         <div
             class="bg-transparent flex h-screen overflow-hidden p-[var(--gap)] gap-[var(--gap)] relative"
@@ -337,6 +344,7 @@ fn HomePage() -> impl IntoView {
             <Sidebar />
             <Chat />
             <ImageLightbox />
+            <EmojiPickerPortal />
         </div>
     }
 }
