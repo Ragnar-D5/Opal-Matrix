@@ -11,6 +11,7 @@ pub(crate) mod shader;
 pub(crate) mod sidebar;
 pub(crate) mod text;
 pub(crate) mod user_profile;
+pub(crate) mod emoji_picker;
 
 #[component]
 pub fn FloatingTile(#[prop(into, optional)] class: String, children: Children) -> impl IntoView {

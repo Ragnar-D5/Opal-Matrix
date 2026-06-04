@@ -36,7 +36,8 @@ web-sys = { version = "0.3.95", features = [
   "File",
   "Navigator",
   "Clipboard",
-  "ClipboardItem"
+  "ClipboardItem",
+  "HtmlInputElement"
 ] }
 leptos = { version = "0.8", features = ["csr"] }
 wasm-bindgen = "0.2"
@@ -59,6 +60,7 @@ linkify = "0.11.0"
 regex = "1.12.3"
 wgpu = "29.0.3"
 uuid = { version = "1.23.1", features = ["js"] }
+emojis = "0.8.2"
 
 [workspace]
 members = [".", "shared", "src-tauri"]
