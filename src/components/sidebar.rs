@@ -710,7 +710,9 @@ pub fn ProfileCard() -> impl IntoView {
             let name_sig = profile_sig.clone();
 
             view! {
-                {move || profile_sig.get().render_icon(40)}
+                <PresenceBadge presence=store.get_presence(&user_id)>
+                    {move || profile_sig.get().render_icon(40)}
+                </PresenceBadge>
                 {move || name_sig.get().render_name(16)}
             }
             .into_any()
@@ -719,7 +721,9 @@ pub fn ProfileCard() -> impl IntoView {
             let name_sig = profile_sig.clone();
 
             view! {
-                {move || profile_sig.get().render_icon(40)}
+                <PresenceBadge presence=store.get_presence(&user_id)>
+                    {move || profile_sig.get().render_icon(40)}
+                </PresenceBadge>
                 {move || name_sig.get().render_name(16)}
             }
             .into_any()
