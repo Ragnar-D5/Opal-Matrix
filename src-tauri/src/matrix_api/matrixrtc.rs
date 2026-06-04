@@ -663,7 +663,6 @@ pub async fn handle_to_device_messages(
     debug!("Finished handling to-device events");
     Ok(())
 }
-use std::collections::HashMap;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct EncryptionKeysEventContent {

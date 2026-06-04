@@ -316,20 +316,14 @@ pub fn render_server_channel(child: RoomNode) -> impl IntoView {
     let is_active = Memo::new(move |_| state.active_room_id() == Some(check_id.clone()));
     let has_notifications = child.notification_count > 0;
 
-    let call_empty = if let RoomKind::VoiceChannel {
-        joined_user_ids, ..
-    } = &child.kind
-    {
-        joined_user_ids.is_empty()
+    let call_empty = if let RoomKind::VoiceChannel { participants, .. } = &child.kind {
+        participants.is_empty()
     } else {
         true
     };
 
-    let call_preview = if let RoomKind::VoiceChannel {
-        joined_user_ids, ..
-    } = &child.kind
-    {
-        let views = joined_user_ids.iter().map(|user_id| {
+    let call_preview = if let RoomKind::VoiceChannel { participants, .. } = &child.kind {
+        let views = participants.keys().map(|user_id| {
             let profile = store.get_member_profile(&child.room_id, user_id);
             let clone = profile.clone();
 

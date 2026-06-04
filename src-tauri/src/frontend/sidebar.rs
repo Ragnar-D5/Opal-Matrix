@@ -8,7 +8,9 @@ use matrix_sdk::{Client, Room};
 use matrix_sdk::room::ParentSpace;
 use matrix_sdk::ruma::events::space::child::SpaceChildEventContent;
 use matrix_sdk::sync::RoomUpdates;
-use shared::sidebar::{RoomKind, RoomNode, SidebarState};
+use matrix_sdk::ruma::events::call::member::CallMemberEventContent;
+use matrix_sdk::ruma::events::{AnyStateEventContent, StateEventType};
+use shared::sidebar::{RoomKind, RoomNode, SidebarState, VoiceParticipants};
 use tauri::AppHandle;
 use tauri::Emitter;
 
@@ -196,8 +198,8 @@ async fn build_async_node(
                 {
                     highlight_count += child_node.highlight_count;
                     notification_count += child_node.notification_count;
-                    if let RoomKind::VoiceChannel { joined_user_ids } = &child_node.kind {
-                        for user_id in joined_user_ids {
+                    if let RoomKind::VoiceChannel { participants } = &child_node.kind {
+                        for user_id in participants.keys() {
                             user_ids_in_calls.insert(user_id.clone());
                         }
                     }
@@ -212,12 +214,27 @@ async fn build_async_node(
         }
     } else {
         if room.is_call() {
-            let joined_user_ids = room
-                .active_room_call_participants()
-                .iter()
-                .map(|v| v.to_string())
-                .collect();
-            RoomKind::VoiceChannel { joined_user_ids }
+            let mut participants: VoiceParticipants = VoiceParticipants::new();
+            let state_events = room
+                .get_state_events(StateEventType::CallMember)
+                .await
+                .unwrap_or_default();
+            for raw_event in state_events {
+                let Ok(event) = raw_event.deserialize() else { continue };
+                let Some(event) = event.as_sync() else { continue };
+                let user_id = event.sender().to_string();
+                let Some(AnyStateEventContent::CallMember(
+                    CallMemberEventContent::SessionContent(content),
+                )) = event.original_content()
+                else {
+                    continue;
+                };
+                participants
+                    .entry(user_id)
+                    .or_default()
+                    .push(content.device_id.to_string());
+            }
+            RoomKind::VoiceChannel { participants }
         } else {
             RoomKind::TextChannel {
                 last_ts: room.latest_event_timestamp().map(|t| t.as_secs().into()),

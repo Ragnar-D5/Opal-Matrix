@@ -986,8 +986,8 @@ pub fn Chat() -> impl IntoView {
                                     }
                                         .into_any()
                                 }
-                                RoomKind::VoiceChannel { joined_user_ids } => {
-                                    if joined_user_ids.is_empty() {
+                                RoomKind::VoiceChannel { participants } => {
+                                    if participants.is_empty() {
                                         view! {
                                             <div class="flex-1 flex items-center justify-center text-muted flex-col gap-2 bg-radial-[at_50%_100%] from-(--accent-color) to-transparent to-80% w-full h-full">
                                                 <span class="text-3xl text-bright font-bold text-shadow-xs">
@@ -1000,7 +1000,7 @@ pub fn Chat() -> impl IntoView {
                                         }
                                             .into_any()
                                     } else {
-                                        let count = joined_user_ids.len();
+                                        let count = participants.len();
                                         let width_class = match count {
                                             1 => "w-full max-w-5xl",
                                             2 => "w-[calc(50%-0.5*var(--gap))] max-w-3xl",
@@ -1019,8 +1019,8 @@ pub fn Chat() -> impl IntoView {
                                             // `content-center` vertically centers the rows
                                             // `justify-center` horizontally centers odd items on the bottom row
                                             <div class="flex-1 flex flex-wrap justify-center content-center w-full h-full min-h-0 gap-[var(--gap)] p-[var(--gap)] overflow-y-auto">
-                                                {joined_user_ids
-                                                    .iter()
+                                                {participants
+                                                    .keys()
                                                     .map(|id| {
                                                         let profile = member_store
                                                             .get_member_profile(&node.room_id, id);

@@ -1,4 +1,9 @@
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
+
+/// Maps user_id → list of device_ids currently in the call.
+pub type VoiceParticipants = HashMap<String, Vec<String>>;
 
 #[derive(Debug, Serialize, Clone, Deserialize, PartialEq)]
 pub enum RoomKind {
@@ -10,7 +15,7 @@ pub enum RoomKind {
         last_ts: Option<u64>,
     },
     VoiceChannel {
-        joined_user_ids: Vec<String>,
+        participants: VoiceParticipants,
     },
     Dm {
         other_user_ids: Vec<String>,
