@@ -26,11 +26,11 @@ use crate::{
         previews::render_link,
         text::{richt_text_spans_to_html, RichTextExt},
         user_profile::{
-            render_profile_icon, render_profile_name, MemberProfileExt, MemerProfileMaybeExt,
+            render_profile_icon, render_profile_name, MemberProfileExt, MemberProfileMaybeExt,
         },
         TextCircle, TextCircleProps,
     },
-    state::{AppState, LighboxImage, MemberStore},
+    state::{AppState, LighboxImage, ProfileStore},
     tauri_functions::toggle_reaction,
 };
 
@@ -40,7 +40,7 @@ fn ReplyPreview(reply_info: Option<ReplyInfo>) -> impl IntoView {
         return ().into_any();
     };
 
-    let store: MemberStore = expect_context();
+    let store: ProfileStore = expect_context();
     let state: AppState = expect_context();
 
     let mut content = vec![RichTextSpan::Plain("click to go to event".to_string())];
@@ -120,7 +120,7 @@ async fn mxc_to_blob_url(mxc_url: String) -> Option<String> {
 
 fn render_message_content(
     content: MessageContent,
-    store: MemberStore,
+    store: ProfileStore,
     room_id: String,
     sender_id: Option<String>,
     timestamp: u64,
@@ -423,7 +423,7 @@ fn render_message_content(
 
 fn render_reactions(
     reactions: Option<HashMap<String, Vec<ReactionInfo>>>,
-    store: MemberStore,
+    store: ProfileStore,
     room_id: String,
     user_id: String,
     event_id: Option<String>,
@@ -456,7 +456,7 @@ fn render_reactions(
                     .iter()
                     .filter_map(|info| {
                         store
-                            .get_profile(&prof_room_id, &info.sender_id)
+                            .get_member_profile(&prof_room_id, &info.sender_id)
                             .get()
                             .map(|p| {
                                 let icon = p.clone().render_icon(20);
@@ -548,13 +548,13 @@ fn get_date_from_ts(ts: i64) -> DateTime<Local> {
 fn render_system_message(
     sender_id: Option<String>,
     content: SystemMessage,
-    store: MemberStore,
+    store: ProfileStore,
     room_id: String,
 ) -> impl IntoView {
     let sender_id_str = sender_id.clone().unwrap_or_default();
 
     let user_div = |user_id: &str| {
-        let profile_sig = store.get_profile(&room_id, user_id);
+        let profile_sig = store.get_member_profile(&room_id, user_id);
         let name_sig = profile_sig.clone();
 
         view! {
@@ -890,7 +890,7 @@ fn render_system_message(
 }
 
 fn render_timeline_event(
-    store: MemberStore,
+    store: ProfileStore,
     room_id: &str,
     own_user_id: &str,
     item_sig: RwSignal<UiTimelineItem>,
@@ -1020,7 +1020,8 @@ fn render_timeline_event(
         item.flags()
     });
 
-    let sender_profile_sig = store.get_profile(&room_id, &sender_id.clone().unwrap_or_default());
+    let sender_profile_sig =
+        store.get_member_profile(&room_id, &sender_id.clone().unwrap_or_default());
 
     view! {
         <div
@@ -1244,7 +1245,7 @@ pub fn render_timeline_item(
     show_header: bool,
 ) -> impl IntoView {
     let state: AppState = expect_context();
-    let store: MemberStore = expect_context();
+    let store: ProfileStore = expect_context();
 
     let Some(room_id) = state.active_room_id_untracked() else {
         return ().into_any();

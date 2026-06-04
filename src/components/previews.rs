@@ -6,8 +6,8 @@ use wasm_bindgen::JsCast;
 
 use crate::app::format_bytes;
 use crate::{
-    components::user_profile::MemerProfileMaybeExt,
-    state::{AppState, MemberStore},
+    components::user_profile::MemberProfileMaybeExt,
+    state::{AppState, ProfileStore},
     tauri_functions::{fetch_preview_data, save_file_to_picked_dest},
 };
 
@@ -325,10 +325,10 @@ fn LightboxHeader(
         date.get_minutes(),
     );
 
-    let store: MemberStore = expect_context();
+    let store: ProfileStore = expect_context();
     let state: AppState = expect_context();
     let room_id = state.active_room_id().unwrap_or_default();
-    let profile_sig = store.get_profile(&room_id, &sender_id.unwrap_or_default());
+    let profile_sig = store.get_member_profile(&room_id, &sender_id.unwrap_or_default());
     let name_sig = profile_sig.clone();
 
     let download_name = filename.clone();

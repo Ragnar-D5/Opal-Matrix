@@ -2,9 +2,9 @@ use phosphor_leptos::{Icon, IconData, IconWeight, HASH, MATRIX_LOGO, SPEAKER_HIG
 use shared::get_color;
 
 use crate::components::presence::PresenceBadge;
-use crate::components::user_profile::MemerProfileMaybeExt;
+use crate::components::user_profile::MemberProfileMaybeExt;
 use crate::components::FloatingTile;
-use crate::state::{AppState, MemberStore};
+use crate::state::{AppState, ProfileStore};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use shared::sidebar::{RoomKind, RoomNode};
@@ -14,7 +14,7 @@ use crate::components::TextCircle;
 #[component]
 fn DmDiv(dm: RoomNode) -> impl IntoView {
     let state: AppState = expect_context();
-    let members: MemberStore = expect_context();
+    let members: ProfileStore = expect_context();
 
     let id = dm.room_id.to_string();
     let name = dm.name.clone().unwrap_or_else(|| "Unnamed".to_string());
@@ -302,7 +302,7 @@ pub fn ServerIcon(server_id: String) -> impl IntoView {
 
 pub fn render_server_channel(child: RoomNode) -> impl IntoView {
     let state: AppState = expect_context();
-    let store: MemberStore = expect_context();
+    let store: ProfileStore = expect_context();
 
     let channel_icon = match child.kind {
         RoomKind::Dm { .. } => HASH,
@@ -330,7 +330,7 @@ pub fn render_server_channel(child: RoomNode) -> impl IntoView {
     } = &child.kind
     {
         let views = joined_user_ids.iter().map(|user_id| {
-            let profile = store.get_profile(&child.room_id, user_id);
+            let profile = store.get_member_profile(&child.room_id, user_id);
             let clone = profile.clone();
 
             view! {
@@ -635,8 +635,8 @@ pub fn Sidebar() -> impl IntoView {
                 </div>
             </FloatingTile>
 
-            <div class="flex flex-col">
-                <FloatingTile class="mb-(--gap) h-(--header-height)">"Search stuff"</FloatingTile>
+            <div class="flex flex-col gap-(--gap)">
+                <FloatingTile class="h-(--header-height)">"Search stuff"</FloatingTile>
                 <FloatingTile class="w-65 flex-grow flex">
                     {move || {
                         let current_state = state.sidebar_state.get();
@@ -682,8 +682,49 @@ pub fn Sidebar() -> impl IntoView {
                     }}
                 // </div>
                 </FloatingTile>
-            </div>
 
+                // Small card with current room profile
+                <FloatingTile class="h-(--header-height) w-full">
+                    <ProfileCard />
+                </FloatingTile>
+            </div>
         </div>
     }.into_any()
+}
+
+#[component]
+pub fn ProfileCard() -> impl IntoView {
+    let state: AppState = expect_context();
+    let store: ProfileStore = expect_context();
+
+    let current_room_profile = move || {
+        let room_id = state.active_room_id();
+        let user_id = state.user_id.get();
+
+        if user_id.is_empty() {
+            return ().into_any();
+        }
+
+        if let Some(room_id) = room_id {
+            let profile_sig = store.get_member_profile(&room_id, &user_id);
+            let name_sig = profile_sig.clone();
+
+            view! {
+                {move || profile_sig.get().render_icon(40)}
+                {move || name_sig.get().render_name(16)}
+            }
+            .into_any()
+        } else {
+            let profile_sig = store.get_user_profile(&user_id);
+            let name_sig = profile_sig.clone();
+
+            view! {
+                {move || profile_sig.get().render_icon(40)}
+                {move || name_sig.get().render_name(16)}
+            }
+            .into_any()
+        }
+    };
+
+    view! { <div class="flex items-center justify-start w-full h-full px-2">{current_room_profile}</div> }
 }

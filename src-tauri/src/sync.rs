@@ -9,8 +9,8 @@ use tauri::{async_runtime::spawn, AppHandle};
 
 use crate::{
     frontend::{
-        members::on_member_update,
         presence::handle_presences,
+        profiles::on_member_update,
         sidebar::{handle_room_updates, send_sidebar},
     },
     matrix_api::{

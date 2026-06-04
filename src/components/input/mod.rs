@@ -11,7 +11,7 @@ use web_sys::{Node, window};
 use crate::components::chat::{Attachment, ChatInputInfo};
 use crate::components::input::menu::MenuType;
 use crate::components::input::menu::{SelectedItem, commit_selection};
-use crate::state::{AppState, MemberStore, MessageDraft};
+use crate::state::{AppState, ProfileStore, MessageDraft};
 use crate::tauri_functions::{commit_message, edit_message, send_attachment};
 
 pub(crate) mod menu;
@@ -214,7 +214,7 @@ pub fn handle_keydown(
     mention_matches: RwSignal<Vec<MemberProfile>>,
     command_matches: RwSignal<Vec<Command>>,
     state: AppState,
-    store: MemberStore,
+    store: ProfileStore,
     is_empty: RwSignal<bool>,
     input_info: RwSignal<Option<ChatInputInfo>>,
     attachments: RwSignal<Vec<Attachment>>,

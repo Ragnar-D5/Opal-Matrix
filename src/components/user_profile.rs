@@ -137,13 +137,74 @@ impl MemberProfileExt for MemberProfile {
     }
 }
 
-pub trait MemerProfileMaybeExt {
+impl MemberProfileExt for UserProfile {
+    fn to_span(&self) -> RichTextSpan {
+        RichTextSpan::UserMention {
+            user_id: self.user_id.clone(),
+            display_name: self.get_name(),
+        }
+    }
+
+    fn is_room(&self) -> bool {
+        self.user_id.starts_with("!")
+    }
+
+    fn room(room_id: String) -> Self {
+        Self {
+            user_id: room_id.clone(),
+            display_name: Some("room".into()),
+        }
+    }
+
+    fn render_icon(self, size: usize) -> impl IntoView {
+        let url = format!("mxc://user/{}/avatar", self.user_id);
+        let name = self.get_name();
+        let size_str = format!("{}px", size);
+
+        let first_char = name.chars().next().unwrap_or('?').to_string();
+        let color = self.get_color();
+
+        let circle_style = format!("height: {}; width: {};", size_str, size_str);
+
+        let failed = RwSignal::new(true);
+
+        view! {
+            <img
+                class="rounded-full object-cover bg-transparent block select-none"
+                class:hidden=failed
+                src=url
+                style:height=size_str.clone()
+                style:width=size_str
+                alt=name
+                on:error=move |_| failed.set(true)
+                on:load=move |_| failed.set(false)
+            />
+            <TextCircle
+                text=first_char
+                color=color
+                class="rounded-full select-none"
+                class:hidden=move || !failed.get()
+                style=circle_style
+            />
+        }
+    }
+
+    fn render_name(self, font_size: usize) -> impl IntoView {
+        render_profile_name(self.get_name(), self.get_color(), font_size)
+    }
+
+    fn get_color(&self) -> Hsl {
+        get_color(&self.user_id)
+    }
+}
+
+pub trait MemberProfileMaybeExt {
     fn render_icon(self, size: usize) -> impl IntoView;
     fn render_name(self, font_size: usize) -> impl IntoView;
     fn get_color(&self) -> Hsl;
 }
 
-impl MemerProfileMaybeExt for Option<MemberProfile> {
+impl MemberProfileMaybeExt for Option<MemberProfile> {
     fn render_icon(self, size: usize) -> impl IntoView {
         match self {
             Some(profile) => profile.render_icon(size).into_any(),
@@ -162,6 +223,29 @@ impl MemerProfileMaybeExt for Option<MemberProfile> {
         match self {
             Some(profile) => profile.get_color(),
             None => Hsl::new(0.0, 0.0, 70.0, None),
+        }
+    }
+}
+
+impl MemberProfileMaybeExt for Option<UserProfile> {
+    fn get_color(&self) -> Hsl {
+        match self {
+            Some(profile) => profile.get_color(),
+            None => Hsl::new(0.0, 0.0, 70.0, None),
+        }
+    }
+
+    fn render_icon(self, size: usize) -> impl IntoView {
+        match self {
+            Some(profile) => profile.render_icon(size).into_any(),
+            None => ().into_any(),
+        }
+    }
+
+    fn render_name(self, font_size: usize) -> impl IntoView {
+        match self {
+            Some(profile) => profile.render_name(font_size).into_any(),
+            None => ().into_any(),
         }
     }
 }

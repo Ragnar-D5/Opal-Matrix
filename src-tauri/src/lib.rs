@@ -563,7 +563,8 @@ pub fn run() {
             frontend::messages::scroll_up,
             frontend::messages::toggle_reaction,
             frontend::commands::get_commands,
-            frontend::members::get_members_for_room,
+            frontend::profiles::get_members_for_room,
+            frontend::profiles::get_user_profile,
             frontend::dialog::open_file_dialog,
             frontend::dialog::save_file_to_picked_dest,
             // matrix API commands

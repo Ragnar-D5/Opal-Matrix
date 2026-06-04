@@ -5,7 +5,7 @@ use crate::{
         text::RichTextExt,
         user_profile::MemberProfileExt,
     },
-    state::{AppState, MemberStore},
+    state::{AppState, ProfileStore},
     tauri_functions::{get_commands, get_members_for_room},
 };
 use leptos::html::Div;
@@ -15,7 +15,7 @@ use nucleo_matcher::{Config, Matcher, Utf32Str};
 use shared::{commands::Command, user_profile::MemberProfile};
 use web_sys::{Document, HtmlDivElement, HtmlElement, Node, Range};
 
-use crate::components::user_profile::MemerProfileMaybeExt;
+use crate::components::user_profile::MemberProfileMaybeExt;
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum MenuType {
@@ -92,7 +92,7 @@ pub fn commit_selection(
     el: &HtmlElement,
     selected: SelectedItem,
     state: AppState,
-    store: MemberStore,
+    store: ProfileStore,
 ) {
     let doc = document();
     let caret_pos = get_caret_position(el);
@@ -225,11 +225,11 @@ impl RenderMenuRow for MemberProfile {
 
     fn render_row(self, room_id: String, el: HtmlDivElement, idx: usize) -> impl IntoView {
         let state: AppState = expect_context();
-        let store: MemberStore = expect_context();
+        let store: ProfileStore = expect_context();
         let selected_index: RwSignal<usize> = expect_context();
 
         let presence = store.get_presence(self.user_id());
-        let profile = store.get_profile(&room_id, self.user_id()).get();
+        let profile = store.get_member_profile(&room_id, self.user_id()).get();
         let p_clone = profile.clone();
         let m_clone = self.clone();
         let el = el.clone();

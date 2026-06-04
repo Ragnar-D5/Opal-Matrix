@@ -3,7 +3,7 @@ use shared::{
     api::{FileMetadata, LinkPreviewResponse},
     commands::Command,
     timeline::{UiMediaSource, UiTimelineItem},
-    user_profile::MemberProfile,
+    user_profile::{MemberProfile, UserProfile},
 };
 
 use crate::app::{call_tauri, call_tauri_no_args};
@@ -177,4 +177,18 @@ pub async fn save_file_to_picked_dest(
         .map_err(|e| format!("Failed to parse response: {:?}", e))?;
 
     Ok(path)
+}
+
+pub async fn get_user_profile(user_id: &str) -> Result<UserProfile, String> {
+    let args = serde_wasm_bindgen::to_value(&json!({ "user_id": user_id }))
+        .map_err(|e| format!("Failed to serialize request: {:?}", e))?;
+
+    let res = call_tauri("get_user_profile", args)
+        .await
+        .map_err(|e| format!("Tauri call failed: {:?}", e))?;
+
+    let profile: UserProfile = serde_wasm_bindgen::from_value(res)
+        .map_err(|e| format!("Failed to parse response: {:?}", e))?;
+
+    Ok(profile)
 }

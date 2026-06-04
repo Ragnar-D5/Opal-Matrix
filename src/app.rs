@@ -18,7 +18,7 @@ use web_sys::HtmlImageElement;
 
 use crate::components::{chat::Chat, sidebar::Sidebar};
 use crate::hooks::use_tauri_event;
-use crate::state::{AppState, MemberStore};
+use crate::state::{AppState, ProfileStore};
 use crate::tauri_functions::{set_backend_room_id, set_focused_in_backend};
 
 #[wasm_bindgen]
@@ -79,7 +79,7 @@ pub fn App() -> impl IntoView {
     let state = AppState::new();
     provide_context(state);
 
-    let store = MemberStore::default();
+    let store = ProfileStore::default();
     let store_for_profiles = store.clone();
     let store_for_presences = store.clone();
 
@@ -115,7 +115,7 @@ pub fn App() -> impl IntoView {
     Effect::new(move |_| {
         if let Some(profile) = profile_update.get() {
             store_for_profiles
-                .get_profile(&profile.room_id, &profile.profile.user_id)
+                .get_member_profile(&profile.room_id, &profile.profile.user_id)
                 .set(Some(profile.clone()));
         }
     });

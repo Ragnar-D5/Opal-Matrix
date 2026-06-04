@@ -13,7 +13,7 @@ use shared::{
 use crate::{
     app::{CurrentWindow, call_tauri},
     components::chat::Attachment,
-    tauri_functions::get_members_for_room,
+    tauri_functions::{get_members_for_room, get_user_profile},
 };
 use leptos::prelude::*;
 
@@ -244,7 +244,7 @@ impl AppState {
         });
     }
 
-    pub fn get_room_header(&self, member_store: MemberStore) -> RoomHeader {
+    pub fn get_room_header(&self, member_store: ProfileStore) -> RoomHeader {
         let Some(room) = self.active_room.get() else {
             return RoomHeader::Unknown;
         };
@@ -256,7 +256,7 @@ impl AppState {
                 let Some(other_user_id) = other_user_ids.first() else {
                     return RoomHeader::Unknown;
                 };
-                let profile = member_store.get_profile(&active_room_id, other_user_id);
+                let profile = member_store.get_member_profile(&active_room_id, other_user_id);
 
                 RoomHeader::DM(profile)
             }
@@ -327,15 +327,18 @@ fn find_node_in_nodes<'a>(nodes: &'a [RoomNode], room_id: &str) -> Option<&'a Ro
 type MemberStoreRoomEntry = HashMap<String, ArcRwSignal<Option<MemberProfile>>>;
 
 #[derive(Default, Clone)]
-pub struct MemberStore {
+pub struct ProfileStore {
     pub rooms: RwSignal<HashMap<String, MemberStoreRoomEntry>>,
     pub presences: RwSignal<HashMap<String, ArcRwSignal<PresenceInfo>>>,
 
-    pub fetching: RwSignal<HashSet<String>>,
+    pub user_profiles: RwSignal<HashMap<String, ArcRwSignal<Option<UserProfile>>>>,
+
+    fetching_members: RwSignal<HashSet<String>>,
+    fetching_profiles: RwSignal<HashSet<String>>,
 }
 
-impl MemberStore {
-    pub fn get_profile(&self, room_id: &str, user_id: &str) -> ArcRwSignal<Option<MemberProfile>> {
+impl ProfileStore {
+    pub fn get_member_profile(&self, room_id: &str, user_id: &str) -> ArcRwSignal<Option<MemberProfile>> {
         if room_id.is_empty() {
             return ArcRwSignal::new(None);
         }
@@ -371,11 +374,11 @@ impl MemberStore {
         });
 
         let is_fetching = self
-            .fetching
+            .fetching_members
             .with_untracked(|fetching| fetching.contains(room_id));
 
         if !is_fetching {
-            self.fetching.update(|f| {
+            self.fetching_members.update(|f| {
                 f.insert(room_id.to_string());
             });
 
@@ -419,6 +422,44 @@ impl MemberStore {
         self.presences.update(|presences| {
             presences.insert(user_id.to_string(), new_signal.clone());
         });
+
+        new_signal
+    }
+
+    pub fn get_user_profile(&self, user_id: &str) -> ArcRwSignal<Option<UserProfile>> {
+        let existing_signal = self.user_profiles.with_untracked(|p| p.get(user_id).cloned());
+
+        if let Some(sig) = existing_signal {
+            return sig;
+        }
+
+        let new_signal = ArcRwSignal::new(None);
+
+        self.user_profiles.update(|profiles| {
+            profiles.insert(user_id.to_string(), new_signal.clone());
+        });
+
+        if !self.fetching_profiles.with_untracked(|f| f.contains(user_id)) {
+            self.fetching_profiles.update(|f| {
+                f.insert(user_id.to_string());
+            });
+
+            let store = self.clone();
+            let uid = user_id.to_string();
+
+            spawn_local(async move {
+                match get_user_profile(&uid).await {
+                    Ok(profile) => {
+                        store.user_profiles.update(|profiles| {
+                            profiles.insert(uid, ArcRwSignal::new(Some(profile)));
+                        });
+                    }
+                    Err(err) => {
+                        error!("Failed to fetch profile for user {}: {:?}", uid, err);
+                    }
+                }
+            });
+        }
 
         new_signal
     }

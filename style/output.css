@@ -705,6 +705,12 @@
   .justify-end {
     justify-content: flex-end;
   }
+  .justify-start {
+    justify-content: flex-start;
+  }
+  .gap-\(--gap\) {
+    gap: var(--gap);
+  }
   .gap-1 {
     gap: calc(var(--spacing) * 1);
   }
@@ -1608,7 +1614,7 @@
   --accent-color: #46aec5;
   --accent-bg-color: #183c43;
   --accent-text-color: #181825;
-  --header-height: 46px;
+  --header-height: 50px;
   --floating-border-radius: 8px;
   --ui-base-color: rgba(255, 255, 255, 0.3);
   --ui-hover-color: rgba(255, 255, 255, 0.8);

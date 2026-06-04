@@ -8,10 +8,10 @@ use crate::{
             menu::{MenuType, SelectionMenu},
         },
         presence::PresenceBadge,
-        user_profile::{MemberProfileExt, MemerProfileMaybeExt},
+        user_profile::{MemberProfileExt, MemberProfileMaybeExt},
     },
     hooks::use_tauri_event,
-    state::{AppState, MemberProfileHandle, MemberStore, RoomHeader},
+    state::{AppState, MemberProfileHandle, ProfileStore, RoomHeader},
     tauri_functions::{get_members_for_room, get_timeline, pick_files, scroll_up},
 };
 
@@ -290,7 +290,7 @@ fn ChatHeader(
     chat_sidebar_open: ReadSignal<bool>,
     set_chat_sidebar_open: WriteSignal<bool>,
 ) -> impl IntoView {
-    let member_store: MemberStore = expect_context();
+    let member_store: ProfileStore = expect_context();
     let state: AppState = expect_context();
 
     let (info_hovered, set_info_hovered) = signal(false);
@@ -702,7 +702,7 @@ fn handle_paste(
 #[component]
 fn ChatInput() -> impl IntoView {
     let state: AppState = expect_context();
-    let store: MemberStore = expect_context();
+    let store: ProfileStore = expect_context();
 
     let menu = RwSignal::new(MenuType::None);
     let selected_index = RwSignal::new(0);
@@ -809,7 +809,7 @@ fn ChatInput() -> impl IntoView {
         let content = match info {
             ChatInputInfo::ReplyingTo { sender_id, .. } => {
                 let profile = store_clone
-                    .get_profile(&state.active_room_id().unwrap_or_default(), &sender_id);
+                    .get_member_profile(&state.active_room_id().unwrap_or_default(), &sender_id);
                 view! {
                     <span class="text-sm text-bright">
                         "Replying to " {move || profile.get().render_name(14)}
@@ -934,7 +934,7 @@ fn ChatInput() -> impl IntoView {
 #[component]
 pub fn Chat() -> impl IntoView {
     let state: AppState = expect_context();
-    let member_store: MemberStore = expect_context();
+    let member_store: ProfileStore = expect_context();
 
     let header = Memo::new({
         let member_store = member_store.clone();
@@ -1006,7 +1006,8 @@ pub fn Chat() -> impl IntoView {
                                                 {joined_user_ids
                                                     .iter()
                                                     .map(|id| {
-                                                        let profile = member_store.get_profile(&node.room_id, id);
+                                                        let profile = member_store
+                                                            .get_member_profile(&node.room_id, id);
                                                         let clone = profile.clone();
                                                         let colors = move || {
                                                             let mut color = clone.get().get_color();
@@ -1066,7 +1067,7 @@ pub fn Chat() -> impl IntoView {
 
 #[component]
 fn ChatInfo(header: Memo<RoomHeader>) -> impl IntoView {
-    let member_store: MemberStore = expect_context();
+    let member_store: ProfileStore = expect_context();
 
     let content = move || {
         let store_clone = member_store.clone();
@@ -1145,7 +1146,7 @@ fn ChatInfo(header: Memo<RoomHeader>) -> impl IntoView {
 #[component]
 fn MemberList() -> impl IntoView {
     let state: AppState = expect_context();
-    let store: MemberStore = expect_context();
+    let store: ProfileStore = expect_context();
 
     let members = LocalResource::new(move || {
         let store = store.clone();
@@ -1169,7 +1170,7 @@ fn MemberList() -> impl IntoView {
                 let el = (
                     MemberProfileHandle {
                         user_id: user_id.to_string(),
-                        profile: store.get_profile(&room_id, user_id),
+                        profile: store.get_member_profile(&room_id, user_id),
                     },
                     presence.clone(),
                 );
