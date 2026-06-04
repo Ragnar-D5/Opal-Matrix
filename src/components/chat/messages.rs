@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use chrono::{DateTime, Local, TimeZone};
 use colorsys::Hsl;
-use leptos::{html::Div, prelude::*};
+use leptos::{html::Div, prelude::*, task::spawn_local};
 use phosphor_leptos::{
     Icon, IconWeight, ARROW_BEND_UP_LEFT, ARROW_RIGHT, HASH, PENCIL_SIMPLE, SMILEY, SPEAKER_HIGH,
     TRASH, WARNING_CIRCLE,
@@ -17,11 +17,13 @@ use shared::{
     },
 };
 use wasm_bindgen::JsCast;
+use web_sys::Element;
 
 use crate::{
     app::format_date,
     components::{
         chat::{Attachment, ChatInputInfo},
+        emoji_picker::{pick_emoji, EmojiPickerState},
         input::move_caret_to_end,
         previews::render_link,
         text::{richt_text_spans_to_html, RichTextExt},
@@ -960,9 +962,7 @@ fn render_timeline_event(
             EventContent::FailedToParseMessageLike { event_type, error } => view! { <div class="text-red-500 italic">{format!("Failed to render {event_type}: {error}")}</div> }.into_any(),
             EventContent::FailedToParseState { event_type, state_key, error } => view! {
                 <div class="text-red-500 italic">
-                    {format!(
-                        "Failed to render {event_type} with state key {state_key}: {error}",
-                    )}
+                    {format!("Failed to render {event_type} with state key {state_key}: {error}")}
                 </div>
             }.into_any(),
             EventContent::SystemMessage(ev) => render_system_message(
@@ -1035,6 +1035,10 @@ fn render_timeline_event(
     let sender_profile_sig =
         store.get_member_profile(&room_id, &sender_id.clone().unwrap_or_default());
 
+    let emoji_state: EmojiPickerState = expect_context();
+    let reaction_event_id = event_id.clone();
+    let reaction_room_id = room_id.clone();
+
     view! {
         <div
             class="group/msg relative flex flex-col gap-[var(--gap)] hover:bg-black/20 ml-1 pl-4 py-[2px] rounded-md"
@@ -1092,10 +1096,41 @@ fn render_timeline_event(
                     },
                 )
             >
-                <Show when=move || flags.get().is_reactable>
-                    <button class="hover:bg-(--ui-solid-hover-bg) cursor-pointer p-0.5 rounded-(--gap) hover:text-normal">
-                        <Icon icon=SMILEY size="20px"></Icon>
-                    </button>
+                <Show when=move || {
+                    flags.get().is_reactable
+                }>
+                    {
+                        let event_id = reaction_event_id.clone();
+                        let room_id = reaction_room_id.clone();
+
+                        view! {
+                            <button
+                                class="hover:bg-(--ui-solid-hover-bg) cursor-pointer p-0.5 rounded-(--gap) hover:text-normal"
+                                on:click=move |ev| {
+                                    let anchor: Element = ev.target().unwrap().unchecked_into();
+                                    let event_id = event_id.clone();
+                                    let room_id = room_id.clone();
+                                    spawn_local(async move {
+                                        let Some(emoji) = pick_emoji(&anchor, emoji_state).await
+                                        else {
+                                            return;
+                                        };
+                                        if let Err(e) = toggle_reaction(
+                                                &room_id,
+                                                &event_id.unwrap_or_default(),
+                                                &emoji,
+                                            )
+                                            .await
+                                        {
+                                            log::error!("Failed to toggle reaction: {}", e);
+                                        }
+                                    });
+                                }
+                            >
+                                <Icon icon=SMILEY size="20px"></Icon>
+                            </button>
+                        }
+                    }
                 </Show>
                 <Show when=move || {
                     flags.get().can_be_replied_to

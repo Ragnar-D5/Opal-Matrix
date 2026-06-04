@@ -5,8 +5,7 @@ use crate::{
         chat::messages::render_timeline_item,
         emoji_picker::EmojiPickerState,
         input::{
-            get_active_filter, get_caret_position, handle_input, handle_keydown,
-            menu::{MenuType, SelectionMenu},
+            get_active_filter, get_caret_position, handle_input, handle_keydown, insert_text_at_caret, menu::{MenuType, SelectionMenu}
         },
         presence::PresenceBadge,
         user_profile::{MemberProfileExt, MemberProfileMaybeExt},
@@ -32,7 +31,7 @@ use shared::{
 };
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
-use web_sys::IntersectionObserverEntry;
+use web_sys::{Element, IntersectionObserverEntry};
 
 pub(crate) mod messages;
 
@@ -952,10 +951,15 @@ fn ChatInput() -> impl IntoView {
                 <button
                     class="text-(--ui-base-color) hover:text-(--bright-text-color) rounded-(--ui-border-radius) hover:bg-(--ui-solid-hover-bg) p-1 cursor-pointer"
                     on:click=move |ev| {
-                        let anchor: web_sys::Element = ev.target().unwrap().unchecked_into();
+                        let anchor: Element = ev.target().unwrap().unchecked_into();
                         spawn_local(async move {
-                            if let Some(emoji) = pick_emoji(&anchor, emoji_state).await {
-                                log::info!("Selected emoji: {emoji}");
+                            let Some(emoji) = pick_emoji(&anchor, emoji_state).await else {
+                                return;
+                            };
+                            if let Some(el) = input_ref.get() {
+                                insert_text_at_caret(&el, &emoji);
+                                let input_event = web_sys::InputEvent::new("input").unwrap();
+                                el.dispatch_event(&input_event).unwrap();
                             }
                         });
                     }
@@ -1031,13 +1035,7 @@ pub fn Chat() -> impl IntoView {
                                             _ => "w-[calc(20%-0.8*var(--gap))] max-w-sm",
                                         };
 
-                                        // Dynamically shrink the width basis based on the number of people.
-                                        // The `calc` subtracts a fraction of the gap to prevent flex wrapping too early.
-                                        // 13+ users
-
                                         view! {
-                                            // `content-center` vertically centers the rows
-                                            // `justify-center` horizontally centers odd items on the bottom row
                                             <div class="flex-1 flex flex-wrap justify-center content-center w-full h-full min-h-0 gap-[var(--gap)] p-[var(--gap)] overflow-y-auto">
                                                 {participants
                                                     .keys()

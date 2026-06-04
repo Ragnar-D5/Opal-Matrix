@@ -468,3 +468,29 @@ pub fn move_caret_to_end(el: &HtmlElement) {
         sel.add_range(&range).unwrap();
     }
 }
+
+pub fn insert_text_at_caret(el: &HtmlElement, text: &str) {
+    let win = web_sys::window().unwrap();
+    let doc = win.document().unwrap();
+
+    // Get the current selection
+    if let Ok(Some(sel)) = win.get_selection() {
+        if sel.range_count() > 0 {
+            let range = sel.get_range_at(0).unwrap();
+            range.delete_contents().unwrap();
+
+            let text_node = doc.create_text_node(text);
+            range.insert_node(&text_node).unwrap();
+
+            // Move the caret after the inserted text
+            range.set_start_after(&text_node).unwrap();
+            range.collapse();
+
+            sel.remove_all_ranges().unwrap();
+            sel.add_range(&range).unwrap();
+        } else {
+            // If there's no selection, just append the text
+            el.append_child(&doc.create_text_node(text)).unwrap();
+        }
+    }
+}

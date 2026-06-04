@@ -17,19 +17,10 @@ use crate::{
 };
 use leptos::prelude::*;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct MessageDraft {
     pub content: String,
     pub attachments: Vec<Attachment>,
-}
-
-impl Default for MessageDraft {
-    fn default() -> Self {
-        Self {
-            content: "<br>".to_string(),
-            attachments: Vec::new(),
-        }
-    }
 }
 
 #[derive(Clone, Debug, Copy)]
