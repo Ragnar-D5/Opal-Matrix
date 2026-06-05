@@ -326,7 +326,7 @@ pub async fn get_timeline(
     tokio::select! {
         _ = token.cancelled() => {
             log::debug!("Timeline fetch for room {} was cancelled by a newer request", room_id);
-            Err(TauriError::silent())
+            Ok(Vec::new())
         }
 
         result = async {

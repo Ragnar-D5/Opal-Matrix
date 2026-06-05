@@ -3,64 +3,67 @@ name = "opal-matrix-ui"
 version = "0.1.0"
 edition = "2024"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-[dependencies]
-web-sys = { version = "0.3.95", features = [
-  "DomParser",
-  "SupportedType",
-  "Document",
-  "Element",
-  "Node",
-  "Range",
-  "Selection",
-  "TreeWalker",
-  "WebGlShader",
-  "WebGl2RenderingContext",
-  "WebGlProgram",
-  "WebGlBuffer",
-  "WebGlUniformLocation",
-  "Performance",
-  "WebGlVertexArrayObject",
-  "Worker",
-  "OffscreenCanvas",
-  "MediaError",
-  "HtmlVideoElement",
-  "Blob",
-  "BlobPropertyBag",
-  "Window",
-  "Response",
-  "Url",
-  "DataTransfer",
-  "DataTransferItemList",
-  "DataTransferItem",
-  "File",
-  "Navigator",
-  "Clipboard",
-  "ClipboardItem",
-  "HtmlInputElement"
-] }
-leptos = { version = "0.8", features = ["csr"] }
-wasm-bindgen = "0.2"
-wasm-bindgen-futures = "0.4"
-js-sys = "0.3"
-serde-wasm-bindgen = "0.6"
-console_error_panic_hook = "0.1.7"
-send_wrapper = { version = "0.6.0", features = ["futures"] }
-chrono = { version = "0.4.44", features = ["wasmbind"] }
-leptos-use = "0.18.3"
-shared = { path = "./shared" }
-urlencoding = "2.1.3"
-colorsys = "0.7.3"
-log = "0.4.29"
-phosphor-leptos = "0.8.0"
-serde_json = "1.0.149"
-serde = "1.0.228"
-nucleo-matcher = "0.3.1"
-linkify = "0.11.0"
-regex = "1.12.3"
-wgpu = "29.0.3"
-uuid = { version = "1.23.1", features = ["js"] }
-emojis = "0.8.2"
-
 [workspace]
 members = [".", "shared", "src-tauri"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[dependencies]
+chrono = { version = "0.4.44", features = ["wasmbind"] }
+colorsys = "0.7.3"
+console_error_panic_hook = "0.1.7"
+emojis = "0.8.2"
+js-sys = "0.3"
+leptos = { version = "0.8", features = ["csr"] }
+leptos-use = "0.18.3"
+linkify = "0.11.0"
+log = "0.4.29"
+nucleo-matcher = "0.3.1"
+phosphor-leptos = "0.8.0"
+regex = "1.12.3"
+send_wrapper = { version = "0.6.0", features = ["futures"] }
+serde = "1.0.228"
+serde_json = "1.0.149"
+serde-wasm-bindgen = "0.6"
+shared = { path = "./shared" }
+urlencoding = "2.1.3"
+uuid = { version = "1.23.1", features = ["js"] }
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+web-sys = {
+  version = "0.3.95",
+  features = [
+    "Blob",
+    "BlobPropertyBag",
+    "Clipboard",
+    "ClipboardItem",
+    "DataTransfer",
+    "DataTransferItem",
+    "DataTransferItemList",
+    "Document",
+    "DomParser",
+    "Element",
+    "File",
+    "HtmlInputElement",
+    "HtmlVideoElement",
+    "MediaError",
+    "Navigator",
+    "Node",
+    "OffscreenCanvas",
+    "Performance",
+    "Range",
+    "Response",
+    "Selection",
+    "SupportedType",
+    "TreeWalker",
+    "Url",
+    "WebGl2RenderingContext",
+    "WebGlBuffer",
+    "WebGlProgram",
+    "WebGlShader",
+    "WebGlUniformLocation",
+    "WebGlVertexArrayObject",
+    "Window",
+    "Worker"
+  ]
+}
+wgpu = "29.0.3"
