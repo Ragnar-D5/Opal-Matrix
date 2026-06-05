@@ -319,13 +319,13 @@ pub async fn handle_room_updates(
 
     if should_notification_update(room_updates) {
         let counts = get_notification_counts(client).await;
-        if let Err(e) = handle.emit("notification_counts_update", counts) {
+        if let Err(e) = send_notification_counts_update(handle, counts) {
             log::error!("Failed to emit notification counts: {:?}", e);
         }
     }
 
-    if let Some(call_member_updates) = extract_call_member_updates(room_updates).await
-        && let Err(e) = handle.emit("call_member_updates", call_member_updates)
+    if let Some(call_member_updates) = extract_call_member_updates(room_updates, client).await
+        && let Err(e) = send_call_member_updates(handle, call_member_updates)
     {
         log::error!("Failed to emit call member updates: {:?}", e);
     }
@@ -350,39 +350,58 @@ pub async fn get_notification_counts(client: &Client) -> HashMap<String, Notific
         .collect()
 }
 
-/// Detects changes of call members and emits the update, for all rooms grouped by room_id
+/// Detects changes of call members and emits the update, for all rooms grouped by room_id.
+/// Reads full current state from the room on any CallMember event so leaves are handled correctly.
 pub async fn extract_call_member_updates(
     room_updates: &RoomUpdates,
+    client: &Client,
 ) -> Option<HashMap<String, Vec<UserDevice>>> {
     let mut updates = HashMap::new();
 
     for (room_id, update) in &room_updates.joined {
+        let has_call_member_event = update.timeline.events.iter().any(|raw_event| {
+            matches!(
+                raw_event.raw().deserialize(),
+                Ok(AnySyncTimelineEvent::State(AnySyncStateEvent::CallMember(_)))
+            )
+        });
+
+        if !has_call_member_event {
+            continue;
+        }
+
+        let Some(room) = client.get_room(room_id) else {
+            continue;
+        };
+
         let mut user_devices = Vec::new();
+        let events = room
+            .get_state_events_static::<CallMemberEventContent>()
+            .await
+            .unwrap_or_default();
 
-        for raw_event in &update.timeline.events {
-            let Ok(AnySyncTimelineEvent::State(event)) = raw_event.raw().deserialize() else {
+        for raw in events {
+            let Ok(SyncOrStrippedState::Sync(ev)) = raw.deserialize() else {
                 continue;
             };
-            let AnySyncStateEvent::CallMember(ev) = event else {
-                continue;
-            };
 
-            if let Some(OriginalSyncStateEvent {
+            let Some(OriginalSyncStateEvent {
                 content: CallMemberEventContent::SessionContent(content),
                 sender,
                 ..
             }) = ev.as_original()
-            {
-                user_devices.push(UserDevice {
-                    user_id: sender.to_string(),
-                    device_id: content.device_id.to_string(),
-                });
-            }
+            else {
+                continue;
+            };
+
+            user_devices.push(UserDevice {
+                user_id: sender.to_string(),
+                device_id: content.device_id.to_string(),
+            });
         }
 
-        if !user_devices.is_empty() {
-            updates.insert(room_id.to_string(), user_devices);
-        }
+        // Always insert, even when empty — an empty vec signals that everyone left this room.
+        updates.insert(room_id.to_string(), user_devices);
     }
 
     (!updates.is_empty()).then_some(updates)
@@ -428,4 +447,20 @@ pub async fn extract_call_memberships(rooms: &[Room]) -> Option<HashMap<String, 
     }
 
     (!memberships.is_empty()).then_some(memberships)
+}
+
+pub fn send_notification_counts_update(
+    handle: &AppHandle,
+    counts: HashMap<String, NotificationCounts>,
+) -> Result<(), TauriError> {
+    handle.emit("notification_counts_update", counts)?;
+    Ok(())
+}
+
+pub fn send_call_member_updates(
+    handle: &AppHandle,
+    update: HashMap<String, Vec<UserDevice>>,
+) -> Result<(), TauriError> {
+    handle.emit("call_member_update", update)?;
+    Ok(())
 }

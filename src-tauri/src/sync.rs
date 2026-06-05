@@ -11,7 +11,9 @@ use crate::{
     frontend::{
         presence::handle_presences,
         profiles::on_member_update,
-        sidebar::{handle_room_updates, send_sidebar},
+        sidebar::{
+            extract_call_memberships, handle_room_updates, send_call_member_updates, send_sidebar,
+        },
     },
     matrix_api::{
         keyring::{save_session, StoredSession},
@@ -72,6 +74,11 @@ pub async fn attach_callbacks(client: &MatrixClient, handle: &AppHandle) -> Resu
     send_sidebar(&client.joined_rooms(), handle, &own_id).await?;
 
     send_user_to_frontend(handle, client).await?;
+
+    if let Some(data) = extract_call_memberships(&client.rooms()).await
+        && let Err(e) = send_call_member_updates(handle, data) {
+            log::error!("Failed to send call member updates: {:?}", e);
+        }
 
     let client_sync_clone = client.clone();
     let handle_clone = handle.clone();

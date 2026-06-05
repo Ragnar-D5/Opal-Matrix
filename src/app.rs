@@ -184,6 +184,7 @@ pub fn App() -> impl IntoView {
 
     Effect::new(move |_| {
         if let Some(update) = call_member_update.get() {
+            log::debug!("Received call member update: {:?}", update);
             state.update_call_members(update);
         }
     });
