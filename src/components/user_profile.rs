@@ -161,19 +161,21 @@ impl MemberProfileExt for UserProfile {
         size_str: T,
         room_id: Option<U>,
     ) -> impl IntoView {
-        let url = if let Some(room_id) = room_id {
-            format!("mxc://user/{}/room/{}", self.user_id, room_id.as_ref())
+        let url = if self.has_avatar {
+            if let Some(room_id) = room_id {
+                Some(format!(
+                    "mxc://user/{}/room/{}",
+                    self.user_id,
+                    room_id.as_ref()
+                ))
+            } else {
+                Some(format!("mxc://user/{}", self.user_id))
+            }
         } else {
-            format!("mxc://user/{}", self.user_id)
+            None
         };
 
-        render_url_icon(
-            Some(url),
-            self.get_name(),
-            size_str,
-            self.get_color(),
-            "full",
-        )
+        render_url_icon(url, self.get_name(), size_str, self.get_color(), "full")
     }
 
     fn render_icon<T: AsRef<str>>(self, size_str: T) -> impl IntoView {

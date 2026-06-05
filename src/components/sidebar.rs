@@ -1,5 +1,5 @@
 use phosphor_leptos::{Icon, IconData, IconWeight, HASH, MATRIX_LOGO, SPEAKER_HIGH};
-use shared::{get_color, unknown_color};
+use shared::{get_color, profile::MemberProfile, unknown_color};
 
 use crate::{
     components::{
@@ -798,39 +798,43 @@ pub fn ProfileCard() -> impl IntoView {
     let state: AppState = expect_context();
     let store: ProfileStore = expect_context();
 
-    let current_room_profile = move || {
+    let current_profile: RwSignal<Option<MemberProfile>> = RwSignal::new(None);
+
+    let profile_store = store.clone();
+    Effect::new(move |_| {
         let room_id = state.active_room_id();
         let user_id = state.user_id.get();
-
         if user_id.is_empty() {
-            return ().into_any();
+            return;
         }
 
-        if let Some(room_id) = room_id {
-            let profile_sig = store.get_member_profile(&room_id, &user_id);
-            let name_sig = profile_sig.clone();
-
-            view! {
-                <PresenceBadge presence=store
-                    .get_presence(
-                        &user_id,
-                    )>{move || profile_sig.get().render_icon("40px")}</PresenceBadge>
-                {move || name_sig.get().render_name("16px")}
+        if let Some(rid) = room_id {
+            let profile_sig = profile_store.get_member_profile(&rid, &user_id);
+            let val = profile_sig.get();
+            if let Some(profile) = val {
+                current_profile.set(Some(profile));
             }
-            .into_any()
         } else {
-            let profile_sig = store.get_user_profile(&user_id);
-            let name_sig = profile_sig.clone();
-
-            view! {
-                <PresenceBadge presence=store
-                    .get_presence(
-                        &user_id,
-                    )>{move || profile_sig.get().render_icon("40px")}</PresenceBadge>
-                {move || name_sig.get().render_name("16px")}
-            }
-            .into_any()
+            let profile = profile_store.get_user_profile(&user_id).get();
+            current_profile.set(Some(MemberProfile {
+                room_id: "global".to_string(),
+                profile,
+            }));
         }
+    });
+
+    let current_room_profile = move || {
+        let profile = current_profile.get();
+        let name_profile = profile.clone();
+
+        view! {
+            <PresenceBadge presence=store
+                .get_presence(
+                    &profile.clone().map(|p| p.profile.user_id.clone()).unwrap_or_default(),
+                )>{profile.render_icon("40px")}</PresenceBadge>
+            {name_profile.render_name("16px")}
+        }
+        .into_any()
     };
 
     view! {
