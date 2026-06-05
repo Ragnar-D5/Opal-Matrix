@@ -26,9 +26,6 @@ pub struct RoomNode {
     pub name: Option<String>,
     pub topic: Option<String>,
 
-    pub highlight_count: u64,
-    pub notification_count: u64,
-
     pub kind: RoomKind,
 }
 
@@ -51,4 +48,30 @@ pub struct SidebarState {
     pub dms: Vec<RoomNode>,
     pub servers: Vec<RoomNode>,
     pub orphaned_rooms: Vec<RoomNode>,
+}
+
+#[derive(Debug, Serialize, Clone, Deserialize, PartialEq, Default)]
+pub struct NotificationCounts {
+    pub highlight_count: u64,
+    pub notification_count: u64,
+}
+
+impl NotificationCounts {
+    pub fn has_notifications(&self) -> bool {
+        self.notification_count > 0
+    }
+}
+
+pub trait MaybeNotificationCounts {
+    fn has_notifications(&self) -> bool;
+}
+
+impl MaybeNotificationCounts for Option<NotificationCounts> {
+    fn has_notifications(&self) -> bool {
+        if let Some(counts) = self {
+            counts.has_notifications()
+        } else {
+            false
+        }
+    }
 }

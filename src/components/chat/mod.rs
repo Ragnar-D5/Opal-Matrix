@@ -1003,7 +1003,7 @@ pub fn Chat() -> impl IntoView {
                         }
                         Some(node) => {
                             match &node.kind {
-                                RoomKind::Dm { .. } | RoomKind::TextChannel { .. } => {
+                                RoomKind::Dm { .. } | RoomKind::TextChannel => {
                                     view! {
                                         <TimeLine />
                                         <ChatInput />

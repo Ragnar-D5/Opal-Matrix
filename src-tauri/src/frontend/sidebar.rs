@@ -10,8 +10,8 @@ use matrix_sdk::room::ParentSpace;
 use matrix_sdk::ruma::events::space::child::SpaceChildEventContent;
 use matrix_sdk::sync::RoomUpdates;
 use matrix_sdk::ruma::events::call::member::CallMemberEventContent;
-use matrix_sdk::ruma::events::{AnyStateEventContent, StateEventType};
-use shared::sidebar::{RoomKind, RoomNode, SidebarState, VoiceParticipants};
+use matrix_sdk::ruma::events::{AnyStateEventContent, AnySyncStateEvent, StateEventType};
+use shared::sidebar::{NotificationCounts, RoomKind, RoomNode, SidebarState, VoiceParticipants};
 use tauri::AppHandle;
 use tauri::Emitter;
 
@@ -42,8 +42,6 @@ pub async fn send_sidebar(all_rooms: &[Room], handle: &AppHandle, own_id: &str) 
             room_id: room.room_id().to_string(),
             name: room.display_name().await.ok().map(|n| n.to_string()),
             topic: room.topic(),
-            highlight_count: room.unread_notification_counts().highlight_count,
-            notification_count: room.unread_notification_counts().notification_count,
             kind: RoomKind::Dm { other_user_id: other_user_id.to_string() },
         })
     }).collect().await;
@@ -147,14 +145,10 @@ pub async fn send_sidebar(all_rooms: &[Room], handle: &AppHandle, own_id: &str) 
     let mut orphaned_channels = Vec::new();
     for (room_id, room) in &channels {
         if !room.is_space() && !all_children.contains(room_id) {
-            let unread_counts = room.unread_notification_counts();
-
             orphaned_channels.push(RoomNode {
                 room_id: room_id.clone(),
                 name: room.display_name().await.ok().map(|n| n.to_string()),
                 topic: room.topic(),
-                highlight_count: unread_counts.highlight_count,
-                notification_count: unread_counts.notification_count,
                 kind: RoomKind::TextChannel,
             });
         }
@@ -179,10 +173,7 @@ async fn build_async_node(
     parent_to_children: &HashMap<String, Vec<(String, Option<String>)>>,
 ) -> Option<RoomNode> {
     let room = channels.get(room_id)?;
-    let unread_counts = room.unread_notification_counts();
 
-    let mut highlight_count = unread_counts.highlight_count;
-    let mut notification_count = unread_counts.notification_count;
     let mut user_ids_in_calls = HashSet::new();
 
     let room_kind = if room.is_space() {
@@ -193,8 +184,6 @@ async fn build_async_node(
                 if let Some(child_node) =
                     build_async_node(child_id, channels, parent_to_children).await
                 {
-                    highlight_count += child_node.highlight_count;
-                    notification_count += child_node.notification_count;
                     if let RoomKind::VoiceChannel { participants } = &child_node.kind {
                         for user_id in participants.keys() {
                             user_ids_in_calls.insert(user_id.clone());
@@ -241,33 +230,53 @@ async fn build_async_node(
         room_id: room_id.to_string(),
         name: room.display_name().await.ok().map(|n| n.to_string()),
         topic: room.topic(),
-        highlight_count,
-        notification_count,
         kind: room_kind,
     })
 }
 
-fn should_sidebar_update(room_updates: &RoomUpdates) -> bool {
+fn is_structural_state_event(event: &AnySyncStateEvent, own_user_id: &str) -> bool {
+    match event {
+        AnySyncStateEvent::RoomMember(ev) => ev.state_key().as_str() == own_user_id,
+        AnySyncStateEvent::RoomName(_)
+        | AnySyncStateEvent::RoomTopic(_)
+        | AnySyncStateEvent::RoomAvatar(_)
+        | AnySyncStateEvent::SpaceChild(_) => true,
+        _ => false,
+    }
+}
+
+fn should_sidebar_update(room_updates: &RoomUpdates, own_user_id: &str) -> bool {
+    use matrix_sdk::sync::State;
+    use matrix_sdk::ruma::events::AnySyncTimelineEvent;
+
     if !room_updates.left.is_empty() || !room_updates.invited.is_empty() {
         return true;
     }
 
     for update in room_updates.joined.values() {
-        if !update.timeline.events.is_empty() {
-            return true;
-        }
+        let state_block = match &update.state {
+            State::Before(events) | State::After(events) => events,
+        };
 
-        for raw_event in &update.ephemeral {
-            if let Ok(Some(event_type)) = raw_event.get_field::<String>("type")
-                && event_type == "m.receipt"
+        for raw in state_block {
+            if let Ok(event) = raw.deserialize()
+                && is_structural_state_event(&event, own_user_id)
             {
                 return true;
             }
         }
 
-        for raw_event in &update.account_data {
-            if let Ok(Some(event_type)) = raw_event.get_field::<String>("type")
-                && (event_type == "m.direct" || event_type == "m.fully_read")
+        for timeline_event in &update.timeline.events {
+            if let Ok(AnySyncTimelineEvent::State(event)) = timeline_event.raw().deserialize()
+                && is_structural_state_event(&event, own_user_id)
+            {
+                return true;
+            }
+        }
+
+        for raw in &update.account_data {
+            if let Ok(Some(event_type)) = raw.get_field::<String>("type")
+                && event_type == "m.direct"
             {
                 return true;
             }
@@ -277,11 +286,53 @@ fn should_sidebar_update(room_updates: &RoomUpdates) -> bool {
     false
 }
 
+fn should_notification_update(room_updates: &RoomUpdates) -> bool {
+    for update in room_updates.joined.values() {
+        if !update.timeline.events.is_empty() {
+            return true;
+        }
+        for raw_event in &update.ephemeral {
+            if let Ok(Some(event_type)) = raw_event.get_field::<String>("type")
+                && event_type == "m.receipt"
+            {
+                return true;
+            }
+        }
+        for raw_event in &update.account_data {
+            if let Ok(Some(event_type)) = raw_event.get_field::<String>("type")
+                && event_type == "m.fully_read"
+            {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 pub async fn handle_room_updates(room_updates: &RoomUpdates, client: &Client, handle: &AppHandle, own_id: &str) {
-    if should_sidebar_update(room_updates) {
+    if should_sidebar_update(room_updates, own_id) {
         log::debug!("Refreshing sidebar");
         if let Err(e) = send_sidebar(&client.joined_rooms(), handle, own_id).await {
             log::error!("Failed to send sidebar update: {:?}", e);
         }
     }
+
+    if should_notification_update(room_updates) {
+        let counts = get_notification_counts(client).await;
+        if let Err(e) = handle.emit("notification_counts_update", counts) {
+            log::error!("Failed to emit notification counts: {:?}", e);
+        }
+    }
+}
+
+pub async fn get_notification_counts(client: &Client) -> HashMap<String, NotificationCounts> {
+    client.rooms().iter().map(|room| {
+        let notification_count = room.num_unread_notifications();
+        let highlight_count = room.num_unread_mentions();
+
+        (room.room_id().to_string(), NotificationCounts {
+            notification_count,
+            highlight_count,
+        })
+    }).collect()
 }

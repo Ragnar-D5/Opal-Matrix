@@ -4,7 +4,7 @@ use crate::components::previews::ImageLightbox;
 use crate::components::shader::BackgroundShader;
 use chrono::{DateTime, Local};
 use shared::api::RestoreResponse;
-use shared::sidebar::SidebarState;
+use shared::sidebar::{NotificationCounts, SidebarState};
 use std::collections::HashMap;
 
 use log::error;
@@ -163,6 +163,15 @@ pub fn App() -> impl IntoView {
                     .get_presence(user_id)
                     .set(presence.clone());
             }
+        }
+    });
+
+    let notification_counts_update =
+        use_tauri_event::<HashMap<String, NotificationCounts>>("notification_counts_update");
+
+    Effect::new(move |_| {
+        if let Some(updates) = notification_counts_update.get() {
+            state.notification_counts.update(|counts| counts.extend(updates));
         }
     });
 

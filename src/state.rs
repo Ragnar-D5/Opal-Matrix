@@ -5,7 +5,7 @@ use log::error;
 use serde_json::json;
 use shared::{
     account_data::{Breadcrumbs, ServerOrder},
-    sidebar::{RoomKind, RoomNode, SidebarState},
+    sidebar::{NotificationCounts, RoomKind, RoomNode, SidebarState},
     timeline::UiMediaSource,
     user_profile::{MemberProfile, PresenceInfo, UserProfile},
 };
@@ -49,6 +49,8 @@ pub struct AppState {
     pub drafts: RwSignal<HashMap<String, MessageDraft>>,
 
     pub lightbox_image: RwSignal<Option<LighboxImage>>,
+
+    pub notification_counts: RwSignal<HashMap<String, NotificationCounts>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -95,6 +97,7 @@ impl AppState {
             is_focused: RwSignal::new(true),
             drafts: RwSignal::new(HashMap::new()),
             lightbox_image: RwSignal::new(None),
+            notification_counts: RwSignal::new(HashMap::new()),
         }
     }
 

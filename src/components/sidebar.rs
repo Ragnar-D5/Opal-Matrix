@@ -1,10 +1,10 @@
 use phosphor_leptos::{Icon, IconData, IconWeight, HASH, MATRIX_LOGO, SPEAKER_HIGH};
 use shared::get_color;
 
-use crate::components::presence::PresenceBadge;
-use crate::components::user_profile::MemberProfileMaybeExt;
-use crate::components::FloatingTile;
-use crate::state::{AppState, ProfileStore};
+use crate::{
+    components::{presence::PresenceBadge, user_profile::MemberProfileMaybeExt, FloatingTile},
+    state::{AppState, ProfileStore},
+};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use shared::sidebar::{RoomKind, RoomNode};
@@ -47,6 +47,15 @@ fn DmDiv(dm: RoomNode) -> impl IntoView {
         />
     };
 
+    let notifications = move || {
+        state
+            .notification_counts
+            .get()
+            .get(&dm.room_id)
+            .cloned()
+            .unwrap_or_default()
+    };
+
     view! {
         <div class="group flex flex-row w-full cursor-pointer px-3">
             <div class="transition-[width] duration-300 ease-out shrink-0 w-0 group-hover:w-3"></div>
@@ -59,15 +68,18 @@ fn DmDiv(dm: RoomNode) -> impl IntoView {
             >
                 <PresenceBadge presence=presence>{avatar_content}</PresenceBadge>
                 <span class="inline-block align-center pl-2">{name}</span>
-                {if dm.notification_count > 0 {
-                    view! {
-                        <div class="ml-auto bg-[var(--mention-color)] text-white text-xs font-bold px-1.5 py-0.5 rounded-full">
-                            {dm.notification_count}
-                        </div>
+                {move || {
+                    let notifications = notifications().notification_count;
+                    if notifications > 0 {
+                        view! {
+                            <div class="ml-auto bg-[var(--mention-color)] text-white text-xs font-bold px-1.5 py-0.5 rounded-full">
+                                {notifications}
+                            </div>
+                        }
+                            .into_any()
+                    } else {
+                        view! { <div></div> }.into_any()
                     }
-                        .into_any()
-                } else {
-                    view! { <div></div> }.into_any()
                 }}
             </div>
         </div>
@@ -202,11 +214,20 @@ pub fn ServerIcon(server_id: String) -> impl IntoView {
 
     let is_active =
         Memo::new(move |_| state.active_server_id.get() == Some(server_id_for_active.clone()));
-    let has_notifications = Memo::new(move |_| {
-        server
+
+    let server_id_for_not = server_id.clone();
+    let notifications = Memo::new(move |_| {
+        state
+            .notification_counts
             .get()
-            .map(|server| server.notification_count > 0)
-            .unwrap_or(false)
+            .get(&server_id_for_not)
+            .cloned()
+            .unwrap_or_default()
+    });
+
+    let has_notifications = Memo::new(move |_| {
+        let counts = notifications.get();
+        counts.notification_count > 0 || counts.highlight_count > 0
     });
 
     let content = move || {
@@ -219,11 +240,13 @@ pub fn ServerIcon(server_id: String) -> impl IntoView {
         let name = server.name.clone().unwrap_or("?".to_string());
         let color = get_color(&server_id);
 
-        let br_corner = if server.highlight_count > 0 {
+        let highlight_count = notifications.get().highlight_count;
+
+        let br_corner = if highlight_count > 0 {
             Some(CutoutBadgeCorner {
                 fg_color: "white".to_string(),
                 bg_color: "var(--mention-color)".to_string(),
-                content: CutoutBadgeContent::Number(server.highlight_count),
+                content: CutoutBadgeContent::Number(highlight_count),
             })
         } else {
             None
@@ -306,7 +329,7 @@ pub fn render_server_channel(child: RoomNode) -> impl IntoView {
 
     let channel_icon = match child.kind {
         RoomKind::Dm { .. } => HASH,
-        RoomKind::TextChannel { .. } => HASH,
+        RoomKind::TextChannel => HASH,
         RoomKind::VoiceChannel { .. } => SPEAKER_HIGH,
         RoomKind::Space { .. } => MATRIX_LOGO,
     };
@@ -314,13 +337,34 @@ pub fn render_server_channel(child: RoomNode) -> impl IntoView {
     let click_id = child.room_id.to_string();
     let check_id = child.room_id.to_string();
     let is_active = Memo::new(move |_| state.active_room_id() == Some(check_id.clone()));
-    let has_notifications = child.notification_count > 0;
 
     let call_empty = if let RoomKind::VoiceChannel { participants, .. } = &child.kind {
         participants.is_empty()
     } else {
         true
     };
+
+    let room_id_for_count = child.room_id.clone();
+    let highlight_count = move || {
+        let counts = state
+            .notification_counts
+            .get()
+            .get(&room_id_for_count)
+            .cloned()
+            .unwrap_or_default();
+        counts.highlight_count
+    };
+
+    let room_id_for_not = child.room_id.clone();
+    let has_notifications = Memo::new(move |_| {
+        let counts = state
+            .notification_counts
+            .get()
+            .get(&room_id_for_not)
+            .cloned()
+            .unwrap_or_default();
+        counts.notification_count > 0 || counts.highlight_count > 0
+    });
 
     let call_preview = if let RoomKind::VoiceChannel { participants, .. } = &child.kind {
         let views = participants.keys().map(|user_id| {
@@ -344,6 +388,7 @@ pub fn render_server_channel(child: RoomNode) -> impl IntoView {
 
             {move || {
                 has_notifications
+                    .get()
                     .then(|| {
                         view! {
                             <div class="absolute top-1/2 -translate-y-1/2 -left-1 group-hover:left-1.5 transition-[left] duration-300 ease-out w-2 h-2 bg-[var(--bright-text-color)] rounded-full z-10 pointer-events-none"></div>
@@ -355,10 +400,10 @@ pub fn render_server_channel(child: RoomNode) -> impl IntoView {
             <div
                 class="flex flex-row flex-grow items-center p-1 rounded-[10px] cursor-pointer transition-colors hover:text-bright"
                 class=("hover:bg-[color:var(--color-item-hover)]", move || !is_active.get())
-                class=("text-dim", move || !is_active.get() && !has_notifications)
+                class=("text-dim", move || !is_active.get() && !has_notifications.get())
                 class=(
                     "text-bright",
-                    move || { !is_active.get() && has_notifications || is_active.get() },
+                    move || { !is_active.get() && has_notifications.get() || is_active.get() },
                 )
                 class=("bg-[color:var(--color-item-selected)]", move || is_active.get())
                 on:click=move |_| { state.set_active_room_with_id(Some(click_id.clone())) }
@@ -370,10 +415,10 @@ pub fn render_server_channel(child: RoomNode) -> impl IntoView {
                 />
                 <div class="w-1"></div>
                 {child.name}
-                {if child.highlight_count > 0 {
+                {if highlight_count() > 0 {
                     view! {
                         <div class="ml-auto bg-[var(--mention-color)] text-white text-xs font-bold px-1.5 py-0.5 rounded-full">
-                            {child.highlight_count}
+                            {highlight_count}
                         </div>
                     }
                         .into_any()
@@ -424,11 +469,20 @@ pub fn Sidebar() -> impl IntoView {
     img.set_src("data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7");
 
     let active_dms = Memo::new(move |_| {
+        let notifications = state.notification_counts.get();
+
         state.sidebar_state.with(|state| {
             state
                 .dms
                 .iter()
-                .filter(|dm| dm.notification_count > 0)
+                .filter(|dm| {
+                    notifications
+                        .get(&dm.room_id)
+                        .cloned()
+                        .unwrap_or_default()
+                        .notification_count
+                        > 0
+                })
                 .cloned()
                 .collect::<Vec<_>>()
         })
@@ -500,15 +554,27 @@ pub fn Sidebar() -> impl IntoView {
                             let is_active = Memo::new(move |_| {
                                 state.active_room_id() == Some(click_id.clone())
                             });
-                            let has_notifications = Memo::new(move |_| dm.notification_count > 0);
-                            let corner = if dm.notification_count > 0 {
-                                Some(CutoutBadgeCorner {
-                                    fg_color: "white".to_string(),
-                                    bg_color: "var(--mention-color)".to_string(),
-                                    content: CutoutBadgeContent::Number(dm.notification_count),
-                                })
-                            } else {
-                                None
+                            let room_id_for_count = dm.room_id.clone();
+                            let notifications = Memo::new(move |_| {
+                                state
+                                    .notification_counts
+                                    .get()
+                                    .get(&room_id_for_count)
+                                    .cloned()
+                                    .unwrap_or_default()
+                            });
+                            let corner = move || {
+                                if notifications.get().has_notifications() {
+                                    Some(CutoutBadgeCorner {
+                                        fg_color: "white".to_string(),
+                                        bg_color: "var(--mention-color)".to_string(),
+                                        content: CutoutBadgeContent::Number(
+                                            notifications.get().notification_count,
+                                        ),
+                                    })
+                                } else {
+                                    None
+                                }
                             };
                             view! {
                                 <div class="h-2"></div>
@@ -521,36 +587,47 @@ pub fn Sidebar() -> impl IntoView {
                                 >
                                     <IndicatorPill
                                         is_active=is_active
-                                        has_notifications=has_notifications
+                                        has_notifications=move || {
+                                            notifications.get().has_notifications()
+                                        }
                                     />
 
-                                    <CutoutBadge bottom_right=corner class="justify-center flex">
-                                        <div
-                                            class="avatar-circle w-10 h-10 rounded-full"
-                                            style:justify-content="center"
-                                        >
-                                            {
-                                                let failed = RwSignal::new(false);
-                                                let url = format!("mxc://room/{}", dm.room_id);
-                                                view! {
-                                                    <img
-                                                        class="avatar-img w-full h-full object-cover"
-                                                        class:hidden=failed
-                                                        src=url
-                                                        alt=dm.name.clone()
-                                                        on:error=move |_| failed.set(true)
-                                                        on:load=move |_| failed.set(false)
-                                                    />
-                                                    <TextCircle
-                                                        text=initial
-                                                        color=get_color(&dm.room_id)
-                                                        class="rounded-full w-10 h-10"
-                                                        class:hidden=move || !failed.get()
-                                                    />
-                                                }
-                                            }
-                                        </div>
-                                    </CutoutBadge>
+                                    {move || {
+                                        let dm = dm.clone();
+                                        let initial = initial.clone();
+                                        view! {
+                                            <CutoutBadge
+                                                bottom_right=corner()
+                                                class="justify-center flex"
+                                            >
+                                                <div
+                                                    class="avatar-circle w-10 h-10 rounded-full"
+                                                    style:justify-content="center"
+                                                >
+                                                    {
+                                                        let failed = RwSignal::new(false);
+                                                        let url = format!("mxc://room/{}", dm.room_id);
+                                                        view! {
+                                                            <img
+                                                                class="avatar-img w-full h-full object-cover"
+                                                                class:hidden=failed
+                                                                src=url
+                                                                alt=dm.name.clone()
+                                                                on:error=move |_| failed.set(true)
+                                                                on:load=move |_| failed.set(false)
+                                                            />
+                                                            <TextCircle
+                                                                text=initial
+                                                                color=get_color(&dm.dm_user_id().unwrap_or_default())
+                                                                class="rounded-full w-10 h-10"
+                                                                class:hidden=move || !failed.get()
+                                                            />
+                                                        }
+                                                    }
+                                                </div>
+                                            </CutoutBadge>
+                                        }
+                                    }}
                                 </div>
                             }
                         }
@@ -704,9 +781,10 @@ pub fn ProfileCard() -> impl IntoView {
             let name_sig = profile_sig.clone();
 
             view! {
-                <PresenceBadge presence=store.get_presence(&user_id)>
-                    {move || profile_sig.get().render_icon(40)}
-                </PresenceBadge>
+                <PresenceBadge presence=store
+                    .get_presence(
+                        &user_id,
+                    )>{move || profile_sig.get().render_icon(40)}</PresenceBadge>
                 {move || name_sig.get().render_name(16)}
             }
             .into_any()
@@ -715,14 +793,17 @@ pub fn ProfileCard() -> impl IntoView {
             let name_sig = profile_sig.clone();
 
             view! {
-                <PresenceBadge presence=store.get_presence(&user_id)>
-                    {move || profile_sig.get().render_icon(40)}
-                </PresenceBadge>
+                <PresenceBadge presence=store
+                    .get_presence(
+                        &user_id,
+                    )>{move || profile_sig.get().render_icon(40)}</PresenceBadge>
                 {move || name_sig.get().render_name(16)}
             }
             .into_any()
         }
     };
 
-    view! { <div class="flex items-center justify-start w-full h-full px-2">{current_room_profile}</div> }
+    view! {
+        <div class="flex items-center justify-start w-full h-full px-2">{current_room_profile}</div>
+    }
 }
