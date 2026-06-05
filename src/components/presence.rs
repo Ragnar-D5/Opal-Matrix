@@ -1,5 +1,5 @@
 use leptos::prelude::*;
-use shared::user_profile::{PresenceInfo, PresenceStatus};
+use shared::profile::{PresenceInfo, PresenceStatus};
 
 #[component]
 pub fn PresenceBadge(

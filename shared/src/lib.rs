@@ -4,9 +4,9 @@ pub mod account_data;
 pub mod api;
 pub mod commands;
 pub mod parsing;
+pub mod profile;
 pub mod sidebar;
 pub mod timeline;
-pub mod user_profile;
 
 pub fn get_color(string: &str) -> Hsl {
     let mut hash: u32 = 0;

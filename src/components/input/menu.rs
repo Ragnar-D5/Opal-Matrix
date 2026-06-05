@@ -3,7 +3,7 @@ use crate::{
         input::{get_caret_position, get_node_and_offset},
         presence::PresenceBadge,
         text::RichTextExt,
-        user_profile::{room_as_profile, MemberProfileExt},
+        user_profile::{room_as_profile, MemberProfileExt, RoomProfileExt},
     },
     state::{AppState, ProfileStore},
     tauri_functions::{get_commands, get_members_for_room},
@@ -12,7 +12,11 @@ use leptos::html::Div;
 use leptos::prelude::*;
 use log::error;
 use nucleo_matcher::{Config, Matcher, Utf32Str};
-use shared::{commands::Command, user_profile::MemberProfile};
+use shared::{
+    commands::Command,
+    profile::{MemberProfile, RoomProfile},
+    timeline::{RichTextSpan, RoomIdFormat},
+};
 use web_sys::{Document, HtmlDivElement, HtmlElement, Node, Range};
 
 #[derive(Clone, PartialEq, Debug)]
@@ -31,6 +35,7 @@ impl MenuType {
 pub enum SelectedItem {
     User(MemberProfile),
     Command(Command),
+    Room(RoomProfile),
 }
 
 impl From<MemberProfile> for SelectedItem {
@@ -42,6 +47,12 @@ impl From<MemberProfile> for SelectedItem {
 impl From<Command> for SelectedItem {
     fn from(command: Command) -> Self {
         SelectedItem::Command(command)
+    }
+}
+
+impl From<RoomProfile> for SelectedItem {
+    fn from(profile: RoomProfile) -> Self {
+        SelectedItem::Room(profile)
     }
 }
 
@@ -136,7 +147,22 @@ pub fn commit_selection(
     let (focus_node, focus_offset) = match selected {
         SelectedItem::User(membership) => {
             let room_id = state.active_room_id_untracked().unwrap_or_default();
-            let mention_view = membership.to_span().render(store, room_id);
+
+            let mention_view = if membership.is_room() {
+                let name = state
+                    .active_room_name_untracked()
+                    .unwrap_or(room_id.clone());
+
+                RichTextSpan::RoomMention {
+                    room_id: RoomIdFormat::Id(room_id.clone()),
+                    display_name: format!("#{}", name),
+                }
+                .render(store, &room_id)
+                .into_any()
+            } else {
+                membership.to_span().render(store, &room_id).into_any()
+            };
+
             let any_view: AnyView = mention_view.into_any();
             let mut render_state = any_view.build();
 
@@ -155,6 +181,28 @@ pub fn commit_selection(
             (web_sys::Node::from(space_node), 1)
         }
         SelectedItem::Command(command) => commit_command(command, &doc, range),
+        SelectedItem::Room(room) => {
+            let current_room_id = state.active_room_id_untracked().unwrap_or_default();
+
+            let room_view = room.to_span().render(store, &current_room_id).into_any();
+
+            let any_view: AnyView = room_view.into_any();
+            let mut render_state = any_view.build();
+
+            let temp_container = doc.create_element("div").unwrap();
+            render_state.mount(&temp_container, None);
+
+            let room_node = temp_container
+                .first_child()
+                .expect("Room view should have at least one root element");
+
+            let space_node = doc.create_text_node("\u{00A0}");
+
+            range.insert_node(&space_node).unwrap();
+            range.insert_node(&room_node).unwrap();
+
+            (web_sys::Node::from(space_node), 1)
+        }
     };
 
     let new_range = doc.create_range().unwrap();

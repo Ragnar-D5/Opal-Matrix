@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use colorsys::Hsl;
 use serde::{Deserialize, Serialize};
@@ -11,12 +11,13 @@ pub struct UserDevice {
     pub device_id: String,
 }
 
-#[derive(Debug, Serialize, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Serialize, Clone, Deserialize, PartialEq, Default)]
 pub enum RoomKind {
     Space {
-        children: Vec<RoomNode>,
+        children: Vec<String>,
         all_children: HashSet<String>,
     },
+    #[default]
     TextChannel,
     VoiceChannel,
     Dm {
@@ -33,6 +34,9 @@ pub struct RoomNode {
     pub name: Option<String>,
     pub topic: Option<String>,
     pub has_avatar: bool,
+
+    pub canonical_alias: Option<String>,
+    pub aliases: Vec<String>,
 
     pub kind: RoomKind,
 }
@@ -76,8 +80,11 @@ impl RoomNode {
 #[derive(Debug, Serialize, Clone, Default, Deserialize, PartialEq)]
 pub struct SidebarState {
     pub dms: Vec<RoomNode>,
-    pub servers: Vec<RoomNode>,
+    pub top_level_servers: Vec<String>,
     pub orphaned_rooms: Vec<RoomNode>,
+
+    /// Rooms that aren't DMs or orphaned (not in a space)
+    pub server_rooms: HashMap<String, RoomNode>,
 }
 
 #[derive(Debug, Serialize, Clone, Deserialize, PartialEq, Default)]

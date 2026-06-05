@@ -35,11 +35,11 @@ fn WordMention(
 }
 
 pub trait RichTextExt {
-    fn render(self, store: ProfileStore, room_id: String) -> impl IntoView;
+    fn render(self, store: ProfileStore, room_id: &str) -> impl IntoView;
 }
 
 impl RichTextExt for RichTextSpan {
-    fn render(self, store: ProfileStore, room_id: String) -> impl IntoView {
+    fn render(self, store: ProfileStore, room_id: &str) -> impl IntoView {
         match self {
             RichTextSpan::Plain(text) => {
                 view! { <span class="text-token cursor-text">{text}</span> }.into_any()
@@ -70,7 +70,7 @@ impl RichTextExt for RichTextSpan {
                 user_id,
                 display_name,
             } => {
-                let profile_sig = store.get_member_profile(&room_id, &user_id);
+                let profile_sig = store.get_member_profile(room_id, &user_id);
 
                 let colors = Memo::new(move |_| {
                     let profile = profile_sig.get();
@@ -101,17 +101,20 @@ impl RichTextExt for RichTextSpan {
                 .into_any()
             }
 
-            RichTextSpan::RoomMention => {
+            RichTextSpan::RoomMention {
+                room_id,
+                display_name,
+            } => {
                 let color = "white".to_string();
                 let bg_color = "lightgray".to_string();
 
                 view! {
                     <WordMention
-                        text="@room".to_string()
+                        text=display_name
                         color=color
                         bg_color=bg_color
                         data_type="room_mention".to_string()
-                        data_id=room_id
+                        data_id=room_id.source()
                     />
                 }
                 .into_any()
@@ -137,8 +140,8 @@ pub fn richt_text_spans_to_html(
                     RichTextSpan::Plain(text) => {
                         text
                     }
-                    RichTextSpan::RoomMention | RichTextSpan::UserMention { .. } => {
-                        let view = span.clone().render(store.clone(), room_id.clone());
+                    RichTextSpan::RoomMention { .. } | RichTextSpan::UserMention { .. } => {
+                        let view = span.clone().render(store.clone(), &room_id);
                         let any_view: AnyView = view.into_any();
 
                         // Create a fresh temporary container for this span

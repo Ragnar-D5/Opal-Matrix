@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use matrix_sdk::ruma::{events::presence::PresenceEvent, presence::PresenceState, serde::Raw};
-use shared::user_profile::{PresenceInfo, PresenceStatus};
+use shared::profile::{PresenceInfo, PresenceStatus};
 use tauri::{AppHandle, Emitter};
 
 fn presence_to_ui(state: PresenceState) -> PresenceStatus {

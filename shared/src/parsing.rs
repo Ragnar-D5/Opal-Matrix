@@ -1,4 +1,4 @@
-use crate::timeline::RichTextSpan;
+use crate::timeline::{RichTextSpan, RoomIdFormat};
 use ego_tree::NodeRef;
 use linkify::LinkFinder;
 use scraper::{Html, Node};
@@ -23,17 +23,41 @@ fn walk_node(node: NodeRef<'_, Node>, spans: &mut Vec<RichTextSpan>) {
             if tag_name == "a"
                 && let Some(href) = elem.attr("href")
             {
-                if href.starts_with("https://matrix.to/#/@") || href.starts_with("matrix:u/") {
-                    let user_id = extract_mxid(href);
-                    let display_name = extract_inner_text(node);
+                if let Some(id_str) = href.strip_prefix("https://matrix.to/#/") {
+                    let display_string = extract_inner_text(node);
 
-                    spans.push(RichTextSpan::UserMention {
-                        user_id,
-                        display_name,
-                    });
-                    return; // Stop recursing; we consumed the children for the display name
-                } else if href.starts_with("https://matrix.to/#/#") {
-                    spans.push(RichTextSpan::RoomMention {});
+                    let span = if let Some(starting_char) = id_str.chars().next() {
+                            match starting_char {
+                                '#' => RichTextSpan::RoomMention {
+                                    room_id: RoomIdFormat::Alias(id_str.to_string()),
+                                    display_name: display_string,
+                                },
+                                '!' => RichTextSpan::RoomMention {
+                                    room_id: RoomIdFormat::Id(id_str.to_string()),
+                                    display_name: display_string,
+                                },
+                                '@' => {                            let user_id = extract_mxid(id_str);
+                                    RichTextSpan::UserMention {
+                                        user_id,
+                                        display_name: display_string,
+                                    }
+                                }
+                                _ => {
+                                    spans.push(RichTextSpan::Link {
+                                        url: href.to_string(),
+                                        text: Some(display_string),
+                                    });
+                                    return;
+                                }
+                            }
+                    } else {
+                        RichTextSpan::Link {
+                            url: href.to_string(),
+                            text: None,
+                        }
+                    };
+
+                    spans.push(span);
                     return;
                 } else {
                     spans.push(RichTextSpan::Link {

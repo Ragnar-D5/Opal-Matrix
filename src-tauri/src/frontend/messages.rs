@@ -17,7 +17,7 @@ use matrix_sdk::ruma::{
     },
 };
 use scraper::{Html, Node};
-use shared::{api::{FileMetadata, UiAttachmentSource}, timeline::{RichTextSpan, UiTimelineDiff, UiTimelineItem, coalesce_diffs}};
+use shared::{api::{FileMetadata, UiAttachmentSource}, timeline::{RichTextSpan, RoomIdFormat, UiTimelineDiff, UiTimelineItem, coalesce_diffs}};
 use tauri::{AppHandle, Emitter, State, command};
 use tokio::sync::RwLock;
 use uuid::Uuid;
@@ -230,10 +230,16 @@ fn walk_node(
                 let display_text = extract_text(node).trim_start_matches('@').to_string();
 
                 if data_type == "room_mention" {
-                    spans.push(RichTextSpan::RoomMention);
+                    spans.push(RichTextSpan::RoomMention {
+                        room_id: RoomIdFormat::Id(id.to_string()),
+                        display_name: display_text.clone(),
+                    });
                     body.push_str("@room");
                     mentions.room = true;
-                    formatted.push_str("<strong>@room</strong>");
+                    formatted.push_str(&format!(
+                        "<a href=\"https://matrix.to/#/{}\">@{}</a>",
+                        id, display_text
+                    ));
                 } else if data_type == "user_mention" {
                     if let Ok(user_id) = OwnedUserId::try_from(id) {
                         mentions.user_ids.insert(user_id);

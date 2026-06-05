@@ -1,5 +1,5 @@
 use phosphor_leptos::{Icon, IconData, IconWeight, HASH, MATRIX_LOGO, SPEAKER_HIGH};
-use shared::get_color;
+use shared::{get_color, unknown_color};
 
 use crate::{
     components::{
@@ -16,22 +16,61 @@ use shared::sidebar::{RoomKind, RoomNode};
 use crate::components::TextCircle;
 
 pub trait RoomNodeExt {
-    fn avatar_div<T: Into<String>>(&self, size_str: T) -> impl IntoView + 'static;
+    fn avatar_div<T: AsRef<str> + 'static>(&self, size_str: T) -> impl IntoView + 'static;
+    fn room_id(&self) -> String;
+    fn kind(&self) -> RoomKind;
+
+    // Can't use clone since then there would be multiple clone functions
+    fn duplicate(&self) -> Self;
 }
 
 impl RoomNodeExt for RoomNode {
-    fn avatar_div<T: Into<String>>(&self, size_str: T) -> impl IntoView + 'static {
+    fn avatar_div<T: AsRef<str> + 'static>(&self, size_str: T) -> impl IntoView + 'static {
         let url = self.avatar_url();
         let name = self.get_name();
         let color = self.get_color();
 
-        let rounding = if let RoomKind::Space { .. } = self.kind {
-            "[25%}"
-        } else {
+        let rounding = if let RoomKind::Dm { .. } = self.kind {
             "full"
+        } else {
+            "[25%]"
         };
 
-        render_url_icon(url, name, size_str.into(), color, rounding)
+        render_url_icon(url, name, size_str, color, rounding)
+    }
+
+    fn room_id(&self) -> String {
+        self.room_id.clone()
+    }
+
+    fn kind(&self) -> RoomKind {
+        self.kind.clone()
+    }
+
+    fn duplicate(&self) -> Self {
+        self.clone()
+    }
+}
+
+impl RoomNodeExt for Option<RoomNode> {
+    fn avatar_div<T: AsRef<str> + 'static>(&self, size_str: T) -> impl IntoView + 'static {
+        if let Some(node) = self {
+            node.avatar_div(size_str).into_any()
+        } else {
+            render_url_icon(None, "?", size_str, unknown_color(), "[25%]").into_any()
+        }
+    }
+
+    fn room_id(&self) -> String {
+        self.as_ref().map(|node| node.room_id()).unwrap_or_default()
+    }
+
+    fn kind(&self) -> RoomKind {
+        self.as_ref().map(|node| node.kind()).unwrap_or_default()
+    }
+
+    fn duplicate(&self) -> Self {
+        self.clone()
     }
 }
 
@@ -222,10 +261,10 @@ pub fn CutoutBadge(
 }
 
 #[component]
-pub fn ServerIcon(server: RoomNode) -> impl IntoView {
+pub fn ServerIcon(server: impl RoomNodeExt) -> impl IntoView {
     let state = expect_context::<AppState>();
 
-    let server_id = server.room_id.clone();
+    let server_id = server.room_id();
 
     let server_id_for_active = server_id.clone();
     let server_id_for_click = server_id.clone();
@@ -250,9 +289,9 @@ pub fn ServerIcon(server: RoomNode) -> impl IntoView {
 
     let avatar_content = server.avatar_div("40px");
 
-    let server = server.clone();
+    let server = server.duplicate();
     let tr_corner = move || {
-        if let RoomKind::Space { all_children, .. } = server.kind {
+        if let RoomKind::Space { all_children, .. } = server.kind() {
             let user_ids_in_calls = state.get_call_members_in_rooms(all_children.clone());
 
             if !user_ids_in_calls.is_empty() {
@@ -439,6 +478,10 @@ pub fn render_server_channel(child: RoomNode) -> impl IntoView {
 #[component]
 pub fn ServerItems(active_server: RoomNode) -> impl IntoView {
     let name = active_server.get_name();
+    let state: AppState = expect_context();
+
+    // Log active_server
+    log::debug!("Rendering ServerItems for server: {:#?}", active_server);
 
     match active_server.kind {
         RoomKind::Space { children, .. } => {
@@ -449,8 +492,13 @@ pub fn ServerItems(active_server: RoomNode) -> impl IntoView {
                 <div class="list pr-2 w-full">
                     <For
                         each=move || children.clone()
-                        key=|child| child.room_id.to_string()
-                        children=move |child| { render_server_channel(child) }
+                        key=|room_id| room_id.clone()
+                        children=move |room_id| {
+                            let Some(node) = state.get_room(&room_id) else {
+                                return view! { <div class="item p-4">"Loading..."</div> }.into_any()
+                            };
+                            render_server_channel(node).into_any()
+                        }
                     />
                 </div>
             }
@@ -616,11 +664,11 @@ pub fn Sidebar() -> impl IntoView {
 
                     <div class="w-8 h-[1px] bg-red-500 rounded-full my-2 gap-[1px]"></div>
                     <For
-                        each=move || state.sidebar_state.get().servers
-                        key=|server| server.room_id.to_string()
-                        children=move |server| {
-                            let drag_id = server.room_id.to_string();
-                            let drop_id = server.room_id.to_string();
+                        each=move || state.sidebar_state.get().top_level_servers
+                        key=|server_id| server_id.clone()
+                        children=move |server_id| {
+                            let drag_id = server_id.clone();
+                            let drop_id = server_id.clone();
 
                             view! {
                                 <div
@@ -649,16 +697,16 @@ pub fn Sidebar() -> impl IntoView {
                                                 .sidebar_state
                                                 .update(|state| {
                                                     let src_opt = state
-                                                        .servers
+                                                        .top_level_servers
                                                         .iter()
-                                                        .position(|s| s.room_id == source_id);
+                                                        .position(|s_id| s_id == &source_id);
                                                     let dst_opt = state
-                                                        .servers
+                                                        .top_level_servers
                                                         .iter()
-                                                        .position(|s| s.room_id == drop_id);
+                                                        .position(|s_id| s_id == &drop_id);
                                                     if let (Some(src_idx), Some(dst_idx)) = (src_opt, dst_opt) {
-                                                        let item = state.servers.remove(src_idx);
-                                                        state.servers.insert(dst_idx, item);
+                                                        let item = state.top_level_servers.remove(src_idx);
+                                                        state.top_level_servers.insert(dst_idx, item);
                                                     }
                                                 });
                                         }
@@ -669,16 +717,12 @@ pub fn Sidebar() -> impl IntoView {
                                             let current_servers = state
                                                 .sidebar_state
                                                 .get_untracked()
-                                                .servers;
-                                            let new_order: Vec<String> = current_servers
-                                                .into_iter()
-                                                .map(|s| s.room_id)
-                                                .collect();
-                                            state.set_server_order(new_order);
+                                                .top_level_servers;
+                                            state.set_server_order(current_servers);
                                         });
                                     }
                                 >
-                                    <ServerIcon server=server />
+                                    <ServerIcon server=state.get_room(&server_id) />
                                     <div class="h-2 pointer-events-none"></div>
                                 </div>
                             }
@@ -720,13 +764,18 @@ pub fn Sidebar() -> impl IntoView {
                                     .into_any()
                             }
                             Some(active_id) => {
-                                let Some(active_server) = current_state
-                                    .servers
+                                let Some(active_server_id) = current_state
+                                    .top_level_servers
                                     .into_iter()
-                                    .find(|s| s.room_id == active_id) else {
+                                    .find(|s_id| s_id == &active_id) else {
                                     return view! { <div class="item p-4">"Not found"</div> }
                                         .into_any();
                                 };
+                                let Some(active_server) = state.get_room(&active_server_id) else {
+                                    return view! { <div class="item p-4">"Loading..."</div> }
+                                        .into_any();
+                                };
+
                                 view! { <ServerItems active_server=active_server></ServerItems> }
                                     .into_any()
                             }

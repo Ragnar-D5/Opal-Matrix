@@ -3,7 +3,7 @@ use leptos::{html::Div, prelude::*, tachys::dom::document};
 use log::warn;
 use regex::Regex;
 use shared::commands::Command;
-use shared::user_profile::MemberProfile;
+use shared::profile::MemberProfile;
 use wasm_bindgen::JsCast;
 use web_sys::{HtmlDivElement, HtmlElement, KeyboardEvent};
 use web_sys::{Node, window};

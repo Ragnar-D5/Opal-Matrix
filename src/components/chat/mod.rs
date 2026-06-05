@@ -29,7 +29,7 @@ use shared::{
     api::{FileMetadata, UiAttachmentSource},
     sidebar::RoomKind,
     timeline::{DetailState, EventContent, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind},
-    user_profile::PresenceStatus,
+    profile::PresenceStatus,
 };
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;

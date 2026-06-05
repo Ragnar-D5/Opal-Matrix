@@ -7,7 +7,7 @@ use shared::{
     account_data::{Breadcrumbs, ServerOrder},
     sidebar::{NotificationCounts, RoomKind, RoomNode, SidebarState, UserDevice},
     timeline::UiMediaSource,
-    user_profile::{MemberProfile, PresenceInfo, UserProfile},
+    profile::{MemberProfile, PresenceInfo, UserProfile},
 };
 
 use crate::{
@@ -87,6 +87,10 @@ impl AppState {
         self.active_room_id.get_untracked()
     }
 
+    pub fn active_room_name_untracked(&self) -> Option<String> {
+        self.active_room.get_untracked().map(|room| room.get_name())
+    }
+
     /// Update the active room node and its id together, firing each signal only
     /// when its own value changed. `active_room` carries metadata that updates on
     /// every sync (unread counts, `last_ts`, …); `active_room_id` only changes
@@ -105,18 +109,17 @@ impl AppState {
     }
 
     pub fn set_active_room_with_id(&self, room_id: Option<String>) {
-        let active_room = room_id.as_ref().and_then(|id| {
-            find_node_in_nodes(&self.sidebar_state.get_untracked().servers, id)
-                .cloned()
-                .or_else(|| {
-                    self.sidebar_state
-                        .get_untracked()
-                        .dms
-                        .iter()
-                        .find(|dm| dm.room_id == *id)
-                        .cloned()
-                })
-        });
+        let state = self.sidebar_state.get_untracked();
+
+        let active_room = if let Some(room_id) = &room_id {
+            if let Some(node) = state.server_rooms.get(room_id).cloned() {
+                Some(node)
+            } else {
+                state.dms.iter().find(|dm| dm.room_id == *room_id).cloned()
+            }
+        } else {
+            None
+        };
         self.set_active_room_node(active_room);
 
         let Some(room_id) = room_id else {
@@ -160,22 +163,30 @@ impl AppState {
 
     fn first_channel_id_for_server(&self, server_id: &str) -> Option<String> {
         let state = self.sidebar_state.get();
-        let server = state.servers.iter().find(|srv| srv.room_id == server_id)?;
+
+        let server = state.server_rooms.get(server_id)?.clone();
 
         match &server.kind {
-            RoomKind::Space { children, .. } => Self::find_first_channel(children),
+            RoomKind::Space { children, .. } => self.find_first_channel(children),
             RoomKind::TextChannel => Some(server.room_id.clone()),
             RoomKind::Dm { .. } => Some(server.room_id.clone()),
             RoomKind::VoiceChannel => Some(server.room_id.clone()),
         }
     }
 
-    fn find_first_channel(nodes: &[RoomNode]) -> Option<String> {
+    fn find_first_channel(&self, room_ids: &[String]) -> Option<String> {
+        let sidebar_state = self.sidebar_state.get_untracked();
+
+        let nodes: Vec<RoomNode> = room_ids
+            .iter()
+            .filter_map(|id| sidebar_state.server_rooms.get(id).cloned())
+            .collect();
+
         for node in nodes {
             match &node.kind {
                 RoomKind::TextChannel => return Some(node.room_id.clone()),
                 RoomKind::Space { children, .. } => {
-                    if let Some(room_id) = Self::find_first_channel(children) {
+                    if let Some(room_id) = self.find_first_channel(children) {
                         return Some(room_id);
                     }
                 }
@@ -270,8 +281,7 @@ impl AppState {
 
         let new_active_room = if let Some(room_id) = current_room_id {
             let sidebar_state = self.sidebar_state.get();
-            find_node_in_nodes(&sidebar_state.servers, &room_id)
-                .cloned()
+            self.find_room_in_rooms(&sidebar_state.top_level_servers, &room_id)
                 .or_else(|| {
                     sidebar_state
                         .dms
@@ -294,14 +304,18 @@ impl AppState {
     /// the sidebar directly. Returns `None` if the room is a DM or not found.
     pub fn find_server_id_for_room(&self, room_id: &str) -> Option<String> {
         let sidebar = self.sidebar_state.get_untracked();
-        for server in &sidebar.servers {
-            if server.room_id == room_id {
-                return Some(server.room_id.clone());
+
+        for server_id in &sidebar.top_level_servers {
+            if server_id == room_id {
+                return Some(server_id.clone());
             }
+
+            let server = sidebar.server_rooms.get(server_id)?;
+
             if let RoomKind::Space { children, .. } = &server.kind
-                && find_node_in_nodes(children, room_id).is_some()
+                && self.find_room_in_rooms(children, room_id).is_some()
             {
-                return Some(server.room_id.clone());
+                return Some(server_id.clone());
             }
         }
         None
@@ -353,23 +367,49 @@ impl AppState {
             .flatten()
             .collect()
     }
-}
 
-fn find_node_in_nodes<'a>(nodes: &'a [RoomNode], room_id: &str) -> Option<&'a RoomNode> {
-    for node in nodes {
-        if node.room_id == room_id {
-            return Some(node);
+    /// Recursively search for a room_id in a list of RoomNodes, returning the node if found.
+    fn find_room_in_rooms(&self, room_ids: &[String], target_room_id: &str) -> Option<RoomNode> {
+        let sidebar_state = self.sidebar_state.get_untracked();
+
+        for room_id in room_ids {
+            let node = sidebar_state.server_rooms.get(room_id)?;
+
+            if room_id == target_room_id {
+                return Some(node.clone());
+            }
+
+            if let RoomKind::Space { children, .. } = &node.kind
+                && let Some(found) = self.find_room_in_rooms(children, room_id)
+            {
+                return Some(found);
+            }
         }
 
-        if let RoomKind::Space { children, .. } = &node.kind
-            && let Some(found) = find_node_in_nodes(children, room_id)
-        {
-            return Some(found);
-        }
+        None
     }
 
-    None
+    pub fn get_room(&self, room_id: &str) -> Option<RoomNode> {
+        let sidebar_state = self.sidebar_state.get();
+
+        sidebar_state
+            .server_rooms
+            .get(room_id)
+            .cloned()
+            .or_else(|| sidebar_state.dms.iter().find(|dm| dm.room_id == room_id).cloned())
+    }
+
+    // pub fn get_room_untracked(&self, room_id: &str) -> Option<RoomNode> {
+    //     let sidebar_state = self.sidebar_state.get_untracked();
+
+    //     sidebar_state
+    //         .server_rooms
+    //         .get(room_id)
+    //         .cloned()
+    //         .or_else(|| sidebar_state.dms.iter().find(|dm| dm.room_id == room_id).cloned())
+    // }
 }
+
 
 type MemberStoreRoomEntry = HashMap<String, ArcRwSignal<Option<MemberProfile>>>;
 
@@ -378,10 +418,9 @@ pub struct ProfileStore {
     pub rooms: RwSignal<HashMap<String, MemberStoreRoomEntry>>,
     pub presences: RwSignal<HashMap<String, ArcRwSignal<PresenceInfo>>>,
 
-    pub user_profiles: RwSignal<HashMap<String, ArcRwSignal<Option<UserProfile>>>>,
+    pub user_profiles: ArcRwSignal<HashMap<String, ArcRwSignal<UserProfile>>>,
 
     fetching_members: RwSignal<HashSet<String>>,
-    fetching_profiles: RwSignal<HashSet<String>>,
 }
 
 impl ProfileStore {
@@ -471,7 +510,7 @@ impl ProfileStore {
         new_signal
     }
 
-    pub fn get_user_profile(&self, user_id: &str) -> ArcRwSignal<Option<UserProfile>> {
+    pub fn get_user_profile(&self, user_id: &str) -> ArcRwSignal<UserProfile> {
         let existing_signal = self
             .user_profiles
             .with_untracked(|p| p.get(user_id).cloned());
@@ -480,37 +519,28 @@ impl ProfileStore {
             return sig;
         }
 
-        let new_signal = ArcRwSignal::new(None);
+        let sig = ArcRwSignal::new(UserProfile { user_id: user_id.to_string(), display_name: None, has_avatar: false });
 
-        self.user_profiles.update(|profiles| {
-            profiles.insert(user_id.to_string(), new_signal.clone());
+        let user_profiles_sig = self.user_profiles.clone();
+
+        let user_id = user_id.to_string();
+        let sig_clone = sig.clone();
+        spawn_local(async move {
+            let user_profile = match get_user_profile(&user_id).await {
+                Ok(res) => res,
+                Err(e) => {
+                    log::error!("Failed to get user profile: {e}");
+                    UserProfile { user_id: user_id.clone(), display_name: None, has_avatar: false }
+                }
+            };
+
+            user_profiles_sig.update(|profiles| {
+                profiles.insert(user_id, ArcRwSignal::new(user_profile.clone()));
+            });
+
+            sig_clone.set(user_profile);
         });
 
-        if !self
-            .fetching_profiles
-            .with_untracked(|f| f.contains(user_id))
-        {
-            self.fetching_profiles.update(|f| {
-                f.insert(user_id.to_string());
-            });
-
-            let store = self.clone();
-            let uid = user_id.to_string();
-
-            spawn_local(async move {
-                match get_user_profile(&uid).await {
-                    Ok(profile) => {
-                        store.user_profiles.update(|profiles| {
-                            profiles.insert(uid, ArcRwSignal::new(Some(profile)));
-                        });
-                    }
-                    Err(err) => {
-                        error!("Failed to fetch profile for user {}: {:?}", uid, err);
-                    }
-                }
-            });
-        }
-
-        new_signal
+        sig
     }
 }

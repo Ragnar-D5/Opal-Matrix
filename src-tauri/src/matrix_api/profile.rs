@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use matrix_sdk::{
     event_handler::Ctx, ruma::events::room::member::OriginalSyncRoomMemberEvent, Client,
 };
-use shared::user_profile::UserProfile;
+use shared::profile::UserProfile;
 use tauri::{AppHandle, Emitter};
 
 use crate::TauriError;

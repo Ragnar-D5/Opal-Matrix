@@ -12,7 +12,7 @@ use log::error;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use shared::account_data::{Breadcrumbs, ServerOrder};
-use shared::user_profile::{MemberProfile, PresenceInfo};
+use shared::profile::{MemberProfile, PresenceInfo};
 use wasm_bindgen::prelude::*;
 use web_sys::HtmlImageElement;
 
@@ -193,6 +193,10 @@ pub fn App() -> impl IntoView {
 
     Effect::new(move |_| {
         if let Some(mut new_state) = sidebar_update_event.get() {
+            log::debug!(
+                "Received top level servers: {:#?}",
+                new_state.top_level_servers
+            );
             let current_order = state.server_order.get_untracked();
 
             let order_map: HashMap<&String, usize> = current_order
@@ -202,24 +206,14 @@ pub fn App() -> impl IntoView {
                 .map(|(index, id)| (id, index))
                 .collect();
 
-            new_state.servers.sort_by(|a, b| {
-                let pos_a = order_map.get(&a.room_id).copied().unwrap_or(usize::MAX);
-                let pos_b = order_map.get(&b.room_id).copied().unwrap_or(usize::MAX);
-
-                if pos_a == usize::MAX && pos_b == usize::MAX {
-                    let name_a = a.name.as_deref().unwrap_or("");
-                    let name_b = b.name.as_deref().unwrap_or("");
-                    return name_a.cmp(name_b);
-                }
+            new_state.top_level_servers.sort_by(|a, b| {
+                let pos_a = order_map.get(a).copied().unwrap_or(usize::MAX);
+                let pos_b = order_map.get(b).copied().unwrap_or(usize::MAX);
 
                 pos_a.cmp(&pos_b)
             });
 
-            let final_order: Vec<String> = new_state
-                .servers
-                .iter()
-                .map(|s| s.room_id.clone())
-                .collect();
+            let final_order = new_state.top_level_servers.clone();
 
             if final_order != current_order.servers {
                 // Only update in-memory order; don't save — saving happens only

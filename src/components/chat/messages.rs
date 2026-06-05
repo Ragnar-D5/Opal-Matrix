@@ -41,7 +41,6 @@ fn ReplyPreview(reply_info: Option<ReplyInfo>, active_room_id: String) -> impl I
     };
 
     let store: ProfileStore = expect_context();
-    let state: AppState = expect_context();
 
     let preview = Memo::new(move |_| match &reply_info.event {
         DetailState::Error(e) => {
@@ -54,11 +53,12 @@ fn ReplyPreview(reply_info: Option<ReplyInfo>, active_room_id: String) -> impl I
     });
 
     let profile_store = store.clone();
+    let store_room_id = active_room_id.clone();
     let profile = Memo::new(move |_| {
         if let Some(preview) = preview.get() {
             match &preview.sender {
                 DetailState::Ready(sender) => profile_store
-                    .get_member_profile(&active_room_id, &sender.id)
+                    .get_member_profile(&store_room_id, &sender.id)
                     .get(),
                 DetailState::Error(e) => {
                     log::error!("Failed to load sender profile for reply preview: {e}");
@@ -94,12 +94,7 @@ fn ReplyPreview(reply_info: Option<ReplyInfo>, active_room_id: String) -> impl I
                 {content
                     .get()
                     .into_iter()
-                    .map(|v| {
-                        v.render(
-                            store.clone(),
-                            state.active_room_id_untracked().unwrap_or_default(),
-                        )
-                    })
+                    .map(|v| { v.render(store.clone(), &active_room_id) })
                     .collect_view()}
             </span>
         </div>
@@ -174,7 +169,7 @@ fn render_message_content(
                 {spans
                     .clone()
                     .into_iter()
-                    .map(|v| v.render(store.clone(), room_id.clone()))
+                    .map(|v| v.render(store.clone(), &room_id))
                     .collect_view()}
             </div>
         }
@@ -207,7 +202,7 @@ fn render_message_content(
                 {spans
                     .clone()
                     .into_iter()
-                    .map(|v| v.render(store.clone(), room_id.clone()))
+                    .map(|v| v.render(store.clone(), &room_id))
                     .collect_view()}["Gallery message not supported yet"]
             </div>
         }
@@ -280,7 +275,7 @@ fn render_message_content(
                     {spans
                         .clone()
                         .into_iter()
-                        .map(|v| v.render(store.clone(), room_id.clone()))
+                        .map(|v| v.render(store.clone(), &room_id))
                         .collect_view()}
                     {if content.is_edited {
                         view! { <span class="text-xs text-muted ml-2 italic">"(edited)"</span> }
@@ -297,7 +292,7 @@ fn render_message_content(
                 {spans
                     .clone()
                     .into_iter()
-                    .map(|v| v.render(store.clone(), room_id.clone()))
+                    .map(|v| v.render(store.clone(), &room_id))
                     .collect_view()}["Location message not supported yet"]
             </div>
         }
@@ -308,7 +303,7 @@ fn render_message_content(
                 {spans
                     .clone()
                     .into_iter()
-                    .map(|v| v.render(store.clone(), room_id.clone()))
+                    .map(|v| v.render(store.clone(), &room_id))
                     .collect_view()}["Live location sharing not supported yet"]
             </div>
         }
@@ -319,7 +314,7 @@ fn render_message_content(
                 {spans
                     .clone()
                     .into_iter()
-                    .map(|v| v.render(store.clone(), room_id.clone()))
+                    .map(|v| v.render(store.clone(), &room_id))
                     .collect_view()}["Notice messages are not supported yet"]
             </div>
         }
@@ -330,7 +325,7 @@ fn render_message_content(
                 {spans
                     .clone()
                     .into_iter()
-                    .map(|v| v.render(store.clone(), room_id.clone()))
+                    .map(|v| v.render(store.clone(), &room_id))
                     .collect_view()}["Polls are not supported yet"]
             </div>
         }
@@ -348,7 +343,7 @@ fn render_message_content(
                 {spans
                     .clone()
                     .into_iter()
-                    .map(|v| v.render(store.clone(), room_id.clone()))
+                    .map(|v| v.render(store.clone(), &room_id))
                     .collect_view()}["Server notice messages are not supported yet"]
             </div>
         }
@@ -367,7 +362,7 @@ fn render_message_content(
                 {spans
                     .clone()
                     .into_iter()
-                    .map(|v| v.render(store.clone(), room_id.clone()))
+                    .map(|v| v.render(store.clone(), &room_id))
                     .collect_view()}
                 {if content.is_edited {
                     view! { <span class="text-xs text-muted ml-2 italic">"(edited)"</span> }

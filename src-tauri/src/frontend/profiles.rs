@@ -6,7 +6,7 @@ use matrix_sdk::{
     },
     Room, RoomMemberships,
 };
-use shared::user_profile::{MemberProfile, UserProfile};
+use shared::profile::{MemberProfile, UserProfile};
 use tauri::{command, AppHandle, Emitter};
 
 use crate::{MatrixClientState, TauriError};

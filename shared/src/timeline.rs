@@ -109,6 +109,21 @@ impl UiMembershipChange {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub enum RoomIdFormat {
+    Id(String),
+    Alias(String),
+}
+
+impl RoomIdFormat {
+    pub fn source(&self) -> String {
+        match self {
+            RoomIdFormat::Id(id) => id.clone(),
+            RoomIdFormat::Alias(alias) => alias.clone(),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum RichTextSpan {
     Plain(String),
@@ -116,7 +131,10 @@ pub enum RichTextSpan {
         user_id: String,
         display_name: String,
     },
-    RoomMention,
+    RoomMention {
+        room_id: RoomIdFormat,
+        display_name: String,
+    },
     Link {
         url: String,
         text: Option<String>,

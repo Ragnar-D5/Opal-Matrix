@@ -2,9 +2,9 @@ use colorsys::Hsl;
 use leptos::prelude::*;
 use shared::{
     get_color,
-    timeline::RichTextSpan,
+    profile::{MemberProfile, RoomProfile, UserProfile},
+    timeline::{RichTextSpan, RoomIdFormat},
     unknown_color,
-    user_profile::{MemberProfile, UserProfile},
 };
 
 use super::TextCircle;
@@ -103,7 +103,10 @@ pub trait MemberProfileExt {
 impl MemberProfileExt for MemberProfile {
     fn to_span(&self) -> RichTextSpan {
         if self.is_room() {
-            return RichTextSpan::RoomMention;
+            return RichTextSpan::RoomMention {
+                room_id: RoomIdFormat::Id(self.profile.user_id.clone()),
+                display_name: self.get_name(),
+            };
         }
 
         RichTextSpan::UserMention {
@@ -296,5 +299,18 @@ pub fn room_as_profile<T: ToString>(room_id: T) -> MemberProfile {
             display_name: Some("room".to_string()),
             has_avatar: false,
         },
+    }
+}
+
+pub trait RoomProfileExt {
+    fn to_span(&self) -> RichTextSpan;
+}
+
+impl RoomProfileExt for RoomProfile {
+    fn to_span(&self) -> RichTextSpan {
+        RichTextSpan::RoomMention {
+            room_id: RoomIdFormat::Id(self.room_id.clone()),
+            display_name: self.get_name(),
+        }
     }
 }

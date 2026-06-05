@@ -3,7 +3,7 @@ use shared::{
     api::{FileMetadata, LinkPreviewResponse},
     commands::Command,
     timeline::{UiMediaSource, UiTimelineItem},
-    user_profile::{MemberProfile, UserProfile},
+    profile::{MemberProfile, UserProfile},
 };
 
 use crate::app::{call_tauri, call_tauri_no_args};

@@ -18,6 +18,25 @@ use tauri::Emitter;
 
 use crate::TauriError;
 
+async fn node_from_room(room: &Room, kind: RoomKind) -> RoomNode {
+    let info = room.clone_info();
+    let name = room
+        .display_name()
+        .await
+        .ok()
+        .map(|n| n.to_string());
+
+    RoomNode {
+        room_id: info.room_id().to_string(),
+        name,
+        topic: room.topic(),
+        has_avatar: room.avatar_url().is_some(),
+        canonical_alias: room.canonical_alias().map(|v| v.to_string()),
+        aliases: info.alt_aliases().iter().map(|v| v.to_string()).collect(),
+        kind,
+    }
+}
+
 pub async fn send_sidebar(
     all_rooms: &[Room],
     handle: &AppHandle,
@@ -51,17 +70,9 @@ pub async fn send_sidebar(
             let other_user_ids = room.joined_user_ids().await.ok()?;
             let other_user_id = other_user_ids.into_iter().find(|id| id != own_id)?;
 
-            Some(RoomNode {
-                room_id: room.room_id().to_string(),
-                name: room.display_name().await.ok().map(|n| n.to_string()),
-                topic: room.topic(),
-
-                has_avatar: room.avatar_url().is_some(),
-
-                kind: RoomKind::Dm {
-                    other_user_id: other_user_id.to_string(),
-                },
-            })
+            Some(node_from_room(&room, RoomKind::Dm {
+                other_user_id: other_user_id.to_string(),
+            }).await)
         })
         .collect()
         .await;
@@ -142,45 +153,32 @@ pub async fn send_sidebar(
         }
     }
 
-    // 2. Build the top-level servers (Spaces with no parents)
+    let mut server_rooms: HashMap<String, RoomNode> = HashMap::new();
     let mut top_level_servers = Vec::new();
-    for room_id in channels.keys() {
-        let is_space = if let Some(room) = channels.get(room_id) {
-            room.is_space()
-        } else {
-            false
-        };
 
-        // A server is a space that is not a child of any other space
-        if is_space
-            && !all_children.contains(room_id)
-            && let Some(node) =
-                build_async_node(room_id, &channels, &ordered_parent_to_children).await
-        {
-            top_level_servers.push(node);
+    for room_id in channels.keys() {
+        if channels[room_id].is_space() && !all_children.contains(room_id) {
+            if let Some(node) =
+                build_async_node(room_id, &channels, &ordered_parent_to_children, &mut server_rooms).await
+            {
+                top_level_servers.push(node.room_id.clone());
+                server_rooms.insert(node.room_id.clone(), node);
+            }
         }
     }
 
-    // 3. Find orphaned channels (not a DM, not a space, and has no parent space)
-    let mut orphaned_channels = Vec::new();
+    let mut orphaned_rooms = Vec::new();
     for (room_id, room) in &channels {
-        if !room.is_space() && !all_children.contains(room_id) {
-            orphaned_channels.push(RoomNode {
-                room_id: room_id.clone(),
-                name: room.display_name().await.ok().map(|n| n.to_string()),
-                topic: room.topic(),
-
-                has_avatar: room.avatar_url().is_some(),
-
-                kind: RoomKind::TextChannel,
-            });
+        if !server_rooms.contains_key(room_id) && !room.is_space() && !all_children.contains(room_id) {
+            orphaned_rooms.push(node_from_room(room, RoomKind::TextChannel).await);
         }
     }
 
     let sidebar_state = SidebarState {
         dms,
-        servers: top_level_servers,
-        orphaned_rooms: orphaned_channels,
+        top_level_servers,
+        orphaned_rooms,
+        server_rooms,
     };
 
     handle.emit("sidebar_update", sidebar_state)?;
@@ -193,49 +191,40 @@ async fn build_async_node(
     room_id: &str,
     channels: &HashMap<String, &Room>,
     parent_to_children: &HashMap<String, Vec<(String, Option<String>)>>,
+    server_rooms: &mut HashMap<String, RoomNode>,
 ) -> Option<RoomNode> {
     let room = channels.get(room_id)?;
 
     let room_kind = if room.is_space() {
-        let mut children_nodes = Vec::new();
+        let mut children_ids = Vec::new();
         let mut all_children_ids = HashSet::new();
 
         if let Some(child_ids) = parent_to_children.get(room_id) {
             for (child_id, _) in child_ids {
                 if let Some(child_node) =
-                    build_async_node(child_id, channels, parent_to_children).await
+                    build_async_node(child_id, channels, parent_to_children, server_rooms).await
                 {
                     if let RoomKind::Space { all_children, .. } = &child_node.kind {
                         all_children_ids.extend(all_children.clone());
                     }
-
                     all_children_ids.insert(child_node.room_id.clone());
-                    children_nodes.push(child_node);
+                    children_ids.push(child_node.room_id.clone());
+                    server_rooms.insert(child_node.room_id.clone(), child_node);
                 }
             }
         }
 
         RoomKind::Space {
             all_children: all_children_ids,
-            children: children_nodes,
+            children: children_ids,
         }
+    } else if room.is_call() {
+        RoomKind::VoiceChannel
     } else {
-        if room.is_call() {
-            RoomKind::VoiceChannel
-        } else {
-            RoomKind::TextChannel
-        }
+        RoomKind::TextChannel
     };
 
-    Some(RoomNode {
-        room_id: room_id.to_string(),
-        name: room.display_name().await.ok().map(|n| n.to_string()),
-        topic: room.topic(),
-
-        has_avatar: room.avatar_url().is_some(),
-
-        kind: room_kind,
-    })
+    Some(node_from_room(room, room_kind).await)
 }
 
 fn is_structural_state_event(event: &AnySyncStateEvent, own_user_id: &str) -> bool {
