@@ -1,8 +1,8 @@
-use phosphor_leptos::{Icon, IconData, IconWeight, HASH, MATRIX_LOGO, SPEAKER_HIGH};
+use phosphor_leptos::{HASH, Icon, IconData, IconWeight, MATRIX_LOGO, SPEAKER_HIGH};
 use shared::get_color;
 
 use crate::{
-    components::{presence::PresenceBadge, user_profile::MemberProfileMaybeExt, FloatingTile},
+    components::{FloatingTile, presence::PresenceBadge, user_profile::MemberProfileMaybeExt},
     state::{AppState, ProfileStore},
 };
 use leptos::prelude::*;
@@ -251,26 +251,27 @@ pub fn ServerIcon(server_id: String) -> impl IntoView {
         } else {
             None
         };
-        let tr_corner = if let RoomKind::Space {
-            user_ids_in_calls, ..
-        } = &server.kind
-        {
-            if !user_ids_in_calls.is_empty() {
-                let user_in_call = user_ids_in_calls.contains(&state.user_id.get());
-                Some(CutoutBadgeCorner {
-                    fg_color: "white".to_string(),
-                    bg_color: if user_in_call {
-                        "var(--online-color)".to_string()
-                    } else {
-                        "var(--offline-color)".to_string()
-                    },
-                    content: CutoutBadgeContent::Icon(SPEAKER_HIGH),
-                })
+        let tr_corner = move || {
+            if let RoomKind::Space { all_children, .. } = &server.kind {
+                let user_ids_in_calls = state.get_call_members_in_rooms(all_children.clone());
+
+                if !user_ids_in_calls.is_empty() {
+                    let user_in_call = user_ids_in_calls.contains(&state.user_id.get());
+                    Some(CutoutBadgeCorner {
+                        fg_color: "white".to_string(),
+                        bg_color: if user_in_call {
+                            "var(--online-color)".to_string()
+                        } else {
+                            "var(--offline-color)".to_string()
+                        },
+                        content: CutoutBadgeContent::Icon(SPEAKER_HIGH),
+                    })
+                } else {
+                    None
+                }
             } else {
                 None
             }
-        } else {
-            None
         };
 
         let failed = RwSignal::new(false);
@@ -295,7 +296,7 @@ pub fn ServerIcon(server_id: String) -> impl IntoView {
 
         view! {
             <div class="relative w-10 h-10">
-                <CutoutBadge bottom_right=br_corner top_right=tr_corner class="justify-center flex">
+                <CutoutBadge bottom_right=br_corner top_right=tr_corner() class="justify-center flex">
                     <div
                         class="server-btn flex items-center justify-center w-10 h-10 text-gray-800 font-semibold rounded-[25%] cursor-pointer transition-colors"
                         class=("bg-[var(--color-icon-selected)]", move || is_active.get())
@@ -330,7 +331,7 @@ pub fn render_server_channel(child: RoomNode) -> impl IntoView {
     let channel_icon = match child.kind {
         RoomKind::Dm { .. } => HASH,
         RoomKind::TextChannel => HASH,
-        RoomKind::VoiceChannel { .. } => SPEAKER_HIGH,
+        RoomKind::VoiceChannel => SPEAKER_HIGH,
         RoomKind::Space { .. } => MATRIX_LOGO,
     };
 
@@ -338,11 +339,12 @@ pub fn render_server_channel(child: RoomNode) -> impl IntoView {
     let check_id = child.room_id.to_string();
     let is_active = Memo::new(move |_| state.active_room_id() == Some(check_id.clone()));
 
-    let call_empty = if let RoomKind::VoiceChannel { participants, .. } = &child.kind {
-        participants.is_empty()
-    } else {
-        true
-    };
+    let room_id = child.room_id.clone();
+
+    let call_participants_sig = state.get_call_members(&room_id);
+
+    let empty_sig = call_participants_sig.clone();
+    let call_empty = move || empty_sig.get().is_empty();
 
     let room_id_for_count = child.room_id.clone();
     let highlight_count = move || {
@@ -366,21 +368,27 @@ pub fn render_server_channel(child: RoomNode) -> impl IntoView {
         counts.notification_count > 0 || counts.highlight_count > 0
     });
 
-    let call_preview = if let RoomKind::VoiceChannel { participants, .. } = &child.kind {
-        let views = participants.keys().map(|user_id| {
-            let profile = store.get_member_profile(&child.room_id, user_id);
-            let clone = profile.clone();
+    let participants = Memo::new(move |_| call_participants_sig.get());
 
-            view! {
-                <div class="hover:bg-(--color-item-hover) rounded-[10px] p-1 flex items-center gap-2 flex flex-grow cursor-pointer">
-                    {move || profile.get().render_icon(22)} {move || clone.get().render_name(14)}
-                </div>
-            }
-        });
+    let call_preview = move || {
+        if let RoomKind::VoiceChannel = &child.kind {
+            let participants = participants.get();
 
-        Some(view! { <div class="flex pl-8 flex-col gap-1">{views.collect_view()}</div> })
-    } else {
-        None
+            let views = participants.iter().map(|device| {
+                let profile = store.get_member_profile(&child.room_id, &device.user_id);
+                let clone = profile.clone();
+
+                view! {
+                    <div class="hover:bg-(--color-item-hover) rounded-[10px] p-1 flex items-center gap-2 flex flex-grow cursor-pointer">
+                        {move || profile.get().render_icon(22)} {move || clone.get().render_name(14)}
+                    </div>
+                }
+            });
+
+            Some(view! { <div class="flex pl-8 flex-col gap-1">{views.collect_view()}</div> })
+        } else {
+            None
+        }
     };
 
     view! {
@@ -411,7 +419,7 @@ pub fn render_server_channel(child: RoomNode) -> impl IntoView {
                 <Icon
                     icon=channel_icon
                     size="20px"
-                    color=if call_empty { "currentColor" } else { "var(--online-color)" }
+                    color=move || if call_empty() { "currentColor" } else { "var(--online-color)" }
                 />
                 <div class="w-1"></div>
                 {child.name}

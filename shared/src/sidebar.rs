@@ -1,23 +1,27 @@
-use std::collections::HashMap;
+use std::collections::HashSet;
 
 use serde::{Deserialize, Serialize};
 
-/// Maps user_id → list of device_ids currently in the call.
-pub type VoiceParticipants = HashMap<String, Vec<String>>;
+#[derive(Debug, Serialize, Clone, Deserialize, PartialEq)]
+pub struct UserDevice {
+    pub user_id: String,
+    pub device_id: String,
+}
 
 #[derive(Debug, Serialize, Clone, Deserialize, PartialEq)]
 pub enum RoomKind {
     Space {
         children: Vec<RoomNode>,
-        user_ids_in_calls: Vec<String>,
+        all_children: HashSet<String>,
     },
     TextChannel,
-    VoiceChannel {
-        participants: VoiceParticipants,
-    },
+    VoiceChannel,
     Dm {
         other_user_id: String,
     },
+    // GroupDm {
+    // other_user_ids: Vec<String>,
+    // },
 }
 
 #[derive(Debug, Serialize, Clone, Deserialize, PartialEq)]

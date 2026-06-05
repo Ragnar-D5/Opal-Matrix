@@ -4,7 +4,7 @@ use chrono::{DateTime, Local, TimeZone};
 use colorsys::Hsl;
 use leptos::{html::Div, prelude::*, task::spawn_local};
 use phosphor_leptos::{
-    Icon, IconWeight, ARROW_BEND_UP_LEFT, ARROW_RIGHT, HASH, PENCIL_SIMPLE, SMILEY, SPEAKER_HIGH,
+    ARROW_BEND_UP_LEFT, ARROW_RIGHT, HASH, Icon, IconWeight, PENCIL_SIMPLE, SMILEY, SPEAKER_HIGH,
     TRASH, WARNING_CIRCLE,
 };
 use shared::{
@@ -22,15 +22,15 @@ use web_sys::Element;
 use crate::{
     app::format_date,
     components::{
+        TextCircle, TextCircleProps,
         chat::{Attachment, ChatInputInfo},
-        emoji_picker::{pick_emoji, EmojiPickerState},
+        emoji_picker::{EmojiPickerState, pick_emoji},
         input::move_caret_to_end,
         previews::render_link,
-        text::{richt_text_spans_to_html, RichTextExt},
+        text::{RichTextExt, richt_text_spans_to_html},
         user_profile::{
-            render_profile_icon, render_profile_name, MemberProfileExt, MemberProfileMaybeExt,
+            MemberProfileExt, MemberProfileMaybeExt, render_profile_icon, render_profile_name,
         },
-        TextCircle, TextCircleProps,
     },
     state::{AppState, LighboxImage, ProfileStore},
     tauri_functions::toggle_reaction,
@@ -1343,7 +1343,7 @@ pub fn render_timeline_item(
             let (icon, name, is_dm) = if let Some(ref room) = room {
                 let is_dm = matches!(room.kind, RoomKind::Dm { .. });
                 let icon = match &room.kind {
-                    RoomKind::VoiceChannel { .. } => SPEAKER_HIGH,
+                    RoomKind::VoiceChannel => SPEAKER_HIGH,
                     _ => HASH,
                 };
                 (icon, room.get_name(), is_dm)

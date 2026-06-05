@@ -11,7 +11,7 @@ use web_sys::{Node, window};
 use crate::components::chat::{Attachment, ChatInputInfo};
 use crate::components::input::menu::MenuType;
 use crate::components::input::menu::{SelectedItem, commit_selection};
-use crate::state::{AppState, ProfileStore, MessageDraft};
+use crate::state::{AppState, MessageDraft, ProfileStore};
 use crate::tauri_functions::{commit_message, edit_message, send_attachment};
 
 pub(crate) mod menu;
@@ -43,7 +43,12 @@ fn check_if_empty(el: &HtmlElement, is_empty: RwSignal<bool>) -> bool {
     empty
 }
 
-pub fn handle_input(input_ref: NodeRef<Div>, is_empty: RwSignal<bool>, state: AppState, attachments: RwSignal<Vec<Attachment>>) {
+pub fn handle_input(
+    input_ref: NodeRef<Div>,
+    is_empty: RwSignal<bool>,
+    state: AppState,
+    attachments: RwSignal<Vec<Attachment>>,
+) {
     let Some(el) = input_ref.get() else { return };
     let doc = document();
 
@@ -111,10 +116,13 @@ pub fn handle_input(input_ref: NodeRef<Div>, is_empty: RwSignal<bool>, state: Ap
             if empty {
                 drafts.remove(&room_id);
             } else {
-                drafts.insert(room_id, MessageDraft {
-                    content: el.inner_html(),
-                    attachments: attachments.get_untracked(),
-                });
+                drafts.insert(
+                    room_id,
+                    MessageDraft {
+                        content: el.inner_html(),
+                        attachments: attachments.get_untracked(),
+                    },
+                );
             }
         });
     }
@@ -206,19 +214,25 @@ pub fn get_active_filter(
     Some(String::from_utf16(filter_utf16).unwrap_or_default())
 }
 
+type Signals = (
+    RwSignal<MenuType>,
+    RwSignal<usize>,
+    RwSignal<Vec<MemberProfile>>,
+    RwSignal<Vec<Command>>,
+    RwSignal<bool>,
+    RwSignal<Option<ChatInputInfo>>,
+    RwSignal<Vec<Attachment>>,
+);
+
 pub fn handle_keydown(
     ev: KeyboardEvent,
     input_ref: NodeRef<Div>,
-    menu: RwSignal<MenuType>,
-    selected_index: RwSignal<usize>,
-    mention_matches: RwSignal<Vec<MemberProfile>>,
-    command_matches: RwSignal<Vec<Command>>,
     state: AppState,
     store: ProfileStore,
-    is_empty: RwSignal<bool>,
-    input_info: RwSignal<Option<ChatInputInfo>>,
-    attachments: RwSignal<Vec<Attachment>>,
+    signals: Signals,
 ) {
+    let (menu, selected_index, mention_matches, command_matches, is_empty, input_info, attachments) =
+        signals;
     let Some(el) = input_ref.get() else { return };
 
     let key = ev.key();
@@ -271,12 +285,16 @@ pub fn handle_keydown(
                     });
                 }
 
-                let content_empty = message.trim().is_empty() || message == "<br>" || message == "<br><br>" || message == "<br type=\"_moz\">";
+                let content_empty = message.trim().is_empty()
+                    || message == "<br>"
+                    || message == "<br><br>"
+                    || message == "<br type=\"_moz\">";
 
                 match input_info.get_untracked() {
                     Some(ChatInputInfo::ReplyingTo { event_id, .. }) if !content_empty => {
                         spawn_local(async move {
-                            if let Err(e) = commit_message(message, &room_id, Some(event_id)).await {
+                            if let Err(e) = commit_message(message, &room_id, Some(event_id)).await
+                            {
                                 warn!("Failed to commit message: {e}");
                             };
                         });
@@ -290,7 +308,9 @@ pub fn handle_keydown(
                     }
                     _ => {
                         spawn_local(async move {
-                            if !content_empty && let Err(e) = commit_message(message, &room_id, None).await {
+                            if !content_empty
+                                && let Err(e) = commit_message(message, &room_id, None).await
+                            {
                                 warn!("Failed to commit message: {e}");
                             };
 
@@ -302,7 +322,6 @@ pub fn handle_keydown(
                                 }
                             }
                         });
-
                     }
                 }
 
@@ -350,7 +369,7 @@ pub fn handle_keydown(
                 _ => return,
             };
         }
-        "Escape"  => {
+        "Escape" => {
             if current_menu != MenuType::None {
                 ev.prevent_default();
                 menu.set(MenuType::None);

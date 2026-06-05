@@ -4,8 +4,8 @@ use std::rc::Rc;
 
 use leptos::prelude::*;
 use phosphor_leptos::{
-    Icon, IconWeight, IconWeightData, AIRPLANE, CARET_DOWN, CUBE, FLAG, GAME_CONTROLLER, HAMBURGER,
-    HEART, PERSON, PLANT, SMILEY, SMILEY_SAD,
+    AIRPLANE, CARET_DOWN, CUBE, FLAG, GAME_CONTROLLER, HAMBURGER, HEART, Icon, IconWeight,
+    IconWeightData, PERSON, PLANT, SMILEY, SMILEY_SAD,
 };
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;

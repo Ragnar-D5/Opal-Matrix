@@ -1,4 +1,5 @@
 use async_recursion::async_recursion;
+use matrix_sdk::deserialized_responses::SyncOrStrippedState;
 use matrix_sdk::ruma::MilliSecondsSinceUnixEpoch;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
@@ -7,44 +8,60 @@ use futures::{StreamExt, stream};
 use matrix_sdk::{Client, Room};
 
 use matrix_sdk::room::ParentSpace;
-use matrix_sdk::ruma::events::space::child::SpaceChildEventContent;
-use matrix_sdk::sync::RoomUpdates;
 use matrix_sdk::ruma::events::call::member::CallMemberEventContent;
-use matrix_sdk::ruma::events::{AnyStateEventContent, AnySyncStateEvent, StateEventType};
-use shared::sidebar::{NotificationCounts, RoomKind, RoomNode, SidebarState, VoiceParticipants};
+use matrix_sdk::ruma::events::space::child::SpaceChildEventContent;
+use matrix_sdk::ruma::events::{AnySyncStateEvent, AnySyncTimelineEvent, OriginalSyncStateEvent};
+use matrix_sdk::sync::RoomUpdates;
+use shared::sidebar::{NotificationCounts, RoomKind, RoomNode, SidebarState, UserDevice};
 use tauri::AppHandle;
 use tauri::Emitter;
 
 use crate::TauriError;
 
-pub async fn send_sidebar(all_rooms: &[Room], handle: &AppHandle, own_id: &str) -> Result<(), TauriError> {
+pub async fn send_sidebar(
+    all_rooms: &[Room],
+    handle: &AppHandle,
+    own_id: &str,
+) -> Result<(), TauriError> {
     let mut channels = HashMap::new();
-    let mut dms: Vec<Room> = stream::iter(all_rooms.iter().cloned()).filter_map(|room| async move {
-        let res = room.compute_is_dm().await;
-        if res.unwrap_or(false) {
-            Some(room)
-        } else {
-            None
-        }
-    }).collect().await;
+    let mut dms: Vec<Room> = stream::iter(all_rooms.iter().cloned())
+        .filter_map(|room| async move {
+            let res = room.compute_is_dm().await;
+            if res.unwrap_or(false) {
+                Some(room)
+            } else {
+                None
+            }
+        })
+        .collect()
+        .await;
 
     dms.sort_by(|a, b| {
-        let a_ts = a.latest_event_timestamp().unwrap_or(MilliSecondsSinceUnixEpoch(0u32.into()));
-        let b_ts = b.latest_event_timestamp().unwrap_or(MilliSecondsSinceUnixEpoch(0u32.into()));
+        let a_ts = a
+            .latest_event_timestamp()
+            .unwrap_or(MilliSecondsSinceUnixEpoch(0u32.into()));
+        let b_ts = b
+            .latest_event_timestamp()
+            .unwrap_or(MilliSecondsSinceUnixEpoch(0u32.into()));
         b_ts.cmp(&a_ts)
     });
 
-    let dms = stream::iter(dms).filter_map(|room| async move {
-        let other_user_ids = room.joined_user_ids().await.ok()?;
-        let other_user_id = other_user_ids.into_iter().find(|id| id != own_id)?;
+    let dms = stream::iter(dms)
+        .filter_map(|room| async move {
+            let other_user_ids = room.joined_user_ids().await.ok()?;
+            let other_user_id = other_user_ids.into_iter().find(|id| id != own_id)?;
 
-        Some(RoomNode {
-            room_id: room.room_id().to_string(),
-            name: room.display_name().await.ok().map(|n| n.to_string()),
-            topic: room.topic(),
-            kind: RoomKind::Dm { other_user_id: other_user_id.to_string() },
+            Some(RoomNode {
+                room_id: room.room_id().to_string(),
+                name: room.display_name().await.ok().map(|n| n.to_string()),
+                topic: room.topic(),
+                kind: RoomKind::Dm {
+                    other_user_id: other_user_id.to_string(),
+                },
+            })
         })
-    }).collect().await;
+        .collect()
+        .await;
 
     for room in all_rooms {
         channels.insert(room.room_id().to_string(), room);
@@ -165,7 +182,6 @@ pub async fn send_sidebar(all_rooms: &[Room], handle: &AppHandle, own_id: &str) 
     Ok(())
 }
 
-
 #[async_recursion]
 async fn build_async_node(
     room_id: &str,
@@ -174,53 +190,32 @@ async fn build_async_node(
 ) -> Option<RoomNode> {
     let room = channels.get(room_id)?;
 
-    let mut user_ids_in_calls = HashSet::new();
-
     let room_kind = if room.is_space() {
         let mut children_nodes = Vec::new();
+        let mut all_children_ids = HashSet::new();
 
         if let Some(child_ids) = parent_to_children.get(room_id) {
             for (child_id, _) in child_ids {
                 if let Some(child_node) =
                     build_async_node(child_id, channels, parent_to_children).await
                 {
-                    if let RoomKind::VoiceChannel { participants } = &child_node.kind {
-                        for user_id in participants.keys() {
-                            user_ids_in_calls.insert(user_id.clone());
-                        }
+                    if let RoomKind::Space { all_children, .. } = &child_node.kind {
+                        all_children_ids.extend(all_children.clone());
                     }
+
+                    all_children_ids.insert(child_node.room_id.clone());
                     children_nodes.push(child_node);
                 }
             }
         }
 
         RoomKind::Space {
-            user_ids_in_calls: user_ids_in_calls.into_iter().collect(),
+            all_children: all_children_ids,
             children: children_nodes,
         }
     } else {
         if room.is_call() {
-            let mut participants: VoiceParticipants = VoiceParticipants::new();
-            let state_events = room
-                .get_state_events(StateEventType::CallMember)
-                .await
-                .unwrap_or_default();
-            for raw_event in state_events {
-                let Ok(event) = raw_event.deserialize() else { continue };
-                let Some(event) = event.as_sync() else { continue };
-                let user_id = event.sender().to_string();
-                let Some(AnyStateEventContent::CallMember(
-                    CallMemberEventContent::SessionContent(content),
-                )) = event.original_content()
-                else {
-                    continue;
-                };
-                participants
-                    .entry(user_id)
-                    .or_default()
-                    .push(content.device_id.to_string());
-            }
-            RoomKind::VoiceChannel { participants }
+            RoomKind::VoiceChannel
         } else {
             RoomKind::TextChannel
         }
@@ -246,8 +241,8 @@ fn is_structural_state_event(event: &AnySyncStateEvent, own_user_id: &str) -> bo
 }
 
 fn should_sidebar_update(room_updates: &RoomUpdates, own_user_id: &str) -> bool {
-    use matrix_sdk::sync::State;
     use matrix_sdk::ruma::events::AnySyncTimelineEvent;
+    use matrix_sdk::sync::State;
 
     if !room_updates.left.is_empty() || !room_updates.invited.is_empty() {
         return true;
@@ -309,7 +304,12 @@ fn should_notification_update(room_updates: &RoomUpdates) -> bool {
     false
 }
 
-pub async fn handle_room_updates(room_updates: &RoomUpdates, client: &Client, handle: &AppHandle, own_id: &str) {
+pub async fn handle_room_updates(
+    room_updates: &RoomUpdates,
+    client: &Client,
+    handle: &AppHandle,
+    own_id: &str,
+) {
     if should_sidebar_update(room_updates, own_id) {
         log::debug!("Refreshing sidebar");
         if let Err(e) = send_sidebar(&client.joined_rooms(), handle, own_id).await {
@@ -323,16 +323,109 @@ pub async fn handle_room_updates(room_updates: &RoomUpdates, client: &Client, ha
             log::error!("Failed to emit notification counts: {:?}", e);
         }
     }
+
+    if let Some(call_member_updates) = extract_call_member_updates(room_updates).await
+        && let Err(e) = handle.emit("call_member_updates", call_member_updates)
+    {
+        log::error!("Failed to emit call member updates: {:?}", e);
+    }
 }
 
 pub async fn get_notification_counts(client: &Client) -> HashMap<String, NotificationCounts> {
-    client.rooms().iter().map(|room| {
-        let notification_count = room.num_unread_notifications();
-        let highlight_count = room.num_unread_mentions();
+    client
+        .rooms()
+        .iter()
+        .map(|room| {
+            let notification_count = room.num_unread_notifications();
+            let highlight_count = room.num_unread_mentions();
 
-        (room.room_id().to_string(), NotificationCounts {
-            notification_count,
-            highlight_count,
+            (
+                room.room_id().to_string(),
+                NotificationCounts {
+                    notification_count,
+                    highlight_count,
+                },
+            )
         })
-    }).collect()
+        .collect()
+}
+
+/// Detects changes of call members and emits the update, for all rooms grouped by room_id
+pub async fn extract_call_member_updates(
+    room_updates: &RoomUpdates,
+) -> Option<HashMap<String, Vec<UserDevice>>> {
+    let mut updates = HashMap::new();
+
+    for (room_id, update) in &room_updates.joined {
+        let mut user_devices = Vec::new();
+
+        for raw_event in &update.timeline.events {
+            let Ok(AnySyncTimelineEvent::State(event)) = raw_event.raw().deserialize() else {
+                continue;
+            };
+            let AnySyncStateEvent::CallMember(ev) = event else {
+                continue;
+            };
+
+            if let Some(OriginalSyncStateEvent {
+                content: CallMemberEventContent::SessionContent(content),
+                sender,
+                ..
+            }) = ev.as_original()
+            {
+                user_devices.push(UserDevice {
+                    user_id: sender.to_string(),
+                    device_id: content.device_id.to_string(),
+                });
+            }
+        }
+
+        if !user_devices.is_empty() {
+            updates.insert(room_id.to_string(), user_devices);
+        }
+    }
+
+    (!updates.is_empty()).then_some(updates)
+}
+
+pub async fn extract_call_memberships(rooms: &[Room]) -> Option<HashMap<String, Vec<UserDevice>>> {
+    let mut memberships = HashMap::new();
+
+    for room in rooms {
+        if !room.is_call() {
+            continue;
+        }
+
+        let mut user_devices = Vec::new();
+        let events = room
+            .get_state_events_static::<CallMemberEventContent>()
+            .await
+            .unwrap_or_default();
+
+        for raw in events {
+            let Ok(SyncOrStrippedState::Sync(ev)) = raw.deserialize() else {
+                continue;
+            };
+
+            let Some(OriginalSyncStateEvent {
+                content: CallMemberEventContent::SessionContent(content),
+                sender,
+                ..
+            }) = ev.as_original()
+            else {
+                continue;
+            };
+
+            user_devices.push(UserDevice {
+                user_id: sender.to_string(),
+                device_id: content.device_id.to_string(),
+            });
+        }
+
+        if !user_devices.is_empty() {
+            memberships.insert(room.room_id().to_string(), user_devices);
+        }
+    }
+
+    (!memberships.is_empty()).then_some(memberships)
 }

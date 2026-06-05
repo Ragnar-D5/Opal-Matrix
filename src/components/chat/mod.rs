@@ -5,7 +5,9 @@ use crate::{
         chat::messages::render_timeline_item,
         emoji_picker::EmojiPickerState,
         input::{
-            get_active_filter, get_caret_position, handle_input, handle_keydown, insert_text_at_caret, menu::{MenuType, SelectionMenu}
+            get_active_filter, get_caret_position, handle_input, handle_keydown,
+            insert_text_at_caret,
+            menu::{MenuType, SelectionMenu},
         },
         presence::PresenceBadge,
         user_profile::{MemberProfileExt, MemberProfileMaybeExt},
@@ -936,15 +938,9 @@ fn ChatInput() -> impl IntoView {
                         on:keydown=move |ev| handle_keydown(
                             ev,
                             input_ref,
-                            menu,
-                            selected_index,
-                            mention_matches,
-                            command_matches,
                             state,
                             store.clone(),
-                            is_empty,
-                            input_info,
-                            attachments,
+                            (menu, selected_index, mention_matches, command_matches, is_empty, input_info, attachments)
                         )
                     ></div>
                 </div>
@@ -983,6 +979,10 @@ pub fn Chat() -> impl IntoView {
 
     let (chat_sidebar_open, set_chat_sidebar_open) = signal(true);
 
+    let room_id = move || state.active_room_id().unwrap_or_default();
+
+    let participants = Memo::new(move |_| state.get_call_members(&room_id()).get());
+
     view! {
         <div class="flex-1 h-full flex gap-[var(--gap)] flex-col overflow-hidden">
             <ChatHeader
@@ -1010,7 +1010,8 @@ pub fn Chat() -> impl IntoView {
                                     }
                                         .into_any()
                                 }
-                                RoomKind::VoiceChannel { participants } => {
+                                RoomKind::VoiceChannel => {
+                                        let participants = participants.get();
                                     if participants.is_empty() {
                                         view! {
                                             <div class="flex-1 flex items-center justify-center text-muted flex-col gap-2 bg-radial-[at_50%_100%] from-(--accent-color) to-transparent to-80% w-full h-full">
@@ -1038,10 +1039,9 @@ pub fn Chat() -> impl IntoView {
                                         view! {
                                             <div class="flex-1 flex flex-wrap justify-center content-center w-full h-full min-h-0 gap-[var(--gap)] p-[var(--gap)] overflow-y-auto">
                                                 {participants
-                                                    .keys()
-                                                    .map(|id| {
+                                                    .iter().map(|device| {
                                                         let profile = member_store
-                                                            .get_member_profile(&node.room_id, id);
+                                                            .get_member_profile(&node.room_id, &device.user_id);
                                                         let clone = profile.clone();
                                                         let colors = move || {
                                                             let mut color = clone.get().get_color();

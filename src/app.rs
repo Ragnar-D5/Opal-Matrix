@@ -4,7 +4,7 @@ use crate::components::previews::ImageLightbox;
 use crate::components::shader::BackgroundShader;
 use chrono::{DateTime, Local};
 use shared::api::RestoreResponse;
-use shared::sidebar::{NotificationCounts, SidebarState};
+use shared::sidebar::{NotificationCounts, SidebarState, UserDevice};
 use std::collections::HashMap;
 
 use log::error;
@@ -45,11 +45,12 @@ pub async fn call_tauri_no_args(cmd: &str) -> Result<JsValue, JsValue> {
     wasm_bindgen_futures::JsFuture::from(invoke(cmd, JsValue::NULL)).await
 }
 
-#[derive(Clone, Debug, Copy, PartialEq)]
+#[derive(Clone, Debug, Copy, PartialEq, Default)]
 pub enum CurrentWindow {
     HomeserverDiscovery,
     Login,
     Home,
+    #[default]
     Loading,
 }
 
@@ -80,7 +81,7 @@ pub fn format_bytes(bytes: u64) -> String {
 
 #[component]
 pub fn App() -> impl IntoView {
-    let state = AppState::new();
+    let state = AppState::default();
     provide_context(state);
 
     let store = ProfileStore::default();
@@ -104,7 +105,7 @@ pub fn App() -> impl IntoView {
         }
     });
 
-    let profile_update = use_tauri_event::<MemberProfile>("member_update");
+    let profile_update: ReadSignal<Option<MemberProfile>> = use_tauri_event("member_update");
 
     Effect::new(move |_| {
         let room_id = state.active_room_id();
@@ -154,7 +155,8 @@ pub fn App() -> impl IntoView {
         });
     });
 
-    let presence_update = use_tauri_event::<HashMap<String, PresenceInfo>>("presence_update");
+    let presence_update: ReadSignal<Option<HashMap<String, PresenceInfo>>> =
+        use_tauri_event("presence_update");
 
     Effect::new(move |_| {
         if let Some(updates) = presence_update.get() {
@@ -166,12 +168,23 @@ pub fn App() -> impl IntoView {
         }
     });
 
-    let notification_counts_update =
-        use_tauri_event::<HashMap<String, NotificationCounts>>("notification_counts_update");
+    let notification_counts_update: ReadSignal<Option<HashMap<String, NotificationCounts>>> =
+        use_tauri_event("notification_counts_update");
 
     Effect::new(move |_| {
         if let Some(updates) = notification_counts_update.get() {
-            state.notification_counts.update(|counts| counts.extend(updates));
+            state
+                .notification_counts
+                .update(|counts| counts.extend(updates));
+        }
+    });
+
+    let call_member_update: ReadSignal<Option<HashMap<String, Vec<UserDevice>>>> =
+        use_tauri_event("call_member_update");
+
+    Effect::new(move |_| {
+        if let Some(update) = call_member_update.get() {
+            state.update_call_members(update);
         }
     });
 
