@@ -18,3 +18,7 @@ pub fn get_color(string: &str) -> Hsl {
 
     Hsl::new(hue as f64, 90.0, 70.0, None)
 }
+
+pub fn unknown_color() -> Hsl {
+    Hsl::new(0.0, 100.0, 70.0, None)
+}

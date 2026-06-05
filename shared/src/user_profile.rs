@@ -16,7 +16,7 @@ pub struct PresenceInfo {
     pub last_active_ago: Option<u64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct UserProfile {
     pub user_id: String,
     pub display_name: Option<String>,
@@ -37,7 +37,7 @@ impl UserProfile {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MemberProfile {
     pub room_id: String,
     pub profile: UserProfile,

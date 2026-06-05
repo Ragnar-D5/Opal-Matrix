@@ -3,14 +3,15 @@ use leptos::prelude::*;
 use shared::{
     get_color,
     timeline::RichTextSpan,
+    unknown_color,
     user_profile::{MemberProfile, UserProfile},
 };
 
 use super::TextCircle;
 
-pub fn render_url_icon<T: AsRef<str>, U: AsRef<str>>(
+pub fn render_url_icon<S: AsRef<str>, T: AsRef<str>, U: AsRef<str>>(
     url: Option<String>,
-    name: String,
+    name: S,
     size_str: T,
     color: Hsl,
     rounding: U,
@@ -22,6 +23,8 @@ pub fn render_url_icon<T: AsRef<str>, U: AsRef<str>>(
     );
 
     let is_failed = RwSignal::new(url.is_none());
+
+    let name = name.as_ref().to_string();
 
     let fallback = view! {
         <TextCircle
@@ -56,6 +59,10 @@ pub fn render_url_icon<T: AsRef<str>, U: AsRef<str>>(
     }
 }
 
+pub fn render_unknown_icon<T: AsRef<str>>(size_str: T) -> impl IntoView {
+    render_url_icon(None, "Unknown", size_str, unknown_color(), "full")
+}
+
 pub fn render_profile_name<T: AsRef<str>>(
     name: String,
     color: Hsl,
@@ -72,6 +79,10 @@ pub fn render_profile_name<T: AsRef<str>>(
             {name.clone()}
         </span>
     }
+}
+
+pub fn render_unknown_name<T: AsRef<str>>(font_size_str: T) -> impl IntoView {
+    render_profile_name("Unknown".to_string(), unknown_color(), font_size_str)
 }
 
 pub trait MemberProfileExt {
@@ -177,9 +188,10 @@ impl MemberProfileExt for UserProfile {
 
 impl MemberProfileExt for Option<MemberProfile> {
     fn render_icon<T: AsRef<str>>(self, size_str: T) -> impl IntoView {
-        match self {
-            Some(profile) => profile.render_icon(size_str).into_any(),
-            None => ().into_any(),
+        if let Some(profile) = self {
+            profile.render_icon(size_str).into_any()
+        } else {
+            render_unknown_icon(size_str).into_any()
         }
     }
 
@@ -188,9 +200,10 @@ impl MemberProfileExt for Option<MemberProfile> {
         size_str: T,
         room_id: Option<U>,
     ) -> impl IntoView {
-        match self {
-            Some(profile) => profile.render_icon_room(size_str, room_id).into_any(),
-            None => ().into_any(),
+        if let Some(profile) = self {
+            profile.render_icon_room(size_str, room_id).into_any()
+        } else {
+            render_unknown_icon(size_str).into_any()
         }
     }
 
@@ -209,25 +222,27 @@ impl MemberProfileExt for Option<MemberProfile> {
     }
 
     fn render_name<T: AsRef<str>>(self, font_size_str: T) -> impl IntoView {
-        match self {
-            Some(profile) => profile.render_name(font_size_str).into_any(),
-            None => ().into_any(),
+        if let Some(profile) = self {
+            profile.render_name(font_size_str).into_any()
+        } else {
+            render_unknown_name(font_size_str).into_any()
         }
     }
 
     fn get_color(&self) -> Hsl {
         match self {
             Some(profile) => profile.get_color(),
-            None => Hsl::new(0.0, 0.0, 70.0, None),
+            None => Hsl::new(0.0, 100.0, 70.0, None),
         }
     }
 }
 
 impl MemberProfileExt for Option<UserProfile> {
     fn render_icon<T: AsRef<str>>(self, size_str: T) -> impl IntoView {
-        match self {
-            Some(profile) => profile.render_icon(size_str).into_any(),
-            None => ().into_any(),
+        if let Some(profile) = self {
+            profile.render_icon(size_str).into_any()
+        } else {
+            render_unknown_icon(size_str).into_any()
         }
     }
 
@@ -236,9 +251,10 @@ impl MemberProfileExt for Option<UserProfile> {
         size_str: T,
         room_id: Option<U>,
     ) -> impl IntoView {
-        match self {
-            Some(profile) => profile.render_icon_room(size_str, room_id).into_any(),
-            None => ().into_any(),
+        if let Some(profile) = self {
+            profile.render_icon_room(size_str, room_id).into_any()
+        } else {
+            render_unknown_icon(size_str).into_any()
         }
     }
 
@@ -257,9 +273,10 @@ impl MemberProfileExt for Option<UserProfile> {
     }
 
     fn render_name<T: AsRef<str>>(self, font_size_str: T) -> impl IntoView {
-        match self {
-            Some(profile) => profile.render_name(font_size_str).into_any(),
-            None => ().into_any(),
+        if let Some(profile) = self {
+            profile.render_name(font_size_str).into_any()
+        } else {
+            render_unknown_name(font_size_str).into_any()
         }
     }
 

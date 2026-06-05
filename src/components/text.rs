@@ -73,7 +73,7 @@ impl RichTextExt for RichTextSpan {
                 let profile_sig = store.get_member_profile(&room_id, &user_id);
 
                 let colors = Memo::new(move |_| {
-                    let profile = profile_sig.get().unwrap_or_default();
+                    let profile = profile_sig.get();
                     let mut color = profile.get_color();
                     let primary = color.to_css_string();
 
