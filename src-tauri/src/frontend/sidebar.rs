@@ -1,8 +1,9 @@
 use async_recursion::async_recursion;
+use matrix_sdk::ruma::MilliSecondsSinceUnixEpoch;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 
-use futures::StreamExt;
+use futures::{StreamExt, stream};
 use matrix_sdk::{Client, Room};
 
 use matrix_sdk::room::ParentSpace;
@@ -16,33 +17,39 @@ use tauri::Emitter;
 
 use crate::TauriError;
 
-pub async fn send_sidebar(all_rooms: &[Room], handle: &AppHandle) -> Result<(), TauriError> {
+pub async fn send_sidebar(all_rooms: &[Room], handle: &AppHandle, own_id: &str) -> Result<(), TauriError> {
     let mut channels = HashMap::new();
-    let mut dms = Vec::new();
-
-    for room in all_rooms.iter() {
-        if room.compute_is_dm().await? {
-            let unread_counts = room.unread_notification_counts();
-
-            dms.push(RoomNode {
-                room_id: room.room_id().to_string(),
-                name: room.display_name().await.ok().map(|n| n.to_string()),
-                highlight_count: unread_counts.highlight_count,
-                notification_count: unread_counts.notification_count,
-                topic: room.topic(),
-
-                kind: RoomKind::Dm {
-                    other_user_ids: room
-                        .direct_targets()
-                        .iter()
-                        .map(|u| u.to_string())
-                        .collect(),
-                    last_ts: room.latest_event_timestamp().map(|t| t.as_secs().into()),
-                },
-            });
+    let mut dms: Vec<Room> = stream::iter(all_rooms.iter().cloned()).filter_map(|room| async move {
+        let res = room.compute_is_dm().await;
+        if res.unwrap_or(false) {
+            Some(room)
         } else {
-            channels.insert(room.room_id().to_string(), room);
+            None
         }
+    }).collect().await;
+
+    dms.sort_by(|a, b| {
+        let a_ts = a.latest_event_timestamp().unwrap_or(MilliSecondsSinceUnixEpoch(0u32.into()));
+        let b_ts = b.latest_event_timestamp().unwrap_or(MilliSecondsSinceUnixEpoch(0u32.into()));
+        b_ts.cmp(&a_ts)
+    });
+
+    let dms = stream::iter(dms).filter_map(|room| async move {
+        let other_user_ids = room.joined_user_ids().await.ok()?;
+        let other_user_id = other_user_ids.into_iter().find(|id| id != own_id)?;
+
+        Some(RoomNode {
+            room_id: room.room_id().to_string(),
+            name: room.display_name().await.ok().map(|n| n.to_string()),
+            topic: room.topic(),
+            highlight_count: room.unread_notification_counts().highlight_count,
+            notification_count: room.unread_notification_counts().notification_count,
+            kind: RoomKind::Dm { other_user_id: other_user_id.to_string() },
+        })
+    }).collect().await;
+
+    for room in all_rooms {
+        channels.insert(room.room_id().to_string(), room);
     }
 
     let mut children_to_parents: HashMap<&String, Vec<Room>> = HashMap::new();
@@ -148,20 +155,10 @@ pub async fn send_sidebar(all_rooms: &[Room], handle: &AppHandle) -> Result<(), 
                 topic: room.topic(),
                 highlight_count: unread_counts.highlight_count,
                 notification_count: unread_counts.notification_count,
-                kind: RoomKind::TextChannel {
-                    last_ts: room.latest_event_timestamp().map(|t| t.as_secs().into()),
-                },
+                kind: RoomKind::TextChannel,
             });
         }
     }
-
-    dms.sort_by(|a, b| {
-        let ts = |n: &RoomNode| match &n.kind {
-            RoomKind::Dm { last_ts, .. } => last_ts.unwrap_or(0),
-            _ => 0,
-        };
-        ts(b).cmp(&ts(a))
-    });
 
     let sidebar_state = SidebarState {
         dms,
@@ -236,9 +233,7 @@ async fn build_async_node(
             }
             RoomKind::VoiceChannel { participants }
         } else {
-            RoomKind::TextChannel {
-                last_ts: room.latest_event_timestamp().map(|t| t.as_secs().into()),
-            }
+            RoomKind::TextChannel
         }
     };
 
@@ -282,10 +277,10 @@ fn should_sidebar_update(room_updates: &RoomUpdates) -> bool {
     false
 }
 
-pub async fn handle_room_updates(room_updates: &RoomUpdates, client: &Client, handle: &AppHandle) {
+pub async fn handle_room_updates(room_updates: &RoomUpdates, client: &Client, handle: &AppHandle, own_id: &str) {
     if should_sidebar_update(room_updates) {
         log::debug!("Refreshing sidebar");
-        if let Err(e) = send_sidebar(&client.joined_rooms(), handle).await {
+        if let Err(e) = send_sidebar(&client.joined_rooms(), handle, own_id).await {
             log::error!("Failed to send sidebar update: {:?}", e);
         }
     }

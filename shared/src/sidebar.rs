@@ -11,15 +11,12 @@ pub enum RoomKind {
         children: Vec<RoomNode>,
         user_ids_in_calls: Vec<String>,
     },
-    TextChannel {
-        last_ts: Option<u64>,
-    },
+    TextChannel,
     VoiceChannel {
         participants: VoiceParticipants,
     },
     Dm {
-        other_user_ids: Vec<String>,
-        last_ts: Option<u64>,
+        other_user_id: String,
     },
 }
 
@@ -36,22 +33,13 @@ pub struct RoomNode {
 }
 
 impl RoomNode {
-    pub fn last_ts(&self) -> Option<u64> {
-        match self.kind {
-            RoomKind::Space { .. } => None,
-            RoomKind::TextChannel { last_ts, .. } => last_ts,
-            RoomKind::Dm { last_ts, .. } => last_ts,
-            RoomKind::VoiceChannel { .. } => None,
-        }
-    }
-
     pub fn get_name(&self) -> String {
         self.name.clone().unwrap_or(self.room_id.clone())
     }
 
     pub fn dm_user_id(&self) -> Option<String> {
-        if let RoomKind::Dm { other_user_ids, .. } = &self.kind {
-            return other_user_ids.first().cloned();
+        if let RoomKind::Dm { other_user_id, .. } = &self.kind {
+            return Some(other_user_id.clone());
         }
 
         None

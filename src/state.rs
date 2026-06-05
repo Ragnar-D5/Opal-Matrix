@@ -183,7 +183,7 @@ impl AppState {
 
         match &server.kind {
             RoomKind::Space { children, .. } => Self::find_first_channel(children),
-            RoomKind::TextChannel { .. } => Some(server.room_id.clone()),
+            RoomKind::TextChannel => Some(server.room_id.clone()),
             RoomKind::Dm { .. } => Some(server.room_id.clone()),
             RoomKind::VoiceChannel { .. } => Some(server.room_id.clone()),
         }
@@ -192,7 +192,7 @@ impl AppState {
     fn find_first_channel(nodes: &[RoomNode]) -> Option<String> {
         for node in nodes {
             match &node.kind {
-                RoomKind::TextChannel { .. } => return Some(node.room_id.clone()),
+                RoomKind::TextChannel => return Some(node.room_id.clone()),
                 RoomKind::Space { children, .. } => {
                     if let Some(room_id) = Self::find_first_channel(children) {
                         return Some(room_id);
@@ -264,15 +264,12 @@ impl AppState {
         let active_room_id = room.room_id.clone();
 
         match &room.kind {
-            RoomKind::Dm { other_user_ids, .. } => {
-                let Some(other_user_id) = other_user_ids.first() else {
-                    return RoomHeader::Unknown;
-                };
+            RoomKind::Dm { other_user_id, .. } => {
                 let profile = member_store.get_member_profile(&active_room_id, other_user_id);
 
                 RoomHeader::DM(profile)
             }
-            RoomKind::TextChannel { .. } => RoomHeader::TextChannel(room.get_name()),
+            RoomKind::TextChannel => RoomHeader::TextChannel(room.get_name()),
             RoomKind::VoiceChannel { .. } => RoomHeader::VoiceChannel(room.get_name()),
             RoomKind::Space { .. } => RoomHeader::Space(room.get_name()),
         }

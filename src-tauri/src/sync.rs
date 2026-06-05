@@ -26,6 +26,10 @@ pub async fn attach_callbacks(client: &MatrixClient, handle: &AppHandle) -> Resu
     let mut session_subscriber = client.subscribe_to_session_changes();
     let client_clone = client.clone();
 
+    let Some(own_id) = client.user_id().map(|v| v.to_string()) else {
+        return Err("Failed to get own user ID from client".into());
+    };
+
     cleanup_ghost_calls(client).await;
 
     spawn(async move {
@@ -55,14 +59,17 @@ pub async fn attach_callbacks(client: &MatrixClient, handle: &AppHandle) -> Resu
 
     let client_sync_clone = client.clone();
     let handle_clone = handle.clone();
+    let id_clone = own_id.clone();
 
     client.add_event_handler(async move |_: SyncSpaceParentEvent| {
-        if let Err(e) = send_sidebar(&client_sync_clone.joined_rooms(), &handle_clone).await {
+        if let Err(e) =
+            send_sidebar(&client_sync_clone.joined_rooms(), &handle_clone, &id_clone).await
+        {
             log::error!("Failed to update sidebar on space parent event: {:?}", e);
         }
     });
 
-    send_sidebar(&client.joined_rooms(), handle).await?;
+    send_sidebar(&client.joined_rooms(), handle, &own_id).await?;
 
     send_user_to_frontend(handle, client).await?;
 
@@ -90,8 +97,13 @@ pub async fn attach_callbacks(client: &MatrixClient, handle: &AppHandle) -> Resu
                         log::error!("Failed to handle to-device messages: {:?}", e);
                     };
                     handle_presences(&sync_result.presence, &handle_clone);
-                    handle_room_updates(&sync_result.rooms, &client_sync_clone, &handle_clone)
-                        .await;
+                    handle_room_updates(
+                        &sync_result.rooms,
+                        &client_sync_clone,
+                        &handle_clone,
+                        &own_id,
+                    )
+                    .await;
                 }
                 Err(e) => {
                     log::error!("Sync loop exited with error: {}", e);
