@@ -55,6 +55,9 @@ pub async fn send_sidebar(
                 room_id: room.room_id().to_string(),
                 name: room.display_name().await.ok().map(|n| n.to_string()),
                 topic: room.topic(),
+
+                has_avatar: room.avatar_url().is_some(),
+
                 kind: RoomKind::Dm {
                     other_user_id: other_user_id.to_string(),
                 },
@@ -166,6 +169,9 @@ pub async fn send_sidebar(
                 room_id: room_id.clone(),
                 name: room.display_name().await.ok().map(|n| n.to_string()),
                 topic: room.topic(),
+
+                has_avatar: room.avatar_url().is_some(),
+
                 kind: RoomKind::TextChannel,
             });
         }
@@ -225,6 +231,9 @@ async fn build_async_node(
         room_id: room_id.to_string(),
         name: room.display_name().await.ok().map(|n| n.to_string()),
         topic: room.topic(),
+
+        has_avatar: room.avatar_url().is_some(),
+
         kind: room_kind,
     })
 }

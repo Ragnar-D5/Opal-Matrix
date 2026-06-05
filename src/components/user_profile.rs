@@ -8,39 +8,60 @@ use shared::{
 
 use super::TextCircle;
 
-pub fn render_profile_icon(
+pub fn render_url_icon<T: AsRef<str>, U: AsRef<str>>(
     url: Option<String>,
     name: String,
-    size: usize,
+    size_str: T,
     color: Hsl,
+    rounding: U,
 ) -> impl IntoView {
-    let size_str = format!("{}px", size);
+    let stye_str = format!(
+        "height: {}; width: {};",
+        size_str.as_ref(),
+        size_str.as_ref()
+    );
 
-    match url {
-        Some(url) => view! {
+    let is_failed = RwSignal::new(url.is_none());
+
+    let fallback = view! {
+        <TextCircle
+            text=name.chars().next().unwrap_or('?').to_string()
+            color=color
+            class=format!("rounded-{} select-none", rounding.as_ref())
+            style=&stye_str
+            class:hidden=move || !is_failed.get()
+        />
+    }
+    .into_any();
+
+    if let Some(url) = url {
+        view! {
             <img
-                class="rounded-full object-cover bg-transparent block select-none"
+                class=format!(
+                    "rounded-{} object-cover bg-transparent block select-none",
+                    rounding.as_ref(),
+                )
                 src=url
-                style:height=size_str.clone()
-                style:width=size_str
+                style=stye_str
+                class:hidden=is_failed
                 alt=name
+                on:error=move |_| is_failed.set(true)
+                on:load=move |_| is_failed.set(false)
             />
+            {fallback}
         }
-        .into_any(),
-        None => view! {
-            <TextCircle
-                text=name.chars().next().unwrap_or('?').to_string()
-                color=color
-                class="rounded-full select-none"
-                style=format!("height: {}; width: {};", size_str, size_str)
-            />
-        }
-        .into_any(),
+        .into_any()
+    } else {
+        fallback
     }
 }
 
-pub fn render_profile_name(name: String, color: Hsl, font_size: usize) -> impl IntoView {
-    let font_size_str = format!("{}px", font_size);
+pub fn render_profile_name<T: AsRef<str>>(
+    name: String,
+    color: Hsl,
+    font_size_str: T,
+) -> impl IntoView {
+    let font_size_str = format!("{}px", font_size_str.as_ref());
 
     view! {
         <span
@@ -54,13 +75,16 @@ pub fn render_profile_name(name: String, color: Hsl, font_size: usize) -> impl I
 }
 
 pub trait MemberProfileExt {
-    fn render_icon(self, size: usize) -> impl IntoView;
-    fn render_name(self, font_size: usize) -> impl IntoView;
+    fn render_icon<T: AsRef<str>>(self, size_str: T) -> impl IntoView;
+    fn render_icon_room<T: AsRef<str>, U: AsRef<str>>(
+        self,
+        size_str: T,
+        room_id: Option<U>,
+    ) -> impl IntoView;
+    fn render_name<T: AsRef<str>>(self, font_size_str: T) -> impl IntoView;
     fn to_span(&self) -> RichTextSpan;
 
     fn is_room(&self) -> bool;
-
-    fn room(room_id: String) -> Self;
 
     fn get_color(&self) -> Hsl;
 }
@@ -77,69 +101,24 @@ impl MemberProfileExt for MemberProfile {
         }
     }
 
-    fn room(room_id: String) -> Self {
-        Self {
-            room_id: room_id.clone(),
-            profile: UserProfile {
-                user_id: room_id,
-                display_name: Some("room".into()),
-            },
-        }
-    }
-
     fn is_room(&self) -> bool {
         self.profile.user_id.starts_with("!")
     }
 
-    fn render_icon(self, size: usize) -> impl IntoView {
-        let url = format!("mxc://user/{}/room/{}", self.profile.user_id, self.room_id);
-        let name = self.get_name();
-        let size_str = format!("{}px", size);
-
-        let first_char = name.chars().next().unwrap_or('?').to_string();
-        let color = self.get_color();
-
-        let circle_style = format!("height: {}; width: {};", size_str, size_str);
-
-        let failed = RwSignal::new(true);
-        let img_ref = NodeRef::<leptos::html::Img>::new();
-
-        // A cached image can fire `load` before the on:load handler is attached
-        // (happens when this avatar is recreated on a re-render), leaving `failed`
-        // stuck on the fallback. Re-check `complete` once the element is mounted.
-        Effect::new(move |_| {
-            if let Some(img) = img_ref.get()
-                && img.complete()
-                && img.natural_width() > 0
-            {
-                failed.set(false);
-            }
-        });
-
-        view! {
-            <img
-                node_ref=img_ref
-                class="rounded-full object-cover bg-transparent block select-none"
-                class:hidden=failed
-                src=url
-                style:height=size_str.clone()
-                style:width=size_str
-                alt=name
-                on:error=move |_| failed.set(true)
-                on:load=move |_| failed.set(false)
-            />
-            <TextCircle
-                text=first_char
-                color=color
-                class="rounded-full select-none"
-                class:hidden=move || !failed.get()
-                style=circle_style
-            />
-        }
+    fn render_icon<T: AsRef<str>>(self, size_str: T) -> impl IntoView {
+        self.profile.render_icon_room(size_str, Some(self.room_id))
     }
 
-    fn render_name(self, font_size: usize) -> impl IntoView {
-        render_profile_name(self.get_name(), self.get_color(), font_size)
+    fn render_icon_room<T: AsRef<str>, U: AsRef<str>>(
+        self,
+        size_str: T,
+        room_id: Option<U>,
+    ) -> impl IntoView {
+        self.profile.render_icon_room(size_str, room_id)
+    }
+
+    fn render_name<T: AsRef<str>>(self, font_size_str: T) -> impl IntoView {
+        render_profile_name(self.get_name(), self.get_color(), font_size_str)
     }
 
     fn get_color(&self) -> Hsl {
@@ -163,62 +142,32 @@ impl MemberProfileExt for UserProfile {
         self.user_id.starts_with("!")
     }
 
-    fn room(room_id: String) -> Self {
-        Self {
-            user_id: room_id.clone(),
-            display_name: Some("room".into()),
-        }
+    fn render_icon_room<T: AsRef<str>, U: AsRef<str>>(
+        self,
+        size_str: T,
+        room_id: Option<U>,
+    ) -> impl IntoView {
+        let url = if let Some(room_id) = room_id {
+            format!("mxc://user/{}/room/{}", self.user_id, room_id.as_ref())
+        } else {
+            format!("mxc://user/{}", self.user_id)
+        };
+
+        render_url_icon(
+            Some(url),
+            self.get_name(),
+            size_str,
+            self.get_color(),
+            "full",
+        )
     }
 
-    fn render_icon(self, size: usize) -> impl IntoView {
-        let url = format!("mxc://user/{}/avatar", self.user_id);
-        let name = self.get_name();
-        let size_str = format!("{}px", size);
-
-        let first_char = name.chars().next().unwrap_or('?').to_string();
-        let color = self.get_color();
-
-        let circle_style = format!("height: {}; width: {};", size_str, size_str);
-
-        let failed = RwSignal::new(true);
-        let img_ref = NodeRef::<leptos::html::Img>::new();
-
-        // A cached image can fire `load` before the on:load handler is attached
-        // (happens when this avatar is recreated on a re-render), leaving `failed`
-        // stuck on the fallback. Re-check `complete` once the element is mounted.
-        Effect::new(move |_| {
-            if let Some(img) = img_ref.get()
-                && img.complete()
-                && img.natural_width() > 0
-            {
-                failed.set(false);
-            }
-        });
-
-        view! {
-            <img
-                node_ref=img_ref
-                class="rounded-full object-cover bg-transparent block select-none"
-                class:hidden=failed
-                src=url
-                style:height=size_str.clone()
-                style:width=size_str
-                alt=name
-                on:error=move |_| failed.set(true)
-                on:load=move |_| failed.set(false)
-            />
-            <TextCircle
-                text=first_char
-                color=color
-                class="rounded-full select-none"
-                class:hidden=move || !failed.get()
-                style=circle_style
-            />
-        }
+    fn render_icon<T: AsRef<str>>(self, size_str: T) -> impl IntoView {
+        self.render_icon_room(size_str, None::<T>)
     }
 
-    fn render_name(self, font_size: usize) -> impl IntoView {
-        render_profile_name(self.get_name(), self.get_color(), font_size)
+    fn render_name<T: AsRef<str>>(self, font_size_str: T) -> impl IntoView {
+        render_profile_name(self.get_name(), self.get_color(), font_size_str)
     }
 
     fn get_color(&self) -> Hsl {
@@ -226,23 +175,42 @@ impl MemberProfileExt for UserProfile {
     }
 }
 
-pub trait MemberProfileMaybeExt {
-    fn render_icon(self, size: usize) -> impl IntoView;
-    fn render_name(self, font_size: usize) -> impl IntoView;
-    fn get_color(&self) -> Hsl;
-}
-
-impl MemberProfileMaybeExt for Option<MemberProfile> {
-    fn render_icon(self, size: usize) -> impl IntoView {
+impl MemberProfileExt for Option<MemberProfile> {
+    fn render_icon<T: AsRef<str>>(self, size_str: T) -> impl IntoView {
         match self {
-            Some(profile) => profile.render_icon(size).into_any(),
+            Some(profile) => profile.render_icon(size_str).into_any(),
             None => ().into_any(),
         }
     }
 
-    fn render_name(self, font_size: usize) -> impl IntoView {
+    fn render_icon_room<T: AsRef<str>, U: AsRef<str>>(
+        self,
+        size_str: T,
+        room_id: Option<U>,
+    ) -> impl IntoView {
         match self {
-            Some(profile) => profile.render_name(font_size).into_any(),
+            Some(profile) => profile.render_icon_room(size_str, room_id).into_any(),
+            None => ().into_any(),
+        }
+    }
+
+    fn to_span(&self) -> RichTextSpan {
+        match self {
+            Some(profile) => profile.to_span(),
+            None => RichTextSpan::Plain("".into()),
+        }
+    }
+
+    fn is_room(&self) -> bool {
+        match self {
+            Some(profile) => profile.is_room(),
+            None => false,
+        }
+    }
+
+    fn render_name<T: AsRef<str>>(self, font_size_str: T) -> impl IntoView {
+        match self {
+            Some(profile) => profile.render_name(font_size_str).into_any(),
             None => ().into_any(),
         }
     }
@@ -255,25 +223,61 @@ impl MemberProfileMaybeExt for Option<MemberProfile> {
     }
 }
 
-impl MemberProfileMaybeExt for Option<UserProfile> {
+impl MemberProfileExt for Option<UserProfile> {
+    fn render_icon<T: AsRef<str>>(self, size_str: T) -> impl IntoView {
+        match self {
+            Some(profile) => profile.render_icon(size_str).into_any(),
+            None => ().into_any(),
+        }
+    }
+
+    fn render_icon_room<T: AsRef<str>, U: AsRef<str>>(
+        self,
+        size_str: T,
+        room_id: Option<U>,
+    ) -> impl IntoView {
+        match self {
+            Some(profile) => profile.render_icon_room(size_str, room_id).into_any(),
+            None => ().into_any(),
+        }
+    }
+
+    fn to_span(&self) -> RichTextSpan {
+        match self {
+            Some(profile) => profile.to_span(),
+            None => RichTextSpan::Plain("".into()),
+        }
+    }
+
+    fn is_room(&self) -> bool {
+        match self {
+            Some(profile) => profile.is_room(),
+            None => false,
+        }
+    }
+
+    fn render_name<T: AsRef<str>>(self, font_size_str: T) -> impl IntoView {
+        match self {
+            Some(profile) => profile.render_name(font_size_str).into_any(),
+            None => ().into_any(),
+        }
+    }
+
     fn get_color(&self) -> Hsl {
         match self {
             Some(profile) => profile.get_color(),
             None => Hsl::new(0.0, 0.0, 70.0, None),
         }
     }
+}
 
-    fn render_icon(self, size: usize) -> impl IntoView {
-        match self {
-            Some(profile) => profile.render_icon(size).into_any(),
-            None => ().into_any(),
-        }
-    }
-
-    fn render_name(self, font_size: usize) -> impl IntoView {
-        match self {
-            Some(profile) => profile.render_name(font_size).into_any(),
-            None => ().into_any(),
-        }
+pub fn room_as_profile<T: ToString>(room_id: T) -> MemberProfile {
+    MemberProfile {
+        room_id: room_id.to_string(),
+        profile: UserProfile {
+            user_id: room_id.to_string(),
+            display_name: Some("room".to_string()),
+            has_avatar: false,
+        },
     }
 }

@@ -20,6 +20,8 @@ pub struct PresenceInfo {
 pub struct UserProfile {
     pub user_id: String,
     pub display_name: Option<String>,
+
+    pub has_avatar: bool,
 }
 
 impl UserProfile {

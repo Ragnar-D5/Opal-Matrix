@@ -1,6 +1,9 @@
 use std::collections::HashSet;
 
+use colorsys::Hsl;
 use serde::{Deserialize, Serialize};
+
+use crate::get_color;
 
 #[derive(Debug, Serialize, Clone, Deserialize, PartialEq)]
 pub struct UserDevice {
@@ -29,6 +32,7 @@ pub struct RoomNode {
     pub room_id: String,
     pub name: Option<String>,
     pub topic: Option<String>,
+    pub has_avatar: bool,
 
     pub kind: RoomKind,
 }
@@ -44,6 +48,28 @@ impl RoomNode {
         }
 
         None
+    }
+
+    pub fn avatar_url(&self) -> Option<String> {
+        if self.has_avatar {
+            match &self.kind {
+                RoomKind::Dm { other_user_id } => Some(format!(
+                    "mxc://user/{}/room/{}",
+                    other_user_id, self.room_id
+                )),
+                _ => Some(format!("mxc://room/{}", self.room_id)),
+            }
+        } else {
+            None
+        }
+    }
+
+    pub fn get_color(&self) -> Hsl {
+        if let RoomKind::Dm { other_user_id } = &self.kind {
+            get_color(other_user_id)
+        } else {
+            get_color(&self.room_id)
+        }
     }
 }
 

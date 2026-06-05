@@ -12,7 +12,7 @@ use shared::{
 
 use crate::{
     app::{CurrentWindow, call_tauri},
-    components::chat::Attachment,
+    components::{chat::Attachment, user_profile::room_as_profile},
     tauri_functions::{get_members_for_room, get_user_profile},
 };
 use leptos::prelude::*;
@@ -395,13 +395,7 @@ impl ProfileStore {
         }
 
         if room_id == user_id {
-            return ArcRwSignal::new(Some(MemberProfile {
-                room_id: room_id.to_string(),
-                profile: UserProfile {
-                    display_name: Some("room".into()),
-                    user_id: room_id.to_string(),
-                },
-            }));
+            return ArcRwSignal::new(Some(room_as_profile(room_id)));
         }
 
         let existing_signal = self.rooms.with_untracked(|rooms| {

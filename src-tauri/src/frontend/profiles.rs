@@ -1,13 +1,13 @@
 use matrix_sdk::{
-    Room, RoomMemberships,
     event_handler::Ctx,
     ruma::{
-        RoomId, UserId, events::room::member::OriginalSyncRoomMemberEvent,
-        profile::ProfileFieldName,
+        events::room::member::OriginalSyncRoomMemberEvent, profile::ProfileFieldName, RoomId,
+        UserId,
     },
+    Room, RoomMemberships,
 };
 use shared::user_profile::{MemberProfile, UserProfile};
-use tauri::{AppHandle, Emitter, command};
+use tauri::{command, AppHandle, Emitter};
 
 use crate::{MatrixClientState, TauriError};
 
@@ -32,6 +32,8 @@ pub async fn get_members_for_room(
             profile: UserProfile {
                 user_id: m.user_id().to_string(),
                 display_name: m.display_name().map(|v| v.to_string()),
+
+                has_avatar: m.avatar_url().is_some(),
             },
         })
         .collect();
@@ -53,6 +55,7 @@ pub async fn on_member_update(
         profile: UserProfile {
             user_id: event.state_key.to_string(),
             display_name: content.displayname,
+            has_avatar: content.avatar_url.is_some(),
         },
     };
 
@@ -84,8 +87,15 @@ pub async fn get_user_profile(
         .await?
         .map(|v| v.value().to_string());
 
+    let has_avatar = client
+        .account()
+        .fetch_profile_field_of(user_id.clone(), ProfileFieldName::AvatarUrl)
+        .await?
+        .is_some();
+
     Ok(UserProfile {
         user_id: user_id.to_string(),
         display_name,
+        has_avatar,
     })
 }

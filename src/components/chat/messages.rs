@@ -4,7 +4,7 @@ use chrono::{DateTime, Local, TimeZone};
 use colorsys::Hsl;
 use leptos::{html::Div, prelude::*, task::spawn_local};
 use phosphor_leptos::{
-    ARROW_BEND_UP_LEFT, ARROW_RIGHT, HASH, Icon, IconWeight, PENCIL_SIMPLE, SMILEY, SPEAKER_HIGH,
+    Icon, IconWeight, ARROW_BEND_UP_LEFT, ARROW_RIGHT, HASH, PENCIL_SIMPLE, SMILEY, SPEAKER_HIGH,
     TRASH, WARNING_CIRCLE,
 };
 use shared::{
@@ -22,22 +22,20 @@ use web_sys::Element;
 use crate::{
     app::format_date,
     components::{
-        TextCircle, TextCircleProps,
         chat::{Attachment, ChatInputInfo},
-        emoji_picker::{EmojiPickerState, pick_emoji},
+        emoji_picker::{pick_emoji, EmojiPickerState},
         input::move_caret_to_end,
         previews::render_link,
-        text::{RichTextExt, richt_text_spans_to_html},
-        user_profile::{
-            MemberProfileExt, MemberProfileMaybeExt, render_profile_icon, render_profile_name,
-        },
+        text::{richt_text_spans_to_html, RichTextExt},
+        user_profile::{render_profile_name, MemberProfileExt},
+        TextCircle, TextCircleProps,
     },
     state::{AppState, LighboxImage, ProfileStore},
     tauri_functions::toggle_reaction,
 };
 
 #[component]
-fn ReplyPreview(reply_info: Option<ReplyInfo>) -> impl IntoView {
+fn ReplyPreview(reply_info: Option<ReplyInfo>, active_room_id: String) -> impl IntoView {
     let Some(reply_info) = reply_info else {
         return ().into_any();
     };
@@ -45,43 +43,56 @@ fn ReplyPreview(reply_info: Option<ReplyInfo>) -> impl IntoView {
     let store: ProfileStore = expect_context();
     let state: AppState = expect_context();
 
-    let mut content = vec![RichTextSpan::Plain("click to go to event".to_string())];
-
-    let (sender_name, avatar_url, color) = match reply_info.event {
-        DetailState::Error(e) => (format!("! {e}"), None, Hsl::new(0.0, 0.0, 70.0, None)),
-        DetailState::Pending => (
-            "Loading...".to_string(),
-            None,
-            Hsl::new(0.0, 0.0, 70.0, None),
-        ),
-        DetailState::Ready(preview) => {
-            let sender = preview.sender;
-
-            content = preview.content;
-
-            (sender.display_name(), sender.avatar_url(), sender.color())
+    let preview = Memo::new(move |_| match &reply_info.event {
+        DetailState::Error(e) => {
+            log::error!("Failed to load event for reply preview: {e}");
+            None
         }
-        DetailState::Unavailable => (
-            "Event not found".to_string(),
-            None,
-            Hsl::new(0.0, 0.0, 70.0, None),
-        ),
-    };
+        DetailState::Pending => None,
+        DetailState::Ready(preview) => Some(preview.clone()),
+        DetailState::Unavailable => None,
+    });
+
+    let profile_store = store.clone();
+    let profile = Memo::new(move |_| {
+        if let Some(preview) = preview.get() {
+            match &preview.sender {
+                DetailState::Ready(sender) => profile_store
+                    .get_member_profile(&active_room_id, &sender.id)
+                    .get(),
+                DetailState::Error(e) => {
+                    log::error!("Failed to load sender profile for reply preview: {e}");
+                    None
+                }
+                DetailState::Pending => None,
+                DetailState::Unavailable => {
+                    log::error!("Sender profile for reply preview is unavailable");
+                    None
+                }
+            }
+        } else {
+            None
+        }
+    });
+
+    let content = Memo::new(move |_| {
+        if let Some(preview) = preview.get() {
+            preview.content
+        } else {
+            vec![RichTextSpan::Plain("click to go to event".to_string())]
+        }
+    });
 
     view! {
         <div class="flex items-center gap-1 ml-[52px] mb-1 cursor-pointer text-xs relative group/reply cursor-pointer">
             <div class="absolute -left-[32px] top-[calc(50%-1px)] w-[28px] h-4.5 border-l-2 border-t-2 border-white/20 rounded-tl-md"></div>
 
-            <div class="shrink-0">
-                {render_profile_icon(avatar_url, sender_name.clone(), 16, color.clone())}
-            </div>
-
-            <span class="font-semibold text-bright hover:underline">
-                {render_profile_name(sender_name, color, 12)}
-            </span>
+            {move || profile.get().render_icon("20px")}
+            {move || profile.get().render_name("12px")}
 
             <span class="truncate text-bright line-clamp-1">
                 {content
+                    .get()
                     .into_iter()
                     .map(|v| {
                         v.render(
@@ -461,7 +472,7 @@ fn render_reactions(
                             .get_member_profile(&prof_room_id, &info.sender_id)
                             .get()
                             .map(|p| {
-                                let icon = p.clone().render_icon(20);
+                                let icon = p.clone().render_icon("20px");
 
                                 let wrapped = view! {
                                     <div
@@ -561,7 +572,8 @@ fn render_system_message(
 
         view! {
             <div class="flex items-center gap-1 pr-1">
-                {move || profile_sig.get().render_icon(20)} {move || name_sig.get().render_name(16)}
+                {move || profile_sig.get().render_icon("20px")}
+                {move || name_sig.get().render_name("16px")}
             </div>
         }
     };
@@ -1218,12 +1230,12 @@ fn render_timeline_event(
                 </Show>
             </div>
 
-            <ReplyPreview reply_info=reply_info />
+            <ReplyPreview reply_info=reply_info active_room_id=room_id />
 
             <div class="flex gap-[var(--gap)]">
                 <div class="shrink-0 mr-2 w-[40px] mt-[5px]">
                     {if show_header {
-                        view! { {move || sender_profile_sig.get().render_icon(40)} }.into_any()
+                        view! { {move || sender_profile_sig.get().render_icon("40px")} }.into_any()
                     } else {
                         ().into_any()
                     }}
@@ -1234,7 +1246,7 @@ fn render_timeline_event(
                         view! {
                             <div class="flex items-baseline gap-2">
                                 <span class="text-bright truncate cursor-pointer">
-                                    {render_profile_name(name, color, 16)}
+                                    {render_profile_name(name, color, "16px")}
                                 </span>
                                 <span class="text-muted text-xs">{format_date(date)}</span>
                             </div>

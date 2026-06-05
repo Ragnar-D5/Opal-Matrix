@@ -17,9 +17,13 @@ pub fn send_user_profile_update(handle: &AppHandle, update: UserProfile) -> Resu
 pub async fn send_user_to_frontend(handle: &AppHandle, client: &Client) -> Result<(), TauriError> {
     let user_id = client.user_id().ok_or("Not logged in")?.to_string();
     let display_name = client.account().get_display_name().await?;
+    let has_avatar = client.account().get_avatar_url().await?.is_some();
+
     let update = UserProfile {
         display_name,
         user_id,
+
+        has_avatar
     };
     send_user_profile_update(handle, update)
 }

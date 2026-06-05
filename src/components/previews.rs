@@ -5,8 +5,8 @@ use shared::timeline::UiMediaSource;
 use wasm_bindgen::JsCast;
 
 use crate::app::format_bytes;
+use crate::components::user_profile::MemberProfileExt;
 use crate::{
-    components::user_profile::MemberProfileMaybeExt,
     state::{AppState, ProfileStore},
     tauri_functions::{fetch_preview_data, save_file_to_picked_dest},
 };
@@ -352,9 +352,9 @@ fn LightboxHeader(
         >
             // Left: avatar + name + timestamp
             <div class="flex items-center gap-2 p-3">
-                {move || profile_sig.get().render_icon(35)}
+                {move || profile_sig.get().render_icon("35px")}
                 <div class="flex flex-col min-w-0">
-                    {move || name_sig.get().render_name(16)}
+                    {move || name_sig.get().render_name("16px")}
                     <span class="text-dim text-xs">{timestamp_str.clone()}</span>
                 </div>
             </div>

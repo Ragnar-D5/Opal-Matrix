@@ -3,7 +3,7 @@ use crate::{
         input::{get_caret_position, get_node_and_offset},
         presence::PresenceBadge,
         text::RichTextExt,
-        user_profile::MemberProfileExt,
+        user_profile::{room_as_profile, MemberProfileExt},
     },
     state::{AppState, ProfileStore},
     tauri_functions::{get_commands, get_members_for_room},
@@ -14,8 +14,6 @@ use log::error;
 use nucleo_matcher::{Config, Matcher, Utf32Str};
 use shared::{commands::Command, user_profile::MemberProfile};
 use web_sys::{Document, HtmlDivElement, HtmlElement, Node, Range};
-
-use crate::components::user_profile::MemberProfileMaybeExt;
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum MenuType {
@@ -255,15 +253,15 @@ impl RenderMenuRow for MemberProfile {
                     if state.active_room_id().unwrap_or_default() != m_clone.user_id() {
                         view! {
                             <PresenceBadge presence=presence size=15.0>
-                                {profile.render_icon(30)}
+                                {profile.render_icon("30px")}
                             </PresenceBadge>
                         }
                             .into_any()
                     } else {
-                        profile.render_icon(30).into_any()
+                        profile.render_icon("30px").into_any()
                     }
                 }}
-                {p_clone.render_name(14)}
+                {p_clone.render_name("14px")}
                 <div class="flex flex-grow"></div>
                 <span
                     class=("text-(--ui-hover-color)", move || idx == selected_index.get())
@@ -337,7 +335,7 @@ pub fn SelectionMenu(menu: RwSignal<MenuType>, input_ref: NodeRef<Div>) -> impl 
         async move {
             if let Some(rid) = room_id {
                 let mut res = get_members_for_room(&rid).await.unwrap_or_default();
-                res.insert(0, MemberProfile::room(rid));
+                res.insert(0, room_as_profile(rid));
                 res.sort_by_key(|a| a.get_name());
 
                 res

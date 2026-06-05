@@ -1,8 +1,12 @@
-use phosphor_leptos::{HASH, Icon, IconData, IconWeight, MATRIX_LOGO, SPEAKER_HIGH};
+use phosphor_leptos::{Icon, IconData, IconWeight, HASH, MATRIX_LOGO, SPEAKER_HIGH};
 use shared::get_color;
 
 use crate::{
-    components::{FloatingTile, presence::PresenceBadge, user_profile::MemberProfileMaybeExt},
+    components::{
+        presence::PresenceBadge,
+        user_profile::{render_url_icon, MemberProfileExt},
+        FloatingTile,
+    },
     state::{AppState, ProfileStore},
 };
 use leptos::prelude::*;
@@ -10,6 +14,26 @@ use leptos::task::spawn_local;
 use shared::sidebar::{RoomKind, RoomNode};
 
 use crate::components::TextCircle;
+
+pub trait RoomNodeExt {
+    fn avatar_div<T: Into<String>>(&self, size_str: T) -> impl IntoView + 'static;
+}
+
+impl RoomNodeExt for RoomNode {
+    fn avatar_div<T: Into<String>>(&self, size_str: T) -> impl IntoView + 'static {
+        let url = self.avatar_url();
+        let name = self.get_name();
+        let color = self.get_color();
+
+        let rounding = if let RoomKind::Space { .. } = self.kind {
+            "[25%}"
+        } else {
+            "full"
+        };
+
+        render_url_icon(url, name, size_str.into(), color, rounding)
+    }
+}
 
 #[component]
 fn DmDiv(dm: RoomNode) -> impl IntoView {
@@ -124,93 +148,87 @@ pub struct CutoutBadgeCorner {
 
 #[component]
 pub fn CutoutBadge(
-    #[prop(into, default = None)] top_right: Option<CutoutBadgeCorner>,
-    #[prop(into, default = None)] top_left: Option<CutoutBadgeCorner>,
-    #[prop(into, default = None)] bottom_right: Option<CutoutBadgeCorner>,
-    #[prop(into, default = None)] bottom_left: Option<CutoutBadgeCorner>,
+    #[prop(into, optional)] top_right: Signal<Option<CutoutBadgeCorner>>,
+    #[prop(into, optional)] top_left: Signal<Option<CutoutBadgeCorner>>,
+    #[prop(into, optional)] bottom_right: Signal<Option<CutoutBadgeCorner>>,
+    #[prop(into, optional)] bottom_left: Signal<Option<CutoutBadgeCorner>>,
     children: Children,
-    #[prop(into, optional)] class: String,
+    #[prop(into, optional)] class: Signal<String>,
 ) -> impl IntoView {
-    // Helper to render the inner content based on the enum variant
     let render_content = |content: CutoutBadgeContent| match content {
         CutoutBadgeContent::Number(n) => view! { {n} }.into_any(),
         CutoutBadgeContent::Text(t) => view! { {t} }.into_any(),
         CutoutBadgeContent::Icon(i) => view! { <Icon icon=i weight=IconWeight::Fill /> }.into_any(),
     };
 
-    let mut masks = Vec::new();
-    let mut badge_views = Vec::new();
+    let mask_style = move || {
+        let mut masks = Vec::new();
 
-    // Closure to process each corner and populate our mask and view vectors
-    let mut process_corner = |corner: Option<CutoutBadgeCorner>,
-                              mask_pos: &str,
-                              badge_pos_classes: &str| {
-        if let Some(c) = corner {
-            masks.push(format!(
-                "radial-gradient(circle 11px at {}, transparent 11px, black 11.5px)",
-                mask_pos
-            ));
+        if top_right.get().is_some() {
+            masks.push("radial-gradient(circle 11px at calc(100% - 8px) 8px, transparent 11px, black 11.5px)");
+        }
+        if bottom_right.get().is_some() {
+            masks.push("radial-gradient(circle 11px at calc(100% - 8px) calc(100% - 8px), transparent 11px, black 11.5px)");
+        }
+        if bottom_left.get().is_some() {
+            masks.push("radial-gradient(circle 11px at 8px calc(100% - 8px), transparent 11px, black 11.5px)");
+        }
+        if top_left.get().is_some() {
+            masks.push("radial-gradient(circle 11px at 8px 8px, transparent 11px, black 11.5px)");
+        }
 
-            badge_views.push(view! {
-                <div
-                    class=format!(
-                        "absolute {badge_pos_classes} flex items-center justify-center text-[12px] font-extrabold w-4 h-4 rounded-full",
-                    )
-                    style=format!("background-color: {}; color: {};", c.bg_color, c.fg_color)
-                >
-                    {render_content(c.content)}
-                </div>
-            });
+        if !masks.is_empty() {
+            let joined = masks.join(", ");
+            format!("-webkit-mask-image: {0}; -webkit-mask-composite: source-in; mask-image: {0}; mask-composite: intersect;", joined)
+        } else {
+            String::new()
         }
     };
 
-    process_corner(top_right, "calc(100% - 8px) 8px", "-top-0 -right-0");
-    process_corner(
-        bottom_right,
-        "calc(100% - 8px) calc(100% - 8px)",
-        "-bottom-0 -right-0",
-    );
-    process_corner(bottom_left, "8px calc(100% - 8px)", "-bottom-0 -left-0");
-    process_corner(top_left, "8px 8px", "-top-0 -left-0");
-
-    // Construct the composite mask style
-    let mask_style = if !masks.is_empty() {
-        let joined_masks = masks.join(", ");
-        format!(
-            "-webkit-mask-image: {joined_masks}; -webkit-mask-composite: source-in; mask-image: {joined_masks}; mask-composite: intersect;"
-        )
-    } else {
-        String::new()
+    let render_corner = move |corner_signal: Signal<Option<CutoutBadgeCorner>>,
+                              pos_classes: &'static str| {
+        move || {
+            corner_signal.get().map(|c| {
+                    view! {
+                        <div
+                            class=format!(
+                                "absolute {pos_classes} flex items-center justify-center text-[12px] font-extrabold w-4 h-4 rounded-full",
+                            )
+                            style=format!(
+                                "background-color: {}; color: {};",
+                                c.bg_color,
+                                c.fg_color,
+                            )
+                        >
+                            {render_content(c.content.clone())}
+                        </div>
+                    }
+                })
+        }
     };
 
     view! {
         <div class="relative w-fit h-fit">
-            <div class=format!("w-full h-full {class}") style=mask_style>
+            <div class=move || format!("w-full h-full {}", class.get()) style=mask_style>
                 {children()}
             </div>
 
-            {badge_views}
+            {render_corner(top_right, "-top-0 -right-0")}
+            {render_corner(bottom_right, "-bottom-0 -right-0")}
+            {render_corner(bottom_left, "-bottom-0 -left-0")}
+            {render_corner(top_left, "-top-0 -left-0")}
         </div>
     }
 }
 
 #[component]
-pub fn ServerIcon(server_id: String) -> impl IntoView {
+pub fn ServerIcon(server: RoomNode) -> impl IntoView {
     let state = expect_context::<AppState>();
 
-    let server_id_for_lookup = server_id.clone();
+    let server_id = server.room_id.clone();
+
     let server_id_for_active = server_id.clone();
     let server_id_for_click = server_id.clone();
-
-    let server = Memo::new(move |_| {
-        state.sidebar_state.with(|state| {
-            state
-                .servers
-                .iter()
-                .find(|srv| srv.room_id == server_id_for_lookup)
-                .cloned()
-        })
-    });
 
     let is_active =
         Memo::new(move |_| state.active_server_id.get() == Some(server_id_for_active.clone()));
@@ -230,19 +248,37 @@ pub fn ServerIcon(server_id: String) -> impl IntoView {
         counts.notification_count > 0 || counts.highlight_count > 0
     });
 
-    let content = move || {
-        let server_id_for_click = server_id_for_click.clone();
+    let avatar_content = server.avatar_div("40px");
 
-        let Some(server) = server.get() else {
-            return view! { <div class="relative w-10 h-10"></div> }.into_any();
-        };
+    let server = server.clone();
+    let tr_corner = move || {
+        if let RoomKind::Space { all_children, .. } = server.kind {
+            let user_ids_in_calls = state.get_call_members_in_rooms(all_children.clone());
 
-        let name = server.name.clone().unwrap_or("?".to_string());
-        let color = get_color(&server_id);
+            if !user_ids_in_calls.is_empty() {
+                let user_in_call = user_ids_in_calls.contains(&state.user_id.get());
+                Some(CutoutBadgeCorner {
+                    fg_color: "white".to_string(),
+                    bg_color: if user_in_call {
+                        "var(--online-color)".to_string()
+                    } else {
+                        "var(--offline-color)".to_string()
+                    },
+                    content: CutoutBadgeContent::Icon(SPEAKER_HIGH),
+                })
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    };
 
+    let server_id_for_click = server_id_for_click.clone();
+
+    let br_corner = move || {
         let highlight_count = notifications.get().highlight_count;
-
-        let br_corner = if highlight_count > 0 {
+        if highlight_count > 0 {
             Some(CutoutBadgeCorner {
                 fg_color: "white".to_string(),
                 bg_color: "var(--mention-color)".to_string(),
@@ -250,53 +286,18 @@ pub fn ServerIcon(server_id: String) -> impl IntoView {
             })
         } else {
             None
-        };
-        let tr_corner = move || {
-            if let RoomKind::Space { all_children, .. } = &server.kind {
-                let user_ids_in_calls = state.get_call_members_in_rooms(all_children.clone());
+        }
+    };
 
-                if !user_ids_in_calls.is_empty() {
-                    let user_in_call = user_ids_in_calls.contains(&state.user_id.get());
-                    Some(CutoutBadgeCorner {
-                        fg_color: "white".to_string(),
-                        bg_color: if user_in_call {
-                            "var(--online-color)".to_string()
-                        } else {
-                            "var(--offline-color)".to_string()
-                        },
-                        content: CutoutBadgeContent::Icon(SPEAKER_HIGH),
-                    })
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        };
-
-        let failed = RwSignal::new(false);
-        let first_char = name.chars().next().unwrap_or('?').to_string();
-        let avatar_content = view! {
-            <img
-                class="avatar-img object-cover w-full h-full"
-                draggable="false"
-                class:hidden=failed
-                src=format!("mxc://room/{}", server_id)
-                alt=name.clone()
-                on:error=move |_| failed.set(true)
-                on:load=move |_| failed.set(false)
-            />
-            <TextCircle
-                text=first_char
-                color=color
-                class="rounded-[25%] w-full h-full select-none"
-                class:hidden=move || !failed.get()
-            />
-        };
-
-        view! {
+    view! {
+        <div class="relative flex items-center justify-center group w-full">
+            <IndicatorPill is_active=is_active has_notifications=has_notifications />
             <div class="relative w-10 h-10">
-                <CutoutBadge bottom_right=br_corner top_right=tr_corner() class="justify-center flex">
+                <CutoutBadge
+                    bottom_right=move || br_corner()
+                    top_right=tr_corner()
+                    class="justify-center flex"
+                >
                     <div
                         class="server-btn flex items-center justify-center w-10 h-10 text-gray-800 font-semibold rounded-[25%] cursor-pointer transition-colors"
                         class=("bg-[var(--color-icon-selected)]", move || is_active.get())
@@ -312,16 +313,9 @@ pub fn ServerIcon(server_id: String) -> impl IntoView {
                     </div>
                 </CutoutBadge>
             </div>
-        }
-            .into_any()
-    };
-
-    view! {
-        <div class="relative flex items-center justify-center group w-full">
-            <IndicatorPill is_active=is_active has_notifications=has_notifications />
-            {content}
         </div>
     }
+            .into_any()
 }
 
 pub fn render_server_channel(child: RoomNode) -> impl IntoView {
@@ -375,15 +369,16 @@ pub fn render_server_channel(child: RoomNode) -> impl IntoView {
             let participants = participants.get();
 
             let views = participants.iter().map(|device| {
-                let profile = store.get_member_profile(&child.room_id, &device.user_id);
-                let clone = profile.clone();
+                    let profile = store.get_member_profile(&child.room_id, &device.user_id);
+                    let clone = profile.clone();
 
-                view! {
-                    <div class="hover:bg-(--color-item-hover) rounded-[10px] p-1 flex items-center gap-2 flex flex-grow cursor-pointer">
-                        {move || profile.get().render_icon(22)} {move || clone.get().render_name(14)}
-                    </div>
-                }
-            });
+                    view! {
+                        <div class="hover:bg-(--color-item-hover) rounded-[10px] p-1 flex items-center gap-2 flex flex-grow cursor-pointer">
+                            {move || profile.get().render_icon("22px")}
+                            {move || clone.get().render_name("14px")}
+                        </div>
+                    }
+                });
 
             Some(view! { <div class="flex pl-8 flex-col gap-1">{views.collect_view()}</div> })
         } else {
@@ -600,42 +595,20 @@ pub fn Sidebar() -> impl IntoView {
                                         }
                                     />
 
-                                    {move || {
-                                        let dm = dm.clone();
-                                        let initial = initial.clone();
-                                        view! {
-                                            <CutoutBadge
-                                                bottom_right=corner()
-                                                class="justify-center flex"
-                                            >
-                                                <div
-                                                    class="avatar-circle w-10 h-10 rounded-full"
-                                                    style:justify-content="center"
-                                                >
-                                                    {
-                                                        let failed = RwSignal::new(false);
-                                                        let url = format!("mxc://room/{}", dm.room_id);
-                                                        view! {
-                                                            <img
-                                                                class="avatar-img w-full h-full object-cover"
-                                                                class:hidden=failed
-                                                                src=url
-                                                                alt=dm.name.clone()
-                                                                on:error=move |_| failed.set(true)
-                                                                on:load=move |_| failed.set(false)
-                                                            />
-                                                            <TextCircle
-                                                                text=initial
-                                                                color=get_color(&dm.dm_user_id().unwrap_or_default())
-                                                                class="rounded-full w-10 h-10"
-                                                                class:hidden=move || !failed.get()
-                                                            />
-                                                        }
-                                                    }
-                                                </div>
-                                            </CutoutBadge>
-                                        }
-                                    }}
+                                    <CutoutBadge bottom_right=corner class="justify-center flex">
+                                        <div
+                                            class="avatar-circle w-10 h-10 rounded-full"
+                                            style:justify-content="center"
+                                        >
+                                            {render_url_icon(
+                                                Some(format!("mxc://room/{}", dm.room_id)),
+                                                initial,
+                                                "40px",
+                                                get_color(&dm.dm_user_id().unwrap_or_default()),
+                                                "full",
+                                            )}
+                                        </div>
+                                    </CutoutBadge>
                                 </div>
                             }
                         }
@@ -705,7 +678,7 @@ pub fn Sidebar() -> impl IntoView {
                                         });
                                     }
                                 >
-                                    <ServerIcon server_id=server.room_id.clone() />
+                                    <ServerIcon server=server />
                                     <div class="h-2 pointer-events-none"></div>
                                 </div>
                             }
@@ -792,8 +765,8 @@ pub fn ProfileCard() -> impl IntoView {
                 <PresenceBadge presence=store
                     .get_presence(
                         &user_id,
-                    )>{move || profile_sig.get().render_icon(40)}</PresenceBadge>
-                {move || name_sig.get().render_name(16)}
+                    )>{move || profile_sig.get().render_icon("40px")}</PresenceBadge>
+                {move || name_sig.get().render_name("16px")}
             }
             .into_any()
         } else {
@@ -804,8 +777,8 @@ pub fn ProfileCard() -> impl IntoView {
                 <PresenceBadge presence=store
                     .get_presence(
                         &user_id,
-                    )>{move || profile_sig.get().render_icon(40)}</PresenceBadge>
-                {move || name_sig.get().render_name(16)}
+                    )>{move || profile_sig.get().render_icon("40px")}</PresenceBadge>
+                {move || name_sig.get().render_name("16px")}
             }
             .into_any()
         }

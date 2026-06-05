@@ -10,7 +10,7 @@ use crate::{
             menu::{MenuType, SelectionMenu},
         },
         presence::PresenceBadge,
-        user_profile::{MemberProfileExt, MemberProfileMaybeExt},
+        user_profile::{MemberProfileExt},
     },
     hooks::use_tauri_event,
     state::{AppState, MemberProfileHandle, ProfileStore, RoomHeader},
@@ -349,7 +349,7 @@ fn ChatHeader(
                                                 .get_presence(profile.user_id());
                                             view! {
                                                 <PresenceBadge presence=presence size=14.0>
-                                                    {profile.render_icon(30)}
+                                                    {profile.render_icon("30px")}
                                                 </PresenceBadge>
                                             }
                                                 .into_any()
@@ -391,7 +391,7 @@ fn ChatHeader(
                         view! { <span>{name.clone()}</span> }.into_any()
                     }
                     RoomHeader::DM(profile_sig) => {
-                        { view! { {move || profile_sig.get().render_name(16)} }.into_any() }
+                        { view! { {move || profile_sig.get().render_name("16px")} }.into_any() }
                             .into_any()
                     }
                     RoomHeader::Unknown => view! { <span>"Unknown Room"</span> }.into_any(),
@@ -834,7 +834,7 @@ fn ChatInput() -> impl IntoView {
                     .get_member_profile(&state.active_room_id().unwrap_or_default(), &sender_id);
                 view! {
                     <span class="text-sm text-bright">
-                        "Replying to " {move || profile.get().render_name(14)}
+                        "Replying to " {move || profile.get().render_name("14px")}
                     </span>
                 }
                 .into_any()
@@ -940,7 +940,15 @@ fn ChatInput() -> impl IntoView {
                             input_ref,
                             state,
                             store.clone(),
-                            (menu, selected_index, mention_matches, command_matches, is_empty, input_info, attachments)
+                            (
+                                menu,
+                                selected_index,
+                                mention_matches,
+                                command_matches,
+                                is_empty,
+                                input_info,
+                                attachments,
+                            ),
                         )
                     ></div>
                 </div>
@@ -1011,7 +1019,7 @@ pub fn Chat() -> impl IntoView {
                                         .into_any()
                                 }
                                 RoomKind::VoiceChannel => {
-                                        let participants = participants.get();
+                                    let participants = participants.get();
                                     if participants.is_empty() {
                                         view! {
                                             <div class="flex-1 flex items-center justify-center text-muted flex-col gap-2 bg-radial-[at_50%_100%] from-(--accent-color) to-transparent to-80% w-full h-full">
@@ -1039,7 +1047,8 @@ pub fn Chat() -> impl IntoView {
                                         view! {
                                             <div class="flex-1 flex flex-wrap justify-center content-center w-full h-full min-h-0 gap-[var(--gap)] p-[var(--gap)] overflow-y-auto">
                                                 {participants
-                                                    .iter().map(|device| {
+                                                    .iter()
+                                                    .map(|device| {
                                                         let profile = member_store
                                                             .get_member_profile(&node.room_id, &device.user_id);
                                                         let clone = profile.clone();
@@ -1064,8 +1073,8 @@ pub fn Chat() -> impl IntoView {
                                                             >
 
                                                                 // Discord-like Avatar Placeholder
-                                                                {move || profile.get().render_icon(64)}
-                                                                {move || clone.get().render_name(16)}
+                                                                {move || profile.get().render_icon("64px")}
+                                                                {move || clone.get().render_name("16px")}
                                                             </div>
                                                         }
                                                     })
@@ -1140,9 +1149,10 @@ fn ChatInfo(header: Memo<RoomHeader>) -> impl IntoView {
                             {move || {
                                 if let Some(profile) = profile_sig_icon.get() {
                                     let presence = store_clone.get_presence(profile.user_id());
+                                    let size_str = format!("{icon_size}px");
                                     view! {
                                         <PresenceBadge presence=presence size=25.0>
-                                            {profile.render_icon(icon_size as usize)}
+                                            {profile.render_icon(size_str)}
                                         </PresenceBadge>
                                     }
                                         .into_any()
@@ -1154,7 +1164,7 @@ fn ChatInfo(header: Memo<RoomHeader>) -> impl IntoView {
 
                         <div class="px-4 pt-10 pb-6">
                             <h2 class="text-xl font-bold text-bright">
-                                {move || profile_sig_name.get().render_name(16)}
+                                {move || profile_sig_name.get().render_name("16px")}
                             </h2>
                             <p class="text-sm text-muted">"Direct Message"</p>
                         </div>
@@ -1250,7 +1260,7 @@ fn MemberList() -> impl IntoView {
                                                 let presence = presence.clone();
                                                 view! {
                                                     <PresenceBadge presence=presence size=15.5>
-                                                        {profile.render_icon(32)}
+                                                        {profile.render_icon("32px")}
                                                     </PresenceBadge>
                                                 }
                                                     .into_any()
@@ -1259,7 +1269,7 @@ fn MemberList() -> impl IntoView {
                                             }
                                         }}
                                         <span class="text-bright">
-                                            {move || sig_clone.get().render_name(16)}
+                                            {move || sig_clone.get().render_name("16px")}
                                         </span>
                                     </div>
                                 }
@@ -1295,7 +1305,7 @@ fn MemberList() -> impl IntoView {
                                                 let presence = presence.clone();
                                                 view! {
                                                     <PresenceBadge presence=presence size=15.5>
-                                                        {profile.render_icon(32)}
+                                                        {profile.render_icon("32px")}
                                                     </PresenceBadge>
                                                 }
                                                     .into_any()
@@ -1304,7 +1314,7 @@ fn MemberList() -> impl IntoView {
                                             }
                                         }}
                                         <span class="text-bright">
-                                            {move || sig_clone.get().render_name(16)}
+                                            {move || sig_clone.get().render_name("16px")}
                                         </span>
                                     </div>
                                 }

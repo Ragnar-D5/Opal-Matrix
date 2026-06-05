@@ -25,9 +25,16 @@ pub async fn get_media(
     source: MediaSource,
     format: MediaFormat,
 ) -> Result<Vec<u8>, TauriError> {
-    let params = MediaRequestParameters { source, format };
+    let params = MediaRequestParameters {
+        source: source.clone(),
+        format,
+    };
 
-    let media = client.media().get_media_content(&params, false).await?;
+    let media = client
+        .media()
+        .get_media_content(&params, false)
+        .await
+        .map_err(|e| format!("Failed to fetch media for {:?}: {:?}", source, e))?;
     Ok(media)
 }
 
