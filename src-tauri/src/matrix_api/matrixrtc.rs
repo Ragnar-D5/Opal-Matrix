@@ -2,8 +2,9 @@ use base64::Engine;
 use base64::engine::general_purpose;
 use livekit::e2ee::EncryptionType;
 use livekit::e2ee::key_provider::{KeyProvider, KeyProviderOptions};
-use log::{debug, error, info, warn};
+use log::{debug, error, info};
 use matrix_sdk::deserialized_responses::ProcessedToDeviceEvent;
+use matrix_sdk::event_handler::Ctx;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -14,6 +15,7 @@ use livekit::webrtc::audio_source::native::NativeAudioSource;
 use livekit::webrtc::audio_stream::native::NativeAudioStream;
 use livekit::webrtc::prelude::{AudioFrame, AudioSourceOptions};
 use livekit::{E2eeOptions, RoomEvent};
+use matrix_sdk::ruma::MilliSecondsSinceUnixEpoch;
 use matrix_sdk::ruma::api::client::discovery::discover_homeserver::RtcFocusInfo;
 use matrix_sdk::ruma::events::call::member::{
     ActiveLivekitFocus, Application, CallApplicationContent, CallMemberEventContent,
@@ -25,9 +27,6 @@ use matrix_sdk::ruma::events::{
     AnyStateEventContent, AnyToDeviceEventContent, Mentions, OriginalSyncStateEvent, StateEventType,
 };
 use matrix_sdk::ruma::serde::Raw;
-use matrix_sdk::ruma::{
-    DeviceId, MilliSecondsSinceUnixEpoch, UserId,
-};
 use matrix_sdk::{Client, ruma::RoomId};
 use ringbuf::HeapRb;
 use ringbuf::traits::{Consumer, Observer, Producer, Split};
@@ -43,14 +42,11 @@ pub(crate) async fn join_matrixrtc_call(
     matrix_client: State<'_, RwLock<Client>>,
     audio_state: State<'_, CallAudioState>,
     livekit_room_manager: State<'_, LiveKitRoomManager>,
-    app_handle: AppHandle, //this is passed into event handler to acquire state on the fly
     room_id: String,
 ) -> Result<serde_json::Value, TauriError> {
     log::info!("Started joining call");
 
     let client = matrix_client.read().await;
-    let own_id = client.user_id().ok_or("No user id")?;
-    let own_device = client.device_id().ok_or("No device id")?;
 
     let device_id = client
         .device_id()
@@ -113,7 +109,6 @@ pub(crate) async fn join_matrixrtc_call(
 
     let mut e2ee_options = None;
 
-    // // FIX 2 (Cont...): Parse using matrix_sdk::ruma::RoomId
     let parsed_room_id =
         RoomId::parse(&room_id).map_err(|e| format!("Invalid Room ID format: {}", e))?;
 
@@ -122,30 +117,11 @@ pub(crate) async fn join_matrixrtc_call(
         .ok_or("Room not found or not joined")?;
 
     if room.encryption_state().is_encrypted() {
-        let mut raw_key = [0u8; 32];
-        getrandom::fill(&mut raw_key)
-            .map_err(|e| format!("Failed to generate cryptographic key: {}", e))?;
-
-        let local_call_key = general_purpose::STANDARD.encode(raw_key);
-
         let key_provider = KeyProvider::new(KeyProviderOptions {
-            // shared_key: false,  // MatrixRTC uses unique keys per participant
-            key_ring_size: 128, // Prevents key index overflows (e.g., above index 16)
-            key_derivation_algorithm: livekit::e2ee::key_provider::KeyDerivationAlgorithm::HKDF, // Critical for Matrix matching
+            key_ring_size: 128,
+            key_derivation_algorithm: livekit::e2ee::key_provider::KeyDerivationAlgorithm::HKDF,
             ..Default::default()
         });
-
-        key_provider.set_shared_key(raw_key.into(), 0);
-
-        send_encryption_keys(
-            client.clone(),
-            &room_id,
-            &local_call_key,
-            0,
-            own_id,
-            own_device,
-        )
-        .await?;
 
         e2ee_options = Some(E2eeOptions {
             encryption_type: EncryptionType::Gcm,
@@ -291,14 +267,38 @@ pub(crate) async fn join_matrixrtc_call(
             }
         }
     });
+
     // --- LiveKit connection ---
     let mut room_options = livekit::RoomOptions::default();
     room_options.encryption = e2ee_options;
 
+    info!("Connecting to LiveKit room");
     let (livekit_room, mut event_receiver) =
         livekit::Room::connect(service_url, jwt, room_options).await?;
     log::info!("Connected to LiveKit room: {:?}", livekit_room);
 
+    // set and send out encryption key after joining but before publishig a track
+    if room.encryption_state().is_encrypted() {
+        let mut raw_key = [0u8; 32];
+        getrandom::fill(&mut raw_key)
+            .map_err(|e| format!("Failed to generate cryptographic key: {}", e))?;
+
+        let local_call_key = general_purpose::STANDARD.encode(raw_key);
+
+        let key_provider = livekit_room
+            .e2ee_manager()
+            .key_provider()
+            .expect("Keyprovider already set");
+        key_provider.set_key(
+            &livekit_room.local_participant().identity(),
+            0,
+            raw_key.into(),
+        );
+
+        send_encryption_keys(client.clone(), &room_id, &local_call_key, 0).await?;
+    }
+
+    // publish mic track
     livekit_room
         .local_participant()
         .publish_track(
@@ -311,11 +311,13 @@ pub(crate) async fn join_matrixrtc_call(
         .await
         .map_err(|e| format!("Failed to publish mic: {}", e))?;
 
+    // persist the room in room_manager
     livekit_room_manager
         .lock()
         .await
         .insert(room_id.clone(), livekit_room);
 
+    // handle events
     tokio::spawn(async move {
         while let Some(ev) = event_receiver.recv().await {
             log::debug!("Livekit event received: {ev:?}");
@@ -324,10 +326,6 @@ pub(crate) async fn join_matrixrtc_call(
             {
                 let rtc_track = audio_track.rtc_track();
 
-                // Tell NativeAudioStream to deliver at 48 kHz / stereo.
-                // Because this matches what CPAL was configured for above, the
-                // WebRTC engine performs no resampling — the main source of the
-                // robotic artifact is gone.
                 let mut audio_stream =
                     NativeAudioStream::new(rtc_track, sample_rate as i32, channels as i32);
 
@@ -349,13 +347,12 @@ pub(crate) async fn join_matrixrtc_call(
                         if frame.num_channels == 1 && channels == 2 {
                             for &s in frame.data.as_ref() {
                                 let f = s as f32 / 32_768.0;
-                                // push_overwrite keeps the buffer fresh — if
-                                // the consumer falls behind for any reason,
-                                // we discard the oldest samples rather than
-                                // dropping the newest (which is what caused
-                                // the growing delay in the previous version).
+
+                                // if we get mono input and stereo output, the output alternates
+                                // between the left and right, so we have to duplicate the
+                                // data or it will be half speed
                                 let _ = prod.try_push(f);
-                                // prod.try_push(f);
+                                let _ = prod.try_push(f);
                             }
                         } else {
                             for &s in frame.data.as_ref() {
@@ -368,6 +365,7 @@ pub(crate) async fn join_matrixrtc_call(
         }
     });
 
+    // send matrix events to signal joining the call
     let call_content = CallMemberEventContent::new(
         Application::Call(CallApplicationContent::new(
             "".to_string(),
@@ -406,81 +404,77 @@ pub(crate) async fn join_matrixrtc_call(
 
     room.send(notification_event).await?;
 
-    let own_id_clone = own_id.to_owned();
-    let own_device_clone = own_device.to_owned();
+    Ok(response_json)
+}
 
-    info!("Setting up event handler for call member state events");
-    client.add_event_handler(
-        |ev: OriginalSyncStateEvent<CallMemberEventContent>, event_room: matrix_sdk::Room| async move {
-            debug!("\n\n\n\n\n{:?}", ev.content);
-            if let CallMemberEventContent::LegacyContent(_) = ev.content {
+pub async fn handle_call_member_change(
+    ev: OriginalSyncStateEvent<CallMemberEventContent>,
+    event_room: matrix_sdk::Room,
+    handle: Ctx<AppHandle>,
+) {
+    debug!("\n\n\n\n\n{:?}", ev.content);
+    if let CallMemberEventContent::LegacyContent(_) = ev.content {
+        return;
+    }
+
+    let livekit_room_manager_guard = handle
+        .try_state::<LiveKitRoomManager>()
+        .expect("Could not aquire LiveKitRoomManager from State. Likely an implementation error.");
+    let livekit_room_manager = livekit_room_manager_guard.lock().await;
+
+    let Some(livekit_room) = livekit_room_manager.get(event_room.room_id().as_str()) else {
+        debug!("Call member room state changed, but you are not part of the call.");
+        return;
+    };
+    debug!("Call members changed in room {}", event_room.room_id());
+
+    if event_room.encryption_state().is_encrypted() {
+        debug!("Room is encrypted");
+
+        let client_state = handle
+            .try_state::<RwLock<Client>>()
+            .expect("Could not acquire Client from State. Likely an implementation error.");
+
+        let mut raw_key = [0u8; 32];
+        match getrandom::fill(&mut raw_key) {
+            Err(e) => {
+                error!("{e}");
                 return;
             }
+            _ => {}
+        };
 
-            let livekit_room_manager_guard = app_handle.try_state::<LiveKitRoomManager>().expect("Could not aquire LiveKitRoomManager from State. Likely an implementation error.");
-            let livekit_room_manager = livekit_room_manager_guard.lock().await;
+        let local_call_key = general_purpose::STANDARD.encode(raw_key);
 
-            let Some(livekit_room) =
-                livekit_room_manager.get(event_room.room_id().as_str())
-             else {
-                debug!("Call member room state changed, but you are not part of the call.");
-                return
-            };
-            debug!("Call members changed in room {}", event_room.room_id());
+        let key_provider = livekit_room
+            .e2ee_manager()
+            .key_provider()
+            .expect("Ecrypted LiveKit room without key provider");
 
-            if room.encryption_state().is_encrypted() {
-                debug!("Room is encrypted");
+        let new_key_index = key_provider.get_latest_key_index() + 1;
 
-                let client_state = app_handle
-                    .try_state::<RwLock<Client>>()
-                    .expect("Could not acquire Client from State. Likely an implementation error.");
+        key_provider.set_shared_key(raw_key.into(), new_key_index);
+        debug!("Updated local call encryption key, now at indey {new_key_index}");
 
-                let mut raw_key = [0u8; 32];
-                match getrandom::fill(&mut raw_key) {
-                    Err(e) => {
-                        error!("{e}");
-                        return;
-                    }
-                    _ => {}
-                };
-
-                let local_call_key = general_purpose::STANDARD.encode(raw_key);
-
-                let key_provider = livekit_room
-                    .e2ee_manager()
-                    .key_provider()
-                    .expect("Ecrypted LiveKit room without key provider");
-
-                let new_key_index = key_provider.get_latest_key_index() + 1;
-
-                key_provider.set_shared_key(raw_key.into(), new_key_index);
-                debug!("Updated local call encryption key, now at indey {new_key_index}");
-
-                let client = client_state.read().await;
-                debug!("Sending updated local encryption to other participants");
-                match send_encryption_keys(
-                    client.clone(),
-                    event_room.room_id().as_str(),
-                    &local_call_key,
-                    new_key_index,
-                    &own_id_clone,
-                    &own_device_clone,
-                )
-                .await
-                {
-                    Err(e) => {
-                        error!("{e:?}");
-                        return;
-                    }
-                    _ => {}
-                };
-            } else {
-                debug!("Call member room state changed but room is not encrypted.");
+        let client = client_state.read().await;
+        debug!("Sending updated local encryption to other participants");
+        match send_encryption_keys(
+            client.clone(),
+            event_room.room_id().as_str(),
+            &local_call_key,
+            new_key_index,
+        )
+        .await
+        {
+            Err(e) => {
+                error!("{e:?}");
+                return;
             }
-        },
-    );
-
-    Ok(response_json)
+            _ => {}
+        };
+    } else {
+        debug!("Call member room state changed but room is not encrypted.");
+    }
 }
 
 #[command(rename_all = "snake_case")]
@@ -520,12 +514,17 @@ async fn send_encryption_keys(
     room_id: &str,
     key: &str,
     index: i32,
-    own_id: &UserId,
-    own_device: &DeviceId,
 ) -> Result<(), TauriError> {
     let room = client
         .get_room(&RoomId::parse(room_id)?)
         .ok_or("Room not found or not joined")?;
+
+    let own_id = client
+        .user_id()
+        .expect("Should be set when you try to join a call");
+    let own_device = client
+        .device_id()
+        .expect("Should be set when you try to join a call");
 
     let state_events = room.get_state_events(StateEventType::CallMember).await?;
 
@@ -555,20 +554,46 @@ async fn send_encryption_keys(
             continue;
         }
 
-        let device = match client.encryption().get_device(sender, &content.device_id).await {
-            Ok(opt) => {match opt {Some(device) => device, None => {info!("The device {} of user {} is in the call, but not logged in. Skipping in call encryption key distribution.", content.device_id, sender); continue}}},
-            Err(e) => {error!("Error while getting device {} for user {} from crypto store: {e}", content.device_id, sender); continue}
+        let device = match client
+            .encryption()
+            .get_device(sender, &content.device_id)
+            .await
+        {
+            Ok(opt) => match opt {
+                Some(device) => device,
+                None => {
+                    info!(
+                        "The device {} of user {} is in the call, but not logged in. Skipping in call encryption key distribution.",
+                        content.device_id, sender
+                    );
+                    continue;
+                }
+            },
+            Err(e) => {
+                error!(
+                    "Error while getting device {} for user {} from crypto store: {e}",
+                    content.device_id, sender
+                );
+                continue;
+            }
         };
 
         let payload = EncryptionKeysEventContent {
             room_id: room.room_id().to_string(),
-            member: CallMemberInfo { claimed_device_id: device.device_id().to_string(), id: "".to_string() }, // correct the id field
+            member: CallMemberInfo {
+                claimed_device_id: device.device_id().to_string(),
+                id: "".to_string(),
+            }, // correct the id field
             keys: EncryptionKeysInfo {
                 index: index,
                 key: key.to_string(),
             },
-            session: CallSessionInfo { application: "m.call".to_string(), call_id: "".to_string(), scope: "m.room".to_string() },
-            sent_ts: MilliSecondsSinceUnixEpoch::now()
+            session: CallSessionInfo {
+                application: "m.call".to_string(),
+                call_id: "".to_string(),
+                scope: "m.room".to_string(),
+            },
+            sent_ts: MilliSecondsSinceUnixEpoch::now(),
         };
 
         let json_str = serde_json::to_string(&payload).expect("Failed to serialize payload");
@@ -576,7 +601,21 @@ async fn send_encryption_keys(
         let raw_payload: Raw<AnyToDeviceEventContent> =
             serde_json::from_str(&json_str).expect("Failed to create Raw event");
 
-        client.encryption().encrypt_and_send_raw_to_device(vec![&device], "io.element.call.encryption_keys", raw_payload, Default::default()).await.map_err(|e| format!("Error when sending call encryption key to device {} of user {}: {e}", content.device_id, sender))?;
+        client
+            .encryption()
+            .encrypt_and_send_raw_to_device(
+                vec![&device],
+                "io.element.call.encryption_keys",
+                raw_payload,
+                Default::default(),
+            )
+            .await
+            .map_err(|e| {
+                format!(
+                    "Error when sending call encryption key to device {} of user {}: {e}",
+                    content.device_id, sender
+                )
+            })?;
     }
 
     log::info!("Finished distributing call encryption key to participants.");
@@ -676,10 +715,9 @@ pub async fn handle_to_device_messages(
             }
         };
 
-        let livekit_id = format!(
-            "{}:{}",
-            update_event.0, update_event.1.member.claimed_device_id
-        );
+        debug!("\n{:?}\n", e2ee_manager.frame_cryptors().keys());
+
+        let livekit_id = format!("{}:{}", update_event.0, update_event.1.member.id);
 
         key_provider.set_key(
             &From::from(livekit_id.clone()),
@@ -688,7 +726,10 @@ pub async fn handle_to_device_messages(
                 .decode(update_event.1.keys.key)
                 .unwrap(),
         );
-        log::info!("Sent updates for local call encryption key for {}", livekit_id);
+        log::info!(
+            "Sent updates for local call encryption key for {}",
+            livekit_id
+        );
     }
 
     debug!("Finished handling to-device events");
@@ -722,18 +763,3 @@ pub struct CallSessionInfo {
     pub call_id: String,
     pub scope: String,
 }
-
-// #[derive(Debug, Serialize, Deserialize, Clone)]
-// pub struct SenderDeviceKeys {
-//     pub algorithms: Vec<String>,
-//     pub device_id: String,
-//     pub keys: HashMap<String, String>,
-//     pub signatures: HashMap<String, HashMap<String, String>>,
-//     pub unsigned: Option<UnsignedData>,
-//     pub user_id: String,
-// }
-
-// #[derive(Debug, Serialize, Deserialize, Clone)]
-// pub struct UnsignedData {
-//     pub device_display_name: Option<String>,
-// }
