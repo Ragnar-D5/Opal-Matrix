@@ -423,3 +423,26 @@ pub async fn toggle_reaction(
 
     Ok(())
 }
+
+#[command(rename_all = "snake_case")]
+pub async fn delete_message(
+    matrix_client: State<'_, RwLock<MatrixClient>>,
+    timeline_manager: State<'_, TimelineManager>,
+    room_id: String,
+    event_id: String,
+) -> Result<(), TauriError> {
+    log::debug!("Deleting message {} in room {}", event_id, room_id);
+    let room = matrix_client
+        .read()
+        .await
+        .get_room(&RoomId::parse(&room_id)?)
+        .ok_or("No room found")?;
+
+    let timeline = timeline_manager.get_or_create_timeline(&room).await?;
+
+    timeline
+        .redact(&TimelineEventItemId::EventId(OwnedEventId::try_from(event_id)?), None)
+        .await?;
+
+    Ok(())
+}

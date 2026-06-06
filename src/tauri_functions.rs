@@ -190,3 +190,14 @@ pub async fn get_server_order() -> Result<ServerOrder, String> {
 
     Ok(server_order)
 }
+
+pub async fn delete_message(room_id: &str, event_id: &str) -> Result<(), String> {
+    let args = serde_wasm_bindgen::to_value(&json!({ "room_id": room_id, "event_id": event_id }))
+        .map_err(|e| format!("Failed to serialize request: {:?}", e))?;
+
+    call_tauri("delete_message", args)
+        .await
+        .map_err(|e| format!("Tauri call failed: {:?}", e))?;
+
+    Ok(())
+}

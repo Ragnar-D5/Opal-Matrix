@@ -11,9 +11,9 @@ use shared::{
     get_color,
     sidebar::RoomKind,
     timeline::{
-        DetailState, EventContent, MessageContent, ReactionInfo, ReplyInfo, RichTextSpan,
-        SystemMessage, UiCallIntent, UiMembershipChange, UiMessageType, UiTimelineItem,
-        UiTimelineItemKind,
+        DetailState, EventContent, EventFlags, MessageContent, ReactionInfo, ReplyInfo,
+        RichTextSpan, SystemMessage, UiCallIntent, UiMembershipChange, UiMessageType,
+        UiTimelineItem, UiTimelineItemKind,
     },
 };
 use wasm_bindgen::JsCast;
@@ -31,7 +31,7 @@ use crate::{
         TextCircle, TextCircleProps,
     },
     state::{AppState, LighboxImage, ProfileStore},
-    tauri_functions::toggle_reaction,
+    tauri_functions::{delete_message, toggle_reaction},
 };
 
 #[component]
@@ -895,6 +895,148 @@ fn render_system_message(
     .into_any()
 }
 
+#[component]
+fn MessageButtons(
+    flags: Memo<EventFlags>,
+    room_id: String,
+    event_id: Option<String>,
+    sender_id: Option<String>,
+    item_id: String,
+    item_sig: RwSignal<UiTimelineItem>,
+) -> impl IntoView {
+    let no_buttons = move || {
+        let f = flags.get();
+        !f.is_reactable && !f.can_be_replied_to && !f.is_editable
+    };
+
+    let react_event_id = event_id.clone();
+    let react_room_id = room_id.clone();
+    let react = move |ev: web_sys::MouseEvent| {
+        let emoji_state: EmojiPickerState = expect_context();
+        let anchor: Element = ev.target().unwrap().unchecked_into();
+
+        let Some(event_id) = react_event_id.clone() else {
+            return;
+        };
+
+        let room_id = react_room_id.clone();
+
+        spawn_local(async move {
+            let Some(emoji) = pick_emoji(&anchor, emoji_state).await else {
+                return;
+            };
+            if let Err(e) = toggle_reaction(&room_id, &event_id, &emoji).await {
+                log::error!("Failed to toggle reaction: {}", e);
+            }
+        });
+    };
+
+    let reply_event_id = event_id.clone();
+    let reply = move |_| {
+        let input_info: RwSignal<Option<ChatInputInfo>> = expect_context();
+        let input_ref: NodeRef<Div> = expect_context();
+
+        let Some(event_id) = reply_event_id.clone() else {
+            return;
+        };
+        let Some(sender_id) = sender_id.clone() else {
+            return;
+        };
+
+        input_info.set(Some(ChatInputInfo::ReplyingTo {
+            event_id,
+            sender_id,
+            item_id: "".to_string(),
+        }));
+        input_ref.get().map(|el| el.focus().ok());
+    };
+
+    let edit_room_id = room_id.clone();
+    let edit_event_id = event_id.clone();
+    let edit = move |_| {
+        let input_info: RwSignal<Option<ChatInputInfo>> = expect_context();
+        let attachments: RwSignal<Vec<Attachment>> = expect_context();
+        let input_ref: NodeRef<Div> = expect_context();
+        let store: ProfileStore = expect_context();
+        let is_empty: RwSignal<bool> = expect_context();
+
+        let Some(event_id) = edit_event_id.clone() else {
+            return;
+        };
+
+        input_info.set(Some(ChatInputInfo::Editing {
+            event_id,
+            item_id: item_id.clone(),
+        }));
+        attachments.set(Vec::new());
+
+        if let Some(el) = input_ref.get() {
+            el.focus().ok();
+            let spans = item_sig.get_untracked().body();
+            el.set_inner_html(&richt_text_spans_to_html(
+                &spans,
+                store.clone(),
+                edit_room_id.clone(),
+            ));
+            is_empty.set(false);
+            move_caret_to_end(&el);
+        }
+    };
+
+    let delete = move |_| {
+        let Some(event_id) = event_id.clone() else {
+            return;
+        };
+        let room_id = room_id.clone();
+
+        spawn_local(async move {
+            if let Err(e) = delete_message(&room_id, &event_id).await {
+                log::error!("Failed to delete message: {}", e);
+            }
+        });
+    };
+
+    view! {
+        <div
+            class="absolute -top-4 right-4 flex items-center gap-1 bg-(--ui-solid-bg) p-1 rounded-(--gap) text-muted text-xs border border-(--tile-border-color) opacity-0 group-hover/msg:opacity-100"
+            class=("hidden", no_buttons)
+        >
+            <Show when=move || { flags.get().is_reactable }>
+                <button
+                    class="hover:bg-(--ui-solid-hover-bg) cursor-pointer p-0.5 rounded-(--gap) hover:text-normal"
+                    on:click=react.clone()
+                >
+                    <Icon icon=SMILEY size="20px"></Icon>
+                </button>
+            </Show>
+            <Show when=move || { flags.get().can_be_replied_to }>
+                <button
+                    class="hover:bg-(--ui-solid-hover-bg) cursor-pointer p-0.5 rounded-(--gap) hover:text-normal"
+                    on:click=reply.clone()
+                >
+                    <Icon icon=ARROW_BEND_UP_LEFT size="20px"></Icon>
+                </button>
+            </Show>
+            <Show when=move || { flags.get().is_editable }>
+                <button
+                    class="hover:bg-(--ui-solid-hover-bg) cursor-pointer p-0.5 rounded-(--gap) hover:text-normal"
+                    on:click=edit.clone()
+                >
+                    <Icon icon=PENCIL_SIMPLE size="20px"></Icon>
+                </button>
+            </Show>
+            <Show when=move || { flags.get().is_editable }>
+                <button
+                    class="hover:bg-(--ui-solid-hover-bg) cursor-pointer p-0.5 rounded-(--gap) hover:text-red-500"
+                    on:click=delete.clone()
+                >
+                    <Icon icon=TRASH size="20px"></Icon>
+                </button>
+            </Show>
+        </div>
+    }
+}
+
 fn render_timeline_event(
     store: ProfileStore,
     room_id: &str,
@@ -933,10 +1075,6 @@ fn render_timeline_event(
     let room_id_for_content = room_id.to_string();
     let store_for_content = store.clone();
 
-    // Inputs the message body needs, with reactions stripped out. Reactions are
-    // rendered separately (`reactions_view`), so excluding them here means a
-    // reaction-only change produces an equal value and this Memo won't notify —
-    // the body (and any image/video resources) is not re-rendered.
     let content_for_render = Memo::new(move |_| {
         item_sig.with(|item| {
             let UiTimelineItemKind::Event(event) = &item.kind else {
@@ -982,7 +1120,6 @@ fn render_timeline_event(
     let event_id_clone = event_id.clone();
     let room_id = room_id.to_string();
     let own_user_id = own_user_id.to_string();
-    let edit_room_id = room_id.clone();
     let reactions_room_id = room_id.clone();
 
     let reactions_view = move || {
@@ -1002,8 +1139,6 @@ fn render_timeline_event(
     };
 
     let input_info: RwSignal<Option<ChatInputInfo>> = expect_context();
-    let attachments: RwSignal<Vec<Attachment>> = expect_context();
-    let input_ref: NodeRef<Div> = expect_context();
 
     let current_highlight = Memo::new({
         let item_id = item_id.clone();
@@ -1024,12 +1159,6 @@ fn render_timeline_event(
         }
     });
 
-    let edit_event_id = event_id.clone();
-    let edit_item_id = item_id.clone();
-    let edit_store = store.clone();
-
-    let is_empty: RwSignal<bool> = expect_context();
-
     let flags = Memo::new(move |_| {
         let item = item_sig.get();
 
@@ -1038,10 +1167,6 @@ fn render_timeline_event(
 
     let sender_profile_sig =
         store.get_member_profile(&room_id, &sender_id.clone().unwrap_or_default());
-
-    let emoji_state: EmojiPickerState = expect_context();
-    let reaction_event_id = event_id.clone();
-    let reaction_room_id = room_id.clone();
 
     view! {
         <div
@@ -1090,137 +1215,14 @@ fn render_timeline_event(
                 }
             }}
 
-            <div
-                class="absolute -top-4 right-4 flex items-center gap-1 bg-(--ui-solid-bg) p-1 rounded-(--gap) text-muted text-xs border border-(--tile-border-color) opacity-0 group-hover/msg:opacity-100"
-                class=(
-                    "hidden",
-                    move || {
-                        let flags = flags.get();
-                        !flags.is_reactable && !flags.can_be_replied_to && !flags.is_editable
-                    },
-                )
-            >
-                <Show when=move || {
-                    flags.get().is_reactable
-                }>
-                    {
-                        let event_id = reaction_event_id.clone();
-                        let room_id = reaction_room_id.clone();
-
-                        view! {
-                            <button
-                                class="hover:bg-(--ui-solid-hover-bg) cursor-pointer p-0.5 rounded-(--gap) hover:text-normal"
-                                on:click=move |ev| {
-                                    let anchor: Element = ev.target().unwrap().unchecked_into();
-                                    let event_id = event_id.clone();
-                                    let room_id = room_id.clone();
-                                    spawn_local(async move {
-                                        let Some(emoji) = pick_emoji(&anchor, emoji_state).await
-                                        else {
-                                            return;
-                                        };
-                                        if let Err(e) = toggle_reaction(
-                                                &room_id,
-                                                &event_id.unwrap_or_default(),
-                                                &emoji,
-                                            )
-                                            .await
-                                        {
-                                            log::error!("Failed to toggle reaction: {}", e);
-                                        }
-                                    });
-                                }
-                            >
-                                <Icon icon=SMILEY size="20px"></Icon>
-                            </button>
-                        }
-                    }
-                </Show>
-                <Show when=move || {
-                    flags.get().can_be_replied_to
-                }>
-                    {
-                        let reply_event_id = event_id.clone();
-                        let sender_id = sender_id.clone();
-                        let item_id = item_id.clone();
-                        let input_info = input_info;
-                        let input_ref = input_ref;
-
-                        view! {
-                            <button
-                                id=format!("reply-btn-{}", item_id)
-                                class="hover:bg-(--ui-solid-hover-bg) cursor-pointer p-0.5 rounded-(--gap) hover:text-normal"
-                                on:click=move |_| {
-                                    let Some(event_id) = reply_event_id.clone() else {
-                                        return;
-                                    };
-                                    let Some(sender_id) = sender_id.clone() else {
-                                        return;
-                                    };
-                                    input_info
-                                        .set(
-                                            Some(ChatInputInfo::ReplyingTo {
-                                                event_id,
-                                                sender_id,
-                                                item_id: item_id.clone(),
-                                            }),
-                                        );
-                                    input_ref.get().map(|el| el.focus().ok());
-                                }
-                            >
-                                <Icon icon=ARROW_BEND_UP_LEFT size="20px"></Icon>
-                            </button>
-                        }
-                    }
-                </Show>
-                <Show when=move || {
-                    flags.get().is_editable
-                }>
-                    {
-                        let event_id = edit_event_id.clone();
-                        let item_id = edit_item_id.clone();
-                        let store = edit_store.clone();
-                        let room_id = edit_room_id.clone();
-
-                        view! {
-                            <button
-                                class="hover:bg-(--ui-solid-hover-bg) cursor-pointer p-0.5 rounded-(--gap) hover:text-normal"
-                                on:click=move |_| {
-                                    let Some(event_id) = event_id.clone() else {
-                                        return;
-                                    };
-                                    input_info
-                                        .set(
-                                            Some(ChatInputInfo::Editing {
-                                                event_id,
-                                                item_id: item_id.clone(),
-                                            }),
-                                        );
-                                    attachments.set(Vec::new());
-                                    if let Some(el) = input_ref.get() {
-                                        el.focus().ok();
-                                    }
-                                    if let Some(el) = input_ref.get() {
-                                        el.focus().ok();
-                                        let spans = item_sig.get_untracked().body();
-                                        el.set_inner_html(
-                                            &richt_text_spans_to_html(
-                                                &spans,
-                                                store.clone(),
-                                                room_id.clone(),
-                                            ),
-                                        );
-                                        is_empty.set(false);
-                                        move_caret_to_end(&el);
-                                    }
-                                }
-                            >
-                                <Icon icon=PENCIL_SIMPLE size="20px"></Icon>
-                            </button>
-                        }
-                    }
-                </Show>
-            </div>
+            <MessageButtons
+                flags=flags
+                room_id=room_id.clone()
+                event_id=event_id.clone()
+                sender_id=sender_id.clone()
+                item_id=item_id.clone()
+                item_sig=item_sig
+            />
 
             <ReplyPreview reply_info=reply_info active_room_id=room_id />
 

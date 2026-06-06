@@ -567,6 +567,7 @@ pub fn run() {
             frontend::messages::get_timeline,
             frontend::messages::scroll_up,
             frontend::messages::toggle_reaction,
+            frontend::messages::delete_message,
             frontend::commands::get_commands,
             frontend::profiles::get_user_profile,
             frontend::dialog::open_file_dialog,
