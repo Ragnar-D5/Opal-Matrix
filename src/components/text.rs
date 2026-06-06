@@ -35,11 +35,11 @@ fn WordMention(
 }
 
 pub trait RichTextExt {
-    fn render(self, store: ProfileStore, room_id: &str) -> impl IntoView;
+    fn render(self, store: ProfileStore, room_id: String) -> impl IntoView;
 }
 
 impl RichTextExt for RichTextSpan {
-    fn render(self, store: ProfileStore, room_id: &str) -> impl IntoView {
+    fn render(self, store: ProfileStore, room_id: String) -> impl IntoView {
         match self {
             RichTextSpan::Plain(text) => {
                 view! { <span class="text-token cursor-text">{text}</span> }.into_any()
@@ -70,7 +70,7 @@ impl RichTextExt for RichTextSpan {
                 user_id,
                 display_name,
             } => {
-                let profile_sig = store.get_member_profile(room_id, &user_id);
+                let profile_sig = store.get_member_profile(&room_id, &user_id);
 
                 let colors = Memo::new(move |_| {
                     let profile = profile_sig.get();
@@ -141,7 +141,7 @@ pub fn richt_text_spans_to_html(
                         text
                     }
                     RichTextSpan::RoomMention { .. } | RichTextSpan::UserMention { .. } => {
-                        let view = span.clone().render(store.clone(), &room_id);
+                        let view = span.clone().render(store.clone(), room_id.clone());
                         let any_view: AnyView = view.into_any();
 
                         // Create a fresh temporary container for this span

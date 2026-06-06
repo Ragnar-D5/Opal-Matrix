@@ -423,7 +423,7 @@ pub(crate) async fn join_matrixrtc_call(
             let livekit_room_manager_guard = app_handle.try_state::<LiveKitRoomManager>().expect("Could not aquire LiveKitRoomManager from State. Likely an implementation error.");
             let livekit_room_manager = livekit_room_manager_guard.lock().await;
 
-            let Some(livekit_room) = 
+            let Some(livekit_room) =
                 livekit_room_manager.get(event_room.room_id().as_str())
              else {
                 debug!("Call member room state changed, but you are not part of the call.");
@@ -657,7 +657,6 @@ pub async fn handle_to_device_messages(
 ) -> Result<(), TauriError> {
     debug!("Handling to-device events");
 
-    warn!("\n\n\n\n{events:?}\n\n\n\n");
     let key_updates = events
         .into_iter()
         .filter_map(|e| {

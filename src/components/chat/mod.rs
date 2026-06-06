@@ -290,7 +290,9 @@ fn TimeLine() -> impl IntoView {
                         .try_with_untracked(|item| { item.id.clone() })
                         .unwrap_or_else(|| "disposed_fallback_key".to_string())
                 }
-                children=|(item_sig, show_header)| { render_timeline_item(item_sig, show_header) }
+                children=|(item_sig, show_header)| {
+                    render_timeline_item(item_sig, show_header, false)
+                }
             />
 
             <Show

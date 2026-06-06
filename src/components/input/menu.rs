@@ -158,10 +158,10 @@ pub fn commit_selection(
                     room_id: RoomIdFormat::Id(room_id.clone()),
                     display_name: format!("#{}", name),
                 }
-                .render(store, &room_id)
+                .render(store, room_id)
                 .into_any()
             } else {
-                membership.to_span().render(store, &room_id).into_any()
+                membership.to_span().render(store, room_id).into_any()
             };
 
             let any_view: AnyView = mention_view.into_any();
@@ -185,7 +185,7 @@ pub fn commit_selection(
         SelectedItem::Room(room) => {
             let current_room_id = state.active_room_id_untracked().unwrap_or_default();
 
-            let room_view = room.to_span().render(store, &current_room_id).into_any();
+            let room_view = room.to_span().render(store, current_room_id).into_any();
 
             let any_view: AnyView = room_view.into_any();
             let mut render_state = any_view.build();
@@ -375,24 +375,33 @@ impl RenderMenuRow for RoomProfile {
         self.room_id.clone()
     }
 
-    fn render_row(self, _: String, _: HtmlDivElement, idx: usize) -> impl IntoView {
+    fn render_row(self, _: String, el: HtmlDivElement, idx: usize) -> impl IntoView {
         let selected_index: RwSignal<usize> = expect_context();
 
+        let el = el.clone();
         view! {
             <button
-                class="flex flex-row justify-center items-center rounded-(--ui-border-radius) cursor-pointer mx-(--gap) px-(--gap) py-1"
+                class="flex flex-row items-center gap-2 rounded-(--ui-border-radius) cursor-pointer mx-(--gap) px-(--gap) py-1"
                 class=("bg-(--ui-hover-bg)", move || selected_index.get() == idx)
+                on:mouseenter=move |_| selected_index.set(idx)
+                on:click=move |_| {
+                    commit_selection(
+                        &el,
+                        SelectedItem::from(self.clone()),
+                        expect_context(),
+                        expect_context(),
+                    )
+                }
             >
-                <div class="flex flex-col">
-                    <span class="text-start text-sm text-normal">{self.get_name()}</span>
-                    <span
-                        class="text-start"
-                        class=("text-(--ui-hover-color)", move || idx == selected_index.get())
-                        class=("text-(--ui-base-color)", move || idx != selected_index.get())
-                    >
-                        {self.canonical_alias.clone().unwrap_or_default()}
-                    </span>
-                </div>
+                <span class="text-start text-sm text-normal">{self.get_name()}</span>
+                <div class="flex flex-grow"></div>
+                <span
+                    class="text-start"
+                    class=("text-(--ui-hover-color)", move || idx == selected_index.get())
+                    class=("text-(--ui-base-color)", move || idx != selected_index.get())
+                >
+                    {self.canonical_alias.clone().unwrap_or(self.room_id.clone())}
+                </span>
             </button>
         }
     }
@@ -506,53 +515,45 @@ pub fn SelectionMenu(menu: RwSignal<MenuType>, input_ref: NodeRef<Div>) -> impl 
         let el_room = el.clone();
 
         view! {
-            <span class="text-(--ui-base-color) bold text-xs p-2 bb-4">{title_text()}</span>
-            <For
-                each=move || mention_matches.get().into_iter().enumerate()
-                key=|(_, member)| member.id()
-                children=move |(idx, member)| {
-                    let room_id = room_id.clone();
-                    let el = el.clone();
-                    member.render_row(room_id, el, idx)
-                }
-            />
-            <For
-                each=move || command_matches.get().into_iter().enumerate()
-                key=|(_, command)| command.id()
-                children=move |(idx, command)| {
-                    let room_id = room_id_command.clone();
-                    let el = el_command.clone();
-                    command.render_row(room_id, el, idx)
-                }
-            />
-            <For
-                each=move || room_matches.get().into_iter().enumerate()
-                key=|(_, room)| room.id()
-                children=move |(idx, room)| {
-                    let room_id = room_id_room.clone();
-                    let el = el_room.clone();
-                    room.render_row(room_id, el, idx)
-                }
-            />
-            {move || {
-                if no_matches() {
-                    view! {
-                        <span class="text-(--ui-base-color) italic text-center p-4">
-                            "No matches"
-                        </span>
+            <span class="text-(--ui-base-color) bold text-xs p-2 bb-4 border-b border-(--tile-border-color)">
+                {title_text()}
+            </span>
+            <div class="overflow-y-auto pt-1 flex flex-col">
+                <For
+                    each=move || mention_matches.get().into_iter().enumerate()
+                    key=|(_, member)| member.id()
+                    children=move |(idx, member)| {
+                        let room_id = room_id.clone();
+                        let el = el.clone();
+                        member.render_row(room_id, el, idx)
                     }
-                        .into_any()
-                } else {
-                    ().into_any()
-                }
-            }}
+                />
+                <For
+                    each=move || command_matches.get().into_iter().enumerate()
+                    key=|(_, command)| command.id()
+                    children=move |(idx, command)| {
+                        let room_id = room_id_command.clone();
+                        let el = el_command.clone();
+                        command.render_row(room_id, el, idx)
+                    }
+                />
+                <For
+                    each=move || room_matches.get().into_iter().enumerate()
+                    key=|(_, room)| room.id()
+                    children=move |(idx, room)| {
+                        let room_id = room_id_room.clone();
+                        let el = el_room.clone();
+                        room.render_row(room_id, el, idx)
+                    }
+                />
+            </div>
         }
         .into_any()
     };
 
     view! {
         <div
-            class="mb-(--gap) absolute bottom-full left-4 right-4 bottom-(--gap) bg-(--ui-floating-hover-bg) backdrop-blur-2xl rounded-(--ui-border-radius) border border-(--tile-border-color) flex flex-col text-xs pb-(--gap) max-h-100 overflow-y-auto"
+            class="mb-(--gap) absolute bottom-full left-4 right-4 bottom-(--gap) bg-(--ui-floating-hover-bg) backdrop-blur-2xl rounded-(--ui-border-radius) border border-(--tile-border-color) flex flex-col text-xs pb-(--gap) max-h-100"
             class:hidden=move || menu.get().is_none() || no_matches()
         >
             {content}

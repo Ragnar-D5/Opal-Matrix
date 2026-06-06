@@ -5,7 +5,7 @@ use colorsys::Hsl;
 use leptos::{html::Div, prelude::*, task::spawn_local};
 use phosphor_leptos::{
     Icon, IconWeight, ARROW_BEND_UP_LEFT, ARROW_RIGHT, HASH, PENCIL_SIMPLE, SMILEY, SPEAKER_HIGH,
-    TRASH, WARNING_CIRCLE,
+    TRASH, WARNING_CIRCLE, X,
 };
 use shared::{
     get_color,
@@ -77,7 +77,7 @@ fn ReplyPreview(reply_info: Option<ReplyInfo>, active_room_id: String) -> impl I
         }
     });
 
-    let content = Memo::new(move |_| {
+    let spans = Memo::new(move |_| {
         if let Some(preview) = preview.get() {
             preview.content
         } else {
@@ -93,11 +93,13 @@ fn ReplyPreview(reply_info: Option<ReplyInfo>, active_room_id: String) -> impl I
             {move || profile.get().render_name("12px")}
 
             <span class="truncate text-bright line-clamp-1">
-                {content
-                    .get()
-                    .into_iter()
-                    .map(|v| { v.render(store.clone(), &active_room_id) })
-                    .collect_view()}
+                {move || {
+                    let spans = spans.get();
+                    spans
+                        .into_iter()
+                        .map(|v| v.clone().render(store.clone(), active_room_id.clone()))
+                        .collect::<Vec<_>>()
+                }}
             </span>
         </div>
     }
@@ -171,7 +173,7 @@ fn render_message_content(
                 {spans
                     .clone()
                     .into_iter()
-                    .map(|v| v.render(store.clone(), &room_id))
+                    .map(|v| v.render(store.clone(), room_id.clone()))
                     .collect_view()}
             </div>
         }
@@ -204,7 +206,7 @@ fn render_message_content(
                 {spans
                     .clone()
                     .into_iter()
-                    .map(|v| v.render(store.clone(), &room_id))
+                    .map(|v| v.render(store.clone(), room_id.clone()))
                     .collect_view()}["Gallery message not supported yet"]
             </div>
         }
@@ -277,7 +279,7 @@ fn render_message_content(
                     {spans
                         .clone()
                         .into_iter()
-                        .map(|v| v.render(store.clone(), &room_id))
+                        .map(|v| v.render(store.clone(), room_id.clone()))
                         .collect_view()}
                     {if content.is_edited {
                         view! { <span class="text-xs text-muted ml-2 italic">"(edited)"</span> }
@@ -294,7 +296,7 @@ fn render_message_content(
                 {spans
                     .clone()
                     .into_iter()
-                    .map(|v| v.render(store.clone(), &room_id))
+                    .map(|v| v.render(store.clone(), room_id.clone()))
                     .collect_view()}["Location message not supported yet"]
             </div>
         }
@@ -305,7 +307,7 @@ fn render_message_content(
                 {spans
                     .clone()
                     .into_iter()
-                    .map(|v| v.render(store.clone(), &room_id))
+                    .map(|v| v.render(store.clone(), room_id.clone()))
                     .collect_view()}["Live location sharing not supported yet"]
             </div>
         }
@@ -316,7 +318,7 @@ fn render_message_content(
                 {spans
                     .clone()
                     .into_iter()
-                    .map(|v| v.render(store.clone(), &room_id))
+                    .map(|v| v.render(store.clone(), room_id.clone()))
                     .collect_view()}["Notice messages are not supported yet"]
             </div>
         }
@@ -327,7 +329,7 @@ fn render_message_content(
                 {spans
                     .clone()
                     .into_iter()
-                    .map(|v| v.render(store.clone(), &room_id))
+                    .map(|v| v.render(store.clone(), room_id.clone()))
                     .collect_view()}["Polls are not supported yet"]
             </div>
         }
@@ -345,7 +347,7 @@ fn render_message_content(
                 {spans
                     .clone()
                     .into_iter()
-                    .map(|v| v.render(store.clone(), &room_id))
+                    .map(|v| v.render(store.clone(), room_id.clone()))
                     .collect_view()}["Server notice messages are not supported yet"]
             </div>
         }
@@ -364,7 +366,7 @@ fn render_message_content(
                 {spans
                     .clone()
                     .into_iter()
-                    .map(|v| v.render(store.clone(), &room_id))
+                    .map(|v| v.render(store.clone(), room_id.clone()))
                     .collect_view()}
                 {if content.is_edited {
                     view! { <span class="text-xs text-muted ml-2 italic">"(edited)"</span> }
@@ -895,8 +897,7 @@ fn render_system_message(
     .into_any()
 }
 
-#[component]
-fn MessageButtons(
+fn message_buttons(
     flags: Memo<EventFlags>,
     room_id: String,
     event_id: Option<String>,
@@ -983,18 +984,22 @@ fn MessageButtons(
         }
     };
 
-    let delete = move |_| {
-        let Some(event_id) = event_id.clone() else {
+    let show_delete_confirm = RwSignal::new(false);
+
+    let delete_event_id = event_id.clone();
+    let delete_room_id = room_id.clone();
+    let on_delete_confirm = Callback::new(move |_| {
+        let Some(event_id) = delete_event_id.clone() else {
             return;
         };
-        let room_id = room_id.clone();
+        let room_id = delete_room_id.clone();
 
         spawn_local(async move {
             if let Err(e) = delete_message(&room_id, &event_id).await {
                 log::error!("Failed to delete message: {}", e);
             }
         });
-    };
+    });
 
     view! {
         <div
@@ -1028,12 +1033,65 @@ fn MessageButtons(
             <Show when=move || { flags.get().is_editable }>
                 <button
                     class="hover:bg-(--ui-solid-hover-bg) cursor-pointer p-0.5 rounded-(--gap) hover:text-red-500"
-                    on:click=delete.clone()
+                    on:click=move |_| show_delete_confirm.set(true)
                 >
                     <Icon icon=TRASH size="20px"></Icon>
                 </button>
             </Show>
         </div>
+        <ConfirmDialog show=show_delete_confirm class="w-100">
+            <p class="text-bright text-xl font-bold">"Delete message"</p>
+            <p class="text-muted">"Are you sure you want to delete this message?"</p>
+            <div class="my-2 p-2 bg-(--ui-floating-bg) border border-(--tile-border-color) rounded-(--gap)">
+                {render_timeline_item(item_sig, true, true)}
+            </div>
+            <div class="flex gap-2 pt-2 justify-end w-full">
+                <button
+                    class="px-4 py-1.5 rounded-(--ui-border-radius) text-sm bg-(--ui-solid-hover-bg) hover:bg-(--ui-floating-hover-bg) text-(--text-color) cursor-pointer border border-(--tile-border-color) flex flex-grow items-center justify-center"
+                    on:click=move |_| show_delete_confirm.set(false)
+                >
+                    "Cancel"
+                </button>
+                <button
+                    class="px-4 py-1.5 rounded-(--ui-border-radius) text-sm bg-red-600 hover:bg-red-700 text-white cursor-pointer font-semibold flex flex-grow items-center justify-center"
+                    on:click=move |_| {
+                        show_delete_confirm.set(false);
+                        on_delete_confirm.run(());
+                    }
+                >
+                    "Delete"
+                </button>
+            </div>
+        </ConfirmDialog>
+    }
+}
+
+#[component]
+fn ConfirmDialog(
+    show: RwSignal<bool>,
+    children: ChildrenFn,
+    #[prop(into, optional)] class: String,
+) -> impl IntoView {
+    view! {
+        <Show when=move || show.get()>
+            <div
+                class="fixed inset-0 z-[1000] bg-(--tile-bg-color)"
+                on:click=move |_| show.set(false)
+            />
+            <div class="fixed inset-0 z-[1001] flex items-center justify-center pointer-events-none">
+                <div class=format!(
+                    "relative pointer-events-auto bg-(--ui-solid-bg) border border-(--tile-border-color) rounded-(--floating-border-radius) shadow-xl p-3 flex flex-col backdrop-blur-xl {class}",
+                )>
+                    <button
+                        class="absolute top-3 right-3 text-muted hover:text-(--bright-text-color) border border-transparent hover:bg-(--ui-solid-hover-bg) hover:border-(--tile-border-color) cursor-pointer p-1 rounded-(--gap)"
+                        on:click=move |_| show.set(false)
+                    >
+                        <Icon icon=X size="18px" />
+                    </button>
+                    {children()}
+                </div>
+            </div>
+        </Show>
     }
 }
 
@@ -1043,6 +1101,7 @@ fn render_timeline_event(
     own_user_id: &str,
     item_sig: RwSignal<UiTimelineItem>,
     show_header: bool,
+    preview: bool,
 ) -> impl IntoView {
     let hovered = RwSignal::new(false);
 
@@ -1170,8 +1229,9 @@ fn render_timeline_event(
 
     view! {
         <div
-            class="group/msg relative flex flex-col gap-[var(--gap)] hover:bg-black/20 ml-1 pl-4 py-[2px] rounded-md"
-            class=("mt-5", show_header)
+            class="group/msg relative flex flex-col gap-[var(--gap)] hover:bg-black/20 rounded-md"
+            class=("mt-5", show_header && !preview)
+            class=("pointer-events-none", preview)
             style:background=move || {
                 let hovered = hovered.get();
                 if let Some(color) = current_highlight.get() {
@@ -1215,14 +1275,19 @@ fn render_timeline_event(
                 }
             }}
 
-            <MessageButtons
-                flags=flags
-                room_id=room_id.clone()
-                event_id=event_id.clone()
-                sender_id=sender_id.clone()
-                item_id=item_id.clone()
-                item_sig=item_sig
-            />
+            {if !preview {
+                message_buttons(
+                        flags,
+                        room_id.clone(),
+                        event_id.clone(),
+                        sender_id.clone(),
+                        item_id.clone(),
+                        item_sig,
+                    )
+                    .into_any()
+            } else {
+                ().into_any()
+            }}
 
             <ReplyPreview reply_info=reply_info active_room_id=room_id />
 
@@ -1296,6 +1361,7 @@ fn render_timeline_event(
 pub fn render_timeline_item(
     item_sig: RwSignal<UiTimelineItem>,
     show_header: bool,
+    preview: bool,
 ) -> impl IntoView {
     let state: AppState = expect_context();
     let store: ProfileStore = expect_context();
@@ -1384,6 +1450,6 @@ pub fn render_timeline_item(
             }
             .into_any()
         }
-        UiTimelineItemKind::Event(_) => render_timeline_event(store, &room_id, &user_id, item_sig, show_header).into_any()
+        UiTimelineItemKind::Event(_) => render_timeline_event(store, &room_id, &user_id, item_sig, show_header, preview).into_any()
     }
 }
