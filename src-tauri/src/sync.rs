@@ -1,6 +1,6 @@
 use matrix_sdk::{
     config::SyncSettings,
-    ruma::{events::space::parent::SyncSpaceParentEvent, presence::PresenceState},
+    ruma::{presence::PresenceState},
     Client as MatrixClient, SessionChange,
 };
 use std::pin::pin;
@@ -57,19 +57,7 @@ pub async fn attach_callbacks(client: &MatrixClient, handle: &AppHandle) -> Resu
         }
     });
 
-    let handle_clone = handle.clone();
-    let id_clone = own_id.clone();
-
     let rooms = client.rooms();
-
-    let rooms_clone = rooms.clone();
-    client.add_event_handler(async move |_: SyncSpaceParentEvent| {
-        if let Err(e) =
-            send_sidebar(&rooms_clone, &handle_clone, &id_clone).await
-        {
-            log::error!("Failed to update sidebar on space parent event: {:?}", e);
-        }
-    });
 
     send_sidebar(&rooms, handle, &own_id).await?;
     send_user_to_frontend(handle, client).await?;
@@ -85,7 +73,6 @@ pub async fn attach_callbacks(client: &MatrixClient, handle: &AppHandle) -> Resu
     tauri::async_runtime::spawn(async move {
         let sync_settings = SyncSettings::default()
             .set_presence(PresenceState::Online)
-            .ignore_timeout_on_first_sync(true)
             .timeout(std::time::Duration::from_secs(30));
 
         let sync_stream = client_sync_clone.sync_stream(sync_settings).await;

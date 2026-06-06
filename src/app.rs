@@ -191,7 +191,6 @@ pub fn App() -> impl IntoView {
 
     Effect::new(move |_| {
         if let Some(update) = call_member_update.get() {
-            log::debug!("Received call member update: {:?}", update);
             state.update_call_members(update);
         }
     });
@@ -234,7 +233,7 @@ pub fn App() -> impl IntoView {
             state.sidebar_state.set(new_state);
             state.update_active_room();
 
-            if state.current_window.get() == CurrentWindow::Loading {
+            if state.current_window.get_untracked() == CurrentWindow::Loading {
                 state.current_window.set(CurrentWindow::Home);
             }
         }

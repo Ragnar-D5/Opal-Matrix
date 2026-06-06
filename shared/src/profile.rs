@@ -49,8 +49,7 @@ pub struct UserProfile {
 impl UserProfile {
     pub fn get_name(&self) -> String {
         self.display_name
-            .as_ref()
-            .cloned()
+            .clone()
             .unwrap_or_else(|| self.user_id.clone())
     }
 

@@ -180,6 +180,11 @@ pub async fn send_sidebar(
         server_rooms,
     };
 
+    log::debug!("Emitting sidebar update with {} top-level servers, {} orphaned rooms and {} DMs",
+        sidebar_state.top_level_servers.len(),
+        sidebar_state.orphaned_rooms.len(),
+        sidebar_state.dms.len(),
+    );
     handle.emit("sidebar_update", sidebar_state)?;
 
     Ok(())
