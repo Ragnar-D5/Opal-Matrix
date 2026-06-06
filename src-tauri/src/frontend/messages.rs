@@ -234,10 +234,10 @@ fn walk_node(
                         room_id: RoomIdFormat::Id(id.to_string()),
                         display_name: display_text.clone(),
                     });
-                    body.push_str("@room");
+                    body.push_str("#room");
                     mentions.room = true;
                     formatted.push_str(&format!(
-                        "<a href=\"https://matrix.to/#/{}\">@{}</a>",
+                        "<a href=\"https://matrix.to/#/{}\">{}</a>",
                         id, display_text
                     ));
                 } else if data_type == "user_mention" {

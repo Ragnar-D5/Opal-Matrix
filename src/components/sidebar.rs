@@ -19,9 +19,6 @@ pub trait RoomNodeExt {
     fn avatar_div<T: AsRef<str> + 'static>(&self, size_str: T) -> impl IntoView + 'static;
     fn room_id(&self) -> String;
     fn kind(&self) -> RoomKind;
-
-    // Can't use clone since then there would be multiple clone functions
-    fn duplicate(&self) -> Self;
 }
 
 impl RoomNodeExt for RoomNode {
@@ -46,10 +43,6 @@ impl RoomNodeExt for RoomNode {
     fn kind(&self) -> RoomKind {
         self.kind.clone()
     }
-
-    fn duplicate(&self) -> Self {
-        self.clone()
-    }
 }
 
 impl RoomNodeExt for Option<RoomNode> {
@@ -67,10 +60,6 @@ impl RoomNodeExt for Option<RoomNode> {
 
     fn kind(&self) -> RoomKind {
         self.as_ref().map(|node| node.kind()).unwrap_or_default()
-    }
-
-    fn duplicate(&self) -> Self {
-        self.clone()
     }
 }
 
@@ -171,14 +160,14 @@ pub fn IndicatorPill(
 }
 
 #[allow(dead_code)]
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub enum CutoutBadgeContent {
     Number(u64),
     Text(String),
     Icon(IconData),
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub struct CutoutBadgeCorner {
     pub fg_color: String,
     pub bg_color: String,
@@ -289,9 +278,9 @@ pub fn ServerIcon(server: impl RoomNodeExt) -> impl IntoView {
 
     let avatar_content = server.avatar_div("40px");
 
-    let server = server.duplicate();
+    let kind = server.kind();
     let tr_corner = move || {
-        if let RoomKind::Space { all_children, .. } = server.kind() {
+        if let RoomKind::Space { all_children, .. } = kind.clone() {
             let user_ids_in_calls = state.get_call_members_in_rooms(all_children.clone());
 
             if !user_ids_in_calls.is_empty() {
@@ -334,7 +323,7 @@ pub fn ServerIcon(server: impl RoomNodeExt) -> impl IntoView {
             <div class="relative w-10 h-10">
                 <CutoutBadge
                     bottom_right=move || br_corner()
-                    top_right=tr_corner()
+                    top_right=move || tr_corner()
                     class="justify-center flex"
                 >
                     <div

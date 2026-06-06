@@ -24,6 +24,7 @@ pub enum MenuType {
     None,
     UserAutocomplete { filter: String },
     CommandAutocomplete { filter: String },
+    RoomAutocomplete { filter: String },
 }
 
 impl MenuType {
@@ -369,6 +370,48 @@ impl RenderMenuRow for Command {
     }
 }
 
+impl RenderMenuRow for RoomProfile {
+    fn id(&self) -> String {
+        self.room_id.clone()
+    }
+
+    fn render_row(self, _: String, _: HtmlDivElement, idx: usize) -> impl IntoView {
+        let selected_index: RwSignal<usize> = expect_context();
+
+        view! {
+            <button
+                class="flex flex-row justify-center items-center rounded-(--ui-border-radius) cursor-pointer mx-(--gap) px-(--gap) py-1"
+                class=("bg-(--ui-hover-bg)", move || selected_index.get() == idx)
+            >
+                <div class="flex flex-col">
+                    <span class="text-start text-sm text-normal">{self.get_name()}</span>
+                    <span
+                        class="text-start"
+                        class=("text-(--ui-hover-color)", move || idx == selected_index.get())
+                        class=("text-(--ui-base-color)", move || idx != selected_index.get())
+                    >
+                        {self.canonical_alias.clone().unwrap_or_default()}
+                    </span>
+                </div>
+            </button>
+        }
+    }
+
+    fn match_fields() -> Vec<fn(&Self) -> Option<String>> {
+        vec![
+            |room| room.name.clone(),
+            |room| room.canonical_alias.clone(),
+            |room| {
+                if room.aliases.is_empty() {
+                    None
+                } else {
+                    Some(room.aliases.join(" "))
+                }
+            },
+        ]
+    }
+}
+
 #[component]
 pub fn SelectionMenu(menu: RwSignal<MenuType>, input_ref: NodeRef<Div>) -> impl IntoView {
     let state: AppState = expect_context();
@@ -376,6 +419,7 @@ pub fn SelectionMenu(menu: RwSignal<MenuType>, input_ref: NodeRef<Div>) -> impl 
 
     let mention_matches: RwSignal<Vec<MemberProfile>> = expect_context();
     let command_matches: RwSignal<Vec<Command>> = expect_context();
+    let room_matches: RwSignal<Vec<RoomProfile>> = expect_context();
 
     let matcher = StoredValue::new(Matcher::new(Config::DEFAULT));
 
@@ -391,6 +435,8 @@ pub fn SelectionMenu(menu: RwSignal<MenuType>, input_ref: NodeRef<Div>) -> impl 
             .unwrap_or_default()
     });
 
+    let room_resource = Memo::new(move |_| state.get_room_profiles_in_active_server());
+
     Effect::new(move |_| {
         let mut m = matcher.get_value();
 
@@ -404,6 +450,9 @@ pub fn SelectionMenu(menu: RwSignal<MenuType>, input_ref: NodeRef<Div>) -> impl 
                     commands_resource.get().unwrap_or_default(),
                     &mut m,
                 ));
+            }
+            MenuType::RoomAutocomplete { filter } => {
+                room_matches.set(filter_items(filter, room_resource.get(), &mut m));
             }
             MenuType::None => {
                 mention_matches.set(Vec::new());
@@ -429,7 +478,21 @@ pub fn SelectionMenu(menu: RwSignal<MenuType>, input_ref: NodeRef<Div>) -> impl 
                 format!("COMMANDS MATCHING /{filter} ({len})")
             }
         }
+        MenuType::RoomAutocomplete { filter, .. } => {
+            let len = room_matches.get().len();
+            if filter.is_empty() {
+                format!("ROOMS ({len})")
+            } else {
+                format!("ROOMS MATCHING #{filter} ({len})")
+            }
+        }
         MenuType::None => String::new(),
+    };
+
+    let no_matches = move || {
+        mention_matches.get().is_empty()
+            && command_matches.get().is_empty()
+            && room_matches.get().is_empty()
     };
 
     let content = move || {
@@ -438,7 +501,9 @@ pub fn SelectionMenu(menu: RwSignal<MenuType>, input_ref: NodeRef<Div>) -> impl 
         };
         let room_id = state.active_room_id().unwrap_or_default();
         let room_id_command = room_id.clone();
+        let room_id_room = room_id.clone();
         let el_command = el.clone();
+        let el_room = el.clone();
 
         view! {
             <span class="text-(--ui-base-color) bold text-xs p-2 bb-4">{title_text()}</span>
@@ -460,6 +525,27 @@ pub fn SelectionMenu(menu: RwSignal<MenuType>, input_ref: NodeRef<Div>) -> impl 
                     command.render_row(room_id, el, idx)
                 }
             />
+            <For
+                each=move || room_matches.get().into_iter().enumerate()
+                key=|(_, room)| room.id()
+                children=move |(idx, room)| {
+                    let room_id = room_id_room.clone();
+                    let el = el_room.clone();
+                    room.render_row(room_id, el, idx)
+                }
+            />
+            {move || {
+                if no_matches() {
+                    view! {
+                        <span class="text-(--ui-base-color) italic text-center p-4">
+                            "No matches"
+                        </span>
+                    }
+                        .into_any()
+                } else {
+                    ().into_any()
+                }
+            }}
         }
         .into_any()
     };
@@ -467,9 +553,9 @@ pub fn SelectionMenu(menu: RwSignal<MenuType>, input_ref: NodeRef<Div>) -> impl 
     view! {
         <div
             class="mb-(--gap) absolute bottom-full left-4 right-4 bottom-(--gap) bg-(--ui-floating-hover-bg) backdrop-blur-2xl rounded-(--ui-border-radius) border border-(--tile-border-color) flex flex-col text-xs pb-(--gap) max-h-100 overflow-y-auto"
-            class:hidden=move || menu.get().is_none()
+            class:hidden=move || menu.get().is_none() || no_matches()
         >
-            {move || content}
+            {content}
         </div>
     }.into_any()
 }

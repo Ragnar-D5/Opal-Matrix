@@ -729,9 +729,11 @@ fn ChatInput() -> impl IntoView {
 
     let mention_matches = RwSignal::new(Vec::new());
     let command_matches = RwSignal::new(Vec::new());
+    let room_matches = RwSignal::new(Vec::new());
 
     provide_context(mention_matches);
     provide_context(command_matches);
+    provide_context(room_matches);
 
     let input_ref: NodeRef<Div> = NodeRef::new();
 
@@ -751,10 +753,10 @@ fn ChatInput() -> impl IntoView {
 
                 if let Some(filter) = get_active_filter(&el, caret_pos, '@') {
                     menu.set(MenuType::UserAutocomplete { filter });
-                    return;
-                }
-                if let Some(filter) = get_active_filter(&el, caret_pos, '/') {
+                } else if let Some(filter) = get_active_filter(&el, caret_pos, '/') {
                     menu.set(MenuType::CommandAutocomplete { filter });
+                } else if let Some(filter) = get_active_filter(&el, caret_pos, '#') {
+                    menu.set(MenuType::RoomAutocomplete { filter });
                 } else {
                     menu.set(MenuType::None);
                 }
@@ -939,6 +941,7 @@ fn ChatInput() -> impl IntoView {
                                 selected_index,
                                 mention_matches,
                                 command_matches,
+                                room_matches,
                                 is_empty,
                                 input_info,
                                 attachments,

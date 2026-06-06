@@ -90,6 +90,7 @@ impl RoomProfile {
     pub fn get_name(&self) -> String {
         self.name
             .clone()
+            .map(|n| format!("#{n}"))
             .or_else(|| self.canonical_alias.clone())
             .or_else(|| self.aliases.first().cloned())
             .unwrap_or_else(|| self.room_id.clone())

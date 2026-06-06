@@ -68,7 +68,7 @@ pub fn render_profile_name<T: AsRef<str>>(
     color: Hsl,
     font_size_str: T,
 ) -> impl IntoView {
-    let font_size_str = format!("{}px", font_size_str.as_ref());
+    let font_size_str = font_size_str.as_ref().to_string();
 
     view! {
         <span

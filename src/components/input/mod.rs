@@ -3,7 +3,7 @@ use leptos::{html::Div, prelude::*, tachys::dom::document};
 use log::warn;
 use regex::Regex;
 use shared::commands::Command;
-use shared::profile::MemberProfile;
+use shared::profile::{MemberProfile, RoomProfile};
 use wasm_bindgen::JsCast;
 use web_sys::{HtmlDivElement, HtmlElement, KeyboardEvent};
 use web_sys::{Node, window};
@@ -219,6 +219,7 @@ type Signals = (
     RwSignal<usize>,
     RwSignal<Vec<MemberProfile>>,
     RwSignal<Vec<Command>>,
+    RwSignal<Vec<RoomProfile>>,
     RwSignal<bool>,
     RwSignal<Option<ChatInputInfo>>,
     RwSignal<Vec<Attachment>>,
@@ -231,7 +232,7 @@ pub fn handle_keydown(
     store: ProfileStore,
     signals: Signals,
 ) {
-    let (menu, selected_index, mention_matches, command_matches, is_empty, input_info, attachments) =
+    let (menu, selected_index, mention_matches, command_matches, room_matches,  is_empty, input_info, attachments) =
         signals;
     let Some(el) = input_ref.get() else { return };
 
@@ -248,6 +249,8 @@ pub fn handle_keydown(
             if current_menu != MenuType::None {
                 let mentions = mention_matches.get_untracked();
                 let commands = command_matches.get_untracked();
+                let rooms = room_matches.get_untracked();
+
 
                 let selected = match current_menu {
                     MenuType::UserAutocomplete { .. } => {
@@ -259,6 +262,13 @@ pub fn handle_keydown(
                     }
                     MenuType::CommandAutocomplete { .. } => {
                         let Some(selected) = commands.get(selected_index.get()) else {
+                            return;
+                        };
+
+                        SelectedItem::from(selected.clone())
+                    }
+                    MenuType::RoomAutocomplete { .. } => {
+                        let Some(selected) = rooms.get(selected_index.get()) else {
                             return;
                         };
 
@@ -334,6 +344,7 @@ pub fn handle_keydown(
             let len = match current_menu {
                 MenuType::UserAutocomplete { .. } => mention_matches.get_untracked().len(),
                 MenuType::CommandAutocomplete { .. } => command_matches.get_untracked().len(),
+                MenuType::RoomAutocomplete { .. } => room_matches.get_untracked().len(),
                 MenuType::None => return,
             };
 
@@ -362,6 +373,20 @@ pub fn handle_keydown(
                     });
                 }
                 (MenuType::CommandAutocomplete { .. }, "ArrowDown") => {
+                    selected_index.update(|idx| {
+                        *idx = (*idx + 1) % len;
+                    });
+                }
+                (MenuType::RoomAutocomplete { .. }, "ArrowUp") => {
+                    selected_index.update(|idx| {
+                        if *idx == 0 {
+                            *idx = len - 1;
+                        } else {
+                            *idx -= 1;
+                        }
+                    });
+                }
+                (MenuType::RoomAutocomplete { .. }, "ArrowDown") => {
                     selected_index.update(|idx| {
                         *idx = (*idx + 1) % len;
                     });

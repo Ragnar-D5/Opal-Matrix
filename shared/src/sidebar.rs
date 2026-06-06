@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use colorsys::Hsl;
 use serde::{Deserialize, Serialize};
 
-use crate::{account_data::ServerOrder, get_color};
+use crate::{account_data::ServerOrder, get_color, profile::RoomProfile};
 
 #[derive(Debug, Serialize, Clone, Deserialize, PartialEq)]
 pub struct UserDevice {
@@ -39,6 +39,17 @@ pub struct RoomNode {
     pub aliases: Vec<String>,
 
     pub kind: RoomKind,
+}
+
+impl From<RoomNode> for RoomProfile {
+    fn from(node: RoomNode) -> Self {
+        RoomProfile {
+            room_id: node.room_id,
+            name: node.name,
+            canonical_alias: node.canonical_alias,
+            aliases: node.aliases,
+        }
+    }
 }
 
 impl RoomNode {

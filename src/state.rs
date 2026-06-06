@@ -4,10 +4,7 @@ use leptos::task::spawn_local;
 use log::error;
 use serde_json::json;
 use shared::{
-    account_data::{Breadcrumbs, ServerOrder},
-    sidebar::{NotificationCounts, RoomKind, RoomNode, SidebarState, UserDevice},
-    timeline::UiMediaSource,
-    profile::{MemberProfile, PresenceInfo, UserProfile},
+    account_data::{Breadcrumbs, ServerOrder}, profile::{MemberProfile, PresenceInfo, RoomProfile, UserProfile}, sidebar::{NotificationCounts, RoomKind, RoomNode, SidebarState, UserDevice}, timeline::UiMediaSource
 };
 
 use crate::{
@@ -106,6 +103,25 @@ impl AppState {
             log::debug!("Reordered servers: {} -> {}", source_id, target_id);
             self.save_server_order();
         }
+    }
+
+    pub fn get_room_profiles_in_active_server(&self) -> Vec<RoomProfile> {
+        let Some(server_id) = self.active_server_id.get_untracked() else {
+            return Vec::new();
+        };
+
+        let sidebar_state = self.sidebar_state.get_untracked();
+
+        let Some(RoomNode { kind: RoomKind::Space { all_children, .. }, .. }) = sidebar_state.server_rooms.get(&server_id) else {
+             return Vec::new();
+        };
+
+        sidebar_state
+            .server_rooms
+            .clone()
+            .into_iter()
+            .filter_map(|(room_id, room)| all_children.contains(&room_id).then_some(RoomProfile::from(room)))
+            .collect()
     }
 
     /// Update the active room node and its id together, firing each signal only

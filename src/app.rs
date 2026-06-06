@@ -199,10 +199,6 @@ pub fn App() -> impl IntoView {
 
     Effect::new(move |_| {
         if let Some(mut new_state) = sidebar_update_event.get() {
-            log::debug!(
-                "Received top level servers: {:#?}",
-                new_state.top_level_servers
-            );
             let current_order = state.server_order.get_untracked();
 
             let order_map: HashMap<&String, usize> = current_order
@@ -222,9 +218,6 @@ pub fn App() -> impl IntoView {
             let final_order = new_state.top_level_servers.clone();
 
             if final_order != current_order.servers {
-                // Only update in-memory order; don't save — saving happens only
-                // after data_initialized is true (i.e., after initial load) and
-                // only when the user explicitly reorders via drag-and-drop.
                 state.server_order.set(ServerOrder {
                     servers: final_order,
                 });
@@ -290,16 +283,6 @@ pub fn App() -> impl IntoView {
 
             match get_server_order().await {
                 Ok(order) => {
-                    log::debug!(
-                        "Fetched server order: {:#?}",
-                        state
-                            .sidebar_state
-                            .get_untracked()
-                            .server_rooms
-                            .iter()
-                            .filter(|r| order.servers.contains(r.0))
-                            .collect::<Vec<_>>()
-                    );
                     state.server_order.set(order);
                     state.apply_server_order();
                 }
