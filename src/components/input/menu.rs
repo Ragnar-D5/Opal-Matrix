@@ -3,10 +3,10 @@ use crate::{
         input::{get_caret_position, get_node_and_offset},
         presence::PresenceBadge,
         text::RichTextExt,
-        user_profile::{room_as_profile, MemberProfileExt, RoomProfileExt},
+        user_profile::{MemberProfileExt, RoomProfileExt},
     },
     state::{AppState, ProfileStore},
-    tauri_functions::{get_commands, get_members_for_room},
+    tauri_functions::get_commands,
 };
 use leptos::html::Div;
 use leptos::prelude::*;
@@ -372,25 +372,16 @@ impl RenderMenuRow for Command {
 #[component]
 pub fn SelectionMenu(menu: RwSignal<MenuType>, input_ref: NodeRef<Div>) -> impl IntoView {
     let state: AppState = expect_context();
+    let store: ProfileStore = expect_context();
 
     let mention_matches: RwSignal<Vec<MemberProfile>> = expect_context();
     let command_matches: RwSignal<Vec<Command>> = expect_context();
 
     let matcher = StoredValue::new(Matcher::new(Config::DEFAULT));
 
-    let members_resource = LocalResource::new(move || {
-        let room_id = state.active_room_id();
-        async move {
-            if let Some(rid) = room_id {
-                let mut res = get_members_for_room(&rid).await.unwrap_or_default();
-                res.insert(0, room_as_profile(rid));
-                res.sort_by_key(|a| a.get_name());
-
-                res
-            } else {
-                Vec::new()
-            }
-        }
+    let members_resource = Memo::new(move |_| {
+        let room_id = state.active_room_id().unwrap_or_default();
+        store.clone().get_members(&room_id)
     });
 
     let commands_resource = LocalResource::new(move || async move {
@@ -405,11 +396,7 @@ pub fn SelectionMenu(menu: RwSignal<MenuType>, input_ref: NodeRef<Div>) -> impl 
 
         match menu.get() {
             MenuType::UserAutocomplete { filter, .. } => {
-                mention_matches.set(filter_items(
-                    filter,
-                    members_resource.get().unwrap_or_default(),
-                    &mut m,
-                ));
+                mention_matches.set(filter_items(filter, members_resource.get(), &mut m));
             }
             MenuType::CommandAutocomplete { filter, .. } => {
                 command_matches.set(filter_items(

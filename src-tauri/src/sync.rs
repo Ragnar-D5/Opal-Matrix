@@ -8,19 +8,17 @@ use std::sync::{Arc, Mutex};
 use tauri::{async_runtime::spawn, AppHandle};
 
 use crate::{
-    frontend::{
+    TauriError, frontend::{
         presence::handle_presences,
-        profiles::on_member_update,
+        profiles::{on_member_update, send_all_members},
         sidebar::{
             extract_call_memberships, handle_room_updates, send_call_member_updates, send_sidebar,
         },
-    },
-    matrix_api::{
-        keyring::{save_session, StoredSession},
+    }, matrix_api::{
+        keyring::{StoredSession, save_session},
         matrixrtc::{cleanup_ghost_calls, handle_to_device_messages},
-        profile::{client_user_profile_event_handle, send_user_to_frontend, ProfileDebounce},
-    },
-    TauriError,
+        profile::{ProfileDebounce, client_user_profile_event_handle, send_user_to_frontend},
+    }
 };
 use futures_util::StreamExt;
 
@@ -59,23 +57,25 @@ pub async fn attach_callbacks(client: &MatrixClient, handle: &AppHandle) -> Resu
         }
     });
 
-    let client_sync_clone = client.clone();
     let handle_clone = handle.clone();
     let id_clone = own_id.clone();
 
+    let rooms = client.rooms();
+
+    let rooms_clone = rooms.clone();
     client.add_event_handler(async move |_: SyncSpaceParentEvent| {
         if let Err(e) =
-            send_sidebar(&client_sync_clone.joined_rooms(), &handle_clone, &id_clone).await
+            send_sidebar(&rooms_clone, &handle_clone, &id_clone).await
         {
             log::error!("Failed to update sidebar on space parent event: {:?}", e);
         }
     });
 
-    send_sidebar(&client.joined_rooms(), handle, &own_id).await?;
-
+    send_sidebar(&rooms, handle, &own_id).await?;
     send_user_to_frontend(handle, client).await?;
+    send_all_members(handle, &rooms).await?;
 
-    if let Some(data) = extract_call_memberships(&client.rooms()).await
+    if let Some(data) = extract_call_memberships(&rooms).await
         && let Err(e) = send_call_member_updates(handle, data) {
             log::error!("Failed to send call member updates: {:?}", e);
         }

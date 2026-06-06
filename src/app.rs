@@ -105,7 +105,8 @@ pub fn App() -> impl IntoView {
         }
     });
 
-    let profile_update: ReadSignal<Option<MemberProfile>> = use_tauri_event("member_update");
+    let profile_updates: ReadSignal<Option<HashMap<String, Vec<MemberProfile>>>> =
+        use_tauri_event("member_updates");
 
     Effect::new(move |_| {
         let room_id = state.active_room_id();
@@ -118,10 +119,14 @@ pub fn App() -> impl IntoView {
     });
 
     Effect::new(move |_| {
-        if let Some(profile) = profile_update.get() {
-            store_for_profiles
-                .get_member_profile(&profile.room_id, &profile.profile.user_id)
-                .set(Some(profile.clone()));
+        if let Some(updates) = profile_updates.get() {
+            for (room_id, profiles) in updates {
+                for profile in profiles {
+                    store_for_profiles
+                        .get_member_profile(&room_id, &profile.profile.user_id)
+                        .set(profile.clone());
+                }
+            }
         }
     });
 

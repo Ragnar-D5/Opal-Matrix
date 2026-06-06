@@ -157,14 +157,13 @@ pub async fn send_sidebar(
     let mut top_level_servers = Vec::new();
 
     for room_id in channels.keys() {
-        if channels[room_id].is_space() && !all_children.contains(room_id) {
-            if let Some(node) =
+        if channels[room_id].is_space() && !all_children.contains(room_id)
+            && let Some(node) =
                 build_async_node(room_id, &channels, &ordered_parent_to_children, &mut server_rooms).await
             {
                 top_level_servers.push(node.room_id.clone());
                 server_rooms.insert(node.room_id.clone(), node);
             }
-        }
     }
 
     let mut orphaned_rooms = Vec::new();

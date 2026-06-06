@@ -13,8 +13,8 @@ use crate::{
         user_profile::{MemberProfileExt},
     },
     hooks::use_tauri_event,
-    state::{AppState, MemberProfileHandle, ProfileStore, RoomHeader},
-    tauri_functions::{get_members_for_room, get_timeline, pick_files, scroll_up},
+    state::{AppState, ProfileStore, RoomHeader},
+    tauri_functions::{get_timeline, pick_files, scroll_up},
 };
 
 use crate::components::emoji_picker::pick_emoji;
@@ -26,10 +26,7 @@ use phosphor_leptos::{
 use leptos::{ev, html::Div, prelude::*, task::spawn_local};
 use leptos_use::{UseIntersectionObserverReturn, use_event_listener, use_intersection_observer};
 use shared::{
-    api::{FileMetadata, UiAttachmentSource},
-    sidebar::RoomKind,
-    timeline::{DetailState, EventContent, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind},
-    profile::PresenceStatus,
+    api::{FileMetadata, UiAttachmentSource}, profile::{MemberProfile, PresenceInfo}, sidebar::RoomKind, timeline::{DetailState, EventContent, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind}
 };
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
@@ -343,19 +340,16 @@ fn ChatHeader(
                             {
                                 view! {
                                     {move || {
-                                        if let Some(profile) = profile_sig.get() {
-                                            let presence = clone
-                                                .clone()
-                                                .get_presence(profile.user_id());
-                                            view! {
-                                                <PresenceBadge presence=presence size=14.0>
-                                                    {profile.render_icon("30px")}
-                                                </PresenceBadge>
-                                            }
-                                                .into_any()
-                                        } else {
-                                            ().into_any()
+                                        let profile = profile_sig.get();
+                                        let presence = clone
+                                            .clone()
+                                            .get_presence(profile.user_id());
+                                        view! {
+                                            <PresenceBadge presence=presence size=14.0>
+                                                {profile.render_icon("30px")}
+                                            </PresenceBadge>
                                         }
+                                            .into_any()
                                     }}
                                 }
                             }
@@ -1118,9 +1112,7 @@ fn ChatInfo(header: Memo<RoomHeader>) -> impl IntoView {
         match header.get() {
             RoomHeader::DM(profile_sig) => {
                 let banner_color = profile_sig
-                    .get()
-                    .map(|profile| profile.get_color().to_css_string())
-                    .unwrap_or_else(|| "transparent".to_string());
+                    .get().get_color().to_css_string();
                 let banner_height = 108.0;
                 let icon_size = 70.0;
                 let icon_radius = icon_size / 2.0;
@@ -1147,18 +1139,15 @@ fn ChatInfo(header: Memo<RoomHeader>) -> impl IntoView {
 
                         <div class="absolute top-[73px] left-4">
                             {move || {
-                                if let Some(profile) = profile_sig_icon.get() {
-                                    let presence = store_clone.get_presence(profile.user_id());
-                                    let size_str = format!("{icon_size}px");
-                                    view! {
-                                        <PresenceBadge presence=presence size=25.0>
-                                            {profile.render_icon(size_str)}
-                                        </PresenceBadge>
-                                    }
-                                        .into_any()
-                                } else {
-                                    ().into_any()
+                                let profile = profile_sig_icon.get();
+                                let presence = store_clone.get_presence(profile.user_id());
+                                let size_str = format!("{icon_size}px");
+                                view! {
+                                    <PresenceBadge presence=presence size=25.0>
+                                        {profile.render_icon(size_str)}
+                                    </PresenceBadge>
                                 }
+                                    .into_any()
                             }}
                         </div>
 
@@ -1192,148 +1181,129 @@ fn MemberList() -> impl IntoView {
     let state: AppState = expect_context();
     let store: ProfileStore = expect_context();
 
-    let members = LocalResource::new(move || {
-        let store = store.clone();
+    let room_id = state.active_room_id_untracked().unwrap_or_default();
 
-        async move {
-            let Some(room_id) = state.active_room_id() else {
-                return (Vec::new(), Vec::new());
-            };
+    let members_store = store.clone();
+    let members = Memo::new(move |_| members_store.clone().get_member_signals(&room_id));
 
-            let mut online = Vec::new();
-            let mut offline = Vec::new();
+    let online_store = store.clone();
+    let online_view = move || {
+        let members = members.get();
 
-            let Ok(members) = get_members_for_room(&room_id).await else {
-                return (Vec::new(), Vec::new());
-            };
+        let mut elements: Vec<(String, ArcRwSignal<MemberProfile>, ArcRwSignal<PresenceInfo>)> = members.into_iter().filter_map(|(user_id, member_sig)| {
+            let presence = online_store.get_presence(&user_id);
 
-            members.iter().for_each(|member| {
-                let user_id = member.user_id();
-                let presence = store.get_presence(user_id);
+            if !presence.get().is_offline() {
+                let name = member_sig.get().get_name();
+                Some((name, member_sig, presence))
+            } else {
+                None
+            }
+        }).collect();
 
-                let el = (
-                    MemberProfileHandle {
-                        user_id: user_id.to_string(),
-                        profile: store.get_member_profile(&room_id, user_id),
-                    },
-                    presence.clone(),
-                );
+        elements.sort_by_key(|v| v.0.clone());
 
-                if presence.get().status == PresenceStatus::Offline {
-                    offline.push(el);
-                } else {
-                    online.push(el);
-                }
-            });
+        let views: Vec<_> = elements.into_iter().map(|(_, member_sig, presence)| {
+            let profile = member_sig.get();
+            let name_profile = profile.clone();
 
-            (online, offline)
+            view! {
+                <div class="flex items-center gap-2">
+                    <PresenceBadge presence=presence size=15.5>
+                        {profile.render_icon("32px")}
+                    </PresenceBadge>
+                    <span class="text-bright">{name_profile.render_name("16px")}</span>
+                </div>
+            }
+        }).collect();
+
+        let online_i = views.len();
+
+        let number_view = view! { <span class="text-sm text-muted">{format!("{} online", online_i)}</span> }
+                .into_any();
+
+        if online_i > 0 {
+            view! {
+                <div>
+                    {number_view} <div class="flex flex-col gap-2 mt-2">{views.collect_view()}</div>
+                </div>
+            }.into_any()
+        } else {
+            ().into_any()
         }
-    });
+    };
 
-    view! {
-        <div class="flex flex-col gap-2 p-3">
-            {move || {
-                let (online, offline) = members.get().unwrap_or_default();
-                let online_i = online.len();
-                let offline_i = offline.len();
-                let header = view! { <div class="flex flex-row"></div> }.into_any();
-                let online_view = if online_i > 0 {
+    let offline_store = store.clone();
+    let offline_view = move || {
+        let members = members.get();
 
-                    view! {
-                        <h3 class="text-sm text-muted font-semibold">
-                            {move || {
-                                format!("Online — {}", members.get().unwrap_or_default().0.len())
-                            }}
-                        </h3>
+        let mut elements: Vec<(String, ArcRwSignal<MemberProfile>, ArcRwSignal<PresenceInfo>)> = members.into_iter().filter_map(|(user_id, member_sig)| {
+            let presence = offline_store.get_presence(&user_id);
 
-                        <For
-                            each=move || members.get().unwrap_or_default().0
-                            key=|(member, _)| member.user_id.clone()
-                            children=move |(member, presence)| {
-                                let profile_sig = member.profile;
-                                let sig_clone = profile_sig.clone();
+            if presence.get().is_offline() {
+                let name = member_sig.get().get_name();
+                Some((name, member_sig, presence))
+            } else {
+                None
+            }
+        }).collect();
 
-                                view! {
-                                    <div class="flex items-center gap-2">
-                                        {move || {
-                                            if let Some(profile) = profile_sig.get() {
-                                                let presence = presence.clone();
-                                                view! {
-                                                    <PresenceBadge presence=presence size=15.5>
-                                                        {profile.render_icon("32px")}
-                                                    </PresenceBadge>
-                                                }
-                                                    .into_any()
-                                            } else {
-                                                ().into_any()
-                                            }
-                                        }}
-                                        <span class="text-bright">
-                                            {move || sig_clone.get().render_name("16px")}
-                                        </span>
-                                    </div>
-                                }
-                            }
-                        />
+        elements.sort_by_key(|v| v.0.clone());
 
-                        <div class="h-3"></div>
-                    }
-                        .into_any()
-                } else {
-                    ().into_any()
-                };
-                let offline_view = if offline_i > 0 {
+        let views: Vec<_> = elements.into_iter().map(|(_, member_sig, presence)| {
+            let profile = member_sig.get();
+            let name_profile = profile.clone();
 
-                    view! {
-                        <h3 class="text-sm text-muted font-semibold">
-                            {move || {
-                                format!("Offline — {}", members.get().unwrap_or_default().1.len())
-                            }}
-                        </h3>
+            view! {
+                <div class="flex items-center gap-2">
+                    <PresenceBadge presence=presence size=15.5>
+                        {profile.render_icon("32px")}
+                    </PresenceBadge>
+                    <span class="text-bright">{name_profile.render_name("16px")}</span>
+                </div>
+            }
+        }).collect();
 
-                        <For
-                            each=move || members.get().unwrap_or_default().1
-                            key=|(member, _)| member.user_id.clone()
-                            children=move |(member, presence)| {
-                                let profile_sig = member.profile;
-                                let sig_clone = profile_sig.clone();
+        let offline_i = views.len();
 
-                                view! {
-                                    <div class="flex items-center gap-2 opacity-30">
-                                        {move || {
-                                            if let Some(profile) = profile_sig.get() {
-                                                let presence = presence.clone();
-                                                view! {
-                                                    <PresenceBadge presence=presence size=15.5>
-                                                        {profile.render_icon("32px")}
-                                                    </PresenceBadge>
-                                                }
-                                                    .into_any()
-                                            } else {
-                                                ().into_any()
-                                            }
-                                        }}
-                                        <span class="text-bright">
-                                            {move || sig_clone.get().render_name("16px")}
-                                        </span>
-                                    </div>
-                                }
-                            }
-                        />
-                    }
-                        .into_any()
-                } else {
-                    ().into_any()
-                };
+        let number_view = view! { <span class="text-sm text-muted">{format!("{} offline", offline_i)}</span> }
+                .into_any();
 
-                view! {
-                    {header}
-                    {online_view}
-                    {offline_view}
-                }
-                    .into_any()
-            }}
+        if offline_i > 0 {
+            view! {
+                <div>
+                    {number_view} <div class="flex flex-col gap-2 mt-2">{views.collect_view()}</div>
+                </div>
+            }.into_any()
+        } else {
+            ().into_any()
+        }
+    };
 
-        </div>
-    }
+    let header = move || {
+        let members = members.get();
+
+        let mut online_count = 0;
+        let mut offline_count = 0;
+
+        for member in members.keys() {
+            let presence = store.get_presence(member);
+            if !presence.get().is_offline() {
+                online_count += 1;
+            } else {
+                offline_count += 1;
+            }
+        }
+
+        view! {
+            <div class="flex items-center gap-2 justify-center">
+                <div class="w-3 h-3 rounded-full bg-(--online-color)"></div>
+                <span class="text-ms text-(--online-color) pr-5">{online_count}</span>
+                <div class="w-3 h-3 rounded-full bg-(--offline-color)"></div>
+                <span class="text-ms text-(--offline-color)">{offline_count}</span>
+            </div>
+        }
+    };
+
+    view! { <div class="flex flex-col gap-2 p-3">{header} {online_view} {offline_view}</div> }
 }

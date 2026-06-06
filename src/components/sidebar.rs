@@ -809,11 +809,8 @@ pub fn ProfileCard() -> impl IntoView {
         }
 
         if let Some(rid) = room_id {
-            let profile_sig = profile_store.get_member_profile(&rid, &user_id);
-            let val = profile_sig.get();
-            if let Some(profile) = val {
-                current_profile.set(Some(profile));
-            }
+            let profile = profile_store.get_member_profile(&rid, &user_id).get();
+            current_profile.set(Some(profile));
         } else {
             let profile = profile_store.get_user_profile(&user_id).get();
             current_profile.set(Some(MemberProfile {

@@ -16,6 +16,28 @@ pub struct PresenceInfo {
     pub last_active_ago: Option<u64>,
 }
 
+impl PresenceInfo {
+    pub fn is_offline(&self) -> bool {
+        matches!(self.status, PresenceStatus::Offline)
+    }
+
+    pub fn new_online() -> Self {
+        Self {
+            status: PresenceStatus::Online,
+            status_msg: None,
+            last_active_ago: None,
+        }
+    }
+
+    pub fn new_offline() -> Self {
+        Self {
+            status: PresenceStatus::Offline,
+            status_msg: None,
+            last_active_ago: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct UserProfile {
     pub user_id: String,

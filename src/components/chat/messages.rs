@@ -57,9 +57,11 @@ fn ReplyPreview(reply_info: Option<ReplyInfo>, active_room_id: String) -> impl I
     let profile = Memo::new(move |_| {
         if let Some(preview) = preview.get() {
             match &preview.sender {
-                DetailState::Ready(sender) => profile_store
-                    .get_member_profile(&store_room_id, &sender.id)
-                    .get(),
+                DetailState::Ready(sender) => Some(
+                    profile_store
+                        .get_member_profile(&store_room_id, &sender.id)
+                        .get(),
+                ),
                 DetailState::Error(e) => {
                     log::error!("Failed to load sender profile for reply preview: {e}");
                     None
@@ -462,29 +464,24 @@ fn render_reactions(
 
                 let all_pics: Vec<(String, _)> = reactors
                     .iter()
-                    .filter_map(|info| {
-                        store
+                    .map(|info| {
+                        let profile = store
                             .get_member_profile(&prof_room_id, &info.sender_id)
-                            .get()
-                            .map(|p| {
-                                let icon = p.clone().render_icon("20px");
+                            .get();
+                        let icon = profile.clone().render_icon("20px");
 
-                                let wrapped = view! {
-                                    <div
-                                        class="rounded-full ring-2 shrink-0 flex items-center justify-center transition-shadow"
-                                        class=("hover:ring-(--ui-solid-hover-bg)", !contains_user)
-                                        class=("ring-(--ui-solid-bg)", !contains_user)
-                                        class=("ring-(--accent-bg-color)", contains_user)
-                                        class=(
-                                            "group-hover:ring-(--ui-solid-hover-bg)",
-                                            !contains_user,
-                                        )
-                                    >
-                                        {icon}
-                                    </div>
-                                };
-                                (p.get_name(), wrapped.into_any())
-                            })
+                        let wrapped = view! {
+                            <div
+                                class="rounded-full ring-2 shrink-0 flex items-center justify-center transition-shadow"
+                                class=("hover:ring-(--ui-solid-hover-bg)", !contains_user)
+                                class=("ring-(--ui-solid-bg)", !contains_user)
+                                class=("ring-(--accent-bg-color)", contains_user)
+                                class=("group-hover:ring-(--ui-solid-hover-bg)", !contains_user)
+                            >
+                                {icon}
+                            </div>
+                        };
+                        (profile.get_name(), wrapped.into_any())
                     })
                     .collect();
 

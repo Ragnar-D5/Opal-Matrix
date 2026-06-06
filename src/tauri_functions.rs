@@ -2,8 +2,8 @@ use serde_json::json;
 use shared::{
     api::{FileMetadata, LinkPreviewResponse},
     commands::Command,
-    timeline::{UiMediaSource, UiTimelineItem},
     profile::{MemberProfile, UserProfile},
+    timeline::{UiMediaSource, UiTimelineItem},
 };
 
 use crate::app::{call_tauri, call_tauri_no_args};
@@ -113,18 +113,18 @@ pub async fn scroll_up(room_id: &str) -> Result<bool, String> {
     Ok(has_more)
 }
 
-pub async fn get_members_for_room(room_id: &str) -> Result<Vec<MemberProfile>, String> {
-    let args = serde_wasm_bindgen::to_value(&json!({ "room_id": room_id }))
+pub async fn get_member_for_room(room_id: &str, user_id: &str) -> Result<MemberProfile, String> {
+    let args = serde_wasm_bindgen::to_value(&json!({ "room_id": room_id, "user_id": user_id }))
         .map_err(|e| format!("Failed to serialize request: {:?}", e))?;
 
-    let res = call_tauri("get_members_for_room", args)
+    let res = call_tauri("get_member_for_room", args)
         .await
         .map_err(|e| format!("Tauri call failed: {:?}", e))?;
 
-    let members: Vec<MemberProfile> = serde_wasm_bindgen::from_value(res)
+    let member: MemberProfile = serde_wasm_bindgen::from_value(res)
         .map_err(|e| format!("Failed to parse response: {:?}", e))?;
 
-    Ok(members)
+    Ok(member)
 }
 
 pub async fn toggle_reaction(room_id: &str, event_id: &str, reaction: &str) -> Result<(), String> {
