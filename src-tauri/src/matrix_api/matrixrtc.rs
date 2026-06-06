@@ -513,24 +513,7 @@ pub(crate) async fn leave_matrixrtc_call(
     Ok(())
 }
 
-use matrix_sdk::ruma::events::macros::EventContent;
 use serde::{Deserialize, Serialize};
-
-#[derive(Clone, Debug, Deserialize, Serialize, EventContent)]
-#[ruma_event(type = "io.element.call.encryption_keys", kind = ToDevice)]
-pub struct RtcEncryptionKeyEventContent {
-    pub room_id: matrix_sdk::ruma::OwnedRoomId,
-    /// The `member.id` from the target recipient's `m.rtc.member` event
-    pub member_id: String,
-    pub media_key: MediaKey,
-    pub version: String,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct MediaKey {
-    pub index: i32,
-    pub key: String, // Base64 encoded 32-byte key
-}
 
 async fn send_encryption_keys(
     client: Client,
@@ -572,25 +555,26 @@ async fn send_encryption_keys(
             continue;
         }
 
-        let payload = RtcEncryptionKeyEventContent {
-            room_id: room.room_id().to_owned(),
-            member_id: content.device_id.to_string(),
-            media_key: MediaKey {
+        let device = match client.encryption().get_device(sender, &content.device_id).await {
+            Ok(opt) => {match opt {Some(device) => device, None => {info!("The device {} of user {} is in the call, but not logged in. Skipping in call encryption key distribution.", content.device_id, sender); continue}}},
+            Err(e) => {error!("Error while getting device {} for user {} from crypto store: {e}", content.device_id, sender); continue}
+        };
+
+        let payload = EncryptionKeysEventContent {
+            room_id: room.room_id().to_string(),
+            member: CallMemberInfo { claimed_device_id: device.device_id().to_string(), id: "".to_string() }, // correct the id field
+            keys: EncryptionKeysInfo {
                 index: index,
                 key: key.to_string(),
             },
-            version: "0".to_string(),
+            session: CallSessionInfo { application: "m.call".to_string(), call_id: "".to_string(), scope: "m.room".to_string() },
+            sent_ts: MilliSecondsSinceUnixEpoch::now()
         };
 
         let json_str = serde_json::to_string(&payload).expect("Failed to serialize payload");
 
         let raw_payload: Raw<AnyToDeviceEventContent> =
             serde_json::from_str(&json_str).expect("Failed to create Raw event");
-
-        let device = match client.encryption().get_device(sender, &content.device_id).await {
-            Ok(opt) => {match opt {Some(device) => device, None => {info!("The device {} of user {} is in the call, but not logged in. Skipping in call encryption key distribution.", content.device_id, sender); continue}}},
-            Err(e) => {error!("Error while getting device {} for user {} from crypto store: {e}", content.device_id, sender); continue}
-        };
 
         client.encryption().encrypt_and_send_raw_to_device(vec![&device], "io.element.call.encryption_keys", raw_payload, Default::default()).await.map_err(|e| format!("Error when sending call encryption key to device {} of user {}: {e}", content.device_id, sender))?;
     }
@@ -716,13 +700,13 @@ pub struct EncryptionKeysEventContent {
     pub keys: EncryptionKeysInfo,
     pub member: CallMemberInfo,
     pub room_id: String,
-    pub sent_ts: u64,
+    pub sent_ts: MilliSecondsSinceUnixEpoch,
     pub session: CallSessionInfo,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct EncryptionKeysInfo {
-    pub index: u32,
+    pub index: i32,
     pub key: String,
 }
 
