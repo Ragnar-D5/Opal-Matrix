@@ -41,7 +41,7 @@ livekit = { version = "0.7.42", features = ["native-tls"] }
 log = "0.4.29"
 matrix-sdk = {
   version = "0.17.0",
-  features = ["anyhow", "e2e-encryption", "sqlite"]
+  features = ["anyhow", "e2e-encryption", "sqlite", "experimental-send-custom-to-device"]
 }
 matrix-sdk-ui = "0.17.0"
 mime = "0.3.17"
