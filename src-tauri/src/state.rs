@@ -107,4 +107,4 @@ impl Default for MediaManager {
 
 use livekit::Room as LiveKitRoom;
 
-pub type LiveKitRoomManager = Arc<Mutex<HashMap<String, LiveKitRoom>>>;
+pub type LiveKitRoomManager = Arc<Mutex<HashMap<String, (LiveKitRoom, Uuid)>>>;

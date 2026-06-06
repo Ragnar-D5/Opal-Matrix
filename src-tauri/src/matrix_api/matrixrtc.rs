@@ -7,6 +7,7 @@ use matrix_sdk::deserialized_responses::ProcessedToDeviceEvent;
 use matrix_sdk::event_handler::Ctx;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use uuid::Uuid;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use futures::StreamExt;
@@ -273,13 +274,14 @@ pub(crate) async fn join_matrixrtc_call(
     room_options.encryption = e2ee_options;
 
     info!("Connecting to LiveKit room");
+    let call_id = Uuid::new_v4();
     let (livekit_room, mut event_receiver) =
         livekit::Room::connect(service_url, jwt, room_options).await?;
     log::info!("Connected to LiveKit room: {:?}", livekit_room);
 
     // set and send out encryption key after joining but before publishig a track
     if room.encryption_state().is_encrypted() {
-        let mut raw_key = [0u8; 32];
+        let mut raw_key = [0u8; 16];
         getrandom::fill(&mut raw_key)
             .map_err(|e| format!("Failed to generate cryptographic key: {}", e))?;
 
@@ -295,8 +297,10 @@ pub(crate) async fn join_matrixrtc_call(
             raw_key.into(),
         );
 
-        send_encryption_keys(client.clone(), &room_id, &local_call_key, 0).await?;
+        send_encryption_keys(client.clone(), &room_id, &local_call_key, 0, call_id).await?;
     }
+
+    livekit_room.e2ee_manager().set_enabled(true);
 
     // publish mic track
     livekit_room
@@ -315,7 +319,7 @@ pub(crate) async fn join_matrixrtc_call(
     livekit_room_manager
         .lock()
         .await
-        .insert(room_id.clone(), livekit_room);
+        .insert(room_id.clone(), (livekit_room, call_id));
 
     // handle events
     tokio::spawn(async move {
@@ -422,7 +426,8 @@ pub async fn handle_call_member_change(
         .expect("Could not aquire LiveKitRoomManager from State. Likely an implementation error.");
     let livekit_room_manager = livekit_room_manager_guard.lock().await;
 
-    let Some(livekit_room) = livekit_room_manager.get(event_room.room_id().as_str()) else {
+    let Some((livekit_room, call_id)) = livekit_room_manager.get(event_room.room_id().as_str())
+    else {
         debug!("Call member room state changed, but you are not part of the call.");
         return;
     };
@@ -435,7 +440,7 @@ pub async fn handle_call_member_change(
             .try_state::<RwLock<Client>>()
             .expect("Could not acquire Client from State. Likely an implementation error.");
 
-        let mut raw_key = [0u8; 32];
+        let mut raw_key = [0u8; 16];
         match getrandom::fill(&mut raw_key) {
             Err(e) => {
                 error!("{e}");
@@ -467,6 +472,7 @@ pub async fn handle_call_member_change(
             event_room.room_id().as_str(),
             &local_call_key,
             new_key_index,
+            call_id.clone(),
         )
         .await
         {
@@ -518,6 +524,7 @@ async fn send_encryption_keys(
     room_id: &str,
     key: &str,
     index: i32,
+    call_id: Uuid,
 ) -> Result<(), TauriError> {
     let room = client
         .get_room(&RoomId::parse(room_id)?)
@@ -586,8 +593,8 @@ async fn send_encryption_keys(
             room_id: room.room_id().to_string(),
             member: CallMemberInfo {
                 claimed_device_id: device.device_id().to_string(),
-                id: "".to_string(),
-            }, // correct the id field
+                id: call_id.to_string(),
+            },
             keys: EncryptionKeysInfo {
                 index: index,
                 key: key.to_string(),
@@ -667,12 +674,12 @@ pub async fn handle_to_device_messages(
     app_handle: AppHandle,
 ) -> Result<(), TauriError> {
     debug!("Handling to-device events");
+    debug!("{:?}", events);
 
     let key_updates = events
         .into_iter()
         .filter_map(|e| {
             if let ProcessedToDeviceEvent::Decrypted { raw, .. } = e {
-                debug!("\n\n\n{:?}\n\n\n", raw.clone());
                 if raw.get_field::<String>("type").ok()?.as_deref()
                     == Some("io.element.call.encryption_keys")
                 {
@@ -699,15 +706,40 @@ pub async fn handle_to_device_messages(
     for update_event in key_updates {
         let room_id = update_event.1.room_id.clone();
 
-        let livekit_room = match guard.get(&room_id).ok_or(
+        let (livekit_room, _call_id) = match guard.get(&room_id).ok_or(
             "Received LiveKit key update but you are not taking part in the coresponding call",
         ) {
-            Ok(room) => room,
+            Ok(tup) => tup,
             Err(e) => {
                 log::info!("{e}");
                 continue;
             }
         };
+        debug!(
+            "New key is {:?}",
+            general_purpose::STANDARD
+                .decode(update_event.1.keys.key.clone())
+                .unwrap()
+        );
+        let hash = livekit_room.e2ee_manager().frame_cryptors();
+        let keys = hash.keys();
+        let latest_key_index = livekit_room
+            .e2ee_manager()
+            .key_provider()
+            .unwrap()
+            .get_latest_key_index();
+        debug!("\n\n\n\nFramecryptors available for {:?}", keys);
+        for key in keys {
+            debug!(
+                "Key associated with {:?} is {:?}",
+                key.0,
+                livekit_room
+                    .e2ee_manager()
+                    .key_provider()
+                    .unwrap()
+                    .get_key(&key.0, latest_key_index)
+            );
+        }
 
         let e2ee_manager = livekit_room.e2ee_manager();
 
@@ -721,7 +753,10 @@ pub async fn handle_to_device_messages(
 
         debug!("\n{:?}\n", e2ee_manager.frame_cryptors().keys());
 
-        let livekit_id = format!("{}:{}", update_event.0, update_event.1.member.id);
+        let livekit_id = format!(
+            "{}:{}",
+            update_event.0, update_event.1.member.claimed_device_id
+        );
 
         key_provider.set_key(
             &From::from(livekit_id.clone()),
@@ -730,10 +765,27 @@ pub async fn handle_to_device_messages(
                 .decode(update_event.1.keys.key)
                 .unwrap(),
         );
-        log::info!(
-            "Sent updates for local call encryption key for {}",
-            livekit_id
-        );
+        log::info!("Saved updated LiveKit encryption key for {}", livekit_id);
+
+        let hash = livekit_room.e2ee_manager().frame_cryptors();
+        let keys = hash.keys();
+        let latest_key_index = livekit_room
+            .e2ee_manager()
+            .key_provider()
+            .unwrap()
+            .get_latest_key_index();
+        debug!("\n\n\n\nFramecryptors available for {:?}", keys);
+        for key in keys {
+            debug!(
+                "Key associated with {:?} is {:?}",
+                key.0,
+                livekit_room
+                    .e2ee_manager()
+                    .key_provider()
+                    .unwrap()
+                    .get_key(&key.0, latest_key_index)
+            );
+        }
     }
 
     debug!("Finished handling to-device events");
