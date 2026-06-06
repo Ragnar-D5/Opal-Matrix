@@ -4,8 +4,6 @@ use livekit::e2ee::EncryptionType;
 use livekit::e2ee::key_provider::{KeyProvider, KeyProviderOptions};
 use log::{debug, error, info, warn};
 use matrix_sdk::deserialized_responses::ProcessedToDeviceEvent;
-use matrix_sdk::ruma::api::client::to_device::send_event_to_device::v3::Request;
-use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -27,9 +25,8 @@ use matrix_sdk::ruma::events::{
     AnyStateEventContent, AnyToDeviceEventContent, Mentions, OriginalSyncStateEvent, StateEventType,
 };
 use matrix_sdk::ruma::serde::Raw;
-use matrix_sdk::ruma::to_device::DeviceIdOrAllDevices;
 use matrix_sdk::ruma::{
-    DeviceId, MilliSecondsSinceUnixEpoch, OwnedTransactionId, OwnedUserId, UserId,
+    DeviceId, MilliSecondsSinceUnixEpoch, UserId,
 };
 use matrix_sdk::{Client, ruma::RoomId};
 use ringbuf::HeapRb;
@@ -549,12 +546,6 @@ async fn send_encryption_keys(
 
     let state_events = room.get_state_events(StateEventType::CallMember).await?;
 
-    let mut messages: BTreeMap<
-        OwnedUserId,
-        BTreeMap<DeviceIdOrAllDevices, Raw<AnyToDeviceEventContent>>,
-    > = BTreeMap::new();
-    let txn_id = OwnedTransactionId::from(uuid::Uuid::new_v4().to_string());
-
     for raw_state in state_events {
         let event = match raw_state.deserialize() {
             Ok(ev) => ev,
@@ -581,8 +572,6 @@ async fn send_encryption_keys(
             continue;
         }
 
-        debug!("Sending new local call encryption key to {} with device {}.", sender, content.device_id);
-
         let payload = RtcEncryptionKeyEventContent {
             room_id: room.room_id().to_owned(),
             member_id: content.device_id.to_string(),
@@ -598,20 +587,15 @@ async fn send_encryption_keys(
         let raw_payload: Raw<AnyToDeviceEventContent> =
             serde_json::from_str(&json_str).expect("Failed to create Raw event");
 
-        messages.entry(sender.to_owned()).or_default().insert(
-            DeviceIdOrAllDevices::DeviceId(content.device_id),
-            raw_payload,
-        );
+        let device = match client.encryption().get_device(sender, &content.device_id).await {
+            Ok(opt) => {match opt {Some(device) => device, None => {info!("The device {} of user {} is in the call, but not logged in. Skipping in call encryption key distribution.", content.device_id, sender); continue}}},
+            Err(e) => {error!("Error while getting device {} for user {} from crypto store: {e}", content.device_id, sender); continue}
+        };
+
+        client.encryption().encrypt_and_send_raw_to_device(vec![&device], "io.element.call.encryption_keys", raw_payload, Default::default()).await.map_err(|e| format!("Error when sending call encryption key to device {} of user {}: {e}", content.device_id, sender))?;
     }
 
-    let request = Request::new_raw("io.element.call.encryption_keys".into(), txn_id, messages);
-
-    client
-        .send(request)
-        .await
-        .map_err(|e| format!("Failed to send To-Device messages: {}", e))?;
-
-    log::info!("Successfully distributed E2EE keys to all call participants.");
+    log::info!("Finished distributing call encryption key to participants.");
 
     Ok(())
 }
