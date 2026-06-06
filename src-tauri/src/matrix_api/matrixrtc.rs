@@ -453,7 +453,11 @@ pub async fn handle_call_member_change(
 
         let new_key_index = key_provider.get_latest_key_index() + 1;
 
-        key_provider.set_shared_key(raw_key.into(), new_key_index);
+        key_provider.set_key(
+            &livekit_room.local_participant().identity(),
+            new_key_index,
+            raw_key.into(),
+        );
         debug!("Updated local call encryption key, now at indey {new_key_index}");
 
         let client = client_state.read().await;
