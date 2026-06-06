@@ -106,7 +106,7 @@ pub fn App() -> impl IntoView {
     });
 
     let profile_updates: ReadSignal<Option<HashMap<String, Vec<MemberProfile>>>> =
-        use_tauri_event("member_updates");
+        use_tauri_event("member_update");
 
     Effect::new(move |_| {
         let room_id = state.active_room_id();
@@ -119,13 +119,15 @@ pub fn App() -> impl IntoView {
     });
 
     Effect::new(move |_| {
-        if let Some(updates) = profile_updates.get() {
-            for (room_id, profiles) in updates {
-                for profile in profiles {
-                    store_for_profiles
-                        .get_member_profile(&room_id, &profile.profile.user_id)
-                        .set(profile.clone());
-                }
+        let Some(update) = profile_updates.get() else {
+            return;
+        };
+
+        for (room_id, profiles) in update {
+            for profile in profiles {
+                store_for_profiles
+                    .get_member_profile(&room_id, &profile.profile.user_id)
+                    .set(profile.clone());
             }
         }
     });
@@ -266,11 +268,6 @@ pub fn App() -> impl IntoView {
                 Ok(js_val) => {
                     let breadcrumbs: Breadcrumbs = serde_wasm_bindgen::from_value(js_val).unwrap();
 
-                    // Restore the active server before setting the room so that
-                    // set_active_room_with_id stores the breadcrumb under the right key.
-                    // Search the sidebar first (reliable even if last_space_ids is stale),
-                    // then fall back to last_space_ids for the case where the sidebar
-                    // hasn't arrived yet.
                     if let Some(room_id) = breadcrumbs.recent_rooms.first() {
                         let server_id = state.find_server_id_for_room(room_id).or_else(|| {
                             breadcrumbs
@@ -283,8 +280,6 @@ pub fn App() -> impl IntoView {
                         state.active_server_id.set(server_id);
                     }
 
-                    // Load saved breadcrumbs into state before set_active_room_with_id
-                    // so any mutation it makes starts from the correct baseline.
                     state.breadcrums.set(breadcrumbs.clone());
 
                     state.set_active_room_with_id(breadcrumbs.recent_rooms.first().cloned());
@@ -304,10 +299,7 @@ pub fn App() -> impl IntoView {
                 }
             };
 
-            // Allow saves only after both breadcrumbs and server order are loaded.
             state.data_initialized.set(true);
-
-            let _ = call_tauri_no_args("send_frontend").await;
         });
     });
 

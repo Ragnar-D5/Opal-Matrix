@@ -13,7 +13,7 @@ use shared::{
 use crate::{
     app::{CurrentWindow, call_tauri},
     components::{chat::Attachment, user_profile::room_as_profile},
-    tauri_functions::{get_member_for_room, get_user_profile},
+    tauri_functions::{get_user_profile},
 };
 use leptos::prelude::*;
 
@@ -330,15 +330,8 @@ impl AppState {
     pub fn get_call_members(&self, room_id: &str) -> ArcRwSignal<Vec<UserDevice>> {
         self.call_members
             .get()
-            .get(room_id)
-            .cloned()
-            .unwrap_or_else(|| {
-                log::warn!(
-                    "No call member data found for room_id {}, returning empty list",
-                    room_id
-                );
-                ArcRwSignal::new(Vec::new())
-            })
+            .entry(room_id.to_string()).or_insert_with(|| ArcRwSignal::new(Vec::new()))
+            .clone()
     }
 
     /// Get call members for a set of room ids.
@@ -444,21 +437,6 @@ impl ProfileStore {
 
         self.members.update(|members| {
             members.entry(room_id.to_string()).or_insert_with(HashMap::new).insert(user_id.to_string(), sig.clone());
-        });
-
-        let room_id = room_id.to_string();
-        let user_id = user_id.to_string();
-        let sig_clone = sig.clone();
-        spawn_local(async move {
-            match get_member_for_room(&room_id, &user_id).await {
-                Ok(res) => {
-                    sig_clone.set(res);
-                }
-                Err(e) => {
-                    log::error!("Failed to get member profile for room {room_id} and user {user_id}: {e}");
-                    sig_clone.set(MemberProfile { room_id, profile: UserProfile { user_id, display_name: None, has_avatar: false } });
-                }
-            }
         });
 
         sig

@@ -480,9 +480,6 @@ pub fn ServerItems(active_server: RoomNode) -> impl IntoView {
     let name = active_server.get_name();
     let state: AppState = expect_context();
 
-    // Log active_server
-    log::debug!("Rendering ServerItems for server: {:#?}", active_server);
-
     match active_server.kind {
         RoomKind::Space { children, .. } => {
             view! {

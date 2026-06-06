@@ -2,47 +2,13 @@ use std::collections::HashMap;
 
 use matrix_sdk::{
     event_handler::Ctx,
-    room::RoomMember,
-    ruma::{
-        events::room::member::OriginalSyncRoomMemberEvent, profile::ProfileFieldName, RoomId,
-        UserId,
-    },
+    ruma::{events::room::member::OriginalSyncRoomMemberEvent, profile::ProfileFieldName, UserId},
     Room, RoomMemberships,
 };
 use shared::profile::{MemberProfile, UserProfile};
 use tauri::{command, AppHandle, Emitter};
 
 use crate::{MatrixClientState, TauriError};
-
-#[command(rename_all = "snake_case")]
-pub async fn get_member_for_room(
-    client: MatrixClientState<'_>,
-    room_id: String,
-    user_id: String,
-) -> Result<MemberProfile, TauriError> {
-    log::debug!("Getting member for room: {}", &room_id);
-    let room = client
-        .read()
-        .await
-        .get_room(&RoomId::parse(&room_id)?)
-        .ok_or(format!("Room not found: {}", &room_id))?;
-
-    let member: RoomMember = room
-        .get_member(&UserId::parse(&user_id)?)
-        .await?
-        .ok_or(format!(
-            "Membership for user {user_id} in room {room_id} not found"
-        ))?;
-
-    Ok(MemberProfile {
-        room_id,
-        profile: UserProfile {
-            user_id,
-            display_name: member.display_name().map(|s| s.to_string()),
-            has_avatar: member.avatar_url().is_some(),
-        },
-    })
-}
 
 pub async fn on_member_update(
     event: OriginalSyncRoomMemberEvent,
@@ -97,7 +63,7 @@ pub fn send_member_update(
     handle: &AppHandle,
     payload: HashMap<String, Vec<MemberProfile>>,
 ) -> Result<(), TauriError> {
-    log::debug!("Sending {} member updates", payload.len());
+    log::debug!("Updating {} members", payload.len());
 
     handle.emit("member_update", payload)?;
 
