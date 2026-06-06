@@ -23,7 +23,7 @@ use crate::components::{
 };
 use crate::hooks::use_tauri_event;
 use crate::state::{AppState, ProfileStore};
-use crate::tauri_functions::{set_backend_room_id, set_focused_in_backend};
+use crate::tauri_functions::{get_server_order, set_backend_room_id, set_focused_in_backend};
 
 #[wasm_bindgen]
 extern "C" {
@@ -288,10 +288,20 @@ pub fn App() -> impl IntoView {
                 }
             }
 
-            match call_tauri_no_args("get_server_order").await {
-                Ok(js_val) => {
-                    let order: ServerOrder = serde_wasm_bindgen::from_value(js_val).unwrap();
+            match get_server_order().await {
+                Ok(order) => {
+                    log::debug!(
+                        "Fetched server order: {:#?}",
+                        state
+                            .sidebar_state
+                            .get_untracked()
+                            .server_rooms
+                            .iter()
+                            .filter(|r| order.servers.contains(r.0))
+                            .collect::<Vec<_>>()
+                    );
                     state.server_order.set(order);
+                    state.apply_server_order();
                 }
                 Err(err) => {
                     error!("Error fetching server order: {:?}", err);

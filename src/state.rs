@@ -85,6 +85,29 @@ impl AppState {
         self.active_room.get_untracked().map(|room| room.get_name())
     }
 
+    pub fn apply_server_order(&self) {
+        let old_sidebar = self.sidebar_state.get_untracked();
+
+        let new_sidebar = old_sidebar.apply_order(self.server_order.get_untracked());
+
+        if new_sidebar != old_sidebar {
+            self.sidebar_state.set(new_sidebar);
+        }
+    }
+
+    pub fn reorder_servers(&self, source_id: &str, target_id: &str) {
+        let old_sidebar = self.sidebar_state.get_untracked();
+
+        let new_sidebar = old_sidebar.reorder_servers(source_id, target_id);
+
+        if new_sidebar != old_sidebar {
+            self.sidebar_state.set(new_sidebar);
+
+            log::debug!("Reordered servers: {} -> {}", source_id, target_id);
+            self.save_server_order();
+        }
+    }
+
     /// Update the active room node and its id together, firing each signal only
     /// when its own value changed. `active_room` carries metadata that updates on
     /// every sync (unread counts, `last_ts`, …); `active_room_id` only changes

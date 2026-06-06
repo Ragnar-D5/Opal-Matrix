@@ -690,22 +690,7 @@ pub fn Sidebar() -> impl IntoView {
                                             return
                                         };
                                         if source_id != drop_id {
-                                            state
-                                                .sidebar_state
-                                                .update(|state| {
-                                                    let src_opt = state
-                                                        .top_level_servers
-                                                        .iter()
-                                                        .position(|s_id| s_id == &source_id);
-                                                    let dst_opt = state
-                                                        .top_level_servers
-                                                        .iter()
-                                                        .position(|s_id| s_id == &drop_id);
-                                                    if let (Some(src_idx), Some(dst_idx)) = (src_opt, dst_opt) {
-                                                        let item = state.top_level_servers.remove(src_idx);
-                                                        state.top_level_servers.insert(dst_idx, item);
-                                                    }
-                                                });
+                                            state.reorder_servers(&source_id, &drop_id);
                                         }
                                     }
                                     on:dragend=move |_| {

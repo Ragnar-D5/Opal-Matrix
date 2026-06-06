@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use colorsys::Hsl;
 use serde::{Deserialize, Serialize};
 
-use crate::get_color;
+use crate::{account_data::ServerOrder, get_color};
 
 #[derive(Debug, Serialize, Clone, Deserialize, PartialEq)]
 pub struct UserDevice {
@@ -85,6 +85,44 @@ pub struct SidebarState {
 
     /// Rooms that aren't DMs or orphaned (not in a space)
     pub server_rooms: HashMap<String, RoomNode>,
+}
+
+impl SidebarState {
+    pub fn reorder_servers(&self, source_id: &str, target_id: &str) -> Self {
+        let mut new_state = self.clone();
+
+        let source_index = new_state
+            .top_level_servers
+            .iter()
+            .position(|id| id == source_id);
+        let target_index = new_state
+            .top_level_servers
+            .iter()
+            .position(|id| id == target_id);
+
+        if let (Some(source_index), Some(target_index)) = (source_index, target_index) {
+            new_state.top_level_servers.remove(source_index);
+            new_state
+                .top_level_servers
+                .insert(target_index, source_id.to_string());
+        }
+
+        new_state
+    }
+
+    pub fn apply_order(&self, order: ServerOrder) -> Self {
+        let new_order: Vec<String> = order
+            .servers
+            .iter()
+            .filter(|id| self.top_level_servers.contains(id))
+            .cloned()
+            .collect();
+
+        Self {
+            top_level_servers: new_order,
+            ..self.clone()
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Clone, Deserialize, PartialEq, Default)]

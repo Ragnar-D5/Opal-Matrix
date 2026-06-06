@@ -1,5 +1,6 @@
 use serde_json::json;
 use shared::{
+    account_data::ServerOrder,
     api::{FileMetadata, LinkPreviewResponse},
     commands::Command,
     profile::UserProfile,
@@ -177,4 +178,15 @@ pub async fn get_user_profile(user_id: &str) -> Result<UserProfile, String> {
         .map_err(|e| format!("Failed to parse response: {:?}", e))?;
 
     Ok(profile)
+}
+
+pub async fn get_server_order() -> Result<ServerOrder, String> {
+    let res = call_tauri_no_args("get_server_order")
+        .await
+        .map_err(|e| format!("Tauri call failed: {:?}", e))?;
+
+    let server_order: ServerOrder = serde_wasm_bindgen::from_value(res)
+        .map_err(|e| format!("Failed to parse response: {:?}", e))?;
+
+    Ok(server_order)
 }
