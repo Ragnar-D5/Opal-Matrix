@@ -34,8 +34,13 @@ use tauri_plugin_notification::{NotificationExt, PermissionState};
 
 use crate::matrix_api::keyring::{self, StoredSession, init_keyring};
 use crate::matrix_api::matrixrtc::{join_matrixrtc_call, leave_matrixrtc_call};
-use crate::matrix_api::media::{get_media_from_uuid_str, get_media_from_uuid_thmubnail_str, get_member_avatar, get_room_avatar, get_user_avatar};
-use crate::state::{AppState, CallAudioState, LiveKitRoomManager, MediaManager, TaskManager, TimelineManager};
+use crate::matrix_api::media::{
+    get_media_from_uuid_str, get_media_from_uuid_thmubnail_str, get_member_avatar, get_room_avatar,
+    get_user_avatar,
+};
+use crate::state::{
+    AppState, CallAudioState, LiveKitRoomManager, MediaManager, TaskManager, TimelineManager,
+};
 use crate::sync::attach_callbacks;
 
 pub type MatrixClientState<'a> = State<'a, RwLock<MatrixClient>>;
@@ -481,8 +486,8 @@ pub fn run() {
                         }),
                     ])
                     .level_for("reqwest", log::LevelFilter::Off)
-                    .level_for("libwebrtc", log::LevelFilter::Info)
-                    .level_for("livekit", log::LevelFilter::Info)
+                    .level_for("libwebrtc", log::LevelFilter::Off)
+                    .level_for("livekit", log::LevelFilter::Off)
                     .level_for("rustls_platform_verifier", log::LevelFilter::Off)
                     .level_for("html5ever", log::LevelFilter::Off)
                     .level_for("matrix_sdk", log::LevelFilter::Debug)
@@ -677,7 +682,9 @@ pub fn run() {
                         };
                     } else {
                         let res = if let Some(param_str) = uri.strip_prefix("mxc://thumbnail/") {
-                            get_media_from_uuid_thmubnail_str(&client, param_str, &media_manager).await.map(Some)
+                            get_media_from_uuid_thmubnail_str(&client, param_str, &media_manager)
+                                .await
+                                .map(Some)
                         } else if let Some(string) = uri.strip_prefix("mxc://user/") {
                             if let Some((user_id, room_id)) = string.split_once("/room/") {
                                 get_member_avatar(&client, room_id, user_id).await

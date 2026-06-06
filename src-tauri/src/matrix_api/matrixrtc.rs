@@ -2,7 +2,7 @@ use base64::Engine;
 use base64::engine::general_purpose;
 use livekit::e2ee::EncryptionType;
 use livekit::e2ee::key_provider::{KeyProvider, KeyProviderOptions};
-use log::{debug};
+use log::{debug, error, info, warn};
 use matrix_sdk::deserialized_responses::ProcessedToDeviceEvent;
 use matrix_sdk::ruma::api::client::to_device::send_event_to_device::v3::Request;
 use std::collections::BTreeMap;
@@ -24,7 +24,7 @@ use matrix_sdk::ruma::events::call::member::{
 use matrix_sdk::ruma::events::relation::Reference;
 use matrix_sdk::ruma::events::rtc::notification::RtcNotificationEventContent;
 use matrix_sdk::ruma::events::{
-    AnyStateEventContent, AnyToDeviceEventContent, Mentions, StateEventType,
+    AnyStateEventContent, AnyToDeviceEventContent, Mentions, OriginalSyncStateEvent, StateEventType,
 };
 use matrix_sdk::ruma::serde::Raw;
 use matrix_sdk::ruma::to_device::DeviceIdOrAllDevices;
@@ -46,6 +46,7 @@ pub(crate) async fn join_matrixrtc_call(
     matrix_client: State<'_, RwLock<Client>>,
     audio_state: State<'_, CallAudioState>,
     livekit_room_manager: State<'_, LiveKitRoomManager>,
+    app_handle: AppHandle, //this is passed into event handler to acquire state on the fly
     room_id: String,
 ) -> Result<serde_json::Value, TauriError> {
     log::info!("Started joining call");
@@ -123,24 +124,12 @@ pub(crate) async fn join_matrixrtc_call(
         .get_room(&parsed_room_id)
         .ok_or("Room not found or not joined")?;
 
-    let mut raw_key = [0u8; 32];
-    getrandom::fill(&mut raw_key)
-        .map_err(|e| format!("Failed to generate cryptographic key: {}", e))?;
-
     if room.encryption_state().is_encrypted() {
+        let mut raw_key = [0u8; 32];
+        getrandom::fill(&mut raw_key)
+            .map_err(|e| format!("Failed to generate cryptographic key: {}", e))?;
+
         let local_call_key = general_purpose::STANDARD.encode(raw_key);
-
-        let mut key_send_index = 0;
-
-        send_encryption_keys(
-            client.clone(),
-            &room_id,
-            &local_call_key,
-            key_send_index,
-            own_id,
-            own_device,
-        )
-        .await?;
 
         let key_provider = KeyProvider::new(KeyProviderOptions {
             // shared_key: false,  // MatrixRTC uses unique keys per participant
@@ -148,6 +137,18 @@ pub(crate) async fn join_matrixrtc_call(
             key_derivation_algorithm: livekit::e2ee::key_provider::KeyDerivationAlgorithm::HKDF, // Critical for Matrix matching
             ..Default::default()
         });
+
+        key_provider.set_shared_key(raw_key.into(), 0);
+
+        send_encryption_keys(
+            client.clone(),
+            &room_id,
+            &local_call_key,
+            0,
+            own_id,
+            own_device,
+        )
+        .await?;
 
         e2ee_options = Some(E2eeOptions {
             encryption_type: EncryptionType::Gcm,
@@ -301,18 +302,6 @@ pub(crate) async fn join_matrixrtc_call(
         livekit::Room::connect(service_url, jwt, room_options).await?;
     log::info!("Connected to LiveKit room: {:?}", livekit_room);
 
-    if room.encryption_state().is_encrypted() {
-        let my_identity = livekit_room.local_participant().identity();
-
-        let e2ee_manager = livekit_room.e2ee_manager();
-        e2ee_manager.set_enabled(true);
-        if let Some(kp) = e2ee_manager.key_provider() {
-            log::info!("Setting local encryption key for identity: {}", my_identity);
-            // 0 is the key_index. It must match the index you sent over Matrix.
-            kp.set_key(&my_identity, 0, raw_key.to_vec());
-        }
-    };
-
     livekit_room
         .local_participant()
         .publish_track(
@@ -420,6 +409,80 @@ pub(crate) async fn join_matrixrtc_call(
 
     room.send(notification_event).await?;
 
+    let own_id_clone = own_id.to_owned();
+    let own_device_clone = own_device.to_owned();
+
+    info!("Setting up event handler for call member state events");
+    client.add_event_handler(
+        |ev: OriginalSyncStateEvent<CallMemberEventContent>, event_room: matrix_sdk::Room| async move {
+            debug!("\n\n\n\n\n{:?}", ev.content);
+            if let CallMemberEventContent::LegacyContent(_) = ev.content {
+                return;
+            }
+
+            let livekit_room_manager_guard = app_handle.try_state::<LiveKitRoomManager>().expect("Could not aquire LiveKitRoomManager from State. Likely an implementation error.");
+            let livekit_room_manager = livekit_room_manager_guard.lock().await;
+
+            let Some(livekit_room) = 
+                livekit_room_manager.get(event_room.room_id().as_str())
+             else {
+                debug!("Call member room state changed, but you are not part of the call.");
+                return
+            };
+            debug!("Call members changed in room {}", event_room.room_id());
+
+            if room.encryption_state().is_encrypted() {
+                debug!("Room is encrypted");
+
+                let client_state = app_handle
+                    .try_state::<RwLock<Client>>()
+                    .expect("Could not acquire Client from State. Likely an implementation error.");
+
+                let mut raw_key = [0u8; 32];
+                match getrandom::fill(&mut raw_key) {
+                    Err(e) => {
+                        error!("{e}");
+                        return;
+                    }
+                    _ => {}
+                };
+
+                let local_call_key = general_purpose::STANDARD.encode(raw_key);
+
+                let key_provider = livekit_room
+                    .e2ee_manager()
+                    .key_provider()
+                    .expect("Ecrypted LiveKit room without key provider");
+
+                let new_key_index = key_provider.get_latest_key_index() + 1;
+
+                key_provider.set_shared_key(raw_key.into(), new_key_index);
+                debug!("Updated local call encryption key, now at indey {new_key_index}");
+
+                let client = client_state.read().await;
+                debug!("Sending updated local encryption to other participants");
+                match send_encryption_keys(
+                    client.clone(),
+                    event_room.room_id().as_str(),
+                    &local_call_key,
+                    new_key_index,
+                    &own_id_clone,
+                    &own_device_clone,
+                )
+                .await
+                {
+                    Err(e) => {
+                        error!("{e:?}");
+                        return;
+                    }
+                    _ => {}
+                };
+            } else {
+                debug!("Call member room state changed but room is not encrypted.");
+            }
+        },
+    );
+
     Ok(response_json)
 }
 
@@ -432,7 +495,7 @@ pub(crate) async fn leave_matrixrtc_call(
     *audio_state.input_stream.lock().await = None;
     *audio_state.output_stream.lock().await = None;
 
-    let client = matrix_client.read().await;
+    let client = matrix_client.write().await;
     let room = client
         .get_room(&RoomId::parse(room_id.clone())?)
         .ok_or("Room not found or not joined")?;
@@ -457,7 +520,7 @@ use matrix_sdk::ruma::events::macros::EventContent;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize, Serialize, EventContent)]
-#[ruma_event(type = "org.matrix.msc4143.rtc.encryption_key", kind = ToDevice)]
+#[ruma_event(type = "io.element.call.encryption_keys", kind = ToDevice)]
 pub struct RtcEncryptionKeyEventContent {
     pub room_id: matrix_sdk::ruma::OwnedRoomId,
     /// The `member.id` from the target recipient's `m.rtc.member` event
@@ -468,7 +531,7 @@ pub struct RtcEncryptionKeyEventContent {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct MediaKey {
-    pub index: u8,
+    pub index: i32,
     pub key: String, // Base64 encoded 32-byte key
 }
 
@@ -476,7 +539,7 @@ async fn send_encryption_keys(
     client: Client,
     room_id: &str,
     key: &str,
-    mut prev_index: usize,
+    index: i32,
     own_id: &UserId,
     own_device: &DeviceId,
 ) -> Result<(), TauriError> {
@@ -518,11 +581,13 @@ async fn send_encryption_keys(
             continue;
         }
 
+        debug!("Sending new local call encryption key to {} with device {}.", sender, content.device_id);
+
         let payload = RtcEncryptionKeyEventContent {
             room_id: room.room_id().to_owned(),
             member_id: content.device_id.to_string(),
             media_key: MediaKey {
-                index: prev_index as u8,
+                index: index,
                 key: key.to_string(),
             },
             version: "0".to_string(),
@@ -548,7 +613,6 @@ async fn send_encryption_keys(
 
     log::info!("Successfully distributed E2EE keys to all call participants.");
 
-    // prev_index += 1;
     Ok(())
 }
 
@@ -592,10 +656,13 @@ pub async fn handle_to_device_messages(
     app_handle: AppHandle,
 ) -> Result<(), TauriError> {
     debug!("Handling to-device events");
+
+    warn!("\n\n\n\n{events:?}\n\n\n\n");
     let key_updates = events
         .into_iter()
         .filter_map(|e| {
             if let ProcessedToDeviceEvent::Decrypted { raw, .. } = e {
+                debug!("\n\n\n{:?}\n\n\n", raw.clone());
                 if raw.get_field::<String>("type").ok()?.as_deref()
                     == Some("io.element.call.encryption_keys")
                 {
@@ -632,9 +699,6 @@ pub async fn handle_to_device_messages(
             }
         };
 
-        debug!("{:?}", livekit_room.remote_participants());
-        debug!("{:?}", update_event);
-
         let e2ee_manager = livekit_room.e2ee_manager();
 
         let key_provider = match e2ee_manager.key_provider().ok_or("No key provider found") {
@@ -657,7 +721,7 @@ pub async fn handle_to_device_messages(
                 .decode(update_event.1.keys.key)
                 .unwrap(),
         );
-        log::info!("Updated encryption key for {}", livekit_id);
+        log::info!("Sent updates for local call encryption key for {}", livekit_id);
     }
 
     debug!("Finished handling to-device events");
