@@ -208,3 +208,14 @@ pub async fn delete_message(room_id: &str, event_id: &str) -> Result<(), String>
 
     Ok(())
 }
+
+pub async fn indicate_typing(room_id: &str, is_typing: bool) -> Result<(), String> {
+    let args = serde_wasm_bindgen::to_value(&json!({ "room_id": room_id, "is_typing": is_typing }))
+        .map_err(|e| format!("Failed to serialize request: {:?}", e))?;
+
+    call_tauri("indicate_typing", args)
+        .await
+        .map_err(|e| format!("Tauri call failed: {:?}", e))?;
+
+    Ok(())
+}

@@ -698,6 +698,10 @@
   .transform-gpu {
     transform: translateZ(0) var(--tw-rotate-x,) var(--tw-rotate-y,) var(--tw-rotate-z,) var(--tw-skew-x,) var(--tw-skew-y,);
   }
+  .typing-indicator {
+    animation: grow-change-color 1.4s infinite ease-in-out both;
+    background-color: var(--muted-text-color);
+  }
   .animate-pulse {
     animation: var(--animate-pulse);
   }
@@ -791,6 +795,13 @@
       --tw-space-x-reverse: 0;
       margin-inline-start: calc(calc(var(--spacing) * -2.5) * var(--tw-space-x-reverse));
       margin-inline-end: calc(calc(var(--spacing) * -2.5) * calc(1 - var(--tw-space-x-reverse)));
+    }
+  }
+  .space-x-1 {
+    :where(& > :not(:last-child)) {
+      --tw-space-x-reverse: 0;
+      margin-inline-start: calc(calc(var(--spacing) * 1) * var(--tw-space-x-reverse));
+      margin-inline-end: calc(calc(var(--spacing) * 1) * calc(1 - var(--tw-space-x-reverse)));
     }
   }
   .self-center {
@@ -1123,9 +1134,6 @@
   .py-1\.5 {
     padding-block: calc(var(--spacing) * 1.5);
   }
-  .py-2 {
-    padding-block: calc(var(--spacing) * 2);
-  }
   .py-2\.5 {
     padding-block: calc(var(--spacing) * 2.5);
   }
@@ -1194,6 +1202,9 @@
   }
   .pl-2 {
     padding-left: calc(var(--spacing) * 2);
+  }
+  .pl-3 {
+    padding-left: calc(var(--spacing) * 3);
   }
   .pl-7 {
     padding-left: calc(var(--spacing) * 7);
@@ -1794,6 +1805,16 @@
   --idle-color: #e5c100;
   --busy-color: #e53e3e;
   --offline-color: #6a6a6a;
+}
+@keyframes grow-change-color {
+  0%, 40%, 100% {
+    transform: scale(0.7);
+    background-color: var(--muted-text-color);
+  }
+  20% {
+    transform: scale(1);
+    background-color: var(--text-color);
+  }
 }
 video::-webkit-media-controls-panel {
   background-color: var(--tile-bg-color);

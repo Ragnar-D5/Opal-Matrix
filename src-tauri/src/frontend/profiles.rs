@@ -2,7 +2,11 @@ use std::collections::HashMap;
 
 use matrix_sdk::{
     event_handler::Ctx,
-    ruma::{events::room::member::OriginalSyncRoomMemberEvent, profile::ProfileFieldName, UserId},
+    ruma::{
+        events::{room::member::OriginalSyncRoomMemberEvent, typing::SyncTypingEvent},
+        profile::ProfileFieldName,
+        UserId,
+    },
     Room, RoomMemberships,
 };
 use shared::profile::{MemberProfile, UserProfile};
@@ -96,4 +100,18 @@ pub async fn get_user_profile(
         display_name,
         has_avatar,
     })
+}
+
+pub async fn handle_typing_notice(event: SyncTypingEvent, room: Room, handle: Ctx<AppHandle>) {
+    let room_id = room.room_id().to_string();
+    let user_ids: Vec<String> = event
+        .content
+        .user_ids
+        .iter()
+        .map(|v| v.to_string())
+        .collect();
+
+    if let Err(e) = handle.emit("typing_update", (room_id, user_ids)) {
+        log::error!("Failed to send typing update: {:?}", e);
+    }
 }

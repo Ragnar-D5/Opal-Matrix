@@ -5,6 +5,7 @@ use std::pin::pin;
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, async_runtime::spawn};
 
+use crate::frontend::profiles::handle_typing_notice;
 use crate::matrix_api::matrixrtc::handle_call_member_change;
 use crate::{
     TauriError,
@@ -115,7 +116,8 @@ pub async fn attach_callbacks(client: &MatrixClient, handle: &AppHandle) -> Resu
 
     client.add_event_handler(on_member_update);
     client.add_event_handler(client_user_profile_event_handle);
-
     client.add_event_handler(handle_call_member_change);
+    client.add_event_handler(handle_typing_notice);
+
     Ok(())
 }

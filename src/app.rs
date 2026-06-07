@@ -195,6 +195,14 @@ pub fn App() -> impl IntoView {
         }
     });
 
+    let typing_update: ReadSignal<Option<(String, Vec<String>)>> = use_tauri_event("typing_update");
+
+    Effect::new(move |_| {
+        if let Some((room_id, user_ids)) = typing_update.get() {
+            state.update_typing_users(&room_id, user_ids);
+        }
+    });
+
     let sidebar_update_event: ReadSignal<Option<SidebarState>> = use_tauri_event("sidebar_update");
 
     Effect::new(move |_| {

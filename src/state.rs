@@ -46,6 +46,8 @@ pub struct AppState {
 
     pub notification_counts: RwSignal<HashMap<String, NotificationCounts>>,
     pub call_members: RwSignal<HashMap<String, ArcRwSignal<Vec<UserDevice>>>>,
+
+    pub typing_users: RwSignal<HashMap<String, ArcRwSignal<Vec<String>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -70,6 +72,37 @@ pub enum RoomHeader {
 }
 
 impl AppState {
+    pub fn update_typing_users(&self, room_id: &str, user_ids: Vec<String>) {
+        let existing_signal = self.typing_users.with_untracked(|map| map.get(room_id).cloned());
+
+        if let Some(signal) = existing_signal {
+            let should_update = signal.with_untracked(|current_users| current_users != &user_ids);
+
+            if should_update {
+                signal.set(user_ids.clone());
+            }
+        } else {
+            let new_signal = ArcRwSignal::new(user_ids.clone());
+
+            self.typing_users.update(|map| {
+                map.insert(room_id.to_string(), new_signal);
+            });
+        }
+    }
+
+    pub fn get_typing_users(&self, room_id: &str) -> ArcRwSignal<Vec<String>> {
+        if let Some(signal) = self.typing_users.with_untracked(|map| map.get(room_id).cloned()) {
+            signal
+        } else {
+            let new_signal = ArcRwSignal::new(Vec::new());
+            self.typing_users.update(|map| {
+                map.insert(room_id.to_string(), new_signal.clone());
+            });
+            new_signal
+        }
+
+    }
+
     pub fn active_room_id(&self) -> Option<String> {
         self.active_room_id.get()
     }

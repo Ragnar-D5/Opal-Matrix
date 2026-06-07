@@ -1,20 +1,17 @@
+use std::time::Duration;
+
 use crate::{
     app::{call_tauri, convertFileSrc, format_bytes},
     components::{
-        FloatingTile,
-        chat::messages::render_timeline_item,
-        emoji_picker::EmojiPickerState,
-        input::{
+        FloatingTile, TypingIndicator, chat::messages::render_timeline_item, emoji_picker::EmojiPickerState, input::{
             get_active_filter, get_caret_position, handle_input, handle_keydown,
             insert_text_at_caret,
             menu::{MenuType, SelectionMenu},
-        },
-        presence::PresenceBadge,
-        user_profile::{MemberProfileExt},
+        }, presence::PresenceBadge, user_profile::MemberProfileExt
     },
     hooks::use_tauri_event,
     state::{AppState, ProfileStore, RoomHeader},
-    tauri_functions::{get_timeline, pick_files, scroll_timeline},
+    tauri_functions::{get_timeline, indicate_typing, pick_files, scroll_timeline},
 };
 
 use crate::components::emoji_picker::pick_emoji;
@@ -346,15 +343,14 @@ fn TimeLine() -> impl IntoView {
     });
 
     view! {
-        <div class="flex-1 w-full w-full overflow-y-auto flex flex-col-reverse py-2 overflow-anchor-auto">
+        <div class="flex-1 w-full w-full overflow-y-auto flex flex-col-reverse overflow-anchor-auto">
             <Show
                 when=move || !is_loading_bottom.get()
                 fallback=|| view! { <div class="text-center p-4 text-muted">"Loading..."</div> }
             >
-                <div node_ref=sentinel_ref_bottom class="h-2 w-full shrink-0" />
+                <div node_ref=sentinel_ref_bottom class="h-[1px] w-full shrink-0" />
             </Show>
 
-            <div class="mb-5"></div>
             <For
                 each=move || timeline.get()
                 key=|(item_sig, _)| {
@@ -371,10 +367,64 @@ fn TimeLine() -> impl IntoView {
                 when=move || !is_loading.get()
                 fallback=|| view! { <div class="text-center p-4 text-muted">"Loading..."</div> }
             >
-                <div node_ref=sentinel_ref_top class="h-2 w-full shrink-0" />
+                <div node_ref=sentinel_ref_top class="h-[1px] w-full shrink-0" />
             </Show>
         </div>
     }
+}
+
+#[component]
+fn TypingUserIndicator() -> impl IntoView {
+    let state: AppState = expect_context();
+    let store: ProfileStore = expect_context();
+
+    let typing_signal = move || {
+        let room_id = state.active_room_id()?;
+
+        Some(state.get_typing_users(&room_id))
+    };
+
+    let content = move || typing_signal().map(|users_sig| {
+        let room_id = state.active_room_id()?;
+
+        let own_id = state.user_id.get();
+        let users: Vec<String> = users_sig.get().into_iter().filter(|id| id != &own_id).take(4).collect();
+
+        if users.is_empty() {
+            return None;
+        }
+
+        log::debug!("Typing users in room {}: {:?}", room_id, users_sig.get());
+
+        let profiles: Vec<_> = users
+            .into_iter()
+            .map(|user_id| store.get_member_profile(&room_id, &user_id)).collect();
+
+        let names = match profiles.len() {
+            0 => view! { "Nobody is typing..." }.into_any(),
+            1 => view! { <span class="text-muted">{profiles[0].get().render_name("14px")} " is typing..."</span> }.into_any(),
+            2 => view! {
+                <span class="text-muted">
+                    {profiles[0].get().render_name("14px")} " and "
+                    {profiles[1].get().render_name("14px")} " are typing..."
+                </span>
+            }.into_any(),
+            3 => view! {
+                <span class="text-muted">
+                    {profiles[0].get().render_name("14px")}, {profiles[1].get().render_name("14px")}
+                    " and " {profiles[2].get().render_name("14px")} " are typing..."
+                </span>
+            }.into_any(),
+            _ => view! { <span class="text-muted">"Several people are typing..."</span> }.into_any(),
+        };
+
+        Some(view! {
+            <TypingIndicator size="8px" />
+            <div class="pl-3">{names}</div>
+        })
+    });
+
+    view! { <div class="h-8 w-full flex flex-row items-center px-3">{content}</div> }
 }
 
 #[component]
@@ -968,6 +1018,50 @@ fn ChatInput() -> impl IntoView {
 
     let emoji_state: EmojiPickerState = expect_context();
 
+    let is_typing = RwSignal::new(false);
+    let timing_timeout: StoredValue<Option<TimeoutHandle>> = StoredValue::new(None);
+
+    let on_type = move || {
+        let Some(room_id) = state.active_room_id() else {
+            return;
+        };
+
+        if let Some(handle) = timing_timeout.get_value() {
+            handle.clear();
+        }
+
+        let room_id_clone = room_id.clone();
+        if !is_typing.get_untracked() {
+            is_typing.set(true);
+            spawn_local(async move {
+                if let Err(e) = indicate_typing(&room_id_clone, true).await {
+                    log::error!("Failed to send typing notification: {}", e);
+                }
+            });
+        }
+
+        let new_handle = set_timeout_with_handle(move || {
+            is_typing.set(false);
+            spawn_local(async move {
+                if let Err(e) = indicate_typing(&room_id, false).await {
+                    log::error!("Failed to send typing notification: {}", e);
+                }
+            });
+        }, Duration::from_secs(3)).ok();
+
+        timing_timeout.set_value(new_handle);
+    };
+
+    Effect::new(move |_| {
+        if is_empty.get() && let Some(room_id) = state.active_room_id() {
+            spawn_local(async move {
+                if let Err(e) = indicate_typing(&room_id, false).await {
+                    log::error!("Failed to send typing notification: {}", e);
+                }
+            });
+        }
+    });
+
     view! {
         <div class="p-2 pt-0 w-full relative">
             {move || input_info_content()} {move || attachment_view()}
@@ -1001,7 +1095,10 @@ fn ChatInput() -> impl IntoView {
                         node_ref=input_ref
                         contenteditable="true"
                         class="text-(--bright-text-color) outline-none w-full whitespace-pre-wrap break-words py-3 max-h-100 overflow-y-auto"
-                        on:input=move |_| handle_input(input_ref, is_empty, state, attachments)
+                        on:input=move |_| {
+                            on_type();
+                            handle_input(input_ref, is_empty, state, attachments)
+                        }
                         on:paste=move |ev| handle_paste(ev, attachments, state)
                         on:keydown=move |ev| handle_keydown(
                             ev,
@@ -1083,6 +1180,7 @@ pub fn Chat() -> impl IntoView {
                                 RoomKind::Dm { .. } | RoomKind::TextChannel => {
                                     view! {
                                         <TimeLine />
+                                        <TypingUserIndicator />
                                         <ChatInput />
                                     }
                                         .into_any()

@@ -334,6 +334,13 @@ pub async fn get_timeline(
         None
     };
 
+    let room = matrix_client
+        .read()
+        .await
+        .get_room(&RoomId::parse(&room_id)?)
+        .ok_or("No room found")?;
+
+
     tokio::select! {
         _ = token.cancelled() => {
             log::debug!("Timeline fetch for room {} was cancelled by a newer request", room_id);
@@ -341,12 +348,6 @@ pub async fn get_timeline(
         }
 
         result = async {
-            let room = matrix_client
-                .read()
-                .await
-                .get_room(&RoomId::parse(&room_id)?)
-                .ok_or("No room found")?;
-
             timeline_manager.abort_stream().await;
 
             let timeline = timeline_manager.get_or_create_timeline(&room, event_id).await?;
@@ -463,6 +464,18 @@ pub async fn delete_message(
     timeline
         .redact(&TimelineEventItemId::EventId(event_id), None)
         .await?;
+
+    Ok(())
+}
+
+#[command(rename_all = "snake_case")]
+pub async fn indicate_typing(matrix_client: State<'_, RwLock<MatrixClient>>, room_id: String, is_typing: bool) -> Result<(), TauriError> {
+    let client = matrix_client.read().await;
+    let room = client
+        .get_room(&RoomId::parse(&room_id)?)
+        .ok_or("Room not found")?;
+
+    room.typing_notice(is_typing).await?;
 
     Ok(())
 }

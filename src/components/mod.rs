@@ -3,6 +3,7 @@ use leptos::prelude::*;
 
 pub(crate) mod authentication;
 pub(crate) mod chat;
+pub(crate) mod emoji_picker;
 pub(crate) mod input;
 pub(crate) mod loading;
 pub(crate) mod presence;
@@ -11,7 +12,6 @@ pub(crate) mod shader;
 pub(crate) mod sidebar;
 pub(crate) mod text;
 pub(crate) mod user_profile;
-pub(crate) mod emoji_picker;
 
 #[component]
 pub fn FloatingTile(#[prop(into, optional)] class: String, children: Children) -> impl IntoView {
@@ -72,6 +72,20 @@ pub fn TextCircle(
             <span class="relative" style="font-size: 50cqmin; line-height: 1;">
                 {text}
             </span>
+        </div>
+    }
+}
+
+#[component]
+pub fn TypingIndicator(#[prop(into)] size: String) -> impl IntoView {
+    let style_string =
+        move |delay| format!("width: {size}; height: {size}; animation-delay: {delay}s;");
+
+    view! {
+        <div class="flex items-center space-x-1">
+            <div class="typing-indicator rounded-full" style=style_string(0.0)></div>
+            <div class="typing-indicator rounded-full" style=style_string(0.2)></div>
+            <div class="typing-indicator rounded-full" style=style_string(0.4)></div>
         </div>
     }
 }

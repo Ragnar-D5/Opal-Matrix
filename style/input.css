@@ -107,6 +107,24 @@
     color: var(--muted-text-color, #5865f2);
 }
 
+@utility typing-indicator {
+    animation: grow-change-color 1.4s infinite ease-in-out both;
+    background-color: var(--muted-text-color);
+}
+
+@keyframes grow-change-color {
+    0%,
+    40%,
+    100% {
+        transform: scale(0.7);
+        background-color: var(--muted-text-color);
+    }
+    20% {
+        transform: scale(1);
+        background-color: var(--text-color);
+    }
+}
+
 video::-webkit-media-controls-panel {
     background-color: var(--tile-bg-color);
     backdrop-filter: blur(8px);
