@@ -17,7 +17,7 @@ use matrix_sdk::ruma::{
     },
 };
 use scraper::{Html, Node};
-use shared::{api::{FileMetadata, ScrollDirection, UiAttachmentSource}, timeline::{RichTextSpan, RoomIdFormat, UiTimelineDiff, UiTimelineItem, coalesce_diffs}};
+use shared::{api::{FileMetadata, ScrollDirection, UiAttachmentSource}, timeline::{UiTimelineDiff, UiTimelineItem, coalesce_diffs}};
 use tauri::{AppHandle, Emitter, State, command};
 use tokio::sync::RwLock;
 use uuid::Uuid;
@@ -45,17 +45,24 @@ pub async fn commit_message(
     let timeline = timeline_manager.get_or_create_timeline(&room, None).await?;
 
     let mut mentions = Mentions::default();
-    let mut spans = Vec::new();
 
-    let (body, formatted_body) = process_string_to_message(&html, &mut mentions, &mut spans);
+    let (body, formatted_body) = process_string_to_message(&html, &mut mentions);
 
     if let Some(reply_to_id) = replies_to {
-        let content = RoomMessageEventContentWithoutRelation::text_html(body, formatted_body);
+        let content = if let Some(formatted_body) = formatted_body {
+            RoomMessageEventContentWithoutRelation::text_html(body, formatted_body)
+        } else {
+            RoomMessageEventContentWithoutRelation::text_plain(body)
+        };
         timeline
             .send_reply(content, OwnedEventId::try_from(reply_to_id)?)
             .await?;
     } else {
-        let mut message_content = RoomMessageEventContent::text_html(body, formatted_body);
+        let mut message_content = if let Some(formatted_body) = formatted_body {
+            RoomMessageEventContent::text_html(body, formatted_body)
+        } else {
+            RoomMessageEventContent::text_plain(body)
+        };
         message_content.mentions = Some(mentions.clone());
 
         let content = AnyMessageLikeEventContent::RoomMessage(message_content);
@@ -163,12 +170,14 @@ pub async fn edit_message(
     let timeline = timeline_manager.get_or_create_timeline(&room, Some(event_id.clone())).await?;
 
     let mut mentions = Mentions::default();
-    let mut spans = Vec::new();
 
-    let (body, formatted_body) = process_string_to_message(&html, &mut mentions, &mut spans);
+    let (body, formatted_body) = process_string_to_message(&html, &mut mentions);
 
-    let mut messge_content =
-        RoomMessageEventContentWithoutRelation::text_html(body, formatted_body);
+    let mut messge_content = if let Some(formatted_body) = formatted_body {
+        RoomMessageEventContentWithoutRelation::text_html(body, formatted_body)
+    } else {
+        RoomMessageEventContentWithoutRelation::text_plain(body)
+    };
     messge_content.mentions = Some(mentions);
 
     timeline
@@ -184,23 +193,23 @@ pub async fn edit_message(
 fn process_string_to_message(
     html: &str,
     mentions: &mut Mentions,
-    spans: &mut Vec<RichTextSpan>,
-) -> (String, String) {
+) -> (String, Option<String>) {
     let fragment = Html::parse_fragment(html);
 
     let mut body = String::new();
     let mut formatted_body = String::new();
 
     for node in fragment.tree.root().children() {
-        walk_node(node, spans, mentions, &mut body, &mut formatted_body);
+        walk_node(node, mentions, &mut body, &mut formatted_body);
     }
+
+    let formatted_body = (formatted_body != body).then_some(formatted_body);
 
     (body, formatted_body)
 }
 
 fn walk_node(
     node: NodeRef<'_, Node>,
-    spans: &mut Vec<RichTextSpan>,
     mentions: &mut Mentions,
     body: &mut String,
     formatted: &mut String,
@@ -210,18 +219,12 @@ fn walk_node(
             let content = text.text.replace("\u{a0}", " ");
             body.push_str(&content);
             formatted.push_str(&content);
-            spans.push(RichTextSpan::Plain(content.to_string()));
         }
         Node::Element(elem) => {
             if let Some(url) = elem.attr("data-url") {
                 let display_text = extract_text(node);
                 body.push_str(&display_text);
                 formatted.push_str(&format!("<a href=\"{}\">{}</a>", url, display_text));
-
-                spans.push(RichTextSpan::Link {
-                    url: url.to_string(),
-                    text: Some(display_text),
-                });
                 return;
             }
             if let Some(data_type) = elem.attr("data-type")
@@ -230,10 +233,6 @@ fn walk_node(
                 let display_text = extract_text(node).trim_start_matches('@').to_string();
 
                 if data_type == "room_mention" {
-                    spans.push(RichTextSpan::RoomMention {
-                        room_id: RoomIdFormat::Id(id.to_string()),
-                        display_name: display_text.clone(),
-                    });
                     body.push_str("#room");
                     mentions.room = true;
                     formatted.push_str(&format!(
@@ -247,10 +246,6 @@ fn walk_node(
                         warn!("Invalid user ID in mention: {id}");
                     }
 
-                    spans.push(RichTextSpan::UserMention {
-                        user_id: id.to_string(),
-                        display_name: display_text.clone(),
-                    });
                     body.push_str(&display_text);
                     formatted.push_str(&format!(
                         "<a href=\"https://matrix.to/#/{}\">{}</a>",
@@ -263,13 +258,12 @@ fn walk_node(
             match elem.name() {
                 "html" | "body" => {
                     for child in node.children() {
-                        walk_node(child, spans, mentions, body, formatted);
+                        walk_node(child, mentions, body, formatted);
                     }
                 }
                 "br" => {
                     body.push('\n');
                     formatted.push_str("<br>");
-                    spans.push(RichTextSpan::Newline);
                 }
                 other => warn!("Unknown element: {other}; {:?}", elem),
             }
