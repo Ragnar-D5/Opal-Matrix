@@ -1,24 +1,25 @@
 use matrix_sdk::{
-    config::SyncSettings,
-    ruma::{presence::PresenceState},
-    Client as MatrixClient, SessionChange,
+    Client as MatrixClient, SessionChange, config::SyncSettings, ruma::presence::PresenceState,
 };
 use std::pin::pin;
 use std::sync::{Arc, Mutex};
-use tauri::{async_runtime::spawn, AppHandle};
+use tauri::{AppHandle, async_runtime::spawn};
 
+use crate::matrix_api::matrixrtc::handle_call_member_change;
 use crate::{
-    TauriError, frontend::{
+    TauriError,
+    frontend::{
         presence::handle_presences,
         profiles::{on_member_update, send_all_members},
         sidebar::{
             extract_call_memberships, handle_room_updates, send_call_member_updates, send_sidebar,
         },
-    }, matrix_api::{
+    },
+    matrix_api::{
         keyring::{StoredSession, save_session},
         matrixrtc::{cleanup_ghost_calls, handle_to_device_messages},
         profile::{ProfileDebounce, client_user_profile_event_handle, send_user_to_frontend},
-    }
+    },
 };
 use futures_util::StreamExt;
 
@@ -64,9 +65,10 @@ pub async fn attach_callbacks(client: &MatrixClient, handle: &AppHandle) -> Resu
     send_all_members(handle, &rooms).await?;
 
     if let Some(data) = extract_call_memberships(&rooms).await
-        && let Err(e) = send_call_member_updates(handle, data) {
-            log::error!("Failed to send call member updates: {:?}", e);
-        }
+        && let Err(e) = send_call_member_updates(handle, data)
+    {
+        log::error!("Failed to send call member updates: {:?}", e);
+    }
 
     let client_sync_clone = client.clone();
     let handle_clone = handle.clone();
@@ -114,5 +116,6 @@ pub async fn attach_callbacks(client: &MatrixClient, handle: &AppHandle) -> Resu
     client.add_event_handler(on_member_update);
     client.add_event_handler(client_user_profile_event_handle);
 
+    client.add_event_handler(handle_call_member_change);
     Ok(())
 }
