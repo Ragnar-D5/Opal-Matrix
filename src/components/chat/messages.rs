@@ -8,14 +8,9 @@ use phosphor_leptos::{
     TRASH, WARNING_CIRCLE, X,
 };
 use shared::{
-    get_color,
-    sidebar::RoomKind,
-    timeline::{
-        DetailState, EventContent, EventFlags, MessageContent, ReactionInfo, ReplyInfo,
-        RichTextSpan, SystemMessage, UiCallIntent, UiMembershipChange, UiMessageType,
-        UiTimelineItem, UiTimelineItemKind,
-    },
-    profile::MemberProfile,
+    get_color, profile::MemberProfile, sidebar::RoomKind, timeline::{
+        DetailState, EventContent, EventFlags, MessageContent, ReactionInfo, ReplyInfo, RichTextSpan, SystemMessage, UiCallIntent, UiMembershipChange, UiMessageType, UiTimelineItem, UiTimelineItemKind
+    }
 };
 use wasm_bindgen::JsCast;
 use web_sys::Element;
@@ -140,12 +135,16 @@ fn MessageHeader(
                 }
             ></div>
 
-            <div class="shrink-0 mr-2 w-[40px] relative flex flex-col justify-end">
+            <div class="shrink-0 mr-2 w-[40px] relative flex flex-col">
                 <Show when=move || has_reply>
-                    <div class="absolute left-[calc(50%-1px)] right-[-8px] top-2 bottom-[50px] border-l-2 border-t-2 border-white/20 rounded-tl-md -z-10"></div>
+                    <div class="absolute left-[calc(50%-1px)] right-[-8px] top-3 h-3 border-l-2 border-t-2 border-white/20 rounded-tl-md -z-10"></div>
                 </Show>
 
-                <div class="mb-[5px]">
+                <div
+                    class="mb-[5px]"
+                    class=("mt-[28px]", move || has_reply)
+                    class=("mt-[5px]", move || !has_reply)
+                >
                     {if show_header {
                         view! { {move || sender_profile_sig.get().render_icon("40px")} }.into_any()
                     } else {
@@ -1317,6 +1316,7 @@ fn render_timeline_event(
             class=("mt-5", show_header && !preview)
             class=("pointer-events-none", preview)
             class=("bg-black/20", move || picker_open.get() || show_delete_confirm.get())
+            id=move || item_sig.get().render_key()
             style:background=move || {
                 current_highlight
                     .get()

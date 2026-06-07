@@ -260,9 +260,6 @@
   .top-1\/2 {
     top: calc(1 / 2 * 100%);
   }
-  .top-2 {
-    top: calc(var(--spacing) * 2);
-  }
   .top-3 {
     top: calc(var(--spacing) * 3);
   }
@@ -298,9 +295,6 @@
   }
   .bottom-1 {
     bottom: calc(var(--spacing) * 1);
-  }
-  .bottom-\[50px\] {
-    bottom: 50px;
   }
   .bottom-full {
     bottom: 100%;
@@ -394,6 +388,9 @@
   }
   .mt-\[5px\] {
     margin-top: 5px;
+  }
+  .mt-\[28px\] {
+    margin-top: 28px;
   }
   .mr-1 {
     margin-right: calc(var(--spacing) * 1);

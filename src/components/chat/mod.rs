@@ -303,6 +303,7 @@ fn TimeLine() -> impl IntoView {
             return;
         };
 
+        messages.set(Vec::new());
         initial_loaded.set(false);
         has_more_top.set(true);
         has_more_bottom.set(true);

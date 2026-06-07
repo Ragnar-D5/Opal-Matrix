@@ -817,17 +817,8 @@ pub fn timeline_item_to_ui(
         }
     };
 
-    let id = item.unique_id().clone().0;
-    let event_id = match item.kind() {
-        TimelineItemKind::Virtual(_) => "virtual".to_string(),
-        TimelineItemKind::Event(event) => event
-            .event_id()
-            .map(|e| e.to_string())
-            .unwrap_or("temp".to_string()),
-    };
     UiTimelineItem {
         id: item.unique_id().clone().0,
-        render_key: format!("{}-{}", event_id, id),
 
         kind,
     }

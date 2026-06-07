@@ -41,9 +41,7 @@ impl TimelineManager {
     ) -> Result<Arc<Timeline>, TauriError> {
         let mut guard = self.timelines.write().await;
 
-        if event_id.is_none()
-            && let Some(timeline) = guard.get(room.room_id())
-        {
+        if let Some(timeline) = guard.get(room.room_id()) {
             return Ok(timeline.clone());
         }
 

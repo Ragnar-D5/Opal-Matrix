@@ -675,7 +675,6 @@ pub enum UiTimelineItemKind {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct UiTimelineItem {
     pub id: String,
-    pub render_key: String,
 
     pub kind: UiTimelineItemKind,
 }
@@ -702,6 +701,14 @@ impl UiTimelineItem {
             UiTimelineItemKind::Event(event) => event.flags.clone(),
             _ => EventFlags::default(),
         }
+    }
+
+    pub fn render_key(&self) -> String {
+        format!("timeline_event_{}", if let UiTimelineItemKind::Event(event) = &self.kind && let Some(event_id) = &event.event_id {
+            event_id.clone()
+        } else {
+            self.id.clone()
+        })
     }
 }
 
