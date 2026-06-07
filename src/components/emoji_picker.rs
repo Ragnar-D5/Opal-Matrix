@@ -2,10 +2,11 @@ use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
 
-use leptos::prelude::*;
+use leptos::{html::Input, prelude::*};
+use nucleo_matcher::{Config, Matcher, Utf32Str};
 use phosphor_leptos::{
-    AIRPLANE, CARET_DOWN, CUBE, FLAG, GAME_CONTROLLER, HAMBURGER, HEART, Icon, IconWeight,
-    IconWeightData, PERSON, PLANT, SMILEY, SMILEY_SAD,
+    Icon, IconWeight, IconWeightData, AIRPLANE, CARET_DOWN, CUBE, FLAG, GAME_CONTROLLER, HAMBURGER,
+    HEART, MAGNIFYING_GLASS, PERSON, PLANT, SMILEY, SMILEY_SAD,
 };
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
@@ -109,6 +110,33 @@ const ALL_GROUPS: &[Group] = &[
     Group::Flags,
 ];
 
+fn fuzzy_match_emojis(query: &str, matcher: &mut Matcher) -> Vec<&'static emojis::Emoji> {
+    let mut needle_buf = Vec::new();
+    let mut haystack_buf = Vec::new();
+    let needle = Utf32Str::new(query, &mut needle_buf);
+
+    let mut matched: Vec<(u16, &'static emojis::Emoji)> = emojis::iter()
+        .filter_map(|emoji| {
+            let haystack = Utf32Str::new(emoji.name(), &mut haystack_buf);
+            let name_score = matcher.fuzzy_match(haystack, needle);
+
+            let shortcode_score = emoji
+                .shortcodes()
+                .map(|shortcode| {
+                    let haystack = Utf32Str::new(shortcode, &mut haystack_buf);
+                    matcher.fuzzy_match(haystack, needle)
+                })
+                .max()
+                .unwrap_or_default();
+
+            name_score.max(shortcode_score).map(|score| (score, emoji))
+        })
+        .collect();
+
+    matched.sort_by_key(|&(score, _)| std::cmp::Reverse(score));
+    matched.into_iter().map(|(_, emoji)| emoji).collect()
+}
+
 #[component]
 pub fn EmojiPickerPortal() -> impl IntoView {
     let state: EmojiPickerState = expect_context();
@@ -117,11 +145,18 @@ pub fn EmojiPickerPortal() -> impl IntoView {
 
     let collapsed_groups: RwSignal<HashSet<Group>> = RwSignal::new(HashSet::new());
 
+    let matcher = StoredValue::new(Matcher::new(Config::DEFAULT));
+    let search_ref: NodeRef<Input> = NodeRef::new();
+
     Effect::new(move |_| {
         if state.resolve.get().is_some() {
             search.set(String::new());
             active_group.set(Group::SmileysAndEmotion);
             collapsed_groups.set(std::collections::HashSet::new());
+
+            if let Some(el) = search_ref.get() {
+                let _ = el.focus();
+            }
         }
     });
 
@@ -181,20 +216,26 @@ pub fn EmojiPickerPortal() -> impl IntoView {
             >
                 // search bar
                 <div class="p-2 border-b border-(--tile-border-color) flex-shrink-0">
-                    <input
-                        type="text"
-                        placeholder="Search emoji..."
-                        class="w-full bg-(--ui-solid-bg) border border-(--tile-border-color) rounded-(--ui-border-radius) px-2 py-1 text-sm text-(--bright-text-color) outline-none"
-                        on:input=move |ev| {
-                            let el = ev
-                                .target()
-                                .unwrap()
-                                .dyn_into::<web_sys::HtmlInputElement>()
-                                .unwrap();
-                            search.set(el.value());
-                        }
-                        prop:value=move || search.get()
-                    />
+                    <div class="relative flex items-center">
+                        <div class="absolute left-2 flex items-center pointer-events-none text-(--muted-text-color)">
+                            <Icon icon=MAGNIFYING_GLASS weight=IconWeight::Bold size="14px" />
+                        </div>
+                        <input
+                            type="text"
+                            node_ref=search_ref
+                            placeholder="Search emoji..."
+                            class="w-full bg-(--ui-solid-bg) border border-(--tile-border-color) rounded-(--ui-border-radius) pl-7 pr-2 py-1 text-sm text-(--bright-text-color) outline-none"
+                            on:input=move |ev| {
+                                let el = ev
+                                    .target()
+                                    .unwrap()
+                                    .dyn_into::<web_sys::HtmlInputElement>()
+                                    .unwrap();
+                                search.set(el.value());
+                            }
+                            prop:value=move || search.get()
+                        />
+                    </div>
                 </div>
 
                 // main layout for sidebar + continuous scroll grid
@@ -217,6 +258,10 @@ pub fn EmojiPickerPortal() -> impl IntoView {
                                         title=format!("{group:?}")
                                         on:click=move |_| {
                                             active_group.set(group);
+                                            search.set(String::new());
+                                            if let Some(el) = search_ref.get() {
+                                                let _ = el.focus();
+                                            }
                                             if let Some(window) = web_sys::window()
                                                 && let Some(document) = window.document()
                                             {
@@ -258,6 +303,9 @@ pub fn EmojiPickerPortal() -> impl IntoView {
                                                         <button
                                                             class="sticky top-[-8px] z-10 w-full flex items-center bg-(--ui-floating-hover-bg) backdrop-blur-md py-1 mb-1 px-1 text-sm font-semibold text-(--text-color) hover:text-(--bright-text-color) cursor-pointer transition-colors"
                                                             on:click=move |_| {
+                                                                if let Some(el) = search_ref.get() {
+                                                                    let _ = el.focus();
+                                                                }
                                                                 collapsed_groups
                                                                     .update(|set| {
                                                                         if set.contains(&group) {
@@ -320,9 +368,9 @@ pub fn EmojiPickerPortal() -> impl IntoView {
                                 }
                                     .into_any()
                             } else {
-                                let emojis: Vec<&'static emojis::Emoji> = emojis::iter()
-                                    .filter(|e| e.name().to_lowercase().contains(q.as_str()))
-                                    .collect();
+                                let emojis = matcher
+                                    .try_update_value(|m| fuzzy_match_emojis(&q, m))
+                                    .unwrap_or_default();
                                 if !emojis.is_empty() {
                                     view! {
                                         <div class="grid grid-cols-8 gap-0.5 pb-2">

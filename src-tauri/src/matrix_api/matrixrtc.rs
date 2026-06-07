@@ -2,7 +2,7 @@ use base64::Engine;
 use base64::engine::general_purpose;
 use livekit::e2ee::EncryptionType;
 use livekit::e2ee::key_provider::{KeyProvider, KeyProviderOptions};
-use log::{debug, error, info, warn};
+use log::{debug, error, info};
 use matrix_sdk::deserialized_responses::ProcessedToDeviceEvent;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
