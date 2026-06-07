@@ -1,7 +1,7 @@
 use serde_json::json;
 use shared::{
     account_data::ServerOrder,
-    api::{FileMetadata, LinkPreviewResponse},
+    api::{FileMetadata, LinkPreviewResponse, ScrollDirection},
     commands::Command,
     profile::UserProfile,
     timeline::{UiMediaSource, UiTimelineItem},
@@ -82,8 +82,11 @@ pub async fn get_commands() -> Result<Vec<Command>, String> {
     }
 }
 
-pub async fn get_timeline(room_id: &str) -> Result<Vec<UiTimelineItem>, String> {
-    let args = serde_wasm_bindgen::to_value(&json!({ "room_id": room_id }))
+pub async fn get_timeline(
+    room_id: &str,
+    event_id: Option<String>,
+) -> Result<Vec<UiTimelineItem>, String> {
+    let args = serde_wasm_bindgen::to_value(&json!({ "room_id": room_id, "event_id": event_id }))
         .map_err(|e| format!("Failed to serialize request: {:?}", e))?;
 
     let res = call_tauri("get_timeline", args)
@@ -100,11 +103,15 @@ pub async fn get_timeline(room_id: &str) -> Result<Vec<UiTimelineItem>, String> 
     Ok(res)
 }
 
-pub async fn scroll_up(room_id: &str) -> Result<bool, String> {
-    let args = serde_wasm_bindgen::to_value(&json!({ "room_id": room_id }))
-        .map_err(|e| format!("Failed to serialize request: {:?}", e))?;
+pub async fn scroll_timeline(
+    room_id: &str,
+    scroll_direction: ScrollDirection,
+) -> Result<bool, String> {
+    let args =
+        serde_wasm_bindgen::to_value(&json!({ "room_id": room_id, "direction": scroll_direction }))
+            .map_err(|e| format!("Failed to serialize request: {:?}", e))?;
 
-    let res = call_tauri("scroll_up", args)
+    let res = call_tauri("scroll_timeline", args)
         .await
         .map_err(|e| format!("Tauri call failed: {:?}", e))?;
 

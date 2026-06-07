@@ -14,7 +14,7 @@ use crate::{
     },
     hooks::use_tauri_event,
     state::{AppState, ProfileStore, RoomHeader},
-    tauri_functions::{get_timeline, pick_files, scroll_up},
+    tauri_functions::{get_timeline, pick_files, scroll_timeline},
 };
 
 use crate::components::emoji_picker::pick_emoji;
@@ -26,7 +26,7 @@ use phosphor_leptos::{
 use leptos::{ev, html::Div, prelude::*, task::spawn_local};
 use leptos_use::{UseIntersectionObserverReturn, use_event_listener, use_intersection_observer};
 use shared::{
-    api::{FileMetadata, UiAttachmentSource}, profile::{MemberProfile, PresenceInfo}, sidebar::RoomKind, timeline::{DetailState, EventContent, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind}
+    api::{FileMetadata, ScrollDirection, UiAttachmentSource}, profile::{MemberProfile, PresenceInfo}, sidebar::RoomKind, timeline::{DetailState, EventContent, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind}
 };
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
@@ -197,20 +197,23 @@ fn TimeLine() -> impl IntoView {
     });
 
     let is_loading = RwSignal::new(false);
-    let has_more = RwSignal::new(true);
+    let is_loading_bottom = RwSignal::new(false);
+    let has_more_top = RwSignal::new(true);
+    let has_more_bottom = RwSignal::new(true);
     let initial_loaded = RwSignal::new(false);
 
-    let sentinel_ref = NodeRef::<Div>::new();
+    let sentinel_ref_top = NodeRef::<Div>::new();
+    let sentinel_ref_bottom = NodeRef::<Div>::new();
 
-    let fetch_more = move || {
+    let fetch_more = move |scroll_direction, loading: RwSignal<bool>, has_more: RwSignal<bool>| {
         let Some(room_id) = state.active_room_id_untracked() else {
             log::error!("No active room ID, cannot fetch more messages");
             return;
         };
 
-        is_loading.set(true);
+        loading.set(true);
         spawn_local(async move {
-            match scroll_up(&room_id).await {
+            match scroll_timeline(&room_id, scroll_direction).await {
                 Ok(new_has_more) => {
                     log::debug!("Fetched more messages");
                     has_more.set(new_has_more);
@@ -222,38 +225,49 @@ fn TimeLine() -> impl IntoView {
                     log::error!("Failed to fetch more messages: {}", e);
                 }
             };
-            is_loading.set(false);
+            loading.set(false);
         });
     };
 
     let UseIntersectionObserverReturn { .. } = use_intersection_observer(
-        sentinel_ref,
+        sentinel_ref_top,
         move |entries: Vec<IntersectionObserverEntry>, _| {
             if entries[0].is_intersecting()
                 && initial_loaded.get()
-                && has_more.get()
+                && has_more_top.get()
                 && !is_loading.get()
             {
-                fetch_more();
+                fetch_more(ScrollDirection::Up, is_loading, has_more_top);
             };
         },
     );
 
-    // `active_room_id` is its own signal that only changes when the active room
-    // actually changes (not on per-sync RoomNode metadata churn), so this Effect
-    // reloads the timeline only on a real room switch.
-    Effect::new(move |_| {
+    let UseIntersectionObserverReturn { .. } = use_intersection_observer(
+        sentinel_ref_bottom,
+        move |entries: Vec<IntersectionObserverEntry>, _| {
+            if entries[0].is_intersecting()
+                && initial_loaded.get()
+                && has_more_bottom.get()
+                && !is_loading_bottom.get()
+            {
+                fetch_more(ScrollDirection::Down, is_loading_bottom, has_more_bottom);
+            };
+        },
+    );
+
+    Effect::new(move || {
         if let Some(room_id) = state.active_room_id() {
             log::debug!("Loading room {}, resetting messages to empty", room_id);
             messages.set(Vec::new());
             initial_loaded.set(false);
-            has_more.set(true);
+            has_more_top.set(true);
+            has_more_bottom.set(true);
             is_loading.set(true);
 
             let current_room_id = room_id.clone();
 
             spawn_local(async move {
-                match get_timeline(&current_room_id).await {
+                match get_timeline(&current_room_id, None).await {
                     Ok(tl) => {
                         if state.active_room_id_untracked() == Some(current_room_id.clone()) {
                             messages.set(tl.into_iter().map(RwSignal::new).collect());
@@ -280,8 +294,47 @@ fn TimeLine() -> impl IntoView {
         }
     });
 
+    let important_event_id = RwSignal::new(None);
+    provide_context(important_event_id);
+
+    let scroll_to_event = Callback::new(move |event_id: String| {
+        let Some(room_id) = state.active_room_id_untracked() else {
+            log::error!("No active room ID, cannot scroll to event");
+            return;
+        };
+
+        initial_loaded.set(false);
+        has_more_top.set(true);
+        has_more_bottom.set(true);
+        is_loading.set(true);
+
+        important_event_id.set(Some(event_id.clone()));
+
+        spawn_local(async move {
+            match get_timeline(&room_id, Some(event_id)).await {
+                Ok(tl) => {
+                    messages.set(tl.into_iter().map(RwSignal::new).collect());
+                    initial_loaded.set(true);
+                    is_loading.set(false);
+
+                    log::debug!("Scrolled to event in room {}", room_id);
+                }
+                Err(e) => {
+                    log::error!("Failed to load timeline for scroll: {}", e);
+                }
+            }
+        });
+    });
+
     view! {
         <div class="flex-1 w-full w-full overflow-y-auto flex flex-col-reverse py-2 overflow-anchor-auto">
+            <Show
+                when=move || !is_loading_bottom.get()
+                fallback=|| view! { <div class="text-center p-4 text-muted">"Loading..."</div> }
+            >
+                <div node_ref=sentinel_ref_bottom class="h-2 w-full shrink-0" />
+            </Show>
+
             <div class="mb-5"></div>
             <For
                 each=move || timeline.get()
@@ -290,8 +343,8 @@ fn TimeLine() -> impl IntoView {
                         .try_with_untracked(|item| { item.id.clone() })
                         .unwrap_or_else(|| "disposed_fallback_key".to_string())
                 }
-                children=|(item_sig, show_header)| {
-                    render_timeline_item(item_sig, show_header, false)
+                children=move |(item_sig, show_header)| {
+                    render_timeline_item(item_sig, show_header, false, scroll_to_event)
                 }
             />
 
@@ -299,7 +352,7 @@ fn TimeLine() -> impl IntoView {
                 when=move || !is_loading.get()
                 fallback=|| view! { <div class="text-center p-4 text-muted">"Loading..."</div> }
             >
-                <div node_ref=sentinel_ref class="h-2 w-full shrink-0" />
+                <div node_ref=sentinel_ref_top class="h-2 w-full shrink-0" />
             </Show>
         </div>
     }
@@ -484,11 +537,9 @@ pub enum ChatInputInfo {
     ReplyingTo {
         event_id: String,
         sender_id: String,
-        item_id: String,
     },
     Editing {
         event_id: String,
-        item_id: String,
     },
 }
 
@@ -1224,7 +1275,7 @@ fn MemberList() -> impl IntoView {
 
         let online_i = views.len();
 
-        let number_view = view! { <span class="text-sm text-muted">{format!("{} online", online_i)}</span> }
+        let number_view = view! { <span class="text-sm text-muted">{format!("Online — {online_i}")}</span> }
                 .into_any();
 
         if online_i > 0 {
@@ -1271,7 +1322,7 @@ fn MemberList() -> impl IntoView {
 
         let offline_i = views.len();
 
-        let number_view = view! { <span class="text-sm text-muted">{format!("{} offline", offline_i)}</span> }
+        let number_view = view! { <span class="text-sm text-muted">{format!("Offline — {offline_i}")}</span> }
                 .into_any();
 
         if offline_i > 0 {

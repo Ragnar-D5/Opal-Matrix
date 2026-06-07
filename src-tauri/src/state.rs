@@ -1,6 +1,8 @@
+use matrix_sdk::ruma::EventId;
+use matrix_sdk::ruma::{events::room::MediaSource, OwnedRoomId};
 use matrix_sdk::Room;
-use matrix_sdk::ruma::{OwnedRoomId, events::room::MediaSource};
-use matrix_sdk_ui::{Timeline, timeline::TimelineBuilder};
+use matrix_sdk_ui::timeline::{TimelineEventFocusThreadMode, TimelineFocus};
+use matrix_sdk_ui::{timeline::TimelineBuilder, Timeline};
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use tauri::async_runtime::{Mutex, RwLock};
 use tokio::task::JoinHandle;
@@ -32,15 +34,50 @@ impl Default for TimelineManager {
 }
 
 impl TimelineManager {
-    pub async fn get_or_create_timeline(&self, room: &Room) -> Result<Arc<Timeline>, TauriError> {
+    pub async fn get_or_create_timeline(
+        &self,
+        room: &Room,
+        event_id: Option<String>,
+    ) -> Result<Arc<Timeline>, TauriError> {
         let mut guard = self.timelines.write().await;
-        if let Some(timeline) = guard.get(room.room_id()) {
+
+        if event_id.is_none()
+            && let Some(timeline) = guard.get(room.room_id())
+        {
             return Ok(timeline.clone());
         }
+
+        let focus = if let Some(event_id) = event_id {
+            log::debug!(
+                "Creating timeline focused on event {} in room {}",
+                event_id,
+                room.room_id()
+            );
+            TimelineFocus::Event {
+                target: EventId::parse(event_id)?,
+                num_context_events: 30,
+                thread_mode: TimelineEventFocusThreadMode::Automatic {
+                    hide_threaded_events: false,
+                },
+            }
+        } else {
+            log::debug!(
+                "Creating timeline focused on live events in room {}",
+                room.room_id()
+            );
+            TimelineFocus::Live {
+                hide_threaded_events: false,
+            }
+        };
 
         log::debug!("Creating new timeline for room {}", room.room_id());
         let timeline = TimelineBuilder::new(room)
             .with_date_divider_mode(matrix_sdk_ui::timeline::DateDividerMode::Daily)
+            .with_focus(focus)
+            .track_read_marker_and_receipts(
+                matrix_sdk_ui::timeline::TimelineReadReceiptTracking::AllEvents,
+            )
+            .add_failed_to_parse(true)
             .build()
             .await?;
         timeline.paginate_backwards(30).await?;

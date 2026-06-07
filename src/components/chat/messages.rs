@@ -15,6 +15,7 @@ use shared::{
         RichTextSpan, SystemMessage, UiCallIntent, UiMembershipChange, UiMessageType,
         UiTimelineItem, UiTimelineItemKind,
     },
+    profile::MemberProfile,
 };
 use wasm_bindgen::JsCast;
 use web_sys::Element;
@@ -35,12 +36,17 @@ use crate::{
 };
 
 #[component]
-fn ReplyPreview(reply_info: Option<ReplyInfo>, active_room_id: String) -> impl IntoView {
+fn ReplyPreview(
+    reply_info: Option<ReplyInfo>,
+    active_room_id: String,
+    scroll_to_item: Callback<String>,
+) -> impl IntoView {
     let Some(reply_info) = reply_info else {
         return ().into_any();
     };
 
     let store: ProfileStore = expect_context();
+    let target_event_id = reply_info.event_id.clone();
 
     let preview = Memo::new(move |_| match &reply_info.event {
         DetailState::Error(e) => {
@@ -86,12 +92,12 @@ fn ReplyPreview(reply_info: Option<ReplyInfo>, active_room_id: String) -> impl I
     });
 
     view! {
-        <div class="flex items-center gap-1 ml-[52px] mb-1 cursor-pointer text-xs relative group/reply cursor-pointer">
-            <div class="absolute -left-[32px] top-[calc(50%-1px)] w-[28px] h-4.5 border-l-2 border-t-2 border-white/20 rounded-tl-md"></div>
-
+        <div
+            class="flex items-center gap-1 mb-1 cursor-pointer [&_*]:cursor-pointer text-xs"
+            on:click=move |_| scroll_to_item.run(target_event_id.clone())
+        >
             {move || profile.get().render_icon("20px")}
             {move || profile.get().render_name("12px")}
-
             <span class="truncate text-bright line-clamp-1">
                 {move || {
                     let spans = spans.get();
@@ -104,6 +110,75 @@ fn ReplyPreview(reply_info: Option<ReplyInfo>, active_room_id: String) -> impl I
         </div>
     }
     .into_any()
+}
+
+#[component]
+fn MessageHeader(
+    reply_info: Option<ReplyInfo>,
+    active_room_id: String,
+    scroll_to_item: Callback<String>,
+    show_header: bool,
+    sender_profile_sig: ArcRwSignal<MemberProfile>,
+    name: String,
+    color: Hsl,
+    date: DateTime<Local>,
+    current_highlight: Memo<Option<String>>,
+    children: Children,
+) -> impl IntoView {
+    let has_reply = reply_info.is_some();
+
+    view! {
+        <div class="flex gap-(--gap)">
+            <div
+                class="rounded-full w-1 m-1"
+                style=move || {
+                    if let Some(color) = current_highlight.get() {
+                        format!("background-color: {color}")
+                    } else {
+                        "transparent".to_string()
+                    }
+                }
+            ></div>
+
+            <div class="shrink-0 mr-2 w-[40px] relative flex flex-col justify-end">
+                <Show when=move || has_reply>
+                    <div class="absolute left-[calc(50%-1px)] right-[-8px] top-2 bottom-[50px] border-l-2 border-t-2 border-white/20 rounded-tl-md -z-10"></div>
+                </Show>
+
+                <div class="mb-[5px]">
+                    {if show_header {
+                        view! { {move || sender_profile_sig.get().render_icon("40px")} }.into_any()
+                    } else {
+                        ().into_any()
+                    }}
+                </div>
+            </div>
+
+            <div class="flex flex-col min-w-0 flex-1">
+                <ReplyPreview
+                    reply_info=reply_info
+                    active_room_id=active_room_id
+                    scroll_to_item=scroll_to_item
+                />
+
+                {if show_header {
+                    view! {
+                        <div class="flex items-baseline gap-2">
+                            <span class="text-bright truncate cursor-pointer">
+                                {render_profile_name(name, color, "16px")}
+                            </span>
+                            <span class="text-muted text-xs">{format_date(date)}</span>
+                        </div>
+                    }
+                        .into_any()
+                } else {
+                    ().into_any()
+                }}
+
+                {children()}
+            </div>
+        </div>
+    }
 }
 
 async fn mxc_to_blob_url(mxc_url: String) -> Option<String> {
@@ -897,18 +972,22 @@ fn render_system_message(
     .into_any()
 }
 
-fn message_buttons(
+#[component]
+fn MesssageButtons(
     flags: Memo<EventFlags>,
     room_id: String,
     event_id: Option<String>,
     sender_id: Option<String>,
-    item_id: String,
     item_sig: RwSignal<UiTimelineItem>,
+    picker_open: RwSignal<bool>,
+    show_delete_confirm: RwSignal<bool>,
 ) -> impl IntoView {
     let no_buttons = move || {
         let f = flags.get();
         !f.is_reactable && !f.can_be_replied_to && !f.is_editable
     };
+
+    let important_event_id: RwSignal<Option<String>> = expect_context();
 
     let react_event_id = event_id.clone();
     let react_room_id = room_id.clone();
@@ -922,8 +1001,12 @@ fn message_buttons(
 
         let room_id = react_room_id.clone();
 
+        picker_open.set(true);
         spawn_local(async move {
-            let Some(emoji) = pick_emoji(&anchor, emoji_state).await else {
+            let picked = pick_emoji(&anchor, emoji_state).await;
+            picker_open.set(false);
+
+            let Some(emoji) = picked else {
                 return;
             };
             if let Err(e) = toggle_reaction(&room_id, &event_id, &emoji).await {
@@ -944,10 +1027,10 @@ fn message_buttons(
             return;
         };
 
+        important_event_id.set(Some(event_id.clone()));
         input_info.set(Some(ChatInputInfo::ReplyingTo {
             event_id,
             sender_id,
-            item_id: "".to_string(),
         }));
         input_ref.get().map(|el| el.focus().ok());
     };
@@ -965,9 +1048,9 @@ fn message_buttons(
             return;
         };
 
+        important_event_id.set(Some(event_id.clone()));
         input_info.set(Some(ChatInputInfo::Editing {
             event_id,
-            item_id: item_id.clone(),
         }));
         attachments.set(Vec::new());
 
@@ -984,7 +1067,7 @@ fn message_buttons(
         }
     };
 
-    let show_delete_confirm = RwSignal::new(false);
+    let interacting = move || picker_open.get() || show_delete_confirm.get();
 
     let delete_event_id = event_id.clone();
     let delete_room_id = room_id.clone();
@@ -1003,8 +1086,9 @@ fn message_buttons(
 
     view! {
         <div
-            class="absolute -top-4 right-4 flex items-center gap-1 bg-(--ui-solid-bg) p-1 rounded-(--gap) text-muted text-xs border border-(--tile-border-color) opacity-0 group-hover/msg:opacity-100"
+            class="absolute -top-4 right-4 z-10 transform-gpu flex items-center gap-1 bg-(--ui-solid-bg) p-1 rounded-(--gap) text-muted text-xs border border-(--tile-border-color) opacity-0 group-hover/msg:opacity-100"
             class=("hidden", no_buttons)
+            style:opacity=move || interacting().then_some("1")
         >
             <Show when=move || { flags.get().is_reactable }>
                 <button
@@ -1043,7 +1127,7 @@ fn message_buttons(
             <p class="text-bright text-xl font-bold">"Delete message"</p>
             <p class="text-muted">"Are you sure you want to delete this message?"</p>
             <div class="my-2 p-2 bg-(--ui-floating-bg) border border-(--tile-border-color) rounded-(--gap)">
-                {render_timeline_item(item_sig, true, true)}
+                {render_timeline_item(item_sig, true, true, Callback::new(|_| {}))}
             </div>
             <div class="flex gap-2 pt-2 justify-end w-full">
                 <button
@@ -1102,8 +1186,11 @@ fn render_timeline_event(
     item_sig: RwSignal<UiTimelineItem>,
     show_header: bool,
     preview: bool,
+    scroll_to_event: Callback<String>,
 ) -> impl IntoView {
     let hovered = RwSignal::new(false);
+    let picker_open = RwSignal::new(false);
+    let show_delete_confirm = RwSignal::new(false);
 
     let (show_highlight, date, sender_id, name, color, reply_info, event_id) = item_sig
         .with_untracked(|item| {
@@ -1128,8 +1215,6 @@ fn render_timeline_event(
                 unreachable!("Must be an event")
             }
         });
-
-    let item_id = item_sig.get_untracked().id.clone();
 
     let room_id_for_content = room_id.to_string();
     let store_for_content = store.clone();
@@ -1197,23 +1282,18 @@ fn render_timeline_event(
         )
     };
 
-    let input_info: RwSignal<Option<ChatInputInfo>> = expect_context();
-
-    let current_highlight = Memo::new({
-        let item_id = item_id.clone();
-        move |_| {
-            match input_info.get() {
-                Some(ChatInputInfo::ReplyingTo {
-                    item_id: reply_id, ..
-                }) if *reply_id == item_id => return Some("white".to_string()),
-                Some(ChatInputInfo::Editing {
-                    item_id: edit_id, ..
-                }) if *edit_id == item_id => return Some("white".to_string()),
-                _ => (),
+    let important_event_id: RwSignal<Option<String>> = expect_context();
+    let color_event_id = event_id.clone();
+    let current_highlight = Memo::new(move |_| {
+        if let Some(important_id) = important_event_id.get() && let Some(event_id) = &color_event_id {
+            if important_id == *event_id {
+                Some("white".to_string())
+            } else {
+                None
             }
-            if show_highlight {
-                return Some("var(--accent-color)".to_string());
-            }
+        } else if show_highlight {
+            Some("var(--accent-color)".to_string())
+        } else {
             None
         }
     });
@@ -1227,41 +1307,30 @@ fn render_timeline_event(
     let sender_profile_sig =
         store.get_member_profile(&room_id, &sender_id.clone().unwrap_or_default());
 
+    let reply_room_id = room_id.clone();
+
+    let is_active = move || hovered.get() || picker_open.get() || show_delete_confirm.get();
+
     view! {
         <div
-            class="group/msg relative flex flex-col gap-[var(--gap)] hover:bg-black/20 rounded-md"
+            class="group/msg relative flex flex-col gap-[var(--gap)] hover:bg-black/20 rounded-md transform-gpu"
             class=("mt-5", show_header && !preview)
             class=("pointer-events-none", preview)
+            class=("bg-black/20", move || picker_open.get() || show_delete_confirm.get())
             style:background=move || {
-                let hovered = hovered.get();
-                if let Some(color) = current_highlight.get() {
-                    format!(
-                        "linear-gradient(in oklch to right, oklch(from {color} l c h / {}) 20%, oklch(from {color} l c h / 0) 100%)",
-                        if hovered { "0.10" } else { "0.15" },
-                    )
-                } else if hovered {
-                    "rgba(0, 0, 0, 0.2)".to_string()
-                } else {
-                    "transparent".to_string()
-                }
+                current_highlight
+                    .get()
+                    .map(|color| {
+                        let hovered = is_active();
+                        format!(
+                            "linear-gradient(in oklch to right, oklch(from {color} l c h / {}) 20%, oklch(from {color} l c h / 0) 100%)",
+                            if hovered { "0.10" } else { "0.15" },
+                        )
+                    })
             }
             on:mouseenter=move |_| hovered.set(true)
             on:mouseleave=move |_| hovered.set(false)
         >
-            {move || {
-                if let Some(color) = current_highlight.get() {
-                    view! {
-                        <div
-                            class="absolute left-1 top-1 bottom-1 w-1 rounded-full pointer-events-none"
-                            style=format!("background-color: {color}")
-                        ></div>
-                    }
-                        .into_any()
-                } else {
-                    ().into_any()
-                }
-            }}
-
             {move || {
                 if hovered.get() && !show_header {
                     view! {
@@ -1275,85 +1344,69 @@ fn render_timeline_event(
                 }
             }}
 
-            {if !preview {
-                message_buttons(
-                        flags,
-                        room_id.clone(),
-                        event_id.clone(),
-                        sender_id.clone(),
-                        item_id.clone(),
-                        item_sig,
-                    )
-                    .into_any()
-            } else {
-                ().into_any()
-            }}
+            <Show when=move || !preview>
+                <MesssageButtons
+                    flags=flags
+                    room_id=room_id.clone()
+                    event_id=event_id.clone()
+                    sender_id=sender_id.clone()
+                    item_sig=item_sig
+                    picker_open=picker_open
+                    show_delete_confirm=show_delete_confirm
+                />
+            </Show>
 
-            <ReplyPreview reply_info=reply_info active_room_id=room_id />
-
-            <div class="flex gap-[var(--gap)]">
-                <div class="shrink-0 mr-2 w-[40px] mt-[5px]">
-                    {if show_header {
-                        view! { {move || sender_profile_sig.get().render_icon("40px")} }.into_any()
-                    } else {
-                        ().into_any()
-                    }}
-                </div>
-
-                <div class="flex flex-col min-w-0 flex-1">
-                    {if show_header {
-                        view! {
-                            <div class="flex items-baseline gap-2">
-                                <span class="text-bright truncate cursor-pointer">
-                                    {render_profile_name(name, color, "16px")}
-                                </span>
-                                <span class="text-muted text-xs">{format_date(date)}</span>
-                            </div>
-                        }
-                            .into_any()
-                    } else {
-                        ().into_any()
-                    }} <div>
-                        <div class=(
-                            "opacity-50",
-                            move || {
-                                item_sig
-                                    .with(|i| {
-                                        if let UiTimelineItemKind::Event(e) = &i.kind {
-                                            e.is_sending()
-                                        } else {
-                                            false
-                                        }
-                                    })
-                            },
-                        )>{rendered_content}</div>
-                        {move || {
-                            let failed = item_sig
+            <MessageHeader
+                reply_info=reply_info
+                active_room_id=reply_room_id
+                scroll_to_item=scroll_to_event
+                show_header=show_header
+                sender_profile_sig=sender_profile_sig
+                name=name
+                color=color
+                date=date
+                current_highlight=current_highlight
+            >
+                <div>
+                    <div class=(
+                        "opacity-50",
+                        move || {
+                            item_sig
                                 .with(|i| {
                                     if let UiTimelineItemKind::Event(e) = &i.kind {
-                                        e.get_failed_message()
+                                        e.is_sending()
                                     } else {
-                                        None
-                                    }
-                                });
-                            failed
-                                .map(|msg| {
-                                    view! {
-                                        <div class="flex items-center gap-1 mt-1 text-red-500 text-xs">
-                                            <Icon
-                                                icon=WARNING_CIRCLE
-                                                weight=IconWeight::Duotone
-                                                size="16px"
-                                            />
-                                            {msg}
-                                        </div>
+                                        false
                                     }
                                 })
-                        }}
-                        {reactions_view}
-                    </div>
+                        },
+                    )>{rendered_content}</div>
+                    {move || {
+                        let failed = item_sig
+                            .with(|i| {
+                                if let UiTimelineItemKind::Event(e) = &i.kind {
+                                    e.get_failed_message()
+                                } else {
+                                    None
+                                }
+                            });
+                        failed
+                            .map(|msg| {
+                                view! {
+                                    <div class="flex items-center gap-1 mt-1 text-red-500 text-xs">
+                                        <Icon
+                                            icon=WARNING_CIRCLE
+                                            weight=IconWeight::Duotone
+                                            size="16px"
+                                        />
+                                        {msg}
+                                    </div>
+                                }
+                            })
+                    }}
+                    {reactions_view}
                 </div>
-            </div>
+            </MessageHeader>
         </div>
     }.into_any()
 }
@@ -1362,6 +1415,7 @@ pub fn render_timeline_item(
     item_sig: RwSignal<UiTimelineItem>,
     show_header: bool,
     preview: bool,
+    scroll_to_event: Callback<String>,
 ) -> impl IntoView {
     let state: AppState = expect_context();
     let store: ProfileStore = expect_context();
@@ -1450,6 +1504,6 @@ pub fn render_timeline_item(
             }
             .into_any()
         }
-        UiTimelineItemKind::Event(_) => render_timeline_event(store, &room_id, &user_id, item_sig, show_header, preview).into_any()
+        UiTimelineItemKind::Event(_) => render_timeline_event(store, &room_id, &user_id, item_sig, show_header, preview, scroll_to_event).into_any()
     }
 }

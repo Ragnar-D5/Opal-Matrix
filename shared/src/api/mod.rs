@@ -37,9 +37,17 @@ pub struct LinkPreviewResponse {
     pub description: Option<String>,
     #[serde(rename = "og:image")]
     pub image_url: Option<String>,
-    #[serde(rename = "og:image:width", deserialize_with = "deserialize_u32_or_string", default)]
+    #[serde(
+        rename = "og:image:width",
+        deserialize_with = "deserialize_u32_or_string",
+        default
+    )]
     pub image_width: Option<u32>,
-    #[serde(rename = "og:image:height", deserialize_with = "deserialize_u32_or_string", default)]
+    #[serde(
+        rename = "og:image:height",
+        deserialize_with = "deserialize_u32_or_string",
+        default
+    )]
     pub image_height: Option<u32>,
     #[serde(rename = "og:url")]
     pub url: Option<String>,
@@ -82,4 +90,10 @@ pub struct FileMetadata {
 pub enum UiAttachmentSource {
     LocalFile(String),
     RawBytes(Vec<u8>),
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum ScrollDirection {
+    Up,
+    Down,
 }

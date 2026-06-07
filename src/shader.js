@@ -16,6 +16,17 @@ let uLC = 0.0;
 let uSt = 0.0;
 let uPSt = 0.0;
 
+// Fetches the GLSL source and (re)builds the program from it.
+function loadAndSetup() {
+  return fetch("/public/background_center.glsl")
+    .then((r) => {
+      if (!r.ok) throw new Error("Failed to fetch shader: " + r.status);
+      return r.text();
+    })
+    .then((fragSrc) => setup(fragSrc))
+    .catch((err) => console.error("[Shader]", err));
+}
+
 export function init_shader(canvas) {
   startSec = performance.now() / 1000.0;
 
@@ -29,22 +40,36 @@ export function init_shader(canvas) {
   const resize = () => {
     canvas.width = canvas.clientWidth;
     canvas.height = canvas.clientHeight;
-    gl.viewport(0, 0, canvas.width, canvas.height);
+    if (gl) gl.viewport(0, 0, canvas.width, canvas.height);
   };
   window.addEventListener("resize", resize);
   resize(); // Trigger immediately to set initial dimensions
 
-  // Fetch the GLSL source then start the loop.
-  fetch("/public/background_center.glsl")
-    .then((r) => {
-      if (!r.ok) throw new Error("Failed to fetch shader: " + r.status);
-      return r.text();
-    })
-    .then((fragSrc) => {
-      setup(fragSrc);
-      requestAnimationFrame(render);
-    })
-    .catch((err) => console.error("[Shader]", err));
+  // The GPU can reclaim the context (e.g. during heavy devtools profiling),
+  // which leaves the canvas blank until we rebuild everything from scratch.
+  canvas.addEventListener(
+    "webglcontextlost",
+    (e) => {
+      e.preventDefault(); // tells the browser we want to try to restore it
+      console.warn("[Shader] WebGL context lost");
+      gl = null;
+      prog = null;
+    },
+    false,
+  );
+
+  canvas.addEventListener(
+    "webglcontextrestored",
+    () => {
+      console.warn("[Shader] WebGL context restored");
+      gl = canvas.getContext("webgl2");
+      resize();
+      loadAndSetup().then(() => requestAnimationFrame(render));
+    },
+    false,
+  );
+
+  loadAndSetup().then(() => requestAnimationFrame(render));
 }
 
 export function update_shader_state(current, prev, lastChangedTime) {

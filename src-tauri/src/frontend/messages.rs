@@ -17,7 +17,7 @@ use matrix_sdk::ruma::{
     },
 };
 use scraper::{Html, Node};
-use shared::{api::{FileMetadata, UiAttachmentSource}, timeline::{RichTextSpan, RoomIdFormat, UiTimelineDiff, UiTimelineItem, coalesce_diffs}};
+use shared::{api::{FileMetadata, ScrollDirection, UiAttachmentSource}, timeline::{RichTextSpan, RoomIdFormat, UiTimelineDiff, UiTimelineItem, coalesce_diffs}};
 use tauri::{AppHandle, Emitter, State, command};
 use tokio::sync::RwLock;
 use uuid::Uuid;
@@ -42,7 +42,7 @@ pub async fn commit_message(
         .get_room(&RoomId::parse(&room_id)?)
         .ok_or("Room not found")?;
 
-    let timeline = timeline_manager.get_or_create_timeline(&room).await?;
+    let timeline = timeline_manager.get_or_create_timeline(&room, None).await?;
 
     let mut mentions = Mentions::default();
     let mut spans = Vec::new();
@@ -77,7 +77,7 @@ pub async fn send_attachment(
         .get_room(&RoomId::parse(&room_id)?)
         .ok_or("Room not found")?;
 
-    let timeline = timeline_manager.get_or_create_timeline(&room).await?;
+    let timeline = timeline_manager.get_or_create_timeline(&room, None).await?;
 
     let raw_bytes = match &file.source {
         UiAttachmentSource::LocalFile(path) => {
@@ -160,7 +160,7 @@ pub async fn edit_message(
         .get_room(&RoomId::parse(&room_id)?)
         .ok_or("Room not found")?;
 
-    let timeline = timeline_manager.get_or_create_timeline(&room).await?;
+    let timeline = timeline_manager.get_or_create_timeline(&room, Some(event_id.clone())).await?;
 
     let mut mentions = Mentions::default();
     let mut spans = Vec::new();
@@ -291,10 +291,11 @@ fn extract_text(node: NodeRef<'_, Node>) -> String {
 }
 
 #[command(rename_all = "snake_case")]
-pub async fn scroll_up(
+pub async fn scroll_timeline(
     matrix_client: State<'_, RwLock<MatrixClient>>,
     timeline_manager: State<'_, TimelineManager>,
     room_id: String,
+    direction: ScrollDirection,
 ) -> Result<bool, TauriError> {
     log::debug!("Scrolling up");
     let room = matrix_client
@@ -304,9 +305,12 @@ pub async fn scroll_up(
         .ok_or("No room found")?;
 
     let timeline_manager = timeline_manager.inner();
-    let timeline = timeline_manager.get_or_create_timeline(&room).await?;
+    let timeline = timeline_manager.get_or_create_timeline(&room, None).await?;
 
-    let has_more = timeline.paginate_backwards(30).await?;
+    let has_more = match direction {
+        ScrollDirection::Up => timeline.paginate_backwards(30).await?,
+        ScrollDirection::Down => timeline.paginate_forwards(30).await?,
+    };
 
     Ok(!has_more)
 }
@@ -319,6 +323,7 @@ pub async fn get_timeline(
     media_manager: State<'_, MediaManager>,
     handle: AppHandle,
     room_id: String,
+    event_id: Option<String>
 ) -> Result<Vec<UiTimelineItem>, TauriError> {
     log::debug!("Fetching timeline for room {}", room_id);
 
@@ -346,7 +351,7 @@ pub async fn get_timeline(
 
             timeline_manager.abort_stream().await;
 
-            let timeline = timeline_manager.get_or_create_timeline(&room).await?;
+            let timeline = timeline_manager.get_or_create_timeline(&room, event_id).await?;
 
             let (messages, stream) = timeline.subscribe().await;
 
@@ -412,7 +417,7 @@ pub async fn toggle_reaction(
         .get_room(&RoomId::parse(&room_id)?)
         .ok_or("No room found")?;
 
-    let timeline = timeline_manager.get_or_create_timeline(&room).await?;
+    let timeline = timeline_manager.get_or_create_timeline(&room, Some(event_id.clone())).await?;
 
     timeline
         .toggle_reaction(
@@ -438,7 +443,7 @@ pub async fn delete_message(
         .get_room(&RoomId::parse(&room_id)?)
         .ok_or("No room found")?;
 
-    let timeline = timeline_manager.get_or_create_timeline(&room).await?;
+    let timeline = timeline_manager.get_or_create_timeline(&room, Some(event_id.clone())).await?;
 
     timeline
         .redact(&TimelineEventItemId::EventId(OwnedEventId::try_from(event_id)?), None)

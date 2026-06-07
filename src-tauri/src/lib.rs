@@ -568,7 +568,7 @@ pub fn run() {
             frontend::messages::send_attachment,
             frontend::messages::edit_message,
             frontend::messages::get_timeline,
-            frontend::messages::scroll_up,
+            frontend::messages::scroll_timeline,
             frontend::messages::toggle_reaction,
             frontend::messages::delete_message,
             frontend::commands::get_commands,
