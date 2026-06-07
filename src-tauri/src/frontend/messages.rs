@@ -1,8 +1,8 @@
-use std::{collections::HashMap, io::Cursor, path::PathBuf, str::FromStr};
+use std::{collections::{HashMap, HashSet}, io::Cursor, path::PathBuf, str::FromStr};
 
 use futures::{StreamExt};
 use image::ImageReader;
-use matrix_sdk::{Client as MatrixClient, attachment::{AttachmentInfo, BaseFileInfo, BaseImageInfo, BaseVideoInfo}, room::edit::EditedContent, ruma::{api::client::receipt::create_receipt::v3::ReceiptType, events::room::MediaSource}, };
+use matrix_sdk::{Client as MatrixClient, attachment::{AttachmentInfo, BaseFileInfo, BaseImageInfo, BaseVideoInfo}, room::edit::EditedContent, ruma::{EventId, api::client::receipt::create_receipt::v3::ReceiptType, events::room::MediaSource}, };
 use matrix_sdk_ui::timeline::{AttachmentConfig, AttachmentSource, TimelineEventItemId};
 use mime::Mime;
 use tokio_util::sync::CancellationToken;
@@ -167,6 +167,7 @@ pub async fn edit_message(
         .get_room(&RoomId::parse(&room_id)?)
         .ok_or("Room not found")?;
 
+    let event_id = EventId::parse(event_id)?;
     let timeline = timeline_manager.get_or_create_timeline(&room, Some(event_id.clone())).await?;
 
     let mut mentions = Mentions::default();
@@ -182,7 +183,7 @@ pub async fn edit_message(
 
     timeline
         .edit(
-            &TimelineEventItemId::EventId(OwnedEventId::try_from(event_id)?),
+            &TimelineEventItemId::EventId(event_id),
             EditedContent::RoomMessage(messge_content),
         )
         .await?;
@@ -319,7 +320,7 @@ pub async fn get_timeline(
     room_id: String,
     event_id: Option<String>
 ) -> Result<Vec<UiTimelineItem>, TauriError> {
-    log::debug!("Fetching timeline for room {}", room_id);
+    log::debug!("Fetching timeline for room {}{}", room_id, event_id.as_ref().map(|id| format!(" at event {}", id)).unwrap_or_default());
 
     let token = CancellationToken::new();
     task_manager
@@ -327,6 +328,11 @@ pub async fn get_timeline(
         .await;
 
     let mut media_store: HashMap<Uuid, MediaSource> = media_manager.sources.read().await.clone();
+    let event_id = if let Some(id) = event_id {
+        Some(EventId::parse(id)?)
+    } else {
+        None
+    };
 
     tokio::select! {
         _ = token.cancelled() => {
@@ -335,8 +341,6 @@ pub async fn get_timeline(
         }
 
         result = async {
-            log::debug!("Fetching timeline for room {}", room_id);
-
             let room = matrix_client
                 .read()
                 .await
@@ -350,20 +354,27 @@ pub async fn get_timeline(
             let (messages, stream) = timeline.subscribe().await;
 
             let media_for_stream = (*media_manager).clone();
+            let room_for_stream = room.clone();
             timeline_manager
                 .set_stream_handle(tokio::spawn(async move {
                     tokio::pin!(stream);
 
                     while let Some(update) = stream.next().await {
                         let mut new_sources = HashMap::new();
-                        let diffs = coalesce_diffs(update.iter().map(|v| {
-                            let (res, ext) = timeline_diff_to_ui(v);
-                            new_sources.extend(ext);
-                            res
-                        }).collect());
+                        let mut unknown_reply_event_ids = HashSet::new();
+
+                        let diffs = coalesce_diffs(update.iter().map(|v| timeline_diff_to_ui(v, &mut new_sources, &mut unknown_reply_event_ids)).collect());
                         if !new_sources.is_empty() {
                             media_for_stream.sources.write().await.extend(new_sources);
                         }
+
+                        for event_id in unknown_reply_event_ids {
+                            log::debug!("Fetching unknown reply event {}", event_id);
+                            if let Err(e) = room_for_stream.load_or_fetch_event_with_relations(&event_id, None, None).await {
+                                warn!("Failed to load event {}: {:?}", event_id, e);
+                            }
+                        }
+
                         send_timeline_diffs(handle.clone(), diffs);
                     }
                 }))
@@ -373,7 +384,15 @@ pub async fn get_timeline(
 
             timeline.mark_as_read(ReceiptType::FullyRead).await?;
 
-            let messages = messages.iter().map(|v| timeline_item_to_ui(v, &mut media_store)).collect();
+            let mut unknown_reply_event_ids = HashSet::new();
+            let messages = messages.iter().map(|v| timeline_item_to_ui(v, &mut media_store, &mut unknown_reply_event_ids)).collect();
+
+            for event_id in unknown_reply_event_ids {
+                log::debug!("Fetching unknown reply event {}", event_id);
+                if let Err(e) = room.load_or_fetch_event_with_relations(&event_id, None, None).await {
+                    warn!("Failed to load event {}: {:?}", event_id, e);
+                }
+            }
 
             media_manager.sources.write().await.extend(media_store);
 
@@ -411,11 +430,12 @@ pub async fn toggle_reaction(
         .get_room(&RoomId::parse(&room_id)?)
         .ok_or("No room found")?;
 
+    let event_id = EventId::parse(event_id)?;
     let timeline = timeline_manager.get_or_create_timeline(&room, Some(event_id.clone())).await?;
 
     timeline
         .toggle_reaction(
-            &TimelineEventItemId::EventId(OwnedEventId::try_from(event_id)?),
+            &TimelineEventItemId::EventId(event_id),
             &reaction,
         )
         .await?;
@@ -437,10 +457,11 @@ pub async fn delete_message(
         .get_room(&RoomId::parse(&room_id)?)
         .ok_or("No room found")?;
 
+    let event_id = EventId::parse(event_id)?;
     let timeline = timeline_manager.get_or_create_timeline(&room, Some(event_id.clone())).await?;
 
     timeline
-        .redact(&TimelineEventItemId::EventId(OwnedEventId::try_from(event_id)?), None)
+        .redact(&TimelineEventItemId::EventId(event_id), None)
         .await?;
 
     Ok(())

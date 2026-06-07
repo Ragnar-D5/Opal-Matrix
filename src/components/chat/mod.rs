@@ -30,7 +30,7 @@ use shared::{
 };
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
-use web_sys::{Element, IntersectionObserverEntry};
+use web_sys::{Element, IntersectionObserverEntry, ScrollBehavior, ScrollIntoViewOptions, ScrollLogicalPosition};
 
 pub(crate) mod messages;
 
@@ -303,22 +303,40 @@ fn TimeLine() -> impl IntoView {
             return;
         };
 
+        important_event_id.set(Some(event_id.clone()));
+
+        let element_id = format!("timeline-event-{event_id}");
+        let options = ScrollIntoViewOptions::new();
+        options.set_behavior(ScrollBehavior::Smooth);
+        options.set_block(ScrollLogicalPosition::Center);
+
+        if let Some(el) = document().get_element_by_id(&element_id) {
+            log::debug!("Event {} already in DOM, scrolling into view", event_id);
+
+            el.scroll_into_view_with_scroll_into_view_options(&options);
+            return;
+        }
+
         messages.set(Vec::new());
         initial_loaded.set(false);
         has_more_top.set(true);
         has_more_bottom.set(true);
         is_loading.set(true);
 
-        important_event_id.set(Some(event_id.clone()));
-
         spawn_local(async move {
-            match get_timeline(&room_id, Some(event_id)).await {
+            match get_timeline(&room_id, Some(event_id.clone())).await {
                 Ok(tl) => {
                     messages.set(tl.into_iter().map(RwSignal::new).collect());
                     initial_loaded.set(true);
                     is_loading.set(false);
 
-                    log::debug!("Scrolled to event in room {}", room_id);
+                    // request_animation_frame(move || {
+                    //     if let Some(el) = document().get_element_by_id(&element_id) {
+                    //         el.scroll_into_view_with_scroll_into_view_options(&options);
+                    //     }
+                    // });
+
+                    log::debug!("Scrolled to event {} in room {}", event_id, room_id);
                 }
                 Err(e) => {
                     log::error!("Failed to load timeline for scroll: {}", e);

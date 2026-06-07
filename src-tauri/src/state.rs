@@ -1,7 +1,9 @@
-use matrix_sdk::ruma::EventId;
 use matrix_sdk::ruma::{events::room::MediaSource, OwnedRoomId};
+use matrix_sdk::ruma::{EventId, OwnedEventId};
 use matrix_sdk::Room;
-use matrix_sdk_ui::timeline::{TimelineEventFocusThreadMode, TimelineFocus};
+use matrix_sdk_ui::timeline::{
+    DateDividerMode, TimelineEventFocusThreadMode, TimelineFocus, TimelineReadReceiptTracking,
+};
 use matrix_sdk_ui::{timeline::TimelineBuilder, Timeline};
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use tauri::async_runtime::{Mutex, RwLock};
@@ -37,7 +39,7 @@ impl TimelineManager {
     pub async fn get_or_create_timeline(
         &self,
         room: &Room,
-        event_id: Option<String>,
+        event_id: Option<OwnedEventId>,
     ) -> Result<Arc<Timeline>, TauriError> {
         let mut guard = self.timelines.write().await;
 
@@ -45,7 +47,7 @@ impl TimelineManager {
             return Ok(timeline.clone());
         }
 
-        let focus = if let Some(event_id) = event_id {
+        let focus = if let Some(event_id) = &event_id {
             log::debug!(
                 "Creating timeline focused on event {} in room {}",
                 event_id,
@@ -59,26 +61,25 @@ impl TimelineManager {
                 },
             }
         } else {
-            log::debug!(
-                "Creating timeline focused on live events in room {}",
-                room.room_id()
-            );
+            log::debug!("Creating timeline in room {}", room.room_id());
             TimelineFocus::Live {
                 hide_threaded_events: false,
             }
         };
 
-        log::debug!("Creating new timeline for room {}", room.room_id());
         let timeline = TimelineBuilder::new(room)
-            .with_date_divider_mode(matrix_sdk_ui::timeline::DateDividerMode::Daily)
+            .with_date_divider_mode(DateDividerMode::Daily)
             .with_focus(focus)
-            .track_read_marker_and_receipts(
-                matrix_sdk_ui::timeline::TimelineReadReceiptTracking::AllEvents,
-            )
+            .track_read_marker_and_receipts(TimelineReadReceiptTracking::AllEvents)
             .add_failed_to_parse(true)
             .build()
             .await?;
-        timeline.paginate_backwards(30).await?;
+
+        if let Some(event_id) = &event_id {
+            timeline.fetch_details_for_event(event_id).await?;
+        } else {
+            timeline.paginate_backwards(30).await?;
+        }
 
         let timeline = Arc::new(timeline);
 

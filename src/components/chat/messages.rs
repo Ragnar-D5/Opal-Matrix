@@ -137,7 +137,7 @@ fn MessageHeader(
 
             <div class="shrink-0 mr-2 w-[40px] relative flex flex-col">
                 <Show when=move || has_reply>
-                    <div class="absolute left-[calc(50%-1px)] right-[-8px] top-3 h-3 border-l-2 border-t-2 border-white/20 rounded-tl-md -z-10"></div>
+                    <div class="absolute left-[calc(50%-1px)] right-[-8px] top-2 h-4 border-l-2 border-t-2 border-white/20 rounded-tl-md -z-10"></div>
                 </Show>
 
                 <div
@@ -1312,7 +1312,7 @@ fn render_timeline_event(
 
     view! {
         <div
-            class="group/msg relative flex flex-col gap-[var(--gap)] hover:bg-black/20 rounded-md transform-gpu"
+            class="group/msg ml-1 relative flex flex-col gap-[var(--gap)] hover:bg-black/20 rounded-md transform-gpu"
             class=("mt-5", show_header && !preview)
             class=("pointer-events-none", preview)
             class=("bg-black/20", move || picker_open.get() || show_delete_confirm.get())

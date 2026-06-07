@@ -1,4 +1,7 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use matrix_sdk::ruma::{
     events::{
@@ -13,7 +16,7 @@ use matrix_sdk::ruma::{
         StateEventContentChange, StateEventType,
     },
     room::JoinRule,
-    MilliSecondsSinceUnixEpoch,
+    MilliSecondsSinceUnixEpoch, OwnedEventId,
 };
 use matrix_sdk_ui::{
     eyeball_im::VectorDiff,
@@ -185,13 +188,21 @@ fn from_embedded_event_to_ui(value: &EmbeddedEvent) -> ReplyPreview {
     ReplyPreview { sender, content }
 }
 
-fn in_reply_to_details_to_ui(value: InReplyToDetails) -> ReplyInfo {
+fn in_reply_to_details_to_ui(
+    value: InReplyToDetails,
+    unknown_reply_event_ids: &mut HashSet<OwnedEventId>,
+) -> ReplyInfo {
+    let event_id = value.event_id.clone();
+
     ReplyInfo {
         event_id: value.event_id.to_string(),
         event: match value.event {
             TimelineDetails::Error(e) => DetailState::Error(e.to_string()),
             TimelineDetails::Pending => DetailState::Pending,
-            TimelineDetails::Unavailable => DetailState::Unavailable,
+            TimelineDetails::Unavailable => {
+                unknown_reply_event_ids.insert(event_id);
+                DetailState::Unavailable
+            }
             TimelineDetails::Ready(event) => DetailState::Ready(from_embedded_event_to_ui(&event)),
         },
     }
@@ -286,6 +297,7 @@ fn from_call_intent_to_ui(value: CallIntent) -> UiCallIntent {
 fn timeline_item_content_to_ui(
     value: &TimelineItemContent,
     media_store: &mut HashMap<Uuid, MediaSource>,
+    unknown_reply_event_ids: &mut HashSet<OwnedEventId>,
 ) -> EventContent {
     match value.clone() {
         TimelineItemContent::MsgLike(content) => {
@@ -491,7 +503,10 @@ fn timeline_item_content_to_ui(
 
             EventContent::MsgLike(Box::new(MessageContent {
                 reactions: get_reactions(content.clone().reactions),
-                in_reply_to: content.clone().in_reply_to.map(in_reply_to_details_to_ui),
+                in_reply_to: content
+                    .clone()
+                    .in_reply_to
+                    .map(|v| in_reply_to_details_to_ui(v, unknown_reply_event_ids)),
                 thread_root: content.clone().thread_root.map(|v| v.to_string()),
                 is_edited,
 
@@ -765,6 +780,7 @@ fn timeline_item_content_to_ui(
 fn event_timeline_item_to_ui(
     item: &EventTimelineItem,
     media_store: &mut HashMap<Uuid, MediaSource>,
+    unknown_reply_event_ids: &mut HashSet<OwnedEventId>,
 ) -> TimelineEvent {
     let sender_id = item.sender();
 
@@ -792,7 +808,7 @@ fn event_timeline_item_to_ui(
             }),
         },
 
-        content: timeline_item_content_to_ui(item.content(), media_store),
+        content: timeline_item_content_to_ui(item.content(), media_store, unknown_reply_event_ids),
     };
 
     event.calculate_flags(item.is_own());
@@ -803,6 +819,7 @@ fn event_timeline_item_to_ui(
 pub fn timeline_item_to_ui(
     item: &TimelineItem,
     media_store: &mut HashMap<Uuid, MediaSource>,
+    uknown_reply_event_ids: &mut HashSet<OwnedEventId>,
 ) -> UiTimelineItem {
     let kind = match item.kind() {
         TimelineItemKind::Virtual(event) => match event {
@@ -812,9 +829,9 @@ pub fn timeline_item_to_ui(
             }
             VirtualTimelineItem::TimelineStart => UiTimelineItemKind::TimelineStart,
         },
-        TimelineItemKind::Event(event) => {
-            UiTimelineItemKind::Event(Box::new(event_timeline_item_to_ui(event, media_store)))
-        }
+        TimelineItemKind::Event(event) => UiTimelineItemKind::Event(Box::new(
+            event_timeline_item_to_ui(event, media_store, uknown_reply_event_ids),
+        )),
     };
 
     UiTimelineItem {
@@ -826,42 +843,40 @@ pub fn timeline_item_to_ui(
 
 pub fn timeline_diff_to_ui(
     diff: &VectorDiff<Arc<TimelineItem>>,
-) -> (UiTimelineDiff, HashMap<Uuid, MediaSource>) {
-    let mut media_store = HashMap::new();
-
-    let res = match diff {
+    media_store: &mut HashMap<Uuid, MediaSource>,
+    unknown_reply_event_ids: &mut HashSet<OwnedEventId>,
+) -> UiTimelineDiff {
+    match diff {
         VectorDiff::Append { values } => UiTimelineDiff::Append {
             values: values
                 .iter()
-                .map(|v| timeline_item_to_ui(v, &mut media_store))
+                .map(|v| timeline_item_to_ui(v, media_store, unknown_reply_event_ids))
                 .collect(),
         },
         VectorDiff::Clear => UiTimelineDiff::Clear,
         VectorDiff::PushFront { value } => UiTimelineDiff::PushFront {
-            value: timeline_item_to_ui(value, &mut media_store),
+            value: timeline_item_to_ui(value, media_store, unknown_reply_event_ids),
         },
         VectorDiff::PushBack { value } => UiTimelineDiff::PushBack {
-            value: timeline_item_to_ui(value, &mut media_store),
+            value: timeline_item_to_ui(value, media_store, unknown_reply_event_ids),
         },
         VectorDiff::PopFront => UiTimelineDiff::PopFront,
         VectorDiff::PopBack => UiTimelineDiff::PopBack,
         VectorDiff::Insert { index, value } => UiTimelineDiff::Insert {
             index: *index,
-            value: timeline_item_to_ui(value, &mut media_store),
+            value: timeline_item_to_ui(value, media_store, unknown_reply_event_ids),
         },
         VectorDiff::Set { index, value } => UiTimelineDiff::Set {
             index: *index,
-            value: timeline_item_to_ui(value, &mut media_store),
+            value: timeline_item_to_ui(value, media_store, unknown_reply_event_ids),
         },
         VectorDiff::Remove { index } => UiTimelineDiff::Remove { index: *index },
         VectorDiff::Truncate { length } => UiTimelineDiff::Truncate { length: *length },
         VectorDiff::Reset { values } => UiTimelineDiff::Reset {
             values: values
                 .iter()
-                .map(|v| timeline_item_to_ui(v, &mut media_store))
+                .map(|v| timeline_item_to_ui(v, media_store, unknown_reply_event_ids))
                 .collect(),
         },
-    };
-
-    (res, media_store)
+    }
 }

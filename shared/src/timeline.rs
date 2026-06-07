@@ -704,7 +704,7 @@ impl UiTimelineItem {
     }
 
     pub fn render_key(&self) -> String {
-        format!("timeline_event_{}", if let UiTimelineItemKind::Event(event) = &self.kind && let Some(event_id) = &event.event_id {
+        format!("timeline-event-{}", if let UiTimelineItemKind::Event(event) = &self.kind && let Some(event_id) = &event.event_id {
             event_id.clone()
         } else {
             self.id.clone()
