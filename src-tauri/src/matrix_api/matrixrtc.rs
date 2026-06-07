@@ -7,6 +7,7 @@ use matrix_sdk::deserialized_responses::ProcessedToDeviceEvent;
 use matrix_sdk::event_handler::Ctx;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
@@ -35,8 +36,8 @@ use tauri::{AppHandle, Manager, State, command};
 use tauri_plugin_http::reqwest;
 use tokio::sync::RwLock;
 
-use crate::TauriError;
-use crate::state::{CallAudioState, LiveKitRoomManager};
+use crate::state::{CallAudioState, LiveKitRoomData, LiveKitRoomManager};
+use crate::{AsInfo, TauriError};
 
 #[command(rename_all = "snake_case")]
 pub(crate) async fn join_matrixrtc_call(
@@ -281,6 +282,7 @@ pub(crate) async fn join_matrixrtc_call(
 
     // set and send out encryption key after joining but before publishig a track
     if room.encryption_state().is_encrypted() {
+        debug!("Room is encrypted. Generating encryption key");
         let mut raw_key = [0u8; 16];
         getrandom::fill(&mut raw_key)
             .map_err(|e| format!("Failed to generate cryptographic key: {}", e))?;
@@ -296,7 +298,9 @@ pub(crate) async fn join_matrixrtc_call(
             0,
             raw_key.into(),
         );
+        debug!("Set encryption key for local participant.");
 
+        debug!("Trying to send encryption key to call participants");
         send_encryption_keys(client.clone(), &room_id, &local_call_key, 0, call_id).await?;
     }
 
@@ -316,55 +320,70 @@ pub(crate) async fn join_matrixrtc_call(
         .map_err(|e| format!("Failed to publish mic: {}", e))?;
 
     // persist the room in room_manager
+    let cancellationtoken = CancellationToken::new();
+    let cancellationtoken_clone = cancellationtoken.clone();
+    let call_data = LiveKitRoomData {
+        livekit_room,
+        cancellation_token: cancellationtoken,
+        key_index: 0,
+        call_id,
+    };
     livekit_room_manager
         .lock()
         .await
-        .insert(room_id.clone(), (livekit_room, call_id));
+        .insert(room_id.clone(), call_data);
 
     // handle events
+    let room_id_clone = room_id.clone();
     tokio::spawn(async move {
-        while let Some(ev) = event_receiver.recv().await {
-            log::debug!("Livekit event received: {ev:?}");
-            if let RoomEvent::TrackSubscribed { track, .. } = ev
-                && let RemoteTrack::Audio(audio_track) = track
-            {
-                let rtc_track = audio_track.rtc_track();
+        loop {
+            tokio::select! {
+                _ = cancellationtoken_clone.cancelled() => {
+                    log::info!("Background room LiveKite event receiver stopped for room: {}", room_id_clone);
+                    break;
+                }
 
-                let mut audio_stream =
-                    NativeAudioStream::new(rtc_track, sample_rate as i32, channels as i32);
+                // Triggered when a new room event arrives
+                maybe_ev = event_receiver.recv() => {
+                    match maybe_ev {
+                        Some(ev) => {
+                            if let RoomEvent::E2eeStateChanged { participant, state } = ev {
+                                debug!("Encryption state changed for {participant:?}, new state: {state:?}");
+                            } else if let RoomEvent::TrackSubscribed { track, .. } = ev
+                                && let RemoteTrack::Audio(ref audio_track) = track
+                            {
+                                debug!("Subscribed to new audio track: {:?}", track);
+                                let rtc_track = audio_track.rtc_track();
 
-                log::debug!(
-                    "NativeAudioStream configured: {} Hz, {} ch",
-                    sample_rate,
-                    channels
-                );
+                                let mut audio_stream = NativeAudioStream::new(rtc_track, sample_rate as i32, channels as i32);
+                                log::debug!("NativeAudioStream configured: {} Hz, {} ch", sample_rate, channels);
 
-                let prod_clone = shared_producer.clone();
+                                let prod_clone = shared_producer.clone();
 
-                tokio::spawn(async move {
-                    while let Some(frame) = audio_stream.next().await {
-                        let Ok(mut prod) = prod_clone.lock() else {
-                            continue;
-                        };
-                        // debug!("{:?}", frame);
-
-                        if frame.num_channels == 1 && channels == 2 {
-                            for &s in frame.data.as_ref() {
-                                let f = s as f32 / 32_768.0;
-
-                                // if we get mono input and stereo output, the output alternates
-                                // between the left and right, so we have to duplicate the
-                                // data or it will be half speed
-                                let _ = prod.try_push(f);
-                                let _ = prod.try_push(f);
-                            }
-                        } else {
-                            for &s in frame.data.as_ref() {
-                                let _ = prod.try_push(s as f32 / 32_768.0);
+                                tokio::spawn(async move {
+                                    while let Some(frame) = audio_stream.next().await {
+                                        let Ok(mut prod) = prod_clone.lock() else { continue; };
+                                        if frame.num_channels == 1 && channels == 2 {
+                                            for &s in frame.data.as_ref() {
+                                                let f = s as f32 / 32_768.0;
+                                                let _ = prod.try_push(f);
+                                                let _ = prod.try_push(f);
+                                            }
+                                        } else {
+                                            for &s in frame.data.as_ref() {
+                                                let _ = prod.try_push(s as f32 / 32_768.0);
+                                            }
+                                        }
+                                    }
+                                });
                             }
                         }
+                        None => {
+                            log::info!("LiveKit event channel closed by remote host.");
+                            break;
+                        }
                     }
-                });
+                }
             }
         }
     });
@@ -424,10 +443,9 @@ pub async fn handle_call_member_change(
     let livekit_room_manager_guard = handle
         .try_state::<LiveKitRoomManager>()
         .expect("Could not aquire LiveKitRoomManager from State. Likely an implementation error.");
-    let livekit_room_manager = livekit_room_manager_guard.lock().await;
+    let mut livekit_room_manager = livekit_room_manager_guard.lock().await;
 
-    let Some((livekit_room, call_id)) = livekit_room_manager.get(event_room.room_id().as_str())
-    else {
+    let Some(call_data) = livekit_room_manager.get_mut(event_room.room_id().as_str()) else {
         debug!("Call member room state changed, but you are not part of the call.");
         return;
     };
@@ -450,20 +468,50 @@ pub async fn handle_call_member_change(
         };
 
         let local_call_key = general_purpose::STANDARD.encode(raw_key);
+        let livekit_room = &call_data.livekit_room;
+        let e2ee_manager = livekit_room.e2ee_manager();
 
-        let key_provider = livekit_room
+        let key_provider = call_data
+            .livekit_room
             .e2ee_manager()
             .key_provider()
             .expect("Ecrypted LiveKit room without key provider");
 
-        let new_key_index = key_provider.get_latest_key_index() + 1;
+        call_data.key_index += 1;
+        let new_key_index = call_data.key_index;
 
         key_provider.set_key(
-            &livekit_room.local_participant().identity(),
+            &call_data.livekit_room.local_participant().identity(),
             new_key_index,
             raw_key.into(),
         );
-        debug!("Updated local call encryption key, now at indey {new_key_index}");
+        let all_framecryptors = e2ee_manager.frame_cryptors();
+        let local_framecryptors: Vec<_> = all_framecryptors
+            .iter()
+            .filter(|((id, _), _)| {
+                debug!(
+                    "evaluating {} == {}",
+                    id,
+                    livekit_room.local_participant().identity()
+                );
+                if *id == livekit_room.local_participant().identity() {
+                    true
+                } else {
+                    false
+                }
+            })
+            .collect();
+        if local_framecryptors.is_empty() {
+            error!("No FrameCryptors found for local participant.");
+        } else {
+            local_framecryptors
+                .iter()
+                .for_each(|((_, track), frame_cryptor)| {
+                    frame_cryptor.set_key_index(new_key_index);
+                    debug!("Updated local FrameCryptor key index for track {track}");
+                });
+            debug!("Updated local call encryption key, now at indey {new_key_index}");
+        }
 
         let client = client_state.read().await;
         debug!("Sending updated local encryption to other participants");
@@ -472,7 +520,7 @@ pub async fn handle_call_member_change(
             event_room.room_id().as_str(),
             &local_call_key,
             new_key_index,
-            call_id.clone(),
+            call_data.call_id.clone(),
         )
         .await
         {
@@ -491,8 +539,18 @@ pub async fn handle_call_member_change(
 pub(crate) async fn leave_matrixrtc_call(
     matrix_client: State<'_, RwLock<Client>>,
     audio_state: State<'_, CallAudioState>,
+    livekit_room_manager: State<'_, LiveKitRoomManager>,
     room_id: String,
 ) -> Result<(), TauriError> {
+    // close event stream and remove call from manager
+    let mut data_guard = livekit_room_manager.lock().await;
+    let room_data = data_guard
+        .get(&room_id)
+        .ok_or("Not in a call in this room".as_info())?;
+    room_data.close_event_stream().await;
+    room_data.livekit_room.close().await?;
+    data_guard.remove(&room_id);
+
     *audio_state.input_stream.lock().await = None;
     *audio_state.output_stream.lock().await = None;
 
@@ -526,6 +584,7 @@ async fn send_encryption_keys(
     index: i32,
     call_id: Uuid,
 ) -> Result<(), TauriError> {
+    debug!("Sending encryption key to call participants");
     let room = client
         .get_room(&RoomId::parse(room_id)?)
         .ok_or("Room not found or not joined")?;
@@ -706,7 +765,7 @@ pub async fn handle_to_device_messages(
     for update_event in key_updates {
         let room_id = update_event.1.room_id.clone();
 
-        let (livekit_room, _call_id) = match guard.get(&room_id).ok_or(
+        let call_data = match guard.get(&room_id).ok_or(
             "Received LiveKit key update but you are not taking part in the coresponding call",
         ) {
             Ok(tup) => tup,
@@ -721,6 +780,8 @@ pub async fn handle_to_device_messages(
                 .decode(update_event.1.keys.key.clone())
                 .unwrap()
         );
+
+        let livekit_room = &call_data.livekit_room;
         let hash = livekit_room.e2ee_manager().frame_cryptors();
         let keys = hash.keys();
         let latest_key_index = livekit_room
@@ -760,12 +821,27 @@ pub async fn handle_to_device_messages(
 
         key_provider.set_key(
             &From::from(livekit_id.clone()),
-            update_event.1.keys.index as i32,
+            update_event.1.keys.index,
             general_purpose::STANDARD
                 .decode(update_event.1.keys.key)
                 .unwrap(),
         );
         log::info!("Saved updated LiveKit encryption key for {}", livekit_id);
+
+        e2ee_manager
+            .frame_cryptors()
+            .iter()
+            .filter(|((id, _), _)| {
+                if id == &From::from(livekit_id.clone()) {
+                    true
+                } else {
+                    false
+                }
+            })
+            .for_each(|((id, _), frame_cryptor)| {
+                frame_cryptor.set_key_index(update_event.1.keys.index);
+                debug!("Updated FrameCryptor key index for {id}");
+            });
 
         let hash = livekit_room.e2ee_manager().frame_cryptors();
         let keys = hash.keys();
