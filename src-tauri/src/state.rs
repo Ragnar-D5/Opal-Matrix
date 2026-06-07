@@ -144,4 +144,19 @@ impl Default for MediaManager {
 
 use livekit::Room as LiveKitRoom;
 
-pub type LiveKitRoomManager = Arc<Mutex<HashMap<String, (LiveKitRoom, Uuid)>>>;
+pub type LiveKitRoomManager = Arc<Mutex<HashMap<String, LiveKitRoomData>>>; // we can make this more efficient later, but since you probably only interact with one call at a time, this should suffice for now
+
+pub struct LiveKitRoomData {
+    pub livekit_room: LiveKitRoom,
+    pub cancellation_token: CancellationToken,
+    pub key_index: i32,
+    pub call_id: Uuid, // why the hell do we need this? This has no usage
+}
+
+impl LiveKitRoomData {
+    /// the returned future will finish, when the event stream is closed
+    pub fn close_event_stream(&self) -> tokio_util::sync::WaitForCancellationFuture<'_> {
+        self.cancellation_token.cancel();
+        self.cancellation_token.cancelled()
+    }
+}
