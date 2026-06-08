@@ -88,7 +88,7 @@ fn ReplyPreview(
 
     view! {
         <div
-            class="flex items-center gap-1 mb-1 cursor-pointer [&_*]:cursor-pointer text-xs"
+            class="flex items-center gap-1 mb-1 cursor-pointer [&_*]:pointer-events-none text-xs"
             on:click=move |_| scroll_to_item.run(target_event_id.clone())
         >
             {move || profile.get().render_icon("20px")}

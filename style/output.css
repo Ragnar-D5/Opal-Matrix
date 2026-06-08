@@ -1781,9 +1781,9 @@
       cursor: grabbing;
     }
   }
-  .\[\&_\*\]\:cursor-pointer {
+  .\[\&_\*\]\:pointer-events-none {
     & * {
-      cursor: pointer;
+      pointer-events: none;
     }
   }
 }
