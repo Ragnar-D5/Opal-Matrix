@@ -44,11 +44,14 @@ pub fn render_url_icon<S: AsRef<str>, T: AsRef<str>, U: AsRef<str>>(
                     "rounded-{} object-cover bg-transparent block select-none",
                     rounding.as_ref(),
                 )
-                src=url
+                src=url.clone()
                 style=stye_str
                 class:hidden=is_failed
                 alt=name
-                on:error=move |_| is_failed.set(true)
+                on:error=move |_| {
+                    log::warn!("Failed to load image for {}, showing fallback", url);
+                    is_failed.set(true)
+                }
                 on:load=move |_| is_failed.set(false)
             />
             {fallback}

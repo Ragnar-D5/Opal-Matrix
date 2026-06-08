@@ -1312,7 +1312,7 @@ fn render_timeline_event(
 
     view! {
         <div
-            class="group/msg ml-1 relative flex flex-col gap-[var(--gap)] hover:bg-black/20 rounded-md transform-gpu"
+            class="group/msg ml-1 relative flex flex-col gap-[var(--gap)] hover:bg-black/20 rounded-md transform-gpu border border-transparent hover:border-[var(--tile-border-color)]"
             class=("mt-5", show_header && !preview)
             class=("pointer-events-none", preview)
             class=("bg-black/20", move || picker_open.get() || show_delete_confirm.get())

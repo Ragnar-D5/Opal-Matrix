@@ -3,11 +3,16 @@ use std::time::Duration;
 use crate::{
     app::{call_tauri, convertFileSrc, format_bytes},
     components::{
-        FloatingTile, TypingIndicator, chat::messages::render_timeline_item, emoji_picker::EmojiPickerState, input::{
+        FloatingTile, TypingIndicator,
+        chat::messages::render_timeline_item,
+        emoji_picker::EmojiPickerState,
+        input::{
             get_active_filter, get_caret_position, handle_input, handle_keydown,
             insert_text_at_caret,
             menu::{MenuType, SelectionMenu},
-        }, presence::PresenceBadge, user_profile::MemberProfileExt
+        },
+        presence::PresenceBadge,
+        user_profile::MemberProfileExt,
     },
     hooks::use_tauri_event,
     state::{AppState, ProfileStore, RoomHeader},
@@ -23,11 +28,17 @@ use phosphor_leptos::{
 use leptos::{ev, html::Div, prelude::*, task::spawn_local};
 use leptos_use::{UseIntersectionObserverReturn, use_event_listener, use_intersection_observer};
 use shared::{
-    api::{FileMetadata, ScrollDirection, UiAttachmentSource}, profile::{MemberProfile, PresenceInfo}, sidebar::RoomKind, timeline::{DetailState, EventContent, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind}
+    api::{FileMetadata, ScrollDirection, UiAttachmentSource},
+    profile::{MemberProfile, PresenceInfo},
+    sidebar::RoomKind,
+    timeline::{DetailState, EventContent, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind},
 };
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
-use web_sys::{Element, IntersectionObserverEntry, ScrollBehavior, ScrollIntoViewOptions, ScrollLogicalPosition};
+use web_sys::{
+    Element, IntersectionObserverEntry, ScrollBehavior, ScrollIntoViewOptions,
+    ScrollLogicalPosition,
+};
 
 pub(crate) mod messages;
 
@@ -291,7 +302,7 @@ fn TimeLine() -> impl IntoView {
         }
     });
 
-    let important_event_id = RwSignal::new(None);
+    let important_event_id: RwSignal<Option<String>> = RwSignal::new(None);
     provide_context(important_event_id);
 
     let scroll_to_event = Callback::new(move |event_id: String| {
@@ -300,8 +311,6 @@ fn TimeLine() -> impl IntoView {
             return;
         };
 
-        important_event_id.set(Some(event_id.clone()));
-
         let element_id = format!("timeline-event-{event_id}");
         let options = ScrollIntoViewOptions::new();
         options.set_behavior(ScrollBehavior::Smooth);
@@ -309,6 +318,18 @@ fn TimeLine() -> impl IntoView {
 
         if let Some(el) = document().get_element_by_id(&element_id) {
             log::debug!("Event {} already in DOM, scrolling into view", event_id);
+
+            // Add a temporary border to the element via a tailwind css class, and remove it after 2 seconds. Have it animate
+            el.class_list().add_1("animate-highlight").ok();
+
+            set_timeout(
+                move || {
+                    if let Some(el) = document().get_element_by_id(&element_id) {
+                        el.class_list().remove_1("animate-highlight").ok();
+                    }
+                },
+                Duration::from_secs(4),
+            );
 
             el.scroll_into_view_with_scroll_into_view_options(&options);
             return;
@@ -384,7 +405,8 @@ fn TypingUserIndicator() -> impl IntoView {
         Some(state.get_typing_users(&room_id))
     };
 
-    let content = move || typing_signal().map(|users_sig| {
+    let content = move || {
+        typing_signal().map(|users_sig| {
         let room_id = state.active_room_id()?;
 
         let own_id = state.user_id.get();
@@ -422,7 +444,8 @@ fn TypingUserIndicator() -> impl IntoView {
             <TypingIndicator size="8px" />
             <div class="pl-3">{names}</div>
         })
-    });
+    })
+    };
 
     view! { <div class="h-8 w-full flex flex-row items-center px-3">{content}</div> }
 }
@@ -603,13 +626,8 @@ fn ChatHeader(
 
 #[derive(Clone, Debug)]
 pub enum ChatInputInfo {
-    ReplyingTo {
-        event_id: String,
-        sender_id: String,
-    },
-    Editing {
-        event_id: String,
-    },
+    ReplyingTo { event_id: String, sender_id: String },
+    Editing { event_id: String },
 }
 
 #[derive(Clone, Debug)]
@@ -1040,20 +1058,26 @@ fn ChatInput() -> impl IntoView {
             });
         }
 
-        let new_handle = set_timeout_with_handle(move || {
-            is_typing.set(false);
-            spawn_local(async move {
-                if let Err(e) = indicate_typing(&room_id, false).await {
-                    log::error!("Failed to send typing notification: {}", e);
-                }
-            });
-        }, Duration::from_secs(3)).ok();
+        let new_handle = set_timeout_with_handle(
+            move || {
+                is_typing.set(false);
+                spawn_local(async move {
+                    if let Err(e) = indicate_typing(&room_id, false).await {
+                        log::error!("Failed to send typing notification: {}", e);
+                    }
+                });
+            },
+            Duration::from_secs(3),
+        )
+        .ok();
 
         timing_timeout.set_value(new_handle);
     };
 
     Effect::new(move |_| {
-        if is_empty.get() && let Some(room_id) = state.active_room_id() {
+        if is_empty.get()
+            && let Some(room_id) = state.active_room_id()
+        {
             spawn_local(async move {
                 if let Err(e) = indicate_typing(&room_id, false).await {
                     log::error!("Failed to send typing notification: {}", e);
@@ -1284,8 +1308,7 @@ fn ChatInfo(header: Memo<RoomHeader>) -> impl IntoView {
 
         match header.get() {
             RoomHeader::DM(profile_sig) => {
-                let banner_color = profile_sig
-                    .get().get_color().to_css_string();
+                let banner_color = profile_sig.get().get_color().to_css_string();
                 let banner_height = 108.0;
                 let icon_size = 70.0;
                 let icon_radius = icon_size / 2.0;
@@ -1363,36 +1386,47 @@ fn MemberList() -> impl IntoView {
     let online_view = move || {
         let members = members.get();
 
-        let mut elements: Vec<(String, ArcRwSignal<MemberProfile>, ArcRwSignal<PresenceInfo>)> = members.into_iter().filter_map(|(user_id, member_sig)| {
-            let presence = online_store.get_presence(&user_id);
+        let mut elements: Vec<(
+            String,
+            ArcRwSignal<MemberProfile>,
+            ArcRwSignal<PresenceInfo>,
+        )> = members
+            .into_iter()
+            .filter_map(|(user_id, member_sig)| {
+                let presence = online_store.get_presence(&user_id);
 
-            if !presence.get().is_offline() {
-                let name = member_sig.get().get_name();
-                Some((name, member_sig, presence))
-            } else {
-                None
-            }
-        }).collect();
+                if !presence.get().is_offline() {
+                    let name = member_sig.get().get_name();
+                    Some((name, member_sig, presence))
+                } else {
+                    None
+                }
+            })
+            .collect();
 
         elements.sort_by_key(|v| v.0.clone());
 
-        let views: Vec<_> = elements.into_iter().map(|(_, member_sig, presence)| {
-            let profile = member_sig.get();
-            let name_profile = profile.clone();
+        let views: Vec<_> = elements
+            .into_iter()
+            .map(|(_, member_sig, presence)| {
+                let profile = member_sig.get();
+                let name_profile = profile.clone();
 
-            view! {
-                <div class="flex items-center gap-2">
-                    <PresenceBadge presence=presence size=15.5>
-                        {profile.render_icon("32px")}
-                    </PresenceBadge>
-                    <span class="text-bright">{name_profile.render_name("16px")}</span>
-                </div>
-            }
-        }).collect();
+                view! {
+                    <div class="flex items-center gap-2">
+                        <PresenceBadge presence=presence size=15.5>
+                            {profile.render_icon("32px")}
+                        </PresenceBadge>
+                        <span class="text-bright">{name_profile.render_name("16px")}</span>
+                    </div>
+                }
+            })
+            .collect();
 
         let online_i = views.len();
 
-        let number_view = view! { <span class="text-sm text-muted">{format!("Online — {online_i}")}</span> }
+        let number_view =
+            view! { <span class="text-sm text-muted">{format!("Online — {online_i}")}</span> }
                 .into_any();
 
         if online_i > 0 {
@@ -1400,7 +1434,8 @@ fn MemberList() -> impl IntoView {
                 <div>
                     {number_view} <div class="flex flex-col gap-2 mt-2">{views.collect_view()}</div>
                 </div>
-            }.into_any()
+            }
+            .into_any()
         } else {
             ().into_any()
         }
@@ -1410,36 +1445,47 @@ fn MemberList() -> impl IntoView {
     let offline_view = move || {
         let members = members.get();
 
-        let mut elements: Vec<(String, ArcRwSignal<MemberProfile>, ArcRwSignal<PresenceInfo>)> = members.into_iter().filter_map(|(user_id, member_sig)| {
-            let presence = offline_store.get_presence(&user_id);
+        let mut elements: Vec<(
+            String,
+            ArcRwSignal<MemberProfile>,
+            ArcRwSignal<PresenceInfo>,
+        )> = members
+            .into_iter()
+            .filter_map(|(user_id, member_sig)| {
+                let presence = offline_store.get_presence(&user_id);
 
-            if presence.get().is_offline() {
-                let name = member_sig.get().get_name();
-                Some((name, member_sig, presence))
-            } else {
-                None
-            }
-        }).collect();
+                if presence.get().is_offline() {
+                    let name = member_sig.get().get_name();
+                    Some((name, member_sig, presence))
+                } else {
+                    None
+                }
+            })
+            .collect();
 
         elements.sort_by_key(|v| v.0.clone());
 
-        let views: Vec<_> = elements.into_iter().map(|(_, member_sig, presence)| {
-            let profile = member_sig.get();
-            let name_profile = profile.clone();
+        let views: Vec<_> = elements
+            .into_iter()
+            .map(|(_, member_sig, presence)| {
+                let profile = member_sig.get();
+                let name_profile = profile.clone();
 
-            view! {
-                <div class="flex items-center gap-2">
-                    <PresenceBadge presence=presence size=15.5>
-                        {profile.render_icon("32px")}
-                    </PresenceBadge>
-                    <span class="text-bright">{name_profile.render_name("16px")}</span>
-                </div>
-            }
-        }).collect();
+                view! {
+                    <div class="flex items-center gap-2">
+                        <PresenceBadge presence=presence size=15.5>
+                            {profile.render_icon("32px")}
+                        </PresenceBadge>
+                        <span class="text-bright">{name_profile.render_name("16px")}</span>
+                    </div>
+                }
+            })
+            .collect();
 
         let offline_i = views.len();
 
-        let number_view = view! { <span class="text-sm text-muted">{format!("Offline — {offline_i}")}</span> }
+        let number_view =
+            view! { <span class="text-sm text-muted">{format!("Offline — {offline_i}")}</span> }
                 .into_any();
 
         if offline_i > 0 {
@@ -1447,7 +1493,8 @@ fn MemberList() -> impl IntoView {
                 <div>
                     {number_view} <div class="flex flex-col gap-2 mt-2">{views.collect_view()}</div>
                 </div>
-            }.into_any()
+            }
+            .into_any()
         } else {
             ().into_any()
         }

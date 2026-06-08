@@ -20,11 +20,7 @@ use crate::TauriError;
 
 async fn node_from_room(room: &Room, kind: RoomKind) -> RoomNode {
     let info = room.clone_info();
-    let name = room
-        .display_name()
-        .await
-        .ok()
-        .map(|n| n.to_string());
+    let name = room.display_name().await.ok().map(|n| n.to_string());
 
     RoomNode {
         room_id: info.room_id().to_string(),
@@ -43,6 +39,11 @@ pub async fn send_sidebar(
     own_id: &str,
 ) -> Result<(), TauriError> {
     let mut channels = HashMap::new();
+
+    for room in all_rooms {
+        room.sync_up().await;
+    }
+
     let mut dms: Vec<Room> = stream::iter(all_rooms.iter().cloned())
         .filter_map(|room| async move {
             let res = room.compute_is_dm().await;
@@ -70,9 +71,15 @@ pub async fn send_sidebar(
             let other_user_ids = room.joined_user_ids().await.ok()?;
             let other_user_id = other_user_ids.into_iter().find(|id| id != own_id)?;
 
-            Some(node_from_room(&room, RoomKind::Dm {
-                other_user_id: other_user_id.to_string(),
-            }).await)
+            Some(
+                node_from_room(
+                    &room,
+                    RoomKind::Dm {
+                        other_user_id: other_user_id.to_string(),
+                    },
+                )
+                .await,
+            )
         })
         .collect()
         .await;
@@ -157,18 +164,27 @@ pub async fn send_sidebar(
     let mut top_level_servers = Vec::new();
 
     for room_id in channels.keys() {
-        if channels[room_id].is_space() && !all_children.contains(room_id)
-            && let Some(node) =
-                build_async_node(room_id, &channels, &ordered_parent_to_children, &mut server_rooms).await
-            {
-                top_level_servers.push(node.room_id.clone());
-                server_rooms.insert(node.room_id.clone(), node);
-            }
+        if channels[room_id].is_space()
+            && !all_children.contains(room_id)
+            && let Some(node) = build_async_node(
+                room_id,
+                &channels,
+                &ordered_parent_to_children,
+                &mut server_rooms,
+            )
+            .await
+        {
+            top_level_servers.push(node.room_id.clone());
+            server_rooms.insert(node.room_id.clone(), node);
+        }
     }
 
     let mut orphaned_rooms = Vec::new();
     for (room_id, room) in &channels {
-        if !server_rooms.contains_key(room_id) && !room.is_space() && !all_children.contains(room_id) {
+        if !server_rooms.contains_key(room_id)
+            && !room.is_space()
+            && !all_children.contains(room_id)
+        {
             orphaned_rooms.push(node_from_room(room, RoomKind::TextChannel).await);
         }
     }
@@ -180,7 +196,8 @@ pub async fn send_sidebar(
         server_rooms,
     };
 
-    log::debug!("Emitting sidebar update with {} top-level servers, {} orphaned rooms and {} DMs",
+    log::debug!(
+        "Emitting sidebar update with {} top-level servers, {} orphaned rooms and {} DMs",
         sidebar_state.top_level_servers.len(),
         sidebar_state.orphaned_rooms.len(),
         sidebar_state.dms.len(),
@@ -364,7 +381,9 @@ pub async fn extract_call_member_updates(
         let has_call_member_event = update.timeline.events.iter().any(|raw_event| {
             matches!(
                 raw_event.raw().deserialize(),
-                Ok(AnySyncTimelineEvent::State(AnySyncStateEvent::CallMember(_)))
+                Ok(AnySyncTimelineEvent::State(AnySyncStateEvent::CallMember(
+                    _
+                )))
             )
         });
 

@@ -212,6 +212,18 @@
   }
 }
 @layer utilities {
+  .animate-highlight {
+    position: relative;
+    &::before {
+      content: "";
+      position: absolute;
+      inset: -1px;
+      border: 2px solid var(--accent-color);
+      border-radius: inherit;
+      pointer-events: none;
+      animation: border-accent-to-bg 4s forwards;
+    }
+  }
   .pointer-events-auto {
     pointer-events: auto;
   }
@@ -1625,6 +1637,13 @@
       }
     }
   }
+  .hover\:border-\[var\(--tile-border-color\)\] {
+    &:hover {
+      @media (hover: hover) {
+        border-color: var(--tile-border-color);
+      }
+    }
+  }
   .hover\:bg-\(--color-item-hover\) {
     &:hover {
       @media (hover: hover) {
@@ -1814,6 +1833,17 @@
   20% {
     transform: scale(1);
     background-color: var(--text-color);
+  }
+}
+@keyframes border-accent-to-bg {
+  0% {
+    border-color: var(--accent-color);
+  }
+  50% {
+    border-color: var(--accent-color);
+  }
+  100% {
+    border-color: transparent;
   }
 }
 video::-webkit-media-controls-panel {
