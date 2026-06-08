@@ -646,7 +646,7 @@ async fn send_encryption_keys(
         let payload = EncryptionKeysEventContent {
             room_id: room.room_id().to_string(),
             member: CallMemberInfo {
-                claimed_device_id: device.device_id().to_string(),
+                claimed_device_id: own_device.to_string(),
                 id: call_id.to_string(),
             },
             keys: EncryptionKeysInfo {
