@@ -29,6 +29,7 @@ use tauri_plugin_http::reqwest::{self, Response};
 
 pub const APP_NAME: &str = "opal-matrix";
 
+use tauri_plugin_cli::CliExt;
 use tauri_plugin_log::{Target, TargetKind};
 use tauri_plugin_notification::{NotificationExt, PermissionState};
 
@@ -426,6 +427,7 @@ pub fn run() {
     init_keyring();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_cli::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
@@ -475,10 +477,31 @@ pub fn run() {
             std::fs::create_dir_all(&log_dir)?;
             // let log_file = format!("{}.log", Local::now().format("%H-%M-%S"));
 
+            let cli_matches = app.cli().matches().ok();
+            let cli_log_level = |arg_name: &str| -> Option<log::LevelFilter> {
+                let value = cli_matches.as_ref()?.args.get(arg_name)?.value.as_str()?;
+
+                match value {
+                    "trace" => Some(log::LevelFilter::Trace),
+                    "debug" => Some(log::LevelFilter::Debug),
+                    "info" => Some(log::LevelFilter::Info),
+                    "warn" => Some(log::LevelFilter::Warn),
+                    "error" => Some(log::LevelFilter::Error),
+                    "off" => Some(log::LevelFilter::Off),
+                    _ => None,
+                }
+            };
+
+            let log_level = cli_log_level("log-level").unwrap_or(log::LevelFilter::Debug);
+            let livekit_log_level =
+                cli_log_level("livekit-log-level").unwrap_or(log::LevelFilter::max());
+            let keyring_log_level =
+                cli_log_level("keyring-log-level").unwrap_or(log::LevelFilter::Info);
+
             app.handle().plugin(
                 tauri_plugin_log::Builder::new()
                     .clear_targets()
-                    .level(log::LevelFilter::Debug)
+                    .level(log_level)
                     .max_file_size(u128::MAX)
                     .targets([
                         Target::new(tauri_plugin_log::TargetKind::Stdout),
@@ -488,16 +511,18 @@ pub fn run() {
                         }),
                     ])
                     .level_for("reqwest", log::LevelFilter::Off)
-                    .level_for("libwebrtc", log::LevelFilter::max())
-                    .level_for("livekit", log::LevelFilter::max())
+                    .level_for("libwebrtc", livekit_log_level)
+                    .level_for("livekit", livekit_log_level)
                     .level_for("matrix_sdk", log::LevelFilter::max())
-                    // .level_for("libwebrtc", log::LevelFilter::Off)
-                    // .level_for("livekit", log::LevelFilter::Off)
-                    // .level_for("matrix_sdk", log::LevelFilter::Off)
                     .level_for("rustls_platform_verifier", log::LevelFilter::Off)
                     .level_for("html5ever", log::LevelFilter::Off)
                     .level_for("matrix_sdk_base", log::LevelFilter::Debug)
                     .level_for("rustls", log::LevelFilter::Off)
+                    .level_for("keyring_core", keyring_log_level)
+                    .level_for("zbus_secret_service_keyring_store", keyring_log_level)
+                    .level_for("apple_native_keyring_store", keyring_log_level)
+                    .level_for("android_native_keyring_store", keyring_log_level)
+                    .level_for("windows_native_keyring_store", keyring_log_level)
                     .format(|out, message, record| {
                         let level = match record.level() {
                             log::Level::Error => "ERROR",

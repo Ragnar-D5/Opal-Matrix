@@ -30,6 +30,31 @@
       }
     }
   },
+  "plugins": {
+    "cli": {
+      "description": "Opal Matrix client",
+      "args": [
+        {
+          "name": "log-level",
+          "description": "Overall log level",
+          "takesValue": true,
+          "possibleValues": ["trace", "debug", "info", "warn", "error", "off"]
+        },
+        {
+          "name": "livekit-log-level",
+          "description": "Log level for livekit/libwebrtc",
+          "takesValue": true,
+          "possibleValues": ["trace", "debug", "info", "warn", "error", "off"]
+        },
+        {
+          "name": "keyring-log-level",
+          "description": "Log level for keyring backends",
+          "takesValue": true,
+          "possibleValues": ["trace", "debug", "info", "warn", "error", "off"]
+        }
+      ]
+    }
+  },
   "bundle": {
     "active": true,
     "targets": "all",
