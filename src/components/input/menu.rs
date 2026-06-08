@@ -8,7 +8,7 @@ use crate::{
     state::{AppState, ProfileStore},
     tauri_functions::get_commands,
 };
-use leptos::html::Div;
+use leptos::html::{Button, Div};
 use leptos::prelude::*;
 use log::error;
 use nucleo_matcher::{Config, Matcher, Utf32Str};
@@ -17,7 +17,10 @@ use shared::{
     profile::{MemberProfile, RoomProfile},
     timeline::{RichTextSpan, RoomIdFormat},
 };
-use web_sys::{Document, HtmlDivElement, HtmlElement, Node, Range};
+use web_sys::{
+    Document, HtmlDivElement, HtmlElement, Node, Range, ScrollBehavior, ScrollIntoViewOptions,
+    ScrollLogicalPosition, ScrollToOptions,
+};
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum MenuType {
@@ -259,6 +262,34 @@ fn filter_items<T: RenderMenuRow>(filter: String, items: Vec<T>, matcher: &mut M
     matched.into_iter().map(|(_, item)| item).collect()
 }
 
+fn scroll_into_view_when_selected(row_ref: NodeRef<Button>, idx: usize, selected_index: RwSignal<usize>) {
+    Effect::new(move |_| {
+        if selected_index.get() != idx {
+            return;
+        }
+        let Some(el) = row_ref.get() else {
+            return;
+        };
+
+        // scroll_into_view aligns the row's border box with the container, ignoring the
+        // `*:first:mt-1` margin above the first row, so it stops short of the true top.
+        if idx == 0 {
+            if let Ok(Some(container)) = el.closest(".overflow-y-auto") {
+                let options = ScrollToOptions::new();
+                options.set_top(0.0);
+                options.set_behavior(ScrollBehavior::Smooth);
+                container.scroll_to_with_scroll_to_options(&options);
+            }
+            return;
+        }
+
+        let options = ScrollIntoViewOptions::new();
+        options.set_behavior(ScrollBehavior::Smooth);
+        options.set_block(ScrollLogicalPosition::Nearest);
+        el.scroll_into_view_with_scroll_into_view_options(&options);
+    });
+}
+
 trait RenderMenuRow {
     fn id(&self) -> String;
     fn render_row(self, room_id: String, el: HtmlDivElement, idx: usize) -> impl IntoView;
@@ -275,6 +306,9 @@ impl RenderMenuRow for MemberProfile {
         let store: ProfileStore = expect_context();
         let selected_index: RwSignal<usize> = expect_context();
 
+        let row_ref: NodeRef<Button> = NodeRef::new();
+        scroll_into_view_when_selected(row_ref, idx, selected_index);
+
         let presence = store.get_presence(self.user_id());
         let profile = store.get_member_profile(&room_id, self.user_id()).get();
         let p_clone = profile.clone();
@@ -284,6 +318,7 @@ impl RenderMenuRow for MemberProfile {
 
         view! {
             <button
+                node_ref=row_ref
                 class="flex flex-row items-center gap-2 mx-(--gap) px-(--gap) py-1 rounded-(--ui-border-radius) cursor-pointer"
                 class=("bg-(--ui-hover-bg)", move || idx == selected_index.get())
                 on:mouseenter=move |_| selected_index.set(idx)
@@ -337,8 +372,12 @@ impl RenderMenuRow for Command {
     fn render_row(self, _: String, _: HtmlDivElement, idx: usize) -> impl IntoView {
         let selected_index: RwSignal<usize> = expect_context();
 
+        let row_ref: NodeRef<Button> = NodeRef::new();
+        scroll_into_view_when_selected(row_ref, idx, selected_index);
+
         view! {
             <button
+                node_ref=row_ref
                 class="flex flex-row justify-center items-center rounded-(--ui-border-radius) cursor-pointer mx-(--gap) px-(--gap) py-1"
                 class=("bg-(--ui-hover-bg)", move || selected_index.get() == idx)
             >
@@ -378,9 +417,13 @@ impl RenderMenuRow for RoomProfile {
     fn render_row(self, _: String, el: HtmlDivElement, idx: usize) -> impl IntoView {
         let selected_index: RwSignal<usize> = expect_context();
 
+        let row_ref: NodeRef<Button> = NodeRef::new();
+        scroll_into_view_when_selected(row_ref, idx, selected_index);
+
         let el = el.clone();
         view! {
             <button
+                node_ref=row_ref
                 class="flex flex-row items-center gap-2 rounded-(--ui-border-radius) cursor-pointer mx-(--gap) px-(--gap) py-1"
                 class=("bg-(--ui-hover-bg)", move || selected_index.get() == idx)
                 on:mouseenter=move |_| selected_index.set(idx)
@@ -518,7 +561,7 @@ pub fn SelectionMenu(menu: RwSignal<MenuType>, input_ref: NodeRef<Div>) -> impl 
             <span class="text-(--ui-base-color) bold text-xs p-2 bb-4 border-b border-(--tile-border-color)">
                 {title_text()}
             </span>
-            <div class="overflow-y-auto pt-1 flex flex-col">
+            <div class="overflow-y-auto *:first:mt-1 flex flex-col">
                 <For
                     each=move || mention_matches.get().into_iter().enumerate()
                     key=|(_, member)| member.id()

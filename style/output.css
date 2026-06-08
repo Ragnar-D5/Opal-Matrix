@@ -1623,6 +1623,13 @@
       margin-left: calc(var(--spacing) * 0);
     }
   }
+  .\*\:first\:mt-1 {
+    :is(& > *) {
+      &:first-child {
+        margin-top: calc(var(--spacing) * 1);
+      }
+    }
+  }
   .hover\:border-\(--accent-color\) {
     &:hover {
       @media (hover: hover) {
