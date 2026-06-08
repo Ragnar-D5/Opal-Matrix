@@ -473,25 +473,27 @@ pub fn run() {
                 .join("logs")
                 .join(Local::now().format("%Y-%m-%d").to_string());
             std::fs::create_dir_all(&log_dir)?;
-            let log_file = format!("{}.log", Local::now().format("%H-%M-%S"));
+            // let log_file = format!("{}.log", Local::now().format("%H-%M-%S"));
 
             app.handle().plugin(
                 tauri_plugin_log::Builder::new()
+                    .clear_targets()
                     .level(log::LevelFilter::Debug)
+                    .max_file_size(u128::MAX)
                     .targets([
                         Target::new(tauri_plugin_log::TargetKind::Stdout),
                         Target::new(TargetKind::Folder {
                             path: log_dir,
-                            file_name: Some(log_file),
+                            file_name: Some(format!("{}.log", Local::now().format("%H-%M-%S"))),
                         }),
                     ])
                     .level_for("reqwest", log::LevelFilter::Off)
-                    // .level_for("libwebrtc", log::LevelFilter::max())
-                    // .level_for("livekit", log::LevelFilter::max())
-                    // .level_for("matrix_sdk", log::LevelFilter::max())
-                    .level_for("libwebrtc", log::LevelFilter::Off)
-                    .level_for("livekit", log::LevelFilter::Off)
-                    .level_for("matrix_sdk", log::LevelFilter::Off)
+                    .level_for("libwebrtc", log::LevelFilter::max())
+                    .level_for("livekit", log::LevelFilter::max())
+                    .level_for("matrix_sdk", log::LevelFilter::max())
+                    // .level_for("libwebrtc", log::LevelFilter::Off)
+                    // .level_for("livekit", log::LevelFilter::Off)
+                    // .level_for("matrix_sdk", log::LevelFilter::Off)
                     .level_for("rustls_platform_verifier", log::LevelFilter::Off)
                     .level_for("html5ever", log::LevelFilter::Off)
                     .level_for("matrix_sdk_base", log::LevelFilter::Debug)

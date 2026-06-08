@@ -489,11 +489,6 @@ pub async fn handle_call_member_change(
         let local_framecryptors: Vec<_> = all_framecryptors
             .iter()
             .filter(|((id, _), _)| {
-                debug!(
-                    "evaluating {} == {}",
-                    id,
-                    livekit_room.local_participant().identity()
-                );
                 if *id == livekit_room.local_participant().identity() {
                     true
                 } else {
@@ -733,7 +728,6 @@ pub async fn handle_to_device_messages(
     app_handle: AppHandle,
 ) -> Result<(), TauriError> {
     debug!("Handling to-device events");
-    debug!("{:?}", events);
 
     let key_updates = events
         .into_iter()
@@ -765,6 +759,13 @@ pub async fn handle_to_device_messages(
     for update_event in key_updates {
         let room_id = update_event.1.room_id.clone();
 
+        let livekit_id = format!(
+            "{}:{}",
+            update_event.0, update_event.1.member.claimed_device_id
+        );
+
+        debug!("Handling key update for {livekit_id}");
+
         let call_data = match guard.get(&room_id).ok_or(
             "Received LiveKit key update but you are not taking part in the coresponding call",
         ) {
@@ -782,25 +783,6 @@ pub async fn handle_to_device_messages(
         );
 
         let livekit_room = &call_data.livekit_room;
-        let hash = livekit_room.e2ee_manager().frame_cryptors();
-        let keys = hash.keys();
-        let latest_key_index = livekit_room
-            .e2ee_manager()
-            .key_provider()
-            .unwrap()
-            .get_latest_key_index();
-        debug!("\n\n\n\nFramecryptors available for {:?}", keys);
-        for key in keys {
-            debug!(
-                "Key associated with {:?} is {:?}",
-                key.0,
-                livekit_room
-                    .e2ee_manager()
-                    .key_provider()
-                    .unwrap()
-                    .get_key(&key.0, latest_key_index)
-            );
-        }
 
         let e2ee_manager = livekit_room.e2ee_manager();
 
@@ -812,13 +794,6 @@ pub async fn handle_to_device_messages(
             }
         };
 
-        debug!("\n{:?}\n", e2ee_manager.frame_cryptors().keys());
-
-        let livekit_id = format!(
-            "{}:{}",
-            update_event.0, update_event.1.member.claimed_device_id
-        );
-
         key_provider.set_key(
             &From::from(livekit_id.clone()),
             update_event.1.keys.index,
@@ -826,7 +801,11 @@ pub async fn handle_to_device_messages(
                 .decode(update_event.1.keys.key)
                 .unwrap(),
         );
-        log::info!("Saved updated LiveKit encryption key for {}", livekit_id);
+        log::info!(
+            "Set updated LiveKit decryption key for {} with index {} in KeyProvider.",
+            livekit_id,
+            update_event.1.keys.index
+        );
 
         e2ee_manager
             .frame_cryptors()
@@ -842,26 +821,6 @@ pub async fn handle_to_device_messages(
                 frame_cryptor.set_key_index(update_event.1.keys.index);
                 debug!("Updated FrameCryptor key index for {id}");
             });
-
-        let hash = livekit_room.e2ee_manager().frame_cryptors();
-        let keys = hash.keys();
-        let latest_key_index = livekit_room
-            .e2ee_manager()
-            .key_provider()
-            .unwrap()
-            .get_latest_key_index();
-        debug!("\n\n\n\nFramecryptors available for {:?}", keys);
-        for key in keys {
-            debug!(
-                "Key associated with {:?} is {:?}",
-                key.0,
-                livekit_room
-                    .e2ee_manager()
-                    .key_provider()
-                    .unwrap()
-                    .get_key(&key.0, latest_key_index)
-            );
-        }
     }
 
     debug!("Finished handling to-device events");
