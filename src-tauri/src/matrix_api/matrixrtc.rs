@@ -506,7 +506,7 @@ pub async fn handle_call_member_change(
             event_room.room_id().as_str(),
             &local_call_key,
             new_key_index,
-            call_data.call_id.clone(),
+            call_data.call_id,
         ).await {
             log::error!("{e:?}");
         };
@@ -792,11 +792,7 @@ pub async fn handle_to_device_messages(
             .frame_cryptors()
             .iter()
             .filter(|((id, _), _)| {
-                if id == &From::from(livekit_id.clone()) {
-                    true
-                } else {
-                    false
-                }
+                id == &From::from(livekit_id.clone())
             })
             .for_each(|((id, _), frame_cryptor)| {
                 frame_cryptor.set_key_index(update_event.1.keys.index);
