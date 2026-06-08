@@ -459,12 +459,9 @@ pub async fn handle_call_member_change(
             .expect("Could not acquire Client from State. Likely an implementation error.");
 
         let mut raw_key = [0u8; 16];
-        match getrandom::fill(&mut raw_key) {
-            Err(e) => {
-                error!("{e}");
-                return;
-            }
-            _ => {}
+        if let Err(e) = getrandom::fill(&mut raw_key) {
+            log::error!("{e}");
+            return;
         };
 
         let local_call_key = general_purpose::STANDARD.encode(raw_key);
@@ -488,13 +485,7 @@ pub async fn handle_call_member_change(
         let all_framecryptors = e2ee_manager.frame_cryptors();
         let local_framecryptors: Vec<_> = all_framecryptors
             .iter()
-            .filter(|((id, _), _)| {
-                if *id == livekit_room.local_participant().identity() {
-                    true
-                } else {
-                    false
-                }
-            })
+            .filter(|((id, _), _)| *id == livekit_room.local_participant().identity())
             .collect();
         if local_framecryptors.is_empty() {
             error!("No FrameCryptors found for local participant.");
@@ -510,20 +501,14 @@ pub async fn handle_call_member_change(
 
         let client = client_state.read().await;
         debug!("Sending updated local encryption to other participants");
-        match send_encryption_keys(
+        if let Err(e) = send_encryption_keys(
             client.clone(),
             event_room.room_id().as_str(),
             &local_call_key,
             new_key_index,
             call_data.call_id.clone(),
-        )
-        .await
-        {
-            Err(e) => {
-                error!("{e:?}");
-                return;
-            }
-            _ => {}
+        ).await {
+            log::error!("{e:?}");
         };
     } else {
         debug!("Call member room state changed but room is not encrypted.");
@@ -650,14 +635,10 @@ async fn send_encryption_keys(
                 id: call_id.to_string(),
             },
             keys: EncryptionKeysInfo {
-                index: index,
+                index,
                 key: key.to_string(),
             },
-            session: CallSessionInfo {
-                application: "m.call".to_string(),
-                call_id: "".to_string(),
-                scope: "m.room".to_string(),
-            },
+            session: CallSessionInfo::default(),
             sent_ts: MilliSecondsSinceUnixEpoch::now(),
         };
 
@@ -853,4 +834,14 @@ pub struct CallSessionInfo {
     pub application: String,
     pub call_id: String,
     pub scope: String,
+}
+
+impl Default for CallSessionInfo {
+    fn default() -> Self {
+        CallSessionInfo {
+            application: "m.call".to_string(),
+            call_id: "".to_string(),
+            scope: "m.room".to_string(),
+        }
+    }
 }

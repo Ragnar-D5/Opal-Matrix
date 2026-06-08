@@ -2,15 +2,20 @@ use std::collections::HashMap;
 
 use chrono::{DateTime, Local, TimeZone};
 use colorsys::Hsl;
-use leptos::{html::Div, prelude::*, task::spawn_local};
+use leptos::{html::Div, portal::Portal, prelude::*, task::spawn_local};
 use phosphor_leptos::{
-    Icon, IconWeight, ARROW_BEND_UP_LEFT, ARROW_RIGHT, HASH, PENCIL_SIMPLE, SMILEY, SPEAKER_HIGH,
+    ARROW_BEND_UP_LEFT, ARROW_RIGHT, HASH, Icon, IconWeight, PENCIL_SIMPLE, SMILEY, SPEAKER_HIGH,
     TRASH, WARNING_CIRCLE, X,
 };
 use shared::{
-    get_color, profile::MemberProfile, sidebar::RoomKind, timeline::{
-        DetailState, EventContent, EventFlags, MessageContent, ReactionInfo, ReplyInfo, RichTextSpan, SystemMessage, UiCallIntent, UiMembershipChange, UiMessageType, UiTimelineItem, UiTimelineItemKind
-    }
+    get_color,
+    profile::MemberProfile,
+    sidebar::RoomKind,
+    timeline::{
+        DetailState, EventContent, EventFlags, MessageContent, ReactionInfo, ReplyInfo,
+        RichTextSpan, SystemMessage, UiCallIntent, UiMembershipChange, UiMessageType,
+        UiTimelineItem, UiTimelineItemKind,
+    },
 };
 use wasm_bindgen::JsCast;
 use web_sys::Element;
@@ -18,13 +23,13 @@ use web_sys::Element;
 use crate::{
     app::format_date,
     components::{
+        TextCircle, TextCircleProps,
         chat::{Attachment, ChatInputInfo},
-        emoji_picker::{pick_emoji, EmojiPickerState},
+        emoji_picker::{EmojiPickerState, pick_emoji},
         input::move_caret_to_end,
         previews::render_link,
-        text::{richt_text_spans_to_html, RichTextExt},
-        user_profile::{render_profile_name, MemberProfileExt},
-        TextCircle, TextCircleProps,
+        text::{RichTextExt, richt_text_spans_to_html},
+        user_profile::{MemberProfileExt, render_profile_name},
     },
     state::{AppState, LighboxImage, ProfileStore},
     tauri_functions::{delete_message, toggle_reaction},
@@ -1048,9 +1053,7 @@ fn MesssageButtons(
         };
 
         important_event_id.set(Some(event_id.clone()));
-        input_info.set(Some(ChatInputInfo::Editing {
-            event_id,
-        }));
+        input_info.set(Some(ChatInputInfo::Editing { event_id }));
         attachments.set(Vec::new());
 
         if let Some(el) = input_ref.get() {
@@ -1155,25 +1158,29 @@ fn ConfirmDialog(
     children: ChildrenFn,
     #[prop(into, optional)] class: String,
 ) -> impl IntoView {
+    let children = StoredValue::new(children);
+    let dialog_class = StoredValue::new(format!(
+        "relative pointer-events-auto bg-(--ui-solid-bg) border border-(--tile-border-color) rounded-(--floating-border-radius) shadow-xl p-3 flex flex-col backdrop-blur-xl {class}",
+    ));
     view! {
         <Show when=move || show.get()>
-            <div
-                class="fixed inset-0 z-[1000] bg-(--tile-bg-color)"
-                on:click=move |_| show.set(false)
-            />
-            <div class="fixed inset-0 z-[1001] flex items-center justify-center pointer-events-none">
-                <div class=format!(
-                    "relative pointer-events-auto bg-(--ui-solid-bg) border border-(--tile-border-color) rounded-(--floating-border-radius) shadow-xl p-3 flex flex-col backdrop-blur-xl {class}",
-                )>
-                    <button
-                        class="absolute top-3 right-3 text-muted hover:text-(--bright-text-color) border border-transparent hover:bg-(--ui-solid-hover-bg) hover:border-(--tile-border-color) cursor-pointer p-1 rounded-(--gap)"
-                        on:click=move |_| show.set(false)
-                    >
-                        <Icon icon=X size="18px" />
-                    </button>
-                    {children()}
+            <Portal>
+                <div
+                    class="fixed inset-0 z-[1000] bg-(--tile-bg-color)"
+                    on:click=move |_| show.set(false)
+                />
+                <div class="fixed inset-0 z-[1001] flex items-center justify-center pointer-events-none">
+                    <div class=move || dialog_class.get_value()>
+                        <button
+                            class="absolute top-3 right-3 text-muted hover:text-(--bright-text-color) border border-transparent hover:bg-(--ui-solid-hover-bg) hover:border-(--tile-border-color) cursor-pointer p-1 rounded-(--gap)"
+                            on:click=move |_| show.set(false)
+                        >
+                            <Icon icon=X size="18px" />
+                        </button>
+                        {children.get_value()()}
+                    </div>
                 </div>
-            </div>
+            </Portal>
         </Show>
     }
 }
@@ -1284,7 +1291,9 @@ fn render_timeline_event(
     let important_event_id: RwSignal<Option<String>> = expect_context();
     let color_event_id = event_id.clone();
     let current_highlight = Memo::new(move |_| {
-        if let Some(important_id) = important_event_id.get() && let Some(event_id) = &color_event_id {
+        if let Some(important_id) = important_event_id.get()
+            && let Some(event_id) = &color_event_id
+        {
             if important_id == *event_id {
                 Some("white".to_string())
             } else {
