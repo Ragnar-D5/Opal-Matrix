@@ -63,7 +63,15 @@ pub async fn attach_callbacks(client: &MatrixClient, handle: &AppHandle) -> Resu
 
     send_sidebar(&rooms, handle, &own_id).await?;
     send_user_to_frontend(handle, client).await?;
-    send_all_members(handle, &rooms).await?;
+
+    let members_client = client.clone();
+    let members_handle = handle.clone();
+    let members_rooms = rooms.clone();
+    spawn(async move {
+        if let Err(e) = send_all_members(&members_client, &members_handle, &members_rooms).await {
+            log::error!("Failed to send all members: {:?}", e);
+        }
+    });
 
     if let Some(data) = extract_call_memberships(&rooms).await
         && let Err(e) = send_call_member_updates(handle, data)

@@ -1,6 +1,7 @@
-use colorsys::Hsl;
+use csscolorparser::Color;
 use leptos::prelude::*;
 use phosphor_leptos::{Icon, X};
+use shared::ColorExt;
 use web_sys::MouseEvent;
 
 pub(crate) mod authentication;
@@ -48,12 +49,12 @@ pub fn TextCircle(
     #[prop(into, optional)] class: String,
     #[prop(into, optional)] style: String,
     text: String,
-    mut color: Hsl,
+    mut color: Color,
 ) -> impl IntoView {
-    let letter_color = color.clone().to_css_string();
+    let letter_color = color.clone().to_css_hsl();
 
-    color.set_lightness(10.0);
-    let bg_color = color.to_css_string();
+    color.set_lightness(0.1);
+    let bg_color = color.to_css_hsl();
 
     view! {
         <div

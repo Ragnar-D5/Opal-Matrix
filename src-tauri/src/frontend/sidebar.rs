@@ -1,6 +1,7 @@
 use async_recursion::async_recursion;
 use matrix_sdk::deserialized_responses::SyncOrStrippedState;
 use matrix_sdk::ruma::MilliSecondsSinceUnixEpoch;
+use shared::get_color;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 
@@ -21,11 +22,15 @@ use crate::TauriError;
 async fn node_from_room(room: &Room, kind: RoomKind) -> RoomNode {
     let info = room.clone_info();
     let name = room.display_name().await.ok().map(|n| n.to_string());
+    let room_id = info.room_id().to_string();
 
     RoomNode {
-        room_id: info.room_id().to_string(),
+        room_id: room_id.clone(),
         name,
         topic: room.topic(),
+
+        color: get_color(&room_id),
+
         has_avatar: room.avatar_url().is_some(),
         canonical_alias: room.canonical_alias().map(|v| v.to_string()),
         aliases: info.alt_aliases().iter().map(|v| v.to_string()).collect(),

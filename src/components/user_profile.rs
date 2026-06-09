@@ -1,8 +1,7 @@
-use colorsys::Hsl;
+use csscolorparser::Color;
 use leptos::prelude::*;
 use shared::{
-    get_color,
-    profile::{MemberProfile, RoomProfile, UserProfile},
+    profile::{CustomProperties, MemberProfile, RoomProfile, UserProfile},
     timeline::{RichTextSpan, RoomIdFormat},
     unknown_color,
 };
@@ -13,7 +12,7 @@ pub fn render_url_icon<S: AsRef<str>, T: AsRef<str>, U: AsRef<str>>(
     url: Option<String>,
     name: S,
     size_str: T,
-    color: Hsl,
+    color: Color,
     rounding: U,
 ) -> impl IntoView {
     let stye_str = format!(
@@ -68,7 +67,7 @@ pub fn render_unknown_icon<T: AsRef<str>>(size_str: T) -> impl IntoView {
 
 pub fn render_profile_name<T: AsRef<str>>(
     name: String,
-    color: Hsl,
+    color: Color,
     font_size_str: T,
 ) -> impl IntoView {
     let font_size_str = font_size_str.as_ref().to_string();
@@ -76,7 +75,7 @@ pub fn render_profile_name<T: AsRef<str>>(
     view! {
         <span
             style:font-size=font_size_str
-            style:color=color.to_css_string()
+            style:color=color.to_css_hsl()
             class="font-semibold cursor-pointer hover:underline"
         >
             {name.clone()}
@@ -99,8 +98,6 @@ pub trait MemberProfileExt {
     fn to_span(&self) -> RichTextSpan;
 
     fn is_room(&self) -> bool;
-
-    fn get_color(&self) -> Hsl;
 }
 
 impl MemberProfileExt for MemberProfile {
@@ -135,15 +132,7 @@ impl MemberProfileExt for MemberProfile {
     }
 
     fn render_name<T: AsRef<str>>(self, font_size_str: T) -> impl IntoView {
-        render_profile_name(self.get_name(), self.get_color(), font_size_str)
-    }
-
-    fn get_color(&self) -> Hsl {
-        if self.is_room() {
-            return Hsl::new(0.0, 0.0, 70.0, None);
-        }
-
-        get_color(&self.profile.user_id)
+        render_profile_name(self.get_name(), self.name_color(), font_size_str)
     }
 }
 
@@ -178,7 +167,7 @@ impl MemberProfileExt for UserProfile {
             None
         };
 
-        render_url_icon(url, self.get_name(), size_str, self.get_color(), "full")
+        render_url_icon(url, self.get_name(), size_str, self.name_color(), "full")
     }
 
     fn render_icon<T: AsRef<str>>(self, size_str: T) -> impl IntoView {
@@ -186,11 +175,7 @@ impl MemberProfileExt for UserProfile {
     }
 
     fn render_name<T: AsRef<str>>(self, font_size_str: T) -> impl IntoView {
-        render_profile_name(self.get_name(), self.get_color(), font_size_str)
-    }
-
-    fn get_color(&self) -> Hsl {
-        get_color(&self.user_id)
+        render_profile_name(self.get_name(), self.name_color(), font_size_str)
     }
 }
 
@@ -234,13 +219,6 @@ impl MemberProfileExt for Option<MemberProfile> {
             profile.render_name(font_size_str).into_any()
         } else {
             render_unknown_name(font_size_str).into_any()
-        }
-    }
-
-    fn get_color(&self) -> Hsl {
-        match self {
-            Some(profile) => profile.get_color(),
-            None => Hsl::new(0.0, 100.0, 70.0, None),
         }
     }
 }
@@ -287,13 +265,6 @@ impl MemberProfileExt for Option<UserProfile> {
             render_unknown_name(font_size_str).into_any()
         }
     }
-
-    fn get_color(&self) -> Hsl {
-        match self {
-            Some(profile) => profile.get_color(),
-            None => Hsl::new(0.0, 0.0, 70.0, None),
-        }
-    }
 }
 
 pub fn room_as_profile<T: ToString>(room_id: T) -> MemberProfile {
@@ -303,6 +274,8 @@ pub fn room_as_profile<T: ToString>(room_id: T) -> MemberProfile {
             user_id: room_id.to_string(),
             display_name: Some("room".to_string()),
             has_avatar: false,
+
+            custom_properties: CustomProperties::default(),
         },
     }
 }

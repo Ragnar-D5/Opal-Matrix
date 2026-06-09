@@ -1,18 +1,19 @@
 use std::collections::HashMap;
 
+use futures::future::join_all;
 use matrix_sdk::{
+    Client, Room, RoomMemberships,
     event_handler::Ctx,
     ruma::{
+        OwnedUserId, UserId,
         events::{room::member::OriginalSyncRoomMemberEvent, typing::SyncTypingEvent},
         profile::ProfileFieldName,
-        UserId,
     },
-    Room, RoomMemberships,
 };
-use shared::profile::{MemberProfile, UserProfile};
-use tauri::{command, AppHandle, Emitter};
+use shared::profile::{CustomProperties, MemberProfile, UserProfile};
+use tauri::{AppHandle, Emitter, command};
 
-use crate::{MatrixClientState, TauriError};
+use crate::{MatrixClientState, TauriError, matrix_api::profile::get_custom_fields};
 
 pub async fn on_member_update(
     event: OriginalSyncRoomMemberEvent,
@@ -27,6 +28,8 @@ pub async fn on_member_update(
             user_id: event.state_key.to_string(),
             display_name: content.displayname,
             has_avatar: content.avatar_url.is_some(),
+
+            custom_properties: get_custom_fields(&room.client(), event.state_key.clone()).await,
         },
     };
 
@@ -36,29 +39,84 @@ pub async fn on_member_update(
     });
 }
 
-pub async fn send_all_members(handle: &AppHandle, rooms: &[Room]) -> Result<(), TauriError> {
-    let mut payload = HashMap::new();
+pub async fn send_all_members(
+    client: &Client,
+    handle: &AppHandle,
+    rooms: &[Room],
+) -> Result<(), TauriError> {
+    let mut payload: HashMap<String, Vec<MemberProfile>> = HashMap::new();
+    // user_id -> list of (room_id, has_avatar, display_name) across all rooms
+    let mut user_memberships: HashMap<OwnedUserId, Vec<(String, bool, Option<String>)>> =
+        HashMap::new();
 
     for room in rooms {
         let room_id = room.room_id().to_string();
         let members = room.members(RoomMemberships::JOIN).await?;
 
-        let profiles = members
+        let profiles: Vec<MemberProfile> = members
             .into_iter()
-            .map(|member| MemberProfile {
-                room_id: room_id.clone(),
-                profile: UserProfile {
-                    user_id: member.user_id().to_string(),
-                    display_name: member.display_name().map(|s| s.to_string()),
-                    has_avatar: member.avatar_url().is_some(),
-                },
+            .map(|member| {
+                let user_id = member.user_id().to_owned();
+                let has_avatar = member.avatar_url().is_some();
+                let display_name = member.display_name().map(|s| s.to_string());
+
+                user_memberships
+                    .entry(user_id.clone())
+                    .or_default()
+                    .push((room_id.clone(), has_avatar, display_name.clone()));
+
+                MemberProfile {
+                    room_id: room_id.clone(),
+                    profile: UserProfile {
+                        user_id: user_id.to_string(),
+                        display_name,
+                        has_avatar,
+                        custom_properties: CustomProperties::from_user_id(user_id.as_str()),
+                    },
+                }
             })
             .collect();
 
         payload.insert(room_id, profiles);
     }
 
+    // Emit immediately with derived properties so the UI renders right away
     send_member_update(handle, payload)?;
+
+    // Fetch custom fields for each unique user in parallel (one fetch per user, not per membership)
+    let futs: Vec<_> = user_memberships
+        .keys()
+        .cloned()
+        .map(|user_id| {
+            let client = client.clone();
+            async move {
+                let props = get_custom_fields(&client, user_id.clone()).await;
+                (user_id, props)
+            }
+        })
+        .collect();
+
+    let results = join_all(futs).await;
+
+    let mut update_payload: HashMap<String, Vec<MemberProfile>> = HashMap::new();
+    for (user_id, custom_properties) in results {
+        for (room_id, has_avatar, display_name) in &user_memberships[&user_id] {
+            update_payload
+                .entry(room_id.clone())
+                .or_default()
+                .push(MemberProfile {
+                    room_id: room_id.clone(),
+                    profile: UserProfile {
+                        user_id: user_id.to_string(),
+                        display_name: display_name.clone(),
+                        has_avatar: *has_avatar,
+                        custom_properties: custom_properties.clone(),
+                    },
+                });
+        }
+    }
+
+    send_member_update(handle, update_payload)?;
 
     Ok(())
 }
@@ -99,6 +157,8 @@ pub async fn get_user_profile(
         user_id: user_id.to_string(),
         display_name,
         has_avatar,
+
+        custom_properties: get_custom_fields(&client, user_id.clone()).await,
     })
 }
 

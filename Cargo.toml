@@ -9,8 +9,8 @@ members = [".", "shared", "src-tauri"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [dependencies]
 chrono = { version = "0.4.44", features = ["wasmbind"] }
-colorsys = "0.7.3"
 console_error_panic_hook = "0.1.7"
+csscolorparser = { version = "0.8.3", features = ["serde"] }
 emojis = "0.8.2"
 js-sys = "0.3"
 leptos = { version = "0.8", features = ["csr"] }

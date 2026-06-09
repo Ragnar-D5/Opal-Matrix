@@ -1,9 +1,8 @@
 use crate::openUrl;
-use colorsys::ColorAlpha;
 use leptos::{prelude::*, task::spawn_local};
-use shared::timeline::RichTextSpan;
+use shared::{ColorExt, timeline::RichTextSpan};
 
-use crate::{components::user_profile::MemberProfileExt, state::ProfileStore};
+use crate::state::ProfileStore;
 
 #[component]
 fn WordMention(
@@ -74,11 +73,11 @@ impl RichTextExt for RichTextSpan {
 
                 let colors = Memo::new(move |_| {
                     let profile = profile_sig.get();
-                    let mut color = profile.get_color();
-                    let primary = color.to_css_string();
+                    let mut color = profile.name_color();
+                    let primary = color.to_css_hsl();
 
                     color.set_alpha(0.4);
-                    let background = color.to_css_string();
+                    let background = color.to_css_hsl();
 
                     (primary, background)
                 });

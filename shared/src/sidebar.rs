@@ -1,9 +1,9 @@
 use std::collections::{HashMap, HashSet};
 
-use colorsys::Hsl;
+use csscolorparser::Color;
 use serde::{Deserialize, Serialize};
 
-use crate::{account_data::ServerOrder, get_color, profile::RoomProfile};
+use crate::{account_data::ServerOrder, profile::RoomProfile};
 
 #[derive(Debug, Serialize, Clone, Deserialize, PartialEq)]
 pub struct UserDevice {
@@ -34,6 +34,8 @@ pub struct RoomNode {
     pub name: Option<String>,
     pub topic: Option<String>,
     pub has_avatar: bool,
+
+    pub color: Color,
 
     pub canonical_alias: Option<String>,
     pub aliases: Vec<String>,
@@ -76,14 +78,6 @@ impl RoomNode {
             }
         } else {
             None
-        }
-    }
-
-    pub fn get_color(&self) -> Hsl {
-        if let RoomKind::Dm { other_user_id } = &self.kind {
-            get_color(other_user_id)
-        } else {
-            get_color(&self.room_id)
         }
     }
 }

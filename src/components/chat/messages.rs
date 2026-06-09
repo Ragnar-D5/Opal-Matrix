@@ -1,7 +1,7 @@
+use csscolorparser::Color;
 use std::collections::HashMap;
 
 use chrono::{DateTime, Local, TimeZone};
-use colorsys::Hsl;
 use leptos::{html::Div, portal::Portal, prelude::*, task::spawn_local};
 use phosphor_leptos::{
     ARROW_BEND_UP_LEFT, ARROW_RIGHT, HASH, Icon, IconWeight, PENCIL_SIMPLE, SMILEY, SPEAKER_HIGH,
@@ -120,7 +120,7 @@ fn MessageHeader(
     show_header: bool,
     sender_profile_sig: ArcRwSignal<MemberProfile>,
     name: String,
-    color: Hsl,
+    color: Color,
     date: DateTime<Local>,
     current_highlight: Memo<Option<String>>,
     children: Children,
@@ -571,7 +571,7 @@ fn render_reactions(
 
                 if len > 4 {
                     pics.push(
-                        TextCircle(TextCircleProps::builder().text(format!("+{}", len - 4)).class("-ml-1.5 first:ml-0 w-[30px] h-[20px] rounded-full").color(Hsl::new(0.0, 0.0, 60.0, None)).build()).into_any()
+                        TextCircle(TextCircleProps::builder().text(format!("+{}", len - 4)).class("-ml-1.5 first:ml-0 w-[30px] h-[20px] rounded-full").color(Color::from_hsla(0.0, 0.0, 0.6, 1.0)).build()).into_any()
                     );
                 }
 
@@ -1213,7 +1213,7 @@ fn render_timeline_event(
                     event
                         .get_sender_id()
                         .map(|v| get_color(&v))
-                        .unwrap_or(Hsl::new(0.0, 0.0, 70.0, None)),
+                        .unwrap_or(Color::from_hsla(0.0, 0.0, 0.7, 1.0)),
                     event.in_reply_to(),
                     event.event_id.clone(),
                 )

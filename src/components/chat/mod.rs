@@ -28,6 +28,7 @@ use phosphor_leptos::{
 use leptos::{ev, html::Div, prelude::*, task::spawn_local};
 use leptos_use::{UseIntersectionObserverReturn, use_event_listener, use_intersection_observer};
 use shared::{
+    ColorExt,
     api::{FileMetadata, ScrollDirection, UiAttachmentSource},
     profile::{MemberProfile, PresenceInfo},
     sidebar::RoomKind,
@@ -1237,12 +1238,12 @@ pub fn Chat() -> impl IntoView {
                                                             .get_member_profile(&node.room_id, &device.user_id);
                                                         let clone = profile.clone();
                                                         let colors = move || {
-                                                            let mut color = clone.get().get_color();
-                                                            let fg_color = color.clone().to_css_string();
+                                                            let mut color = clone.get().banner_color();
+                                                            let fg_color = color.clone().to_css_hsl();
                                                             color.set_lightness(10.0);
                                                             format!(
                                                                 "background-color: {}; box-shadow: inset 0 0 20px 0px {};",
-                                                                color.to_css_string(),
+                                                                color.to_css_hsl(),
                                                                 fg_color,
                                                             )
                                                         };
@@ -1301,7 +1302,7 @@ fn ChatInfo(header: Memo<RoomHeader>) -> impl IntoView {
 
         match header.get() {
             RoomHeader::DM(profile_sig) => {
-                let banner_color = profile_sig.get().get_color().to_css_string();
+                let banner_color = profile_sig.get().banner_color().to_css_hsl();
                 let banner_height = 108.0;
                 let icon_size = 70.0;
                 let icon_radius = icon_size / 2.0;

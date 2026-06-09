@@ -1,11 +1,11 @@
-use phosphor_leptos::{Icon, IconData, IconWeight, HASH, MATRIX_LOGO, SPEAKER_HIGH};
+use phosphor_leptos::{HASH, Icon, IconData, IconWeight, MATRIX_LOGO, SPEAKER_HIGH};
 use shared::{get_color, profile::MemberProfile, unknown_color};
 
 use crate::{
     components::{
-        presence::PresenceBadge,
-        user_profile::{render_url_icon, MemberProfileExt},
         FloatingTile,
+        presence::PresenceBadge,
+        user_profile::{MemberProfileExt, render_url_icon},
     },
     state::{AppState, ProfileStore},
 };
@@ -25,7 +25,7 @@ impl RoomNodeExt for RoomNode {
     fn avatar_div<T: AsRef<str> + 'static>(&self, size_str: T) -> impl IntoView + 'static {
         let url = self.avatar_url();
         let name = self.get_name();
-        let color = self.get_color();
+        let color = self.color.clone();
 
         let rounding = if let RoomKind::Dm { .. } = self.kind {
             "full"
@@ -207,7 +207,10 @@ pub fn CutoutBadge(
 
         if !masks.is_empty() {
             let joined = masks.join(", ");
-            format!("-webkit-mask-image: {0}; -webkit-mask-composite: source-in; mask-image: {0}; mask-composite: intersect;", joined)
+            format!(
+                "-webkit-mask-image: {0}; -webkit-mask-composite: source-in; mask-image: {0}; mask-composite: intersect;",
+                joined
+            )
         } else {
             String::new()
         }

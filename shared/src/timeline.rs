@@ -1,10 +1,7 @@
 use std::collections::HashMap;
 
-use colorsys::Hsl;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-
-use crate::get_color;
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct AbstractProgress {
@@ -529,15 +526,6 @@ impl DetailState<Sender> {
             _ => None,
         }
     }
-
-    pub fn color(&self) -> Hsl {
-        match self {
-            DetailState::Ready(sender) => get_color(&sender.id),
-            DetailState::Error(_) => Hsl::new(0.0, 100.0, 70.0, None),
-            DetailState::Pending => Hsl::new(0.0, 0.0, 50.0, None),
-            DetailState::Unavailable => Hsl::new(50.0, 100.0, 80.0, None),
-        }
-    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -704,11 +692,16 @@ impl UiTimelineItem {
     }
 
     pub fn render_key(&self) -> String {
-        format!("timeline-event-{}", if let UiTimelineItemKind::Event(event) = &self.kind && let Some(event_id) = &event.event_id {
-            event_id.clone()
-        } else {
-            self.id.clone()
-        })
+        format!(
+            "timeline-event-{}",
+            if let UiTimelineItemKind::Event(event) = &self.kind
+                && let Some(event_id) = &event.event_id
+            {
+                event_id.clone()
+            } else {
+                self.id.clone()
+            }
+        )
     }
 }
 

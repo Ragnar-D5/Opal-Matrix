@@ -4,13 +4,16 @@ use leptos::task::spawn_local;
 use log::error;
 use serde_json::json;
 use shared::{
-    account_data::{Breadcrumbs, ServerOrder}, profile::{MemberProfile, PresenceInfo, RoomProfile, UserProfile}, sidebar::{NotificationCounts, RoomKind, RoomNode, SidebarState, UserDevice}, timeline::UiMediaSource
+    account_data::{Breadcrumbs, ServerOrder},
+    profile::{CustomProperties, MemberProfile, PresenceInfo, RoomProfile, UserProfile},
+    sidebar::{NotificationCounts, RoomKind, RoomNode, SidebarState, UserDevice},
+    timeline::UiMediaSource,
 };
 
 use crate::{
     app::{CurrentWindow, call_tauri},
     components::{chat::Attachment, user_profile::room_as_profile},
-    tauri_functions::{get_user_profile},
+    tauri_functions::get_user_profile,
 };
 use leptos::prelude::*;
 
@@ -73,7 +76,9 @@ pub enum RoomHeader {
 
 impl AppState {
     pub fn update_typing_users(&self, room_id: &str, user_ids: Vec<String>) {
-        let existing_signal = self.typing_users.with_untracked(|map| map.get(room_id).cloned());
+        let existing_signal = self
+            .typing_users
+            .with_untracked(|map| map.get(room_id).cloned());
 
         if let Some(signal) = existing_signal {
             let should_update = signal.with_untracked(|current_users| current_users != &user_ids);
@@ -91,7 +96,10 @@ impl AppState {
     }
 
     pub fn get_typing_users(&self, room_id: &str) -> ArcRwSignal<Vec<String>> {
-        if let Some(signal) = self.typing_users.with_untracked(|map| map.get(room_id).cloned()) {
+        if let Some(signal) = self
+            .typing_users
+            .with_untracked(|map| map.get(room_id).cloned())
+        {
             signal
         } else {
             let new_signal = ArcRwSignal::new(Vec::new());
@@ -100,7 +108,6 @@ impl AppState {
             });
             new_signal
         }
-
     }
 
     pub fn active_room_id(&self) -> Option<String> {
@@ -145,15 +152,23 @@ impl AppState {
 
         let sidebar_state = self.sidebar_state.get_untracked();
 
-        let Some(RoomNode { kind: RoomKind::Space { all_children, .. }, .. }) = sidebar_state.server_rooms.get(&server_id) else {
-             return Vec::new();
+        let Some(RoomNode {
+            kind: RoomKind::Space { all_children, .. },
+            ..
+        }) = sidebar_state.server_rooms.get(&server_id)
+        else {
+            return Vec::new();
         };
 
         sidebar_state
             .server_rooms
             .clone()
             .into_iter()
-            .filter_map(|(room_id, room)| all_children.contains(&room_id).then_some(RoomProfile::from(room)))
+            .filter_map(|(room_id, room)| {
+                all_children
+                    .contains(&room_id)
+                    .then_some(RoomProfile::from(room))
+            })
             .collect()
     }
 
@@ -402,7 +417,8 @@ impl AppState {
     pub fn get_call_members(&self, room_id: &str) -> ArcRwSignal<Vec<UserDevice>> {
         self.call_members
             .get()
-            .entry(room_id.to_string()).or_insert_with(|| ArcRwSignal::new(Vec::new()))
+            .entry(room_id.to_string())
+            .or_insert_with(|| ArcRwSignal::new(Vec::new()))
             .clone()
     }
 
@@ -455,7 +471,13 @@ impl AppState {
             .server_rooms
             .get(room_id)
             .cloned()
-            .or_else(|| sidebar_state.dms.iter().find(|dm| dm.room_id == room_id).cloned())
+            .or_else(|| {
+                sidebar_state
+                    .dms
+                    .iter()
+                    .find(|dm| dm.room_id == room_id)
+                    .cloned()
+            })
     }
 
     // pub fn get_room_untracked(&self, room_id: &str) -> Option<RoomNode> {
@@ -469,7 +491,6 @@ impl AppState {
     // }
 }
 
-
 type MemberStoreRoomEntry = HashMap<String, ArcRwSignal<MemberProfile>>;
 
 #[derive(Default, Clone)]
@@ -481,13 +502,17 @@ pub struct ProfileStore {
 }
 
 impl ProfileStore {
-    pub fn get_member_profile(
-        &self,
-        room_id: &str,
-        user_id: &str,
-    ) -> ArcRwSignal<MemberProfile> {
+    pub fn get_member_profile(&self, room_id: &str, user_id: &str) -> ArcRwSignal<MemberProfile> {
         if room_id.is_empty() {
-            return ArcRwSignal::new(MemberProfile { room_id: room_id.to_string(), profile: UserProfile { user_id: user_id.to_string(), display_name: None, has_avatar: false } });
+            return ArcRwSignal::new(MemberProfile {
+                room_id: room_id.to_string(),
+                profile: UserProfile {
+                    user_id: user_id.to_string(),
+                    display_name: None,
+                    has_avatar: false,
+                    custom_properties: CustomProperties::default(),
+                },
+            });
         }
 
         if room_id == user_id {
@@ -505,10 +530,21 @@ impl ProfileStore {
             return sig;
         }
 
-        let sig = ArcRwSignal::new(MemberProfile { room_id: room_id.to_string(), profile: UserProfile { user_id: user_id.to_string(), display_name: None, has_avatar: false } });
+        let sig = ArcRwSignal::new(MemberProfile {
+            room_id: room_id.to_string(),
+            profile: UserProfile {
+                user_id: user_id.to_string(),
+                display_name: None,
+                has_avatar: false,
+                custom_properties: CustomProperties::default(),
+            },
+        });
 
         self.members.update(|members| {
-            members.entry(room_id.to_string()).or_insert_with(HashMap::new).insert(user_id.to_string(), sig.clone());
+            members
+                .entry(room_id.to_string())
+                .or_insert_with(HashMap::new)
+                .insert(user_id.to_string(), sig.clone());
         });
 
         sig
@@ -539,7 +575,12 @@ impl ProfileStore {
             return sig;
         }
 
-        let sig = ArcRwSignal::new(UserProfile { user_id: user_id.to_string(), display_name: None, has_avatar: false });
+        let sig = ArcRwSignal::new(UserProfile {
+            user_id: user_id.to_string(),
+            display_name: None,
+            has_avatar: false,
+            custom_properties: CustomProperties::default(),
+        });
 
         self.user_profiles.update(|profiles| {
             profiles.insert(user_id.to_string(), sig.clone());
@@ -562,7 +603,11 @@ impl ProfileStore {
     }
 
     pub fn get_members(self, room_id: &str) -> Vec<MemberProfile> {
-        self.members.get().get(room_id).map(|m| m.values().map(|s| s.get()).collect()).unwrap_or_default()
+        self.members
+            .get()
+            .get(room_id)
+            .map(|m| m.values().map(|s| s.get()).collect())
+            .unwrap_or_default()
     }
 
     pub fn get_member_signals(self, room_id: &str) -> HashMap<String, ArcRwSignal<MemberProfile>> {
