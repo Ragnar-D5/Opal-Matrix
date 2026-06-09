@@ -1463,7 +1463,7 @@ fn MemberList() -> impl IntoView {
                         <PresenceBadge presence=presence size=15.5>
                             {profile.render_icon("32px")}
                         </PresenceBadge>
-                        <span class="text-bright">{name_profile.render_name("16px")}</span>
+                        <span class="text-bright">{name_profile.render_name("18px")}</span>
                     </div>
                 }
             })
