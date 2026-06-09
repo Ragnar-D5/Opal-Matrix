@@ -1163,10 +1163,6 @@ fn ConfirmDialog(
         "relative pointer-events-auto bg-(--ui-solid-bg) border border-(--tile-border-color) rounded-(--floating-border-radius) shadow-xl p-3 flex flex-col backdrop-blur-xl {class}",
     ));
 
-    let on_click = move |_| {
-        show.set(false);
-    };
-
     view! {
         <Show when=move || show.get()>
             <Portal>
@@ -1176,7 +1172,7 @@ fn ConfirmDialog(
                 />
                 <div class="fixed inset-0 z-[1001] flex items-center justify-center pointer-events-none">
                     <div class=move || dialog_class.get_value()>
-                        <CloseButton on_click=on_click.clone() />
+                        <CloseButton on_click=move |_| show.set(false) />
                         {children.get_value()()}
                     </div>
                 </div>
@@ -1321,7 +1317,7 @@ fn render_timeline_event(
 
     view! {
         <div
-            class="group/msg ml-1 relative flex flex-col gap-[var(--gap)] hover:bg-black/20 rounded-md transform-gpu border border-transparent hover:border-[var(--tile-border-color)]"
+            class="group/msg my-1 relative flex flex-col gap-[var(--gap)] hover:bg-black/20 rounded-md transform-gpu border border-transparent hover:border-[var(--tile-border-color)]"
             class=("mt-5", show_header && !preview)
             class=("pointer-events-none", preview)
             class=("bg-black/20", move || picker_open.get() || show_delete_confirm.get())
