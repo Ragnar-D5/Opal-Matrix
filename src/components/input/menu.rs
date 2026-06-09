@@ -1,5 +1,6 @@
 use crate::{
     components::{
+        CloseButton,
         input::{get_caret_position, get_node_and_offset},
         presence::PresenceBadge,
         text::RichTextExt,
@@ -639,6 +640,7 @@ pub fn SelectionMenu(menu: RwSignal<MenuType>, input_ref: NodeRef<Div>) -> impl 
             class="mb-(--gap) absolute bottom-full left-4 right-4 bottom-(--gap) bg-(--ui-floating-hover-bg) backdrop-blur-2xl rounded-(--ui-border-radius) border border-(--tile-border-color) flex flex-col text-xs pb-(--gap) max-h-100"
             class:hidden=move || menu.get().is_none() || no_matches()
         >
+            <CloseButton on_click=move |_| menu.set(MenuType::None) inset="3px" />
             {content}
         </div>
     }.into_any()

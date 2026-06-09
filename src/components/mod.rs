@@ -1,5 +1,7 @@
 use colorsys::Hsl;
 use leptos::prelude::*;
+use phosphor_leptos::{Icon, X};
+use web_sys::MouseEvent;
 
 pub(crate) mod authentication;
 pub(crate) mod chat;
@@ -87,5 +89,30 @@ pub fn TypingIndicator(#[prop(into)] size: String) -> impl IntoView {
             <div class="typing-indicator rounded-full" style=style_string(0.2)></div>
             <div class="typing-indicator rounded-full" style=style_string(0.4)></div>
         </div>
+    }
+}
+
+#[component]
+pub fn CloseButton<T>(
+    #[prop(into, optional)] class: String,
+    #[prop(into, optional)] size: Option<String>,
+    #[prop(into, optional)] inset: Option<String>,
+    on_click: T,
+) -> impl IntoView
+where
+    T: Fn(MouseEvent) + 'static,
+{
+    let inset = inset.unwrap_or("12px".to_string());
+    let size = size.unwrap_or("16px".to_string());
+
+    view! {
+        <button
+            class=format!("absolute text-muted hover:text-(--bright-text-color) border border-transparent hover:bg-(--ui-solid-hover-bg) hover:border-(--tile-border-color) cursor-pointer p-1 rounded-(--gap) {class}")
+            style:top=inset.clone()
+            style:right=inset
+            on:click=on_click
+        >
+            <Icon icon=X size=size />
+        </button>
     }
 }

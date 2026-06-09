@@ -5,7 +5,7 @@ use colorsys::Hsl;
 use leptos::{html::Div, portal::Portal, prelude::*, task::spawn_local};
 use phosphor_leptos::{
     ARROW_BEND_UP_LEFT, ARROW_RIGHT, HASH, Icon, IconWeight, PENCIL_SIMPLE, SMILEY, SPEAKER_HIGH,
-    TRASH, WARNING_CIRCLE, X,
+    TRASH, WARNING_CIRCLE,
 };
 use shared::{
     get_color,
@@ -23,7 +23,7 @@ use web_sys::Element;
 use crate::{
     app::format_date,
     components::{
-        TextCircle, TextCircleProps,
+        CloseButton, TextCircle, TextCircleProps,
         chat::{Attachment, ChatInputInfo},
         emoji_picker::{EmojiPickerState, pick_emoji},
         input::move_caret_to_end,
@@ -1162,6 +1162,11 @@ fn ConfirmDialog(
     let dialog_class = StoredValue::new(format!(
         "relative pointer-events-auto bg-(--ui-solid-bg) border border-(--tile-border-color) rounded-(--floating-border-radius) shadow-xl p-3 flex flex-col backdrop-blur-xl {class}",
     ));
+
+    let on_click = move |_| {
+        show.set(false);
+    };
+
     view! {
         <Show when=move || show.get()>
             <Portal>
@@ -1171,12 +1176,7 @@ fn ConfirmDialog(
                 />
                 <div class="fixed inset-0 z-[1001] flex items-center justify-center pointer-events-none">
                     <div class=move || dialog_class.get_value()>
-                        <button
-                            class="absolute top-3 right-3 text-muted hover:text-(--bright-text-color) border border-transparent hover:bg-(--ui-solid-hover-bg) hover:border-(--tile-border-color) cursor-pointer p-1 rounded-(--gap)"
-                            on:click=move |_| show.set(false)
-                        >
-                            <Icon icon=X size="18px" />
-                        </button>
+                        <CloseButton on_click=on_click.clone() />
                         {children.get_value()()}
                     </div>
                 </div>
