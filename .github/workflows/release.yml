@@ -19,6 +19,13 @@ jobs:
       - name: Install Trunk
         uses: jetli/trunk-action@v0.5.0
 
+      - name: Install Tailwind CSS
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://github.com/tailwindlabs/tailwindcss/releases/latest/download/tailwindcss-windows-x64.exe" -OutFile "tailwindcss.exe"
+          Move-Item tailwindcss.exe "$env:RUNNER_TOOL_CACHE\tailwindcss.exe"
+          echo "$env:RUNNER_TOOL_CACHE" >> $env:GITHUB_PATH
+
       - name: Build
         uses: tauri-apps/tauri-action@v0
         env:
