@@ -2,15 +2,13 @@ use leptos::task::spawn_local;
 use leptos::{html::Div, prelude::*, tachys::dom::document};
 use log::warn;
 use regex::Regex;
-use shared::commands::Command;
-use shared::profile::{MemberProfile, RoomProfile};
 use wasm_bindgen::JsCast;
 use web_sys::{HtmlDivElement, HtmlElement, KeyboardEvent};
 use web_sys::{Node, window};
 
 use crate::components::chat::{Attachment, ChatInputInfo};
-use crate::components::input::menu::MenuType;
-use crate::components::input::menu::{SelectedItem, commit_selection};
+use crate::components::input::menu::commit_selection;
+use crate::components::input::menu::{MenuCompletionMatches, MenuType};
 use crate::state::{AppState, MessageDraft, ProfileStore};
 use crate::tauri_functions::{commit_message, edit_message, send_attachment};
 
@@ -217,9 +215,7 @@ pub fn get_active_filter(
 type Signals = (
     RwSignal<MenuType>,
     RwSignal<usize>,
-    RwSignal<Vec<MemberProfile>>,
-    RwSignal<Vec<Command>>,
-    RwSignal<Vec<RoomProfile>>,
+    RwSignal<MenuCompletionMatches>,
     RwSignal<bool>,
     RwSignal<Option<ChatInputInfo>>,
     RwSignal<Vec<Attachment>>,
@@ -232,8 +228,7 @@ pub fn handle_keydown(
     store: ProfileStore,
     signals: Signals,
 ) {
-    let (menu, selected_index, mention_matches, command_matches, room_matches,  is_empty, input_info, attachments) =
-        signals;
+    let (menu, selected_index, matches, is_empty, input_info, attachments) = signals;
     let Some(el) = input_ref.get() else { return };
 
     let key = ev.key();
@@ -247,37 +242,12 @@ pub fn handle_keydown(
             ev.prevent_default();
 
             if current_menu != MenuType::None {
-                let mentions = mention_matches.get_untracked();
-                let commands = command_matches.get_untracked();
-                let rooms = room_matches.get_untracked();
+                let matches = matches.get_untracked();
 
-
-                let selected = match current_menu {
-                    MenuType::UserAutocomplete { .. } => {
-                        let Some(selected) = mentions.get(selected_index.get()) else {
-                            return;
-                        };
-
-                        SelectedItem::from(selected.clone())
-                    }
-                    MenuType::CommandAutocomplete { .. } => {
-                        let Some(selected) = commands.get(selected_index.get()) else {
-                            return;
-                        };
-
-                        SelectedItem::from(selected.clone())
-                    }
-                    MenuType::RoomAutocomplete { .. } => {
-                        let Some(selected) = rooms.get(selected_index.get()) else {
-                            return;
-                        };
-
-                        SelectedItem::from(selected.clone())
-                    }
-                    MenuType::None => return,
+                if let Some(selected) = matches.get(selected_index.get()) {
+                    commit_selection(&el, selected, state, store);
                 };
 
-                commit_selection(&el, selected, state, store);
                 menu.set(MenuType::None);
             } else {
                 let message = el.inner_html();
@@ -341,12 +311,7 @@ pub fn handle_keydown(
         "ArrowUp" | "ArrowDown" if current_menu != MenuType::None => {
             ev.prevent_default();
 
-            let len = match current_menu {
-                MenuType::UserAutocomplete { .. } => mention_matches.get_untracked().len(),
-                MenuType::CommandAutocomplete { .. } => command_matches.get_untracked().len(),
-                MenuType::RoomAutocomplete { .. } => room_matches.get_untracked().len(),
-                MenuType::None => return,
-            };
+            let len = matches.get().len();
 
             match (current_menu, key.as_str()) {
                 (MenuType::UserAutocomplete { .. }, "ArrowUp") => {

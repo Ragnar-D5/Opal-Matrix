@@ -9,7 +9,7 @@ use crate::{
         input::{
             get_active_filter, get_caret_position, handle_input, handle_keydown,
             insert_text_at_caret,
-            menu::{MenuType, SelectionMenu},
+            menu::{MenuCompletionMatches, MenuType, SelectionMenu},
         },
         presence::PresenceBadge,
         user_profile::MemberProfileExt,
@@ -867,13 +867,8 @@ fn ChatInput() -> impl IntoView {
     provide_context(selected_index);
     provide_context(input_info);
 
-    let mention_matches = RwSignal::new(Vec::new());
-    let command_matches = RwSignal::new(Vec::new());
-    let room_matches = RwSignal::new(Vec::new());
-
-    provide_context(mention_matches);
-    provide_context(command_matches);
-    provide_context(room_matches);
+    let matches: RwSignal<MenuCompletionMatches> = RwSignal::new(MenuCompletionMatches::None);
+    provide_context(matches);
 
     let input_ref: NodeRef<Div> = NodeRef::new();
 
@@ -1132,9 +1127,7 @@ fn ChatInput() -> impl IntoView {
                             (
                                 menu,
                                 selected_index,
-                                mention_matches,
-                                command_matches,
-                                room_matches,
+                                matches,
                                 is_empty,
                                 input_info,
                                 attachments,

@@ -42,6 +42,24 @@ pub enum SelectedItem {
     Room(RoomProfile),
 }
 
+impl SelectedItem {
+    fn id(&self) -> String {
+        match self {
+            SelectedItem::User(profile) => profile.id(),
+            SelectedItem::Command(command) => command.id(),
+            SelectedItem::Room(room) => room.id(),
+        }
+    }
+
+    fn render_row(self, room_id: String, el: HtmlDivElement, idx: usize) -> impl IntoView {
+        match self {
+            SelectedItem::User(user) => user.render_row(room_id, el, idx).into_any(),
+            SelectedItem::Command(command) => command.render_row(room_id, el, idx).into_any(),
+            SelectedItem::Room(room) => room.render_row(room_id, el, idx).into_any(),
+        }
+    }
+}
+
 impl From<MemberProfile> for SelectedItem {
     fn from(profile: MemberProfile) -> Self {
         SelectedItem::User(profile)
@@ -262,7 +280,11 @@ fn filter_items<T: RenderMenuRow>(filter: String, items: Vec<T>, matcher: &mut M
     matched.into_iter().map(|(_, item)| item).collect()
 }
 
-fn scroll_into_view_when_selected(row_ref: NodeRef<Button>, idx: usize, selected_index: RwSignal<usize>) {
+fn scroll_into_view_when_selected(
+    row_ref: NodeRef<Button>,
+    idx: usize,
+    selected_index: RwSignal<usize>,
+) {
     Effect::new(move |_| {
         if selected_index.get() != idx {
             return;
@@ -464,14 +486,63 @@ impl RenderMenuRow for RoomProfile {
     }
 }
 
+#[derive(Clone)]
+pub enum MenuCompletionMatches {
+    User(Vec<MemberProfile>),
+    Command(Vec<Command>),
+    Room(Vec<RoomProfile>),
+    None,
+}
+
+impl MenuCompletionMatches {
+    pub fn len(&self) -> usize {
+        match self {
+            MenuCompletionMatches::User(members) => members.len(),
+            MenuCompletionMatches::Command(commands) => commands.len(),
+            MenuCompletionMatches::Room(rooms) => rooms.len(),
+            MenuCompletionMatches::None => 0,
+        }
+    }
+
+    fn to_vec(&self) -> Vec<SelectedItem> {
+        match self {
+            MenuCompletionMatches::User(members) if !members.is_empty() => members
+                .clone()
+                .into_iter()
+                .map(SelectedItem::from)
+                .collect(),
+            MenuCompletionMatches::Command(commands) if !commands.is_empty() => commands
+                .clone()
+                .into_iter()
+                .map(SelectedItem::from)
+                .collect(),
+            MenuCompletionMatches::Room(rooms) if !rooms.is_empty() => {
+                rooms.clone().into_iter().map(SelectedItem::from).collect()
+            }
+            _ => Vec::new(),
+        }
+    }
+
+    pub fn get(&self, index: usize) -> Option<SelectedItem> {
+        match self {
+            MenuCompletionMatches::User(members) => {
+                members.get(index).cloned().map(SelectedItem::from)
+            }
+            MenuCompletionMatches::Command(commands) => {
+                commands.get(index).cloned().map(SelectedItem::from)
+            }
+            MenuCompletionMatches::Room(rooms) => rooms.get(index).cloned().map(SelectedItem::from),
+            MenuCompletionMatches::None => None,
+        }
+    }
+}
+
 #[component]
 pub fn SelectionMenu(menu: RwSignal<MenuType>, input_ref: NodeRef<Div>) -> impl IntoView {
     let state: AppState = expect_context();
     let store: ProfileStore = expect_context();
 
-    let mention_matches: RwSignal<Vec<MemberProfile>> = expect_context();
-    let command_matches: RwSignal<Vec<Command>> = expect_context();
-    let room_matches: RwSignal<Vec<RoomProfile>> = expect_context();
+    let matches: RwSignal<MenuCompletionMatches> = expect_context();
 
     let matcher = StoredValue::new(Matcher::new(Config::DEFAULT));
 
@@ -492,70 +563,57 @@ pub fn SelectionMenu(menu: RwSignal<MenuType>, input_ref: NodeRef<Div>) -> impl 
     Effect::new(move |_| {
         let mut m = matcher.get_value();
 
-        match menu.get() {
+        let new_matches = match menu.get() {
             MenuType::UserAutocomplete { filter, .. } => {
-                mention_matches.set(filter_items(filter, members_resource.get(), &mut m));
+                MenuCompletionMatches::User(filter_items(filter, members_resource.get(), &mut m))
             }
-            MenuType::CommandAutocomplete { filter, .. } => {
-                command_matches.set(filter_items(
-                    filter,
-                    commands_resource.get().unwrap_or_default(),
-                    &mut m,
-                ));
-            }
+            MenuType::CommandAutocomplete { filter, .. } => MenuCompletionMatches::Command(
+                filter_items(filter, commands_resource.get().unwrap_or_default(), &mut m),
+            ),
             MenuType::RoomAutocomplete { filter } => {
-                room_matches.set(filter_items(filter, room_resource.get(), &mut m));
+                MenuCompletionMatches::Room(filter_items(filter, room_resource.get(), &mut m))
             }
-            MenuType::None => {
-                mention_matches.set(Vec::new());
-                command_matches.set(Vec::new());
-            }
-        }
+            MenuType::None => MenuCompletionMatches::None,
+        };
+
+        matches.set(new_matches);
     });
 
-    let title_text = move || match menu.get() {
-        MenuType::UserAutocomplete { filter, .. } => {
-            let len = mention_matches.get().len();
-            if filter.is_empty() {
-                format!("MEMBERS ({len})")
-            } else {
-                format!("MEMBERS MATCHING @{filter} ({len})")
+    let title_text = move || {
+        let len = matches.get().len();
+        match menu.get() {
+            MenuType::UserAutocomplete { filter, .. } => {
+                if filter.is_empty() {
+                    format!("MEMBERS ({len})")
+                } else {
+                    format!("MEMBERS MATCHING @{filter} ({len})")
+                }
             }
-        }
-        MenuType::CommandAutocomplete { filter, .. } => {
-            let len = command_matches.get().len();
-            if filter.is_empty() {
-                format!("COMMANDS ({len})")
-            } else {
-                format!("COMMANDS MATCHING /{filter} ({len})")
+            MenuType::CommandAutocomplete { filter, .. } => {
+                if filter.is_empty() {
+                    format!("COMMANDS ({len})")
+                } else {
+                    format!("COMMANDS MATCHING /{filter} ({len})")
+                }
             }
-        }
-        MenuType::RoomAutocomplete { filter, .. } => {
-            let len = room_matches.get().len();
-            if filter.is_empty() {
-                format!("ROOMS ({len})")
-            } else {
-                format!("ROOMS MATCHING #{filter} ({len})")
+            MenuType::RoomAutocomplete { filter, .. } => {
+                if filter.is_empty() {
+                    format!("ROOMS ({len})")
+                } else {
+                    format!("ROOMS MATCHING #{filter} ({len})")
+                }
             }
+            MenuType::None => String::new(),
         }
-        MenuType::None => String::new(),
     };
 
-    let no_matches = move || {
-        mention_matches.get().is_empty()
-            && command_matches.get().is_empty()
-            && room_matches.get().is_empty()
-    };
+    let no_matches = move || matches.get().len() == 0;
 
     let content = move || {
         let Some(el) = input_ref.get() else {
             return ().into_any();
         };
         let room_id = state.active_room_id().unwrap_or_default();
-        let room_id_command = room_id.clone();
-        let room_id_room = room_id.clone();
-        let el_command = el.clone();
-        let el_room = el.clone();
 
         view! {
             <span class="text-(--ui-base-color) bold text-xs p-2 bb-4 border-b border-(--tile-border-color)">
@@ -563,30 +621,12 @@ pub fn SelectionMenu(menu: RwSignal<MenuType>, input_ref: NodeRef<Div>) -> impl 
             </span>
             <div class="overflow-y-auto *:first:mt-1 flex flex-col">
                 <For
-                    each=move || mention_matches.get().into_iter().enumerate()
+                    each=move || matches.get().to_vec().into_iter().enumerate()
                     key=|(_, member)| member.id()
                     children=move |(idx, member)| {
                         let room_id = room_id.clone();
                         let el = el.clone();
                         member.render_row(room_id, el, idx)
-                    }
-                />
-                <For
-                    each=move || command_matches.get().into_iter().enumerate()
-                    key=|(_, command)| command.id()
-                    children=move |(idx, command)| {
-                        let room_id = room_id_command.clone();
-                        let el = el_command.clone();
-                        command.render_row(room_id, el, idx)
-                    }
-                />
-                <For
-                    each=move || room_matches.get().into_iter().enumerate()
-                    key=|(_, room)| room.id()
-                    children=move |(idx, room)| {
-                        let room_id = room_id_room.clone();
-                        let el = el_room.clone();
-                        room.render_row(room_id, el, idx)
                     }
                 />
             </div>
