@@ -16,6 +16,9 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
 
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+
       - name: Install Trunk
         uses: jetli/trunk-action@v0.5.0
 
@@ -26,13 +29,16 @@ jobs:
           Move-Item tailwindcss.exe "$env:RUNNER_TOOL_CACHE\tailwindcss.exe"
           echo "$env:RUNNER_TOOL_CACHE" >> $env:GITHUB_PATH
 
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --version "^2" --locked
+
       - name: Build
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: cargo tauri build
+
+      - name: Upload artifacts
+        uses: softprops/action-gh-release@v2
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: Opal ${{ github.ref_name }}
-          releaseBody: ''
-          releaseDraft: true
-          prerelease: false
+          draft: true
+          files: |
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/msi/*.msi
