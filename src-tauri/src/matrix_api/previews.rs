@@ -36,16 +36,16 @@ pub async fn get_url_preview(
     let mut preview: LinkPreviewResponse = serde_json::from_str(data.get())?;
     preview.resolve_color(&url, &color_map.0);
 
-    let media_id = Uuid::new_v4();
-
-    let image_url = OwnedMxcUri::from(preview.image_url.clone().unwrap_or_default().as_str());
-    meia_manager
-        .sources
-        .write()
-        .await
-        .insert(media_id, MediaSource::Plain(image_url));
-
-    preview.image_url = Some(format!("mxc://media/{}", media_id));
+    if let Some(ref url) = preview.image_url.clone() {
+        let media_id = Uuid::new_v4();
+        let image_url = OwnedMxcUri::from(url.as_str());
+        meia_manager
+            .sources
+            .write()
+            .await
+            .insert(media_id, MediaSource::Plain(image_url));
+        preview.image_url = Some(format!("mxc://media/{}", media_id));
+    }
 
     Ok(preview)
 }

@@ -6,7 +6,7 @@ use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 
 use futures::{StreamExt, stream};
-use matrix_sdk::{Client, Room};
+use matrix_sdk::{Client, Room, RoomMemberships};
 
 use matrix_sdk::room::ParentSpace;
 use matrix_sdk::ruma::events::call::member::CallMemberEventContent;
@@ -24,6 +24,21 @@ async fn node_from_room(room: &Room, kind: RoomKind) -> RoomNode {
     let name = room.display_name().await.ok().map(|n| n.to_string());
     let room_id = info.room_id().to_string();
 
+    let has_avatar = match &kind {
+        RoomKind::Dm { other_user_id } => room
+            .members(RoomMemberships::JOIN)
+            .await
+            .ok()
+            .and_then(|members| {
+                members
+                    .iter()
+                    .find(|m| m.user_id().as_str() == other_user_id)
+                    .map(|m| m.avatar_url().is_some())
+            })
+            .unwrap_or(false),
+        _ => room.avatar_url().is_some(),
+    };
+
     RoomNode {
         room_id: room_id.clone(),
         name,
@@ -31,7 +46,7 @@ async fn node_from_room(room: &Room, kind: RoomKind) -> RoomNode {
 
         color: get_color(&room_id),
 
-        has_avatar: room.avatar_url().is_some(),
+        has_avatar,
         canonical_alias: room.canonical_alias().map(|v| v.to_string()),
         aliases: info.alt_aliases().iter().map(|v| v.to_string()).collect(),
         kind,
@@ -70,6 +85,9 @@ pub async fn send_sidebar(
             .unwrap_or(MilliSecondsSinceUnixEpoch(0u32.into()));
         b_ts.cmp(&a_ts)
     });
+
+    let dm_room_ids: std::collections::HashSet<String> =
+        dms.iter().map(|r| r.room_id().to_string()).collect();
 
     let dms = stream::iter(dms)
         .filter_map(|room| async move {
@@ -189,6 +207,7 @@ pub async fn send_sidebar(
         if !server_rooms.contains_key(room_id)
             && !room.is_space()
             && !all_children.contains(room_id)
+            && !dm_room_ids.contains(room_id)
         {
             orphaned_rooms.push(node_from_room(room, RoomKind::TextChannel).await);
         }

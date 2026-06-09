@@ -226,26 +226,9 @@ pub async fn get_room_avatar(
         return Ok(None);
     };
 
-    let own_user_id = client.user_id().ok_or("Client has no user ID")?;
-
-    if room.compute_is_dm().await? {
-        let members = room.members(RoomMemberships::JOIN).await?;
-        let Some(member) = members.iter().find(|rm| rm.user_id() != own_user_id) else {
-            return room
-                .avatar(MediaFormat::File)
-                .await
-                .map_err(|e| format!("Failed to fetch server avatar: {:?}", e).into());
-        };
-
-        member
-            .avatar(MediaFormat::File)
-            .await
-            .map_err(|e| format!("Failed to get member avatar: {:?}", e).into())
-    } else {
-        room.avatar(MediaFormat::File)
-            .await
-            .map_err(|e| format!("Failed to fetch server avatar: {:?}", e).into())
-    }
+    room.avatar(MediaFormat::File)
+        .await
+        .map_err(|e| format!("Failed to fetch room avatar: {:?}", e).into())
 }
 
 pub async fn get_member_avatar(

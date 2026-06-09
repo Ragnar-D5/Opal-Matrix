@@ -4,7 +4,7 @@ use matrix_sdk::{
     Client,
     event_handler::Ctx,
     ruma::{
-        OwnedUserId, events::room::member::OriginalSyncRoomMemberEvent, profile::ProfileFieldName,
+       OwnedUserId, events::room::member::OriginalSyncRoomMemberEvent, profile::ProfileFieldName
     },
 };
 use shared::profile::{CustomProperties, UserProfile};

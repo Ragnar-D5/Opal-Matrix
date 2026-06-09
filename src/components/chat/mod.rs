@@ -1125,14 +1125,7 @@ fn ChatInput() -> impl IntoView {
                             input_ref,
                             state,
                             store.clone(),
-                            (
-                                menu,
-                                selected_index,
-                                matches,
-                                is_empty,
-                                input_info,
-                                attachments,
-                            ),
+                            (menu, selected_index, matches, is_empty, input_info, attachments),
                         )
                     ></div>
                 </div>
@@ -1240,7 +1233,7 @@ pub fn Chat() -> impl IntoView {
                                                         let colors = move || {
                                                             let mut color = clone.get().banner_color();
                                                             let fg_color = color.clone().to_css_hsl();
-                                                            color.set_lightness(10.0);
+                                                            color.set_lightness(0.1);
                                                             format!(
                                                                 "background-color: {}; box-shadow: inset 0 0 20px 0px {};",
                                                                 color.to_css_hsl(),

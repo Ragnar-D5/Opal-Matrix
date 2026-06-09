@@ -345,7 +345,7 @@ fn render_message_content(
                             }
                             on:error=move |e| {
                                 log::error!(
-                                    "Image failed to load: {}, {}", source.url(), e.to_js_string()
+                                    "Image failed to load: {}, {}", source.url(), e.as_string().unwrap_or("Unknown error".to_string())
                                 )
                             }
                         />

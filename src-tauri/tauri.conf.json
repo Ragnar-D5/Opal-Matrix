@@ -1,69 +1,90 @@
 {
-  "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Opal",
-  "version": "0.1.0",
-  "identifier": "com.app.opal-matrix",
-  "build": {
-    "beforeDevCommand": "trunk serve",
-    "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "trunk build",
-    "frontendDist": "../dist"
-  },
-  "app": {
-    "withGlobalTauri": true,
-    "windows": [
-      {
-        "title": "Opal",
-        "width": 1600,
-        "height": 1000,
-        "decorations": false,
-        "transparent": false,
-        "resizable": true,
-        "devtools": true
-      }
-    ],
-    "security": {
-      "csp": "default-src 'self'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'; connect-src 'self' ipc: http://ipc.localhost; img-src 'self' https: data: asset: mxc:; media-src mxc: blob:; style-src 'self' 'unsafe-inline';",
-      "assetProtocol": {
-        "enable": true,
-        "scope": ["**"]
-      }
-    }
-  },
-  "plugins": {
-    "cli": {
-      "description": "Opal Matrix client",
-      "args": [
-        {
-          "name": "log-level",
-          "description": "Overall log level",
-          "takesValue": true,
-          "possibleValues": ["trace", "debug", "info", "warn", "error", "off"]
-        },
-        {
-          "name": "livekit-log-level",
-          "description": "Log level for livekit/libwebrtc",
-          "takesValue": true,
-          "possibleValues": ["trace", "debug", "info", "warn", "error", "off"]
-        },
-        {
-          "name": "keyring-log-level",
-          "description": "Log level for keyring backends",
-          "takesValue": true,
-          "possibleValues": ["trace", "debug", "info", "warn", "error", "off"]
+    "$schema": "https://schema.tauri.app/config/2",
+    "productName": "Opal",
+    "version": "0.1.0",
+    "identifier": "com.app.opal-matrix",
+    "build": {
+        "beforeDevCommand": "trunk serve",
+        "devUrl": "http://localhost:1420",
+        "beforeBuildCommand": "trunk build --release",
+        "frontendDist": "../dist"
+    },
+    "app": {
+        "withGlobalTauri": true,
+        "windows": [
+            {
+                "title": "Opal",
+                "width": 1600,
+                "height": 1000,
+                "decorations": false,
+                "transparent": false,
+                "resizable": true,
+                "devtools": true
+            }
+        ],
+        "security": {
+            "csp": "default-src 'self'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'; connect-src 'self' ipc: http://ipc.localhost; img-src 'self' https: data: asset: mxc:; media-src mxc: blob:; style-src 'self' 'unsafe-inline';",
+            "assetProtocol": {
+                "enable": true,
+                "scope": ["**"]
+            }
         }
-      ]
+    },
+    "plugins": {
+        "cli": {
+            "description": "Opal Matrix client",
+            "args": [
+                {
+                    "name": "log-level",
+                    "description": "Overall log level",
+                    "takesValue": true,
+                    "possibleValues": [
+                        "trace",
+                        "debug",
+                        "info",
+                        "warn",
+                        "error",
+                        "off"
+                    ]
+                },
+                {
+                    "name": "livekit-log-level",
+                    "description": "Log level for livekit/libwebrtc",
+                    "takesValue": true,
+                    "possibleValues": [
+                        "trace",
+                        "debug",
+                        "info",
+                        "warn",
+                        "error",
+                        "off"
+                    ]
+                },
+                {
+                    "name": "keyring-log-level",
+                    "description": "Log level for keyring backends",
+                    "takesValue": true,
+                    "possibleValues": [
+                        "trace",
+                        "debug",
+                        "info",
+                        "warn",
+                        "error",
+                        "off"
+                    ]
+                }
+            ]
+        }
+    },
+    "bundle": {
+        "active": true,
+        "targets": "all",
+        "icon": [
+            "icons/32x32.png",
+            "icons/128x128.png",
+            "icons/128x128@2x.png",
+            "icons/icon.icns",
+            "icons/icon.ico"
+        ]
     }
-  },
-  "bundle": {
-    "active": true,
-    "targets": "all",
-    "icon": [
-      "icons/32x32.png",
-      "icons/128x128.png",
-      "icons/128x128@2x.png",
-      "icons/icon.icns",
-      "icons/icon.ico"
-    ]
-  }
 }

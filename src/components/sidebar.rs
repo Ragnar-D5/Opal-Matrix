@@ -80,17 +80,22 @@ fn DmDiv(dm: RoomNode) -> impl IntoView {
     let members = members.clone();
     let presence = members.get_presence(&user_id);
 
-    let failed = RwSignal::new(false);
+    let avatar_url = dm.avatar_url();
+    let failed = RwSignal::new(avatar_url.is_none());
     let first_char = name.chars().next().unwrap_or('?').to_string();
     let avatar_content = view! {
-        <img
-            class="avatar-img w-8 h-8 rounded-full object-cover"
-            class:hidden=failed
-            src=format!("mxc://room/{}", dm.room_id)
-            alt=name.clone()
-            on:error=move |_| failed.set(true)
-            on:load=move |_| failed.set(false)
-        />
+        {avatar_url.map(|url| {
+            view! {
+                <img
+                    class="avatar-img w-8 h-8 rounded-full object-cover"
+                    class:hidden=failed
+                    src=url
+                    alt=name.clone()
+                    on:error=move |_| failed.set(true)
+                    on:load=move |_| failed.set(false)
+                />
+            }
+        })}
         <TextCircle
             text=first_char
             color=color
@@ -638,7 +643,7 @@ pub fn Sidebar() -> impl IntoView {
                                             style:justify-content="center"
                                         >
                                             {render_url_icon(
-                                                Some(format!("mxc://room/{}", dm.room_id)),
+                                                dm.avatar_url(),
                                                 initial,
                                                 "40px",
                                                 get_color(&dm.dm_user_id().unwrap_or_default()),
