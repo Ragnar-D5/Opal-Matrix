@@ -1633,6 +1633,13 @@
       }
     }
   }
+  .hover\:rotate-\[90deg\] {
+    &:hover {
+      @media (hover: hover) {
+        rotate: 90deg;
+      }
+    }
+  }
   .hover\:border-\(--accent-color\) {
     &:hover {
       @media (hover: hover) {

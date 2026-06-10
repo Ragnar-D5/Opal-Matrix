@@ -3,7 +3,7 @@ use shared::{get_color, profile::MemberProfile, unknown_color};
 
 use crate::{
     components::{
-        FloatingTile,
+        FloatingTile, SettingsIcon,
         presence::PresenceBadge,
         user_profile::{MemberProfileExt, render_url_icon},
     },
@@ -814,6 +814,8 @@ pub fn ProfileCard() -> impl IntoView {
     };
 
     view! {
-        <div class="flex items-center justify-start w-full h-full px-2">{current_room_profile}</div>
+        <div class="flex items-center justify-start w-full h-full px-2 gap-2">{current_room_profile}
+            <div class="ml-auto flex items-center h-full"><SettingsIcon /></div>
+        </div>
     }
 }

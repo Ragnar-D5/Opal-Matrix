@@ -1,6 +1,6 @@
 use csscolorparser::Color;
 use leptos::prelude::*;
-use phosphor_leptos::{Icon, X};
+use phosphor_leptos::{GEAR, Icon, X};
 use shared::ColorExt;
 use web_sys::MouseEvent;
 
@@ -115,6 +115,15 @@ where
             on:click=on_click
         >
             <Icon icon=X size=size />
+        </button>
+    }
+}
+
+#[component]
+pub fn SettingsIcon(#[prop(into, optional)] class: String) -> impl IntoView {
+    view! {
+        <button class=format!("text-muted hover:text-(--bright-text-color) cursor-pointer transition-transform duration-300 ease-in-out hover:rotate-[90deg] {class}")>
+            <Icon icon=GEAR size="24px" />
         </button>
     }
 }
