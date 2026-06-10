@@ -182,11 +182,12 @@ async fn try_restore(
         return Ok(RestoreResponse::NoSession);
     };
 
+    let safe_user_id = session.user_id.to_string().replace(':', "_");
     let path = app_handle
         .path()
         .app_data_dir()?
         .join("sessions")
-        .join(format!("{}-{}.db", session.user_id, session.device_id));
+        .join(format!("{}-{}.db", safe_user_id, session.device_id));
 
     let new_client = MatrixClient::builder()
         .homeserver_url(session.homeserver_url.clone())
@@ -255,12 +256,13 @@ async fn login(
     let user_id = temp_client.user_id().unwrap();
     let device_id = temp_client.device_id().unwrap();
 
+    let safe_user_id = user_id.to_string().replace(':', "_");
     let path = app_handle
         .path()
         .app_data_dir()
         .expect("Failed to get app data dir")
         .join("sessions")
-        .join(format!("{}-{}.db", user_id, device_id));
+        .join(format!("{}-{}.db", safe_user_id, device_id));
 
     let new_client = MatrixClient::builder()
         .homeserver_url(
