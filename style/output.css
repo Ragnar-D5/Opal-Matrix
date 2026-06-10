@@ -876,8 +876,16 @@
     border-top-left-radius: var(--ui-border-radius);
     border-top-right-radius: var(--ui-border-radius);
   }
+  .rounded-l-\(--ui-border-radius\) {
+    border-top-left-radius: var(--ui-border-radius);
+    border-bottom-left-radius: var(--ui-border-radius);
+  }
   .rounded-tl-md {
     border-top-left-radius: var(--radius-md);
+  }
+  .rounded-r-\(--ui-border-radius\) {
+    border-top-right-radius: var(--ui-border-radius);
+    border-bottom-right-radius: var(--ui-border-radius);
   }
   .rounded-r-\[3px\] {
     border-top-right-radius: 3px;
@@ -971,6 +979,12 @@
   }
   .bg-\(--accent-bg-color\) {
     background-color: var(--accent-bg-color);
+  }
+  .bg-\(--color-item-hover\) {
+    background-color: var(--color-item-hover);
+  }
+  .bg-\(--color-item-selected\) {
+    background-color: var(--color-item-selected);
   }
   .bg-\(--confirm-color\) {
     background-color: var(--confirm-color);
@@ -1151,6 +1165,9 @@
   }
   .py-3 {
     padding-block: calc(var(--spacing) * 3);
+  }
+  .py-\[9px\] {
+    padding-block: 9px;
   }
   .pt-0 {
     padding-top: calc(var(--spacing) * 0);

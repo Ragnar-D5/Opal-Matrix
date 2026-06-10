@@ -1,6 +1,6 @@
 use csscolorparser::Color;
 use leptos::prelude::*;
-use phosphor_leptos::{GEAR, Icon, X};
+use phosphor_leptos::{CARET_DOWN, GEAR, HEADPHONES, Icon, IconWeight, MICROPHONE, X};
 use shared::ColorExt;
 use web_sys::MouseEvent;
 
@@ -123,7 +123,67 @@ where
 pub fn SettingsIcon(#[prop(into, optional)] class: String) -> impl IntoView {
     view! {
         <button class=format!("text-muted hover:text-(--bright-text-color) cursor-pointer transition-transform duration-300 ease-in-out hover:rotate-[90deg] {class}")>
-            <Icon icon=GEAR size="24px" />
+            <Icon icon=GEAR size="20px" weight=IconWeight::Bold />
         </button>
+    }
+}
+
+#[component]
+pub fn MuteMenu(#[prop(into, optional)] class: String) -> impl IntoView {
+    // None = neither hovered, Some(true) = mic hovered, Some(false) = caret hovered
+    let hovered: RwSignal<Option<bool>> = RwSignal::new(None);
+
+    view! {
+        <div
+            class=format!("flex flex-row gap-[1px] h-full {class} py-[9px]")
+            on:mouseleave=move |_| hovered.set(None)
+        >
+            <button
+                class="text-muted hover:text-(--bright-text-color) cursor-pointer hover:text-bright rounded-l-(--ui-border-radius) h-full aspect-square flex items-center justify-center"
+                class=("bg-(--color-item-selected)", move || hovered.get() == Some(true))
+                class=("bg-(--color-item-hover)", move || hovered.get() == Some(false))
+                on:mouseenter=move |_| hovered.set(Some(true))
+            >
+                <Icon icon=MICROPHONE size="18px" weight=IconWeight::Fill />
+            </button>
+            <button
+                class="text-muted hover:text-(--bright-text-color) cursor-pointer hover:text-bright rounded-r-(--ui-border-radius) h-full"
+                class=("bg-(--color-item-selected)", move || hovered.get() == Some(false))
+                class=("bg-(--color-item-hover)", move || hovered.get() == Some(true))
+                on:mouseenter=move |_| hovered.set(Some(false))
+            >
+                <Icon icon=CARET_DOWN size="12px" />
+            </button>
+        </div>
+    }
+}
+
+#[component]
+pub fn DeafenMenu(#[prop(into, optional)] class: String) -> impl IntoView {
+    // None = neither hovered, Some(true) = mic hovered, Some(false) = caret hovered
+    let hovered: RwSignal<Option<bool>> = RwSignal::new(None);
+
+    view! {
+        <div
+            class=format!("flex flex-row gap-[1px] h-full {class} py-[9px]")
+            on:mouseleave=move |_| hovered.set(None)
+        >
+            <button
+                class="text-muted hover:text-(--bright-text-color) cursor-pointer hover:text-bright rounded-l-(--ui-border-radius) h-full aspect-square flex items-center justify-center"
+                class=("bg-(--color-item-selected)", move || hovered.get() == Some(true))
+                class=("bg-(--color-item-hover)", move || hovered.get() == Some(false))
+                on:mouseenter=move |_| hovered.set(Some(true))
+            >
+                <Icon icon=HEADPHONES size="18px" weight=IconWeight::Fill />
+            </button>
+            <button
+                class="text-muted hover:text-(--bright-text-color) cursor-pointer hover:text-bright rounded-r-(--ui-border-radius) h-full"
+                class=("bg-(--color-item-selected)", move || hovered.get() == Some(false))
+                class=("bg-(--color-item-hover)", move || hovered.get() == Some(true))
+                on:mouseenter=move |_| hovered.set(Some(false))
+            >
+                <Icon icon=CARET_DOWN size="12px" />
+            </button>
+        </div>
     }
 }

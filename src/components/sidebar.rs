@@ -3,7 +3,7 @@ use shared::{get_color, profile::MemberProfile, unknown_color};
 
 use crate::{
     components::{
-        FloatingTile, SettingsIcon,
+        DeafenMenu, FloatingTile, MuteMenu, SettingsIcon,
         presence::PresenceBadge,
         user_profile::{MemberProfileExt, render_url_icon},
     },
@@ -807,15 +807,19 @@ pub fn ProfileCard() -> impl IntoView {
             <PresenceBadge presence=store
                 .get_presence(
                     &profile.clone().map(|p| p.profile.user_id.clone()).unwrap_or_default(),
-                )>{profile.render_icon("40px")}</PresenceBadge>
-            {name_profile.render_name("16px")}
+                )>{profile.render_icon("30px")}</PresenceBadge>
+            {name_profile.render_name("14px")}
         }
         .into_any()
     };
 
     view! {
         <div class="flex items-center justify-start w-full h-full px-2 gap-2">{current_room_profile}
-            <div class="ml-auto flex items-center h-full"><SettingsIcon /></div>
+            <div class="ml-auto flex items-center h-full gap-2">
+                <MuteMenu />
+                <DeafenMenu />
+                <SettingsIcon />
+            </div>
         </div>
     }
 }
