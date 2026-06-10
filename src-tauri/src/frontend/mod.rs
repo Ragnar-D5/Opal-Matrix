@@ -1,5 +1,6 @@
 pub(crate) mod commands;
 pub(crate) mod dialog;
+pub(crate) mod klipy;
 pub(crate) mod messages;
 pub(crate) mod presence;
 pub(crate) mod profiles;
