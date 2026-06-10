@@ -1,6 +1,6 @@
 use csscolorparser::Color;
 use leptos::prelude::*;
-use phosphor_leptos::{CARET_DOWN, GEAR, HEADPHONES, Icon, IconWeight, MICROPHONE, X};
+use phosphor_leptos::{Icon, IconWeight, CARET_DOWN, GEAR, HEADPHONES, MICROPHONE, X};
 use shared::ColorExt;
 use web_sys::MouseEvent;
 
@@ -109,7 +109,9 @@ where
 
     view! {
         <button
-            class=format!("absolute text-muted hover:text-(--bright-text-color) border border-transparent hover:bg-(--ui-solid-hover-bg) hover:border-(--tile-border-color) cursor-pointer p-1 rounded-(--gap) {class}")
+            class=format!(
+                "absolute text-muted hover:text-(--bright-text-color) border border-transparent hover:bg-(--ui-solid-hover-bg) hover:border-(--tile-border-color) cursor-pointer p-1 rounded-(--gap) {class}",
+            )
             style:top=inset.clone()
             style:right=inset
             on:click=on_click
@@ -122,7 +124,9 @@ where
 #[component]
 pub fn SettingsIcon(#[prop(into, optional)] class: String) -> impl IntoView {
     view! {
-        <button class=format!("text-muted hover:text-(--bright-text-color) cursor-pointer transition-transform duration-300 ease-in-out hover:rotate-[90deg] {class}")>
+        <button class=format!(
+            "text-muted hover:text-(--bright-text-color) cursor-pointer transition-transform duration-300 ease-in-out hover:rotate-[90deg] {class}",
+        )>
             <Icon icon=GEAR size="20px" weight=IconWeight::Bold />
         </button>
     }
@@ -135,7 +139,7 @@ pub fn MuteMenu(#[prop(into, optional)] class: String) -> impl IntoView {
 
     view! {
         <div
-            class=format!("flex flex-row gap-[1px] h-full {class} py-[9px]")
+            class=format!("flex flex-row gap-[1px] h-full {class} py-[9px] cursor-pointer")
             on:mouseleave=move |_| hovered.set(None)
         >
             <button
@@ -165,7 +169,7 @@ pub fn DeafenMenu(#[prop(into, optional)] class: String) -> impl IntoView {
 
     view! {
         <div
-            class=format!("flex flex-row gap-[1px] h-full {class} py-[9px]")
+            class=format!("flex flex-row gap-[1px] h-full {class} py-[9px] cursor-pointer")
             on:mouseleave=move |_| hovered.set(None)
         >
             <button
