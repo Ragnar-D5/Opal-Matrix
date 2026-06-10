@@ -11,6 +11,17 @@ pub enum PresenceStatus {
     Busy,
 }
 
+impl ToString for PresenceStatus {
+    fn to_string(&self) -> String {
+        match self {
+            PresenceStatus::Online => "Online".to_string(),
+            PresenceStatus::Offline => "Offline".to_string(),
+            PresenceStatus::Unavailable => "Unavailable".to_string(),
+            PresenceStatus::Busy => "Busy".to_string(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct PresenceInfo {
     pub status: PresenceStatus,
@@ -37,6 +48,12 @@ impl PresenceInfo {
             status_msg: None,
             last_active_ago: None,
         }
+    }
+
+    pub fn presence_message(&self) -> String {
+        self.status_msg
+            .clone()
+            .unwrap_or_else(|| self.status.to_string())
     }
 }
 
