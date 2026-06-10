@@ -28,6 +28,7 @@ use crate::{
         emoji_picker::{EmojiPickerState, pick_emoji},
         input::move_caret_to_end,
         previews::render_link,
+        profile_card::ProfileCardState,
         text::{RichTextExt, richt_text_spans_to_html},
         user_profile::{MemberProfileExt, render_profile_name},
     },
@@ -126,6 +127,9 @@ fn MessageHeader(
     children: Children,
 ) -> impl IntoView {
     let has_reply = reply_info.is_some();
+    let card_state: ProfileCardState = expect_context();
+    let room_id_for_card = active_room_id.clone();
+    let sender_id_for_card = sender_profile_sig.get_untracked().user_id().to_string();
 
     view! {
         <div class="flex gap-(--gap)">
@@ -166,9 +170,21 @@ fn MessageHeader(
                 />
 
                 {if show_header {
+                    let sender_id = sender_id_for_card.clone();
+                    let room_id = room_id_for_card.clone();
                     view! {
                         <div class="flex items-baseline gap-2">
-                            <span class="text-bright truncate cursor-pointer">
+                            <span
+                                class="text-bright truncate cursor-pointer"
+                                on:click=move |ev| {
+                                    if let Some(el) = ev
+                                        .current_target()
+                                        .and_then(|t| t.dyn_into::<web_sys::Element>().ok())
+                                    {
+                                        card_state.open(&el, sender_id.clone(), room_id.clone());
+                                    }
+                                }
+                            >
                                 {render_profile_name(name, color, "16px")}
                             </span>
                             <span class="text-muted text-xs">{format_date(date)}</span>
@@ -1317,7 +1333,7 @@ fn render_timeline_event(
 
     view! {
         <div
-            class="group/msg my-1 relative flex flex-col gap-[var(--gap)] hover:bg-black/20 rounded-md transform-gpu border border-transparent hover:border-[var(--tile-border-color)]"
+            class="group/msg mx-1 relative flex flex-col gap-[var(--gap)] hover:bg-black/20 rounded-md transform-gpu border border-transparent hover:border-[var(--tile-border-color)]"
             class=("mt-5", show_header && !preview)
             class=("pointer-events-none", preview)
             class=("bg-black/20", move || picker_open.get() || show_delete_confirm.get())

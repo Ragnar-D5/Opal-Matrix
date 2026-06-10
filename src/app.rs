@@ -19,6 +19,7 @@ use web_sys::HtmlImageElement;
 use crate::components::{
     chat::Chat,
     emoji_picker::{EmojiPickerPortal, EmojiPickerState},
+    profile_card::{ProfileCardPortal, ProfileCardState},
     sidebar::Sidebar,
 };
 use crate::hooks::use_tauri_event;
@@ -349,6 +350,9 @@ fn HomePage() -> impl IntoView {
     let emoji_picker_state = EmojiPickerState::default();
     provide_context(emoji_picker_state);
 
+    let profile_card_state = ProfileCardState::default();
+    provide_context(profile_card_state);
+
     view! {
         <div
             class="bg-transparent flex h-screen overflow-hidden p-[var(--gap)] gap-[var(--gap)] relative"
@@ -359,6 +363,7 @@ fn HomePage() -> impl IntoView {
             <Chat />
             <ImageLightbox />
             <EmojiPickerPortal />
+            <ProfileCardPortal />
         </div>
     }
 }

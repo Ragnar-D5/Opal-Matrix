@@ -11,6 +11,7 @@ pub(crate) mod input;
 pub(crate) mod loading;
 pub(crate) mod presence;
 pub(crate) mod previews;
+pub(crate) mod profile_card;
 pub(crate) mod shader;
 pub(crate) mod sidebar;
 pub(crate) mod text;
