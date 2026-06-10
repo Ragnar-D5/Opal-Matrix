@@ -35,6 +35,7 @@ hmac = "0.13.0"
 http = "1.4.0"
 image = "0.25.10"
 keyring-core = "1.0.0"
+klipy = {git = "https://github.com/Ragnar-D5/klipy-rs.git"}
 linkify = "0.11.0"
 livekit = { version = "0.7.42", features = ["native-tls"] }
 log = "0.4.29"
