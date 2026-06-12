@@ -1115,7 +1115,7 @@ fn MesssageButtons(
             class=("hidden", no_buttons)
             style:opacity=move || interacting().then_some("1")
         >
-            <Show when=move || { !flags.get().is_reactable }>
+            <Show when=move || { flags.get().is_reactable }>
                 <button
                     class="hover:bg-(--ui-solid-hover-bg) cursor-pointer p-0.5 rounded-(--gap) hover:text-normal"
                     on:click=react.clone()
@@ -1361,11 +1361,15 @@ fn render_timeline_event(
         >
             {move || {
                 if hovered.get() && !show_header {
-                    let ml = if current_highlight.get().is_some() { "ml-[14px]" } else { "ml-[5px]" };
+                    let ml = if current_highlight.get().is_some() {
+                        "ml-[14px]"
+                    } else {
+                        "ml-[5px]"
+                    };
                     view! {
-                        <div class=format!("absolute text-xs text-muted mt-[5px] {ml}")>
-                            {date.format("%H:%M").to_string()}
-                        </div>
+                        <div class=format!(
+                            "absolute text-xs text-muted mt-[5px] {ml}",
+                        )>{date.format("%H:%M").to_string()}</div>
                     }
                         .into_any()
                 } else {
