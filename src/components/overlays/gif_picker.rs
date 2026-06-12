@@ -318,29 +318,19 @@ pub fn GifPickerPortal() -> impl IntoView {
                                                 class="group-hover:opacity-75 transition-opacity rounded"
                                                 on:load=move |_| loaded.set(true)
                                             />
-                                            <Show when=move || {
-                                                !loaded.get()
-                                            }>
+                                            <div style=move || format!(
+                                                "position: absolute; inset: 0; overflow: hidden; pointer-events: none; transition: opacity 0.4s ease; opacity: {};",
+                                                if loaded.get() { "0" } else { "1" }
+                                            )>
                                                 {move || match blur_preview.get_value() {
-                                                    Some(hash) => {
-                                                        view! {
-                                                            <div style="position: absolute; inset: 0; overflow: hidden;">
-                                                                <Blurhash hash=hash />
-                                                            </div>
-                                                        }
-                                                            .into_any()
-                                                    }
-                                                    None => {
-                                                        view! {
-                                                            <div
-                                                                style="position: absolute; inset: 0;"
-                                                                class="animate-pulse bg-(--ui-hover-bg)"
-                                                            />
-                                                        }
-                                                            .into_any()
-                                                    }
+                                                    Some(hash) => view! {
+                                                        <Blurhash hash=hash />
+                                                    }.into_any(),
+                                                    None => view! {
+                                                        <div class="w-full h-full animate-pulse bg-(--ui-hover-bg)" />
+                                                    }.into_any(),
                                                 }}
-                                            </Show>
+                                            </div>
                                         </div>
                                     }
                                         .into_any()
@@ -403,29 +393,19 @@ pub fn GifPickerPortal() -> impl IntoView {
                                                 class="group-hover:opacity-75 transition-opacity rounded"
                                                 on:load=move |_| loaded.set(true)
                                             />
-                                            <Show when=move || {
-                                                !loaded.get()
-                                            }>
+                                            <div style=move || format!(
+                                                "position: absolute; inset: 0; overflow: hidden; pointer-events: none; transition: opacity 0.4s ease; opacity: {};",
+                                                if loaded.get() { "0" } else { "1" }
+                                            )>
                                                 {move || match blur_preview.get_value() {
-                                                    Some(hash) => {
-                                                        view! {
-                                                            <div style="position: absolute; inset: 0; overflow: hidden;">
-                                                                <Blurhash hash=hash />
-                                                            </div>
-                                                        }
-                                                            .into_any()
-                                                    }
-                                                    None => {
-                                                        view! {
-                                                            <div
-                                                                style="position: absolute; inset: 0;"
-                                                                class="animate-pulse bg-(--ui-hover-bg)"
-                                                            />
-                                                        }
-                                                            .into_any()
-                                                    }
+                                                    Some(hash) => view! {
+                                                        <Blurhash hash=hash />
+                                                    }.into_any(),
+                                                    None => view! {
+                                                        <div class="w-full h-full animate-pulse bg-(--ui-hover-bg)" />
+                                                    }.into_any(),
                                                 }}
-                                            </Show>
+                                            </div>
                                         </div>
                                     }
                                         .into_any()

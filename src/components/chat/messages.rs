@@ -377,21 +377,19 @@ fn render_message_content(
                                 )
                             }
                         />
-                        <Show when=move || !loaded.get()>
+                        <div style=move || format!(
+                            "position: absolute; inset: 0; border-radius: 6px; overflow: hidden; pointer-events: none; transition: opacity 0.4s ease; opacity: {};",
+                            if loaded.get() { "0" } else { "1" }
+                        )>
                             {move || match blurhash.get_value() {
                                 Some(hash) => view! {
-                                    <div style="position: absolute; inset: 0; border-radius: 6px; overflow: hidden; pointer-events: none;">
-                                        <Blurhash hash=hash.clone() />
-                                    </div>
+                                    <Blurhash hash=hash.clone() />
                                 }.into_any(),
                                 None => view! {
-                                    <div
-                                        style="position: absolute; inset: 0; pointer-events: none;"
-                                        class="animate-pulse bg-(--ui-hover-bg) rounded-md"
-                                    />
+                                    <div class="w-full h-full animate-pulse bg-(--ui-hover-bg)" />
                                 }.into_any(),
                             }}
-                        </Show>
+                        </div>
                         <div class="absolute bottom-1 left-1 bg-black/50 opacity-0 group-hover/image:opacity-100 transition-opacity rounded-md">
                             <span class="text-white text-sm px-1">{filename.clone()}</span>
                         </div>
