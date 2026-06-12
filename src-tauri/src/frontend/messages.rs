@@ -151,7 +151,7 @@ pub async fn send_attachment(
              AttachmentSource::File(PathBuf::from(path))
         }
         UiAttachmentSource::RawBytes(bytes) => AttachmentSource::Data { bytes, filename: file.file_name },
-        UiAttachmentSource::Url(url) => AttachmentSource::Data { bytes: raw_bytes, filename: url }
+        UiAttachmentSource::Url(_) => AttachmentSource::Data { bytes: raw_bytes, filename: file.file_name }
     };
 
     timeline.send_attachment(source, mime_type, config).await?;
@@ -345,7 +345,6 @@ pub async fn get_timeline(
         .await
         .get_room(&RoomId::parse(&room_id)?)
         .ok_or("No room found")?;
-
 
     tokio::select! {
         _ = token.cancelled() => {

@@ -454,6 +454,9 @@
   .ml-\[5px\] {
     margin-left: 5px;
   }
+  .ml-\[14px\] {
+    margin-left: 14px;
+  }
   .ml-\[var\(--gap\)\] {
     margin-left: var(--gap);
   }
@@ -530,6 +533,9 @@
   }
   .h-1 {
     height: calc(var(--spacing) * 1);
+  }
+  .h-1\/2 {
+    height: calc(1 / 2 * 100%);
   }
   .h-2 {
     height: calc(var(--spacing) * 2);
@@ -1716,6 +1722,11 @@
   .placeholder\:text-\(--muted-text-color\) {
     &::placeholder {
       color: var(--muted-text-color);
+    }
+  }
+  .placeholder\:text-muted {
+    &::placeholder {
+      color: var(--muted-text-color, #5865f2);
     }
   }
   .first\:ml-0 {

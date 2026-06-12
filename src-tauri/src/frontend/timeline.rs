@@ -789,6 +789,7 @@ fn event_timeline_item_to_ui(
         timestamp: item.timestamp().as_secs().into(),
         flags: EventFlags {
             is_reactable: false,
+            is_deletable: false,
             is_editable: item.is_editable(),
             is_highlighted: item.is_highlighted(),
             can_be_replied_to: item.can_be_replied_to(),
@@ -846,37 +847,34 @@ pub fn timeline_diff_to_ui(
     media_store: &mut HashMap<Uuid, MediaSource>,
     unknown_reply_event_ids: &mut HashSet<OwnedEventId>,
 ) -> UiTimelineDiff {
+    let mut to_ui =
+        |item: &Arc<TimelineItem>| timeline_item_to_ui(item, media_store, unknown_reply_event_ids);
+
     match diff {
         VectorDiff::Append { values } => UiTimelineDiff::Append {
-            values: values
-                .iter()
-                .map(|v| timeline_item_to_ui(v, media_store, unknown_reply_event_ids))
-                .collect(),
+            values: values.iter().map(to_ui).collect(),
         },
         VectorDiff::Clear => UiTimelineDiff::Clear,
         VectorDiff::PushFront { value } => UiTimelineDiff::PushFront {
-            value: timeline_item_to_ui(value, media_store, unknown_reply_event_ids),
+            value: to_ui(value),
         },
         VectorDiff::PushBack { value } => UiTimelineDiff::PushBack {
-            value: timeline_item_to_ui(value, media_store, unknown_reply_event_ids),
+            value: to_ui(value),
         },
         VectorDiff::PopFront => UiTimelineDiff::PopFront,
         VectorDiff::PopBack => UiTimelineDiff::PopBack,
         VectorDiff::Insert { index, value } => UiTimelineDiff::Insert {
             index: *index,
-            value: timeline_item_to_ui(value, media_store, unknown_reply_event_ids),
+            value: to_ui(value),
         },
         VectorDiff::Set { index, value } => UiTimelineDiff::Set {
             index: *index,
-            value: timeline_item_to_ui(value, media_store, unknown_reply_event_ids),
+            value: to_ui(value),
         },
         VectorDiff::Remove { index } => UiTimelineDiff::Remove { index: *index },
         VectorDiff::Truncate { length } => UiTimelineDiff::Truncate { length: *length },
         VectorDiff::Reset { values } => UiTimelineDiff::Reset {
-            values: values
-                .iter()
-                .map(|v| timeline_item_to_ui(v, media_store, unknown_reply_event_ids))
-                .collect(),
+            values: values.iter().map(to_ui).collect(),
         },
     }
 }

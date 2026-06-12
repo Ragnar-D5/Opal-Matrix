@@ -301,6 +301,13 @@ fn TimeLine() -> impl IntoView {
     let important_event_id: RwSignal<Option<String>> = RwSignal::new(None);
     provide_context(important_event_id);
 
+    let input_info: RwSignal<Option<ChatInputInfo>> = expect_context();
+    Effect::new(move |_| {
+        if input_info.get().is_none() {
+            important_event_id.set(None);
+        }
+    });
+
     let scroll_to_event = Callback::new(move |event_id: String| {
         let Some(room_id) = state.active_room_id_untracked() else {
             log::error!("No active room ID, cannot scroll to event");
@@ -880,10 +887,10 @@ fn ChatInput() -> impl IntoView {
 
     let menu = RwSignal::new(MenuType::None);
     let selected_index = RwSignal::new(0);
-    let input_info = RwSignal::new(None);
 
     provide_context(selected_index);
-    provide_context(input_info);
+
+    let input_info: RwSignal<Option<ChatInputInfo>> = expect_context();
 
     let matches: RwSignal<MenuCompletionMatches> = RwSignal::new(MenuCompletionMatches::None);
     provide_context(matches);
@@ -920,15 +927,6 @@ fn ChatInput() -> impl IntoView {
                     menu.set(MenuType::None);
                 }
             }
-        }
-    });
-
-    // Focus the input when the component mounts or when the active room changes
-    Effect::new(move |_| {
-        state.active_room_id();
-
-        if let Some(el) = input_ref.get() {
-            let _ = el.focus();
         }
     });
 
@@ -1206,6 +1204,9 @@ pub fn Chat() -> impl IntoView {
     let room_id = move || state.active_room_id().unwrap_or_default();
 
     let participants = Memo::new(move |_| state.get_call_members(&room_id()).get());
+
+    let input_info: RwSignal<Option<ChatInputInfo>> = RwSignal::new(None);
+    provide_context(input_info);
 
     view! {
         <div class="flex-1 h-full flex gap-[var(--gap)] flex-col overflow-hidden">

@@ -100,23 +100,16 @@ fn preview_file(item: &MediaItem) -> Option<File> {
 
 fn send_file(item: &MediaItem) -> Option<File> {
     let sizes = &item.file;
-    let file = sizes
-        .hd
+    sizes
+        .md
         .as_ref()
-        .and_then(|f| f.gif.as_ref().or(f.webp.as_ref()))
-        .or_else(|| {
-            sizes
-                .md
-                .as_ref()
-                .and_then(|f| f.gif.as_ref().or(f.webp.as_ref()))
-        })
-        .or_else(|| {
-            sizes
-                .sm
-                .as_ref()
-                .and_then(|f| f.gif.as_ref().or(f.webp.as_ref()))
-        });
-    file.cloned()
+        .and_then(|f| f.gif.as_ref())
+        .or_else(|| sizes.hd.as_ref().and_then(|f| f.gif.as_ref()))
+        .or_else(|| sizes.sm.as_ref().and_then(|f| f.gif.as_ref()))
+        .or_else(|| sizes.md.as_ref().and_then(|f| f.webp.as_ref()))
+        .or_else(|| sizes.hd.as_ref().and_then(|f| f.webp.as_ref()))
+        .or_else(|| sizes.sm.as_ref().and_then(|f| f.webp.as_ref()))
+        .cloned()
 }
 
 const SKELETON_HEIGHTS_LEFT: &[u32] = &[100, 175, 130, 100];
@@ -258,7 +251,7 @@ pub fn GifPickerPortal() -> impl IntoView {
                             type="text"
                             node_ref=search_ref
                             placeholder="Search KLIPY"
-                            class="w-full bg-(--ui-solid-bg) border border-(--tile-border-color) rounded-(--ui-border-radius) pl-7 pr-2 py-1 text-sm text-(--bright-text-color) outline-none"
+                            class="w-full bg-(--ui-solid-bg) border border-(--tile-border-color) rounded-(--ui-border-radius) pl-7 pr-2 py-1 text-sm text-(--bright-text-color) outline-none placeholder:text-muted"
                             on:keydown=on_keydown
                             on:input=move |ev| {
                                 let el = ev
@@ -270,11 +263,9 @@ pub fn GifPickerPortal() -> impl IntoView {
                             }
                             prop:value=move || search.get()
                         />
-                        <svg
+                        <img
                             src="public/powered_by_klipy.svg"
-                            width="60"
-                            height="14"
-                            class="absolute right-2 opacity-50"
+                            class="absolute right-2 opacity-35 h-1/2"
                         />
                     </div>
                 </div>

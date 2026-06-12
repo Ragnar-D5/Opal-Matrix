@@ -40,6 +40,7 @@ pub struct Sender {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
 pub struct EventFlags {
     pub is_editable: bool,
+    pub is_deletable: bool,
     pub is_reactable: bool,
     pub is_highlighted: bool,
     pub can_be_replied_to: bool,
@@ -649,6 +650,7 @@ impl TimelineEvent {
         self.flags.can_be_replied_to = can_be_replied_to;
         self.flags.is_editable = is_editable;
         self.flags.is_reactable = is_reactable;
+        self.flags.is_deletable = is_own;
     }
 }
 
