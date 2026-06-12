@@ -788,8 +788,8 @@ fn event_timeline_item_to_ui(
         state: item.send_state().map(event_send_state_to_ui),
         timestamp: item.timestamp().as_secs().into(),
         flags: EventFlags {
-            is_reactable: false,
-            is_deletable: false,
+            is_reactable: true,
+            is_deletable: item.is_own(),
             is_editable: item.is_editable(),
             is_highlighted: item.is_highlighted(),
             can_be_replied_to: item.can_be_replied_to(),
