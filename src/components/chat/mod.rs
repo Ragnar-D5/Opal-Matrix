@@ -21,7 +21,7 @@ use crate::{
 
 use crate::components::emoji_picker::pick_emoji;
 use phosphor_leptos::{
-    HASH, INFO, Icon, IconWeight, MATRIX_LOGO, PHONE, PHONE_DISCONNECT, SMILEY, SPEAKER_HIGH,
+    GIF, HASH, INFO, Icon, IconWeight, MATRIX_LOGO, PHONE, PHONE_DISCONNECT, SMILEY, SPEAKER_HIGH,
     TRASH, UPLOAD_SIMPLE, X_CIRCLE,
 };
 
@@ -895,7 +895,7 @@ fn ChatInput() -> impl IntoView {
                     menu.set(MenuType::RoomAutocomplete { filter });
                 } else if let Some(filter) = get_active_filter(&el, caret_pos, ':') {
                     menu.set(MenuType::EmojiAutocomplete { filter });
-                }else {
+                } else {
                     menu.set(MenuType::None);
                 }
             } else {
@@ -1131,6 +1131,11 @@ fn ChatInput() -> impl IntoView {
                         )
                     ></div>
                 </div>
+                <button
+                    class="text-(--ui-base-color) hover:text-(--bright-text-color) rounded-(--ui-border-radius) hover:bg-(--ui-solid-hover-bg) p-1 cursor-pointer"
+                >
+                    <Icon icon=GIF size="20px"/>
+                </button>
                 <button
                     class="text-(--ui-base-color) hover:text-(--bright-text-color) rounded-(--ui-border-radius) hover:bg-(--ui-solid-hover-bg) p-1 cursor-pointer"
                     on:click=move |ev| {
