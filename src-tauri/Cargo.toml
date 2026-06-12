@@ -33,6 +33,7 @@ hex = "0.4.3"
 hkdf = "0.13.0"
 hmac = "0.13.0"
 http = "1.4.0"
+blurhash = "0.2.3"
 image = "0.25.10"
 keyring-core = "1.0.0"
 klipy = {git = "https://github.com/Ragnar-D5/klipy-rs.git"}

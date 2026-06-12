@@ -107,13 +107,24 @@ pub async fn send_attachment(
 
     let info = match file_type {
         mime::IMAGE => {
-            let dimensions = ImageReader::new(Cursor::new(&raw_bytes)).with_guessed_format()?.into_dimensions().ok();
+            let img = ImageReader::new(Cursor::new(&raw_bytes))
+                .with_guessed_format()
+                .ok()
+                .and_then(|r| r.decode().ok());
+
+            let dimensions = img.as_ref().map(|i| (i.width(), i.height()));
+
+            let bh = img.as_ref().and_then(|img| {
+                let thumb = img.thumbnail(64, 64);
+                let rgba = thumb.to_rgba8();
+                blurhash::encode(4, 3, rgba.width(), rgba.height(), &rgba).ok()
+            });
 
             let info = BaseImageInfo {
                 width: dimensions.map(|(w, _)| w.into()),
                 height: dimensions.map(|(_, h)| h.into()),
                 size: Some(size.into()),
-                blurhash: None,
+                blurhash: bh,
                 is_animated: None,
             };
 

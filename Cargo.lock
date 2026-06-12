@@ -6232,6 +6232,7 @@ dependencies = [
  "apple-native-keyring-store",
  "async-recursion",
  "base64 0.22.1",
+ "blurhash",
  "bs58",
  "bytes",
  "chrono",
