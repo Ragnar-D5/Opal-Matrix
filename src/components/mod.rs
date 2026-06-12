@@ -6,6 +6,7 @@ use shared::ColorExt;
 use web_sys::{KeyboardEvent, MouseEvent};
 
 pub(crate) mod authentication;
+pub(crate) mod blurhash;
 pub(crate) mod chat;
 pub(crate) mod input;
 pub(crate) mod loading;

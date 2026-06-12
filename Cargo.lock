@@ -928,6 +928,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "blurhash"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e79769241dcd44edf79a732545e8b5cec84c247ac060f5252cd51885d093a8fc"
+
+[[package]]
 name = "bmrng"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6284,6 +6290,7 @@ dependencies = [
 name = "opal-matrix-ui"
 version = "0.1.0"
 dependencies = [
+ "blurhash",
  "chrono",
  "console_error_panic_hook",
  "csscolorparser",

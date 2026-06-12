@@ -228,6 +228,7 @@ pub enum UiMessageType {
         height: Option<u64>,
         size: Option<u64>,
         mime_type: Option<String>,
+        blurhash: Option<String>,
     },
     LiveLocation {
         locations: Vec<UiBeaconInfo>,

@@ -24,6 +24,7 @@ use crate::{
     app::format_date,
     components::{
         CloseButton, TextCircle, TextCircleProps,
+        blurhash::Blurhash,
         chat::{Attachment, ChatInputInfo},
         overlays::{emoji_picker::{EmojiPickerState, pick_emoji}, profile_card::ProfileCardState},
         input::move_caret_to_end,
@@ -312,6 +313,7 @@ fn render_message_content(
             height,
             size,
             mime_type,
+            blurhash
         } => {
             let (thumb_w, thumb_h) = shared::timeline::fit_dimensions(
                 width.unwrap_or(MAX_W),
@@ -335,6 +337,8 @@ fn render_message_content(
             let box_file_name = filename.clone();
             let box_width = width;
             let box_height = height;
+            let loaded = RwSignal::new(false);
+            let blurhash = StoredValue::new(blurhash);
             view! {
                 <div class="mt-1">
                     <div class="relative inline-block group/image">
@@ -344,6 +348,7 @@ fn render_message_content(
                             width=thumb_w
                             height=thumb_h
                             class="rounded-md border border-[var(--tile-border-color)] relative group/image cursor-pointer"
+                            on:load=move |_| loaded.set(true)
                             on:click=move |e: web_sys::MouseEvent| {
                                 let origin_rect = e
                                     .target()
@@ -372,6 +377,21 @@ fn render_message_content(
                                 )
                             }
                         />
+                        <Show when=move || !loaded.get()>
+                            {move || match blurhash.get_value() {
+                                Some(hash) => view! {
+                                    <div style="position: absolute; inset: 0; border-radius: 6px; overflow: hidden; pointer-events: none;">
+                                        <Blurhash hash=hash.clone() />
+                                    </div>
+                                }.into_any(),
+                                None => view! {
+                                    <div
+                                        style="position: absolute; inset: 0; pointer-events: none;"
+                                        class="animate-pulse bg-(--ui-hover-bg) rounded-md"
+                                    />
+                                }.into_any(),
+                            }}
+                        </Show>
                         <div class="absolute bottom-1 left-1 bg-black/50 opacity-0 group-hover/image:opacity-100 transition-opacity rounded-md">
                             <span class="text-white text-sm px-1">{filename.clone()}</span>
                         </div>

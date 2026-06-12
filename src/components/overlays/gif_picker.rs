@@ -13,7 +13,7 @@ use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{Element, IntersectionObserverEntry};
 
-use crate::tauri_functions::get_gifs;
+use crate::{components::blurhash::Blurhash, tauri_functions::get_gifs};
 
 #[derive(Clone, Copy)]
 pub struct GifPickerState {
@@ -296,6 +296,7 @@ pub fn GifPickerPortal() -> impl IntoView {
                                     let loaded = RwSignal::new(false);
                                     let title = gif.title.clone();
                                     let url_click = file.url.clone();
+                                    let blur_preview = StoredValue::new(gif.blur_preview.clone());
                                     let Some(send_file) = send_file(&gif) else {
                                         return ().into_any();
                                     };
@@ -317,11 +318,28 @@ pub fn GifPickerPortal() -> impl IntoView {
                                                 class="group-hover:opacity-75 transition-opacity rounded"
                                                 on:load=move |_| loaded.set(true)
                                             />
-                                            <Show when=move || !loaded.get()>
-                                                <div
-                                                    style="position: absolute; inset: 0;"
-                                                    class="animate-pulse bg-(--ui-hover-bg)"
-                                                />
+                                            <Show when=move || {
+                                                !loaded.get()
+                                            }>
+                                                {move || match blur_preview.get_value() {
+                                                    Some(hash) => {
+                                                        view! {
+                                                            <div style="position: absolute; inset: 0; overflow: hidden;">
+                                                                <Blurhash hash=hash />
+                                                            </div>
+                                                        }
+                                                            .into_any()
+                                                    }
+                                                    None => {
+                                                        view! {
+                                                            <div
+                                                                style="position: absolute; inset: 0;"
+                                                                class="animate-pulse bg-(--ui-hover-bg)"
+                                                            />
+                                                        }
+                                                            .into_any()
+                                                    }
+                                                }}
                                             </Show>
                                         </div>
                                     }
@@ -362,6 +380,7 @@ pub fn GifPickerPortal() -> impl IntoView {
                                     let loaded = RwSignal::new(false);
                                     let title = gif.title.clone();
                                     let url_click = file.url.clone();
+                                    let blur_preview = StoredValue::new(gif.blur_preview.clone());
                                     let Some(send_file) = send_file(&gif) else {
                                         return ().into_any();
                                     };
@@ -384,11 +403,28 @@ pub fn GifPickerPortal() -> impl IntoView {
                                                 class="group-hover:opacity-75 transition-opacity rounded"
                                                 on:load=move |_| loaded.set(true)
                                             />
-                                            <Show when=move || !loaded.get()>
-                                                <div
-                                                    style="position: absolute; inset: 0;"
-                                                    class="animate-pulse bg-(--ui-hover-bg)"
-                                                />
+                                            <Show when=move || {
+                                                !loaded.get()
+                                            }>
+                                                {move || match blur_preview.get_value() {
+                                                    Some(hash) => {
+                                                        view! {
+                                                            <div style="position: absolute; inset: 0; overflow: hidden;">
+                                                                <Blurhash hash=hash />
+                                                            </div>
+                                                        }
+                                                            .into_any()
+                                                    }
+                                                    None => {
+                                                        view! {
+                                                            <div
+                                                                style="position: absolute; inset: 0;"
+                                                                class="animate-pulse bg-(--ui-hover-bg)"
+                                                            />
+                                                        }
+                                                            .into_any()
+                                                    }
+                                                }}
                                             </Show>
                                         </div>
                                     }

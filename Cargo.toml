@@ -58,6 +58,9 @@ web-sys = {
     "Selection",
     "SupportedType",
     "TreeWalker",
+    "CanvasRenderingContext2d",
+    "HtmlCanvasElement",
+    "ImageData",
     "Url",
     "WebGl2RenderingContext",
     "WebGlBuffer",
@@ -70,6 +73,7 @@ web-sys = {
   ]
 }
 wgpu = "29.0.3"
+blurhash = "0.2.3"
 
 [profile.release]
 opt-level = "z"

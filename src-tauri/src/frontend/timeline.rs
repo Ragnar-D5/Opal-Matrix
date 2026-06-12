@@ -365,6 +365,7 @@ fn timeline_item_content_to_ui(
                                     height: info.height.map(|h| h.into()),
                                     size: info.size.map(|s| s.into()),
                                     mime_type: info.mimetype.map(|m| m.to_string()),
+                                    blurhash: info.blurhash,
                                 },
                             )
                         }
