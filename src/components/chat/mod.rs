@@ -367,7 +367,7 @@ fn TimeLine() -> impl IntoView {
     });
 
     view! {
-        <div class="flex-1 w-full w-full overflow-y-auto flex flex-col-reverse overflow-anchor-auto pb-12 [mask-image:linear-gradient(to_top,transparent_0%,black_2rem)]">
+        <div class="flex-1 w-full w-full overflow-y-auto flex flex-col-reverse overflow-anchor-auto pb-8 [mask-image:linear-gradient(to_top,transparent_0%,black_2rem)]">
             <Show
                 when=move || !is_loading_bottom.get()
                 fallback=|| view! { <div class="text-center p-4 text-muted">"Loading..."</div> }
@@ -402,15 +402,12 @@ fn TypingUserIndicator() -> impl IntoView {
     let state: AppState = expect_context();
     let store: ProfileStore = expect_context();
 
-    // Drives the animation — flips immediately.
     let has_typing = Memo::new(move |_| {
         let Some(room_id) = state.active_room_id() else { return false };
         let own_id = state.user_id.get();
         state.get_typing_users(&room_id).get().into_iter().any(|id| id != own_id)
     });
 
-    // Drives the content — updates immediately on appear, clears after the
-    // transition delay so the exit animation has something to show.
     let visible_users: RwSignal<Vec<String>> = RwSignal::new(Vec::new());
 
     Effect::new(move |_| {
