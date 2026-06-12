@@ -308,56 +308,27 @@ pub fn handle_keydown(
                 input_info.set(None);
             }
         }
-        "ArrowUp" | "ArrowDown" if current_menu != MenuType::None => {
+        "ArrowUp" if current_menu != MenuType::None => {
             ev.prevent_default();
 
             let len = matches.get().len();
 
-            match (current_menu, key.as_str()) {
-                (MenuType::UserAutocomplete { .. }, "ArrowUp") => {
-                    selected_index.update(|idx| {
-                        if *idx == 0 {
-                            *idx = len - 1;
-                        } else {
-                            *idx -= 1;
-                        }
-                    });
+            selected_index.update(|idx| {
+                if *idx == 0 {
+                    *idx = len - 1;
+                } else {
+                    *idx -= 1;
                 }
-                (MenuType::UserAutocomplete { .. }, "ArrowDown") => {
-                    selected_index.update(|idx| {
-                        *idx = (*idx + 1) % len;
-                    });
-                }
-                (MenuType::CommandAutocomplete { .. }, "ArrowUp") => {
-                    selected_index.update(|idx| {
-                        if *idx == 0 {
-                            *idx = len - 1;
-                        } else {
-                            *idx -= 1;
-                        }
-                    });
-                }
-                (MenuType::CommandAutocomplete { .. }, "ArrowDown") => {
-                    selected_index.update(|idx| {
-                        *idx = (*idx + 1) % len;
-                    });
-                }
-                (MenuType::RoomAutocomplete { .. }, "ArrowUp") => {
-                    selected_index.update(|idx| {
-                        if *idx == 0 {
-                            *idx = len - 1;
-                        } else {
-                            *idx -= 1;
-                        }
-                    });
-                }
-                (MenuType::RoomAutocomplete { .. }, "ArrowDown") => {
-                    selected_index.update(|idx| {
-                        *idx = (*idx + 1) % len;
-                    });
-                }
-                _ => return,
-            };
+            });
+        }
+        "ArrowDown" if current_menu != MenuType::None => {
+            ev.prevent_default();
+
+            let len = matches.get().len();
+
+            selected_index.update(|idx| {
+                *idx = (*idx + 1) % len;
+            });
         }
         "Escape" => {
             if current_menu != MenuType::None {

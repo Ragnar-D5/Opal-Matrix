@@ -1,10 +1,10 @@
 use crate::{
     components::{
-        CloseButton,
         input::{get_caret_position, get_node_and_offset},
         presence::PresenceBadge,
         text::RichTextExt,
         user_profile::{MemberProfileExt, RoomProfileExt},
+        CloseButton,
     },
     state::{AppState, ProfileStore},
     tauri_functions::get_commands,
@@ -23,12 +23,20 @@ use web_sys::{
     ScrollLogicalPosition, ScrollToOptions,
 };
 
+#[derive(Clone, PartialEq)]
+pub struct EmojiItem {
+    name: String,
+    shortcodes: Vec<String>,
+    character: String,
+}
+
 #[derive(Clone, PartialEq, Debug)]
 pub enum MenuType {
     None,
     UserAutocomplete { filter: String },
     CommandAutocomplete { filter: String },
     RoomAutocomplete { filter: String },
+    EmojiAutocomplete { filter: String },
 }
 
 impl MenuType {
@@ -37,10 +45,12 @@ impl MenuType {
     }
 }
 
+#[derive(Clone)]
 pub enum SelectedItem {
     User(MemberProfile),
     Command(Command),
     Room(RoomProfile),
+    Emoji(EmojiItem),
 }
 
 impl SelectedItem {
@@ -49,14 +59,23 @@ impl SelectedItem {
             SelectedItem::User(profile) => profile.id(),
             SelectedItem::Command(command) => command.id(),
             SelectedItem::Room(room) => room.id(),
+            SelectedItem::Emoji(emoji) => emoji.id(),
         }
     }
 
-    fn render_row(self, room_id: String, el: HtmlDivElement, idx: usize) -> impl IntoView {
+    fn render_row(
+        self,
+        room_id: String,
+        idx: usize,
+        selected_index: RwSignal<usize>,
+    ) -> impl IntoView {
         match self {
-            SelectedItem::User(user) => user.render_row(room_id, el, idx).into_any(),
-            SelectedItem::Command(command) => command.render_row(room_id, el, idx).into_any(),
-            SelectedItem::Room(room) => room.render_row(room_id, el, idx).into_any(),
+            SelectedItem::User(user) => user.render_row(room_id, idx, selected_index).into_any(),
+            SelectedItem::Command(command) => {
+                command.render_row(room_id, idx, selected_index).into_any()
+            }
+            SelectedItem::Room(room) => room.render_row(room_id, idx, selected_index).into_any(),
+            SelectedItem::Emoji(emoji) => emoji.render_row(room_id, idx, selected_index).into_any(),
         }
     }
 }
@@ -76,6 +95,12 @@ impl From<Command> for SelectedItem {
 impl From<RoomProfile> for SelectedItem {
     fn from(profile: RoomProfile) -> Self {
         SelectedItem::Room(profile)
+    }
+}
+
+impl From<EmojiItem> for SelectedItem {
+    fn from(emoji: EmojiItem) -> Self {
+        SelectedItem::Emoji(emoji)
     }
 }
 
@@ -226,6 +251,13 @@ pub fn commit_selection(
 
             (web_sys::Node::from(space_node), 1)
         }
+        // Insert emojis like macro commands
+        SelectedItem::Emoji(emoji) => {
+            let text_node = doc.create_text_node(&emoji.character);
+            let text_len = text_node.length();
+            range.insert_node(&text_node).unwrap();
+            (Node::from(text_node), text_len)
+        }
     };
 
     let new_range = doc.create_range().unwrap();
@@ -315,7 +347,12 @@ fn scroll_into_view_when_selected(
 
 trait RenderMenuRow {
     fn id(&self) -> String;
-    fn render_row(self, room_id: String, el: HtmlDivElement, idx: usize) -> impl IntoView;
+    fn render_row(
+        self,
+        room_id: String,
+        idx: usize,
+        selected_index: RwSignal<usize>,
+    ) -> impl IntoView;
     fn match_fields() -> Vec<fn(&Self) -> Option<String>>;
 }
 
@@ -324,59 +361,43 @@ impl RenderMenuRow for MemberProfile {
         self.user_id().to_string()
     }
 
-    fn render_row(self, room_id: String, el: HtmlDivElement, idx: usize) -> impl IntoView {
+    fn render_row(
+        self,
+        room_id: String,
+        idx: usize,
+        selected_index: RwSignal<usize>,
+    ) -> impl IntoView {
         let state: AppState = expect_context();
         let store: ProfileStore = expect_context();
-        let selected_index: RwSignal<usize> = expect_context();
-
-        let row_ref: NodeRef<Button> = NodeRef::new();
-        scroll_into_view_when_selected(row_ref, idx, selected_index);
 
         let presence = store.get_presence(self.user_id());
         let profile = store.get_member_profile(&room_id, self.user_id()).get();
         let p_clone = profile.clone();
         let m_clone = self.clone();
-        let el = el.clone();
-        let store = store.clone();
 
         view! {
-            <button
-                node_ref=row_ref
-                class="flex flex-row items-center gap-2 mx-(--gap) px-(--gap) py-1 rounded-(--ui-border-radius) cursor-pointer"
-                class=("bg-(--ui-hover-bg)", move || idx == selected_index.get())
-                on:mouseenter=move |_| selected_index.set(idx)
-                on:click=move |_| {
-                    commit_selection(
-                        &el.clone(),
-                        SelectedItem::from(self.clone()),
-                        state,
-                        store.clone(),
-                    )
-                }
-            >
-                {move || {
-                    let profile = profile.clone();
-                    let presence = presence.clone();
-                    if state.active_room_id().unwrap_or_default() != m_clone.user_id() {
-                        view! {
-                            <PresenceBadge presence=presence size=15.0>
-                                {profile.render_icon("30px")}
-                            </PresenceBadge>
-                        }
-                            .into_any()
-                    } else {
-                        profile.render_icon("30px").into_any()
+            {move || {
+                let profile = profile.clone();
+                let presence = presence.clone();
+                if state.active_room_id().unwrap_or_default() != m_clone.user_id() {
+                    view! {
+                        <PresenceBadge presence=presence size=15.0>
+                            {profile.render_icon("30px")}
+                        </PresenceBadge>
                     }
-                }}
-                {p_clone.render_name("14px")}
-                <div class="flex flex-grow"></div>
-                <span
-                    class=("text-(--ui-hover-color)", move || idx == selected_index.get())
-                    class=("text-(--ui-base-color)", move || idx != selected_index.get())
-                >
-                    {self.user_id().to_string()}
-                </span>
-            </button>
+                        .into_any()
+                } else {
+                    profile.render_icon("30px").into_any()
+                }
+            }}
+            {p_clone.render_name("14px")}
+            <div class="flex flex-grow"></div>
+            <span
+                class=("text-(--ui-hover-color)", move || idx == selected_index.get())
+                class=("text-(--ui-base-color)", move || idx != selected_index.get())
+            >
+                {self.user_id().to_string()}
+            </span>
         }
     }
 
@@ -392,36 +413,25 @@ impl RenderMenuRow for Command {
         format!("{}:{}", self.source, self.name)
     }
 
-    fn render_row(self, _: String, _: HtmlDivElement, idx: usize) -> impl IntoView {
-        let selected_index: RwSignal<usize> = expect_context();
-
-        let row_ref: NodeRef<Button> = NodeRef::new();
-        scroll_into_view_when_selected(row_ref, idx, selected_index);
-
+    fn render_row(self, _: String, idx: usize, selected_index: RwSignal<usize>) -> impl IntoView {
         view! {
-            <button
-                node_ref=row_ref
-                class="flex flex-row justify-center items-center rounded-(--ui-border-radius) cursor-pointer mx-(--gap) px-(--gap) py-1"
-                class=("bg-(--ui-hover-bg)", move || selected_index.get() == idx)
-            >
-                <div class="flex flex-col">
-                    <span class="text-start text-sm text-normal">{self.usage}</span>
-                    <span
-                        class="text-start"
-                        class=("text-(--ui-hover-color)", move || idx == selected_index.get())
-                        class=("text-(--ui-base-color)", move || idx != selected_index.get())
-                    >
-                        {self.description}
-                    </span>
-                </div>
-                <div class="flex flex-grow"></div>
+            <div class="flex flex-col">
+                <span class="text-start text-sm text-normal">{self.usage}</span>
                 <span
+                    class="text-start"
                     class=("text-(--ui-hover-color)", move || idx == selected_index.get())
                     class=("text-(--ui-base-color)", move || idx != selected_index.get())
                 >
-                    {self.source}
+                    {self.description}
                 </span>
-            </button>
+            </div>
+            <div class="flex flex-grow"></div>
+            <span
+                class=("text-(--ui-hover-color)", move || idx == selected_index.get())
+                class=("text-(--ui-base-color)", move || idx != selected_index.get())
+            >
+                {self.source}
+            </span>
         }
     }
 
@@ -437,38 +447,17 @@ impl RenderMenuRow for RoomProfile {
         self.room_id.clone()
     }
 
-    fn render_row(self, _: String, el: HtmlDivElement, idx: usize) -> impl IntoView {
-        let selected_index: RwSignal<usize> = expect_context();
-
-        let row_ref: NodeRef<Button> = NodeRef::new();
-        scroll_into_view_when_selected(row_ref, idx, selected_index);
-
-        let el = el.clone();
+    fn render_row(self, _: String, idx: usize, selected_index: RwSignal<usize>) -> impl IntoView {
         view! {
-            <button
-                node_ref=row_ref
-                class="flex flex-row items-center gap-2 rounded-(--ui-border-radius) cursor-pointer mx-(--gap) px-(--gap) py-1"
-                class=("bg-(--ui-hover-bg)", move || selected_index.get() == idx)
-                on:mouseenter=move |_| selected_index.set(idx)
-                on:click=move |_| {
-                    commit_selection(
-                        &el,
-                        SelectedItem::from(self.clone()),
-                        expect_context(),
-                        expect_context(),
-                    )
-                }
+            <span class="text-start text-sm text-normal">{self.get_name()}</span>
+            <div class="flex flex-grow"></div>
+            <span
+                class="text-start"
+                class=("text-(--ui-hover-color)", move || idx == selected_index.get())
+                class=("text-(--ui-base-color)", move || idx != selected_index.get())
             >
-                <span class="text-start text-sm text-normal">{self.get_name()}</span>
-                <div class="flex flex-grow"></div>
-                <span
-                    class="text-start"
-                    class=("text-(--ui-hover-color)", move || idx == selected_index.get())
-                    class=("text-(--ui-base-color)", move || idx != selected_index.get())
-                >
-                    {self.canonical_alias.clone().unwrap_or(self.room_id.clone())}
-                </span>
-            </button>
+                {self.canonical_alias.clone().unwrap_or(self.room_id.clone())}
+            </span>
         }
     }
 
@@ -487,11 +476,45 @@ impl RenderMenuRow for RoomProfile {
     }
 }
 
+impl RenderMenuRow for EmojiItem {
+    fn id(&self) -> String {
+        self.name.clone()
+    }
+
+    fn render_row(self, _: String, idx: usize, selected_index: RwSignal<usize>) -> impl IntoView {
+        view! {
+            <span class="text-xl">{self.character}</span>
+            <span class="text-start text-sm text-normal">{self.name}</span>
+            <div class="flex flex-grow"></div>
+            <span
+                class=("text-(--ui-hover-color)", move || idx == selected_index.get())
+                class=("text-(--ui-base-color)", move || idx != selected_index.get())
+            >
+                {self.shortcodes.join(", ")}
+            </span>
+        }
+    }
+
+    fn match_fields() -> Vec<fn(&Self) -> Option<String>> {
+        vec![
+            |emoji| {
+                if emoji.shortcodes.is_empty() {
+                    None
+                } else {
+                    Some(emoji.shortcodes.join(" "))
+                }
+            },
+            |emoji| Some(emoji.name.clone()),
+        ]
+    }
+}
+
 #[derive(Clone)]
 pub enum MenuCompletionMatches {
     User(Vec<MemberProfile>),
     Command(Vec<Command>),
     Room(Vec<RoomProfile>),
+    Emoji(Vec<EmojiItem>),
     None,
 }
 
@@ -501,6 +524,7 @@ impl MenuCompletionMatches {
             MenuCompletionMatches::User(members) => members.len(),
             MenuCompletionMatches::Command(commands) => commands.len(),
             MenuCompletionMatches::Room(rooms) => rooms.len(),
+            MenuCompletionMatches::Emoji(emojis) => emojis.len(),
             MenuCompletionMatches::None => 0,
         }
     }
@@ -520,6 +544,9 @@ impl MenuCompletionMatches {
             MenuCompletionMatches::Room(rooms) if !rooms.is_empty() => {
                 rooms.clone().into_iter().map(SelectedItem::from).collect()
             }
+            MenuCompletionMatches::Emoji(emojis) if !emojis.is_empty() => {
+                emojis.clone().into_iter().map(SelectedItem::from).collect()
+            }
             _ => Vec::new(),
         }
     }
@@ -533,8 +560,39 @@ impl MenuCompletionMatches {
                 commands.get(index).cloned().map(SelectedItem::from)
             }
             MenuCompletionMatches::Room(rooms) => rooms.get(index).cloned().map(SelectedItem::from),
+            MenuCompletionMatches::Emoji(emojis) => {
+                emojis.get(index).cloned().map(SelectedItem::from)
+            }
             MenuCompletionMatches::None => None,
         }
+    }
+}
+
+fn auto_complete_item_render(
+    el: HtmlDivElement,
+    room_id: String,
+    selected_index: RwSignal<usize>,
+    idx: usize,
+    item: SelectedItem,
+) -> impl IntoView {
+    let content = item.clone().render_row(room_id, idx, selected_index);
+
+    let row_ref: NodeRef<Button> = NodeRef::new();
+    scroll_into_view_when_selected(row_ref, idx, selected_index);
+
+    let el = el.clone();
+    view! {
+        <button
+            node_ref=row_ref
+            class="flex flex-row justify-center items-center rounded-(--ui-border-radius) cursor-pointer mx-(--gap) px-(--gap) py-1"
+            class=("bg-(--ui-hover-bg)", move || selected_index.get() == idx)
+            on:mouseenter=move |_| selected_index.set(idx)
+            on:click=move |_| {
+                commit_selection(&el, item.clone(), expect_context(), expect_context())
+            }
+        >
+            {content}
+        </button>
     }
 }
 
@@ -561,6 +619,16 @@ pub fn SelectionMenu(menu: RwSignal<MenuType>, input_ref: NodeRef<Div>) -> impl 
 
     let room_resource = Memo::new(move |_| state.get_room_profiles_in_active_server());
 
+    let emoji_resource: Memo<Vec<EmojiItem>> = Memo::new(move |_| {
+        emojis::iter()
+            .map(|emoji| EmojiItem {
+                name: emoji.name().to_string(),
+                shortcodes: emoji.shortcodes().map(|s| s.to_string()).collect(),
+                character: emoji.as_str().to_string(),
+            })
+            .collect()
+    });
+
     Effect::new(move |_| {
         let mut m = matcher.get_value();
 
@@ -573,6 +641,9 @@ pub fn SelectionMenu(menu: RwSignal<MenuType>, input_ref: NodeRef<Div>) -> impl 
             ),
             MenuType::RoomAutocomplete { filter } => {
                 MenuCompletionMatches::Room(filter_items(filter, room_resource.get(), &mut m))
+            }
+            MenuType::EmojiAutocomplete { filter } => {
+                MenuCompletionMatches::Emoji(filter_items(filter, emoji_resource.get(), &mut m))
             }
             MenuType::None => MenuCompletionMatches::None,
         };
@@ -604,11 +675,20 @@ pub fn SelectionMenu(menu: RwSignal<MenuType>, input_ref: NodeRef<Div>) -> impl 
                     format!("ROOMS MATCHING #{filter} ({len})")
                 }
             }
+            MenuType::EmojiAutocomplete { filter, .. } => {
+                if filter.is_empty() {
+                    format!("EMOJIS ({len})")
+                } else {
+                    format!("EMOJIS MATCHING :{filter}: ({len})")
+                }
+            }
             MenuType::None => String::new(),
         }
     };
 
     let no_matches = move || matches.get().len() == 0;
+
+    let selected_index: RwSignal<usize> = expect_context();
 
     let content = move || {
         let Some(el) = input_ref.get() else {
@@ -622,12 +702,12 @@ pub fn SelectionMenu(menu: RwSignal<MenuType>, input_ref: NodeRef<Div>) -> impl 
             </span>
             <div class="overflow-y-auto *:first:mt-1 flex flex-col">
                 <For
-                    each=move || matches.get().to_vec().into_iter().enumerate()
-                    key=|(_, member)| member.id()
-                    children=move |(idx, member)| {
+                    each=move || matches.get().to_vec().into_iter().take(50).enumerate()
+                    key=|(_, row)| row.id()
+                    children=move |(idx, row)| {
                         let room_id = room_id.clone();
                         let el = el.clone();
-                        member.render_row(room_id, el, idx)
+                        auto_complete_item_render(el, room_id, selected_index, idx, row)
                     }
                 />
             </div>

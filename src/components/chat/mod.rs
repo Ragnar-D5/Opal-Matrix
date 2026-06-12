@@ -893,7 +893,9 @@ fn ChatInput() -> impl IntoView {
                     menu.set(MenuType::CommandAutocomplete { filter });
                 } else if let Some(filter) = get_active_filter(&el, caret_pos, '#') {
                     menu.set(MenuType::RoomAutocomplete { filter });
-                } else {
+                } else if let Some(filter) = get_active_filter(&el, caret_pos, ':') {
+                    menu.set(MenuType::EmojiAutocomplete { filter });
+                }else {
                     menu.set(MenuType::None);
                 }
             } else {
