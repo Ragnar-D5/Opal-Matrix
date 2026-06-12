@@ -377,17 +377,20 @@ fn render_message_content(
                                 )
                             }
                         />
-                        <div style=move || format!(
-                            "position: absolute; inset: 0; border-radius: 6px; overflow: hidden; pointer-events: none; transition: opacity 0.4s ease; opacity: {};",
-                            if loaded.get() { "0" } else { "1" }
-                        )>
+                        <div style=move || {
+                            format!(
+                                "position: absolute; inset: 0; border-radius: 6px; overflow: hidden; pointer-events: none; transition: opacity 0.4s ease; opacity: {};",
+                                if loaded.get() { "0" } else { "1" },
+                            )
+                        }>
                             {move || match blurhash.get_value() {
-                                Some(hash) => view! {
-                                    <Blurhash hash=hash.clone() />
-                                }.into_any(),
-                                None => view! {
-                                    <div class="w-full h-full animate-pulse bg-(--ui-hover-bg)" />
-                                }.into_any(),
+                                Some(hash) => view! { <Blurhash hash=hash.clone() /> }.into_any(),
+                                None => {
+                                    view! {
+                                        <div class="w-full h-full animate-pulse bg-(--ui-hover-bg)" />
+                                    }
+                                        .into_any()
+                                }
                             }}
                         </div>
                         <div class="absolute bottom-1 left-1 bg-black/50 opacity-0 group-hover/image:opacity-100 transition-opacity rounded-md">
@@ -1358,8 +1361,8 @@ fn render_timeline_event(
 
     view! {
         <div
-            class="group/msg mx-1 relative flex flex-col gap-[var(--gap)] hover:bg-black/20 rounded-md transform-gpu border border-transparent hover:border-[var(--tile-border-color)]"
-            class=("mt-5", show_header && !preview)
+            class="group/msg mx-1 relative flex flex-col gap-[var(--gap)] hover:bg-black/20 rounded-md transform-gpu border border-transparent hover:border-[var(--tile-border-color)] pt-0.75"
+            class=("mt-4", show_header && !preview)
             class=("pointer-events-none", preview)
             class=("bg-black/20", move || picker_open.get() || show_delete_confirm.get())
             id=move || item_sig.get().render_key()
