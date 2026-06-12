@@ -367,7 +367,7 @@ fn TimeLine() -> impl IntoView {
     });
 
     view! {
-        <div class="flex-1 w-full w-full overflow-y-auto flex flex-col-reverse overflow-anchor-auto">
+        <div class="flex-1 w-full w-full overflow-y-auto flex flex-col-reverse overflow-anchor-auto pb-12 [mask-image:linear-gradient(to_top,transparent_0%,black_2rem)]">
             <Show
                 when=move || !is_loading_bottom.get()
                 fallback=|| view! { <div class="text-center p-4 text-muted">"Loading..."</div> }
@@ -427,20 +427,20 @@ fn TypingUserIndicator() -> impl IntoView {
 
         let names = match profiles.len() {
             0 => view! { "Nobody is typing..." }.into_any(),
-            1 => view! { <span class="text-muted">{profiles[0].get().render_name("14px")} " is typing..."</span> }.into_any(),
+            1 => view! { <span>{profiles[0].get().render_name("14px")} " is typing..."</span> }.into_any(),
             2 => view! {
-                <span class="text-muted">
+                <span>
                     {profiles[0].get().render_name("14px")} " and "
                     {profiles[1].get().render_name("14px")} " are typing..."
                 </span>
             }.into_any(),
             3 => view! {
-                <span class="text-muted">
+                <span>
                     {profiles[0].get().render_name("14px")}, {profiles[1].get().render_name("14px")}
                     " and " {profiles[2].get().render_name("14px")} " are typing..."
                 </span>
             }.into_any(),
-            _ => view! { <span class="text-muted">"Several people are typing..."</span> }.into_any(),
+            _ => view! { <span>"Several people are typing..."</span> }.into_any(),
         };
 
         Some(view! {
@@ -450,7 +450,13 @@ fn TypingUserIndicator() -> impl IntoView {
     })
     };
 
-    view! { <div class="h-8 w-full flex flex-row items-center px-3">{content}</div> }
+    view! {
+        <div class="h-0 relative w-full overflow-visible pointer-events-none text-bright">
+            <div class="absolute bottom-0 left-0 right-0 h-8 flex flex-row items-center px-3 [text-shadow:0_0_8px_var(--ui-solid-bg),0_0_4px_var(--ui-solid-bg)]">
+                {content}
+            </div>
+        </div>
+    }
 }
 
 #[component]

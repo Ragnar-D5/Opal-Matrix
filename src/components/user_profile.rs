@@ -76,7 +76,7 @@ pub fn render_profile_name<T: AsRef<str>>(
         <span
             style:font-size=font_size_str
             style:color=color.to_css_hsl()
-            class="font-semibold cursor-pointer hover:underline"
+            class="font-bold cursor-pointer hover:underline"
         >
             {name.clone()}
         </span>

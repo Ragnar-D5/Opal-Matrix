@@ -485,7 +485,7 @@ fn render_message_content(
         }
             .into_any(),
         UiMessageType::Text => view! {
-            <div class="text-normal leading-relaxed break-words">
+            <div class="text-normal leading-relaxed break-words pb-1">
                 {spans
                     .clone()
                     .into_iter()

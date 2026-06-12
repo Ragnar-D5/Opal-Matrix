@@ -310,6 +310,9 @@
   .bottom-\(--gap\) {
     bottom: var(--gap);
   }
+  .bottom-0 {
+    bottom: calc(var(--spacing) * 0);
+  }
   .bottom-1 {
     bottom: calc(var(--spacing) * 1);
   }
@@ -1151,6 +1154,9 @@
   .to-80\% {
     --tw-gradient-to-position: 80%;
   }
+  .\[mask-image\:linear-gradient\(to_top\,transparent_0\%\,black_2rem\)\] {
+    mask-image: linear-gradient(to top,transparent 0%,black 2rem);
+  }
   .object-contain {
     object-fit: contain;
   }
@@ -1280,6 +1286,9 @@
   .pb-\(--gap\) {
     padding-bottom: var(--gap);
   }
+  .pb-1 {
+    padding-bottom: calc(var(--spacing) * 1);
+  }
   .pb-2 {
     padding-bottom: calc(var(--spacing) * 2);
   }
@@ -1294,6 +1303,9 @@
   }
   .pb-6 {
     padding-bottom: calc(var(--spacing) * 6);
+  }
+  .pb-12 {
+    padding-bottom: calc(var(--spacing) * 12);
   }
   .pl-0\.5 {
     padding-left: calc(var(--spacing) * 0.5);
@@ -1649,6 +1661,9 @@
   .select-none {
     -webkit-user-select: none;
     user-select: none;
+  }
+  .\[text-shadow\:0_0_8px_var\(--ui-solid-bg\)\,0_0_4px_var\(--ui-solid-bg\)\] {
+    text-shadow: 0 0 8px var(--ui-solid-bg),0 0 4px var(--ui-solid-bg);
   }
   .bdf-text {
     text-shadow: 0 0 6px rgba(0, 0, 0, 0.8);
