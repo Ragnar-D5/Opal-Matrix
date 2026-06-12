@@ -1,8 +1,9 @@
 use csscolorparser::Color;
 use leptos::prelude::*;
-use phosphor_leptos::{Icon, IconWeight, CARET_DOWN, GEAR, HEADPHONES, MICROPHONE, X};
+use phosphor_leptos::{CARET_DOWN, GEAR, HEADPHONES, Icon, IconWeight, MICROPHONE, X};
+use serde_json::json;
 use shared::ColorExt;
-use web_sys::MouseEvent;
+use web_sys::{KeyboardEvent, MouseEvent};
 
 pub(crate) mod authentication;
 pub(crate) mod chat;
@@ -121,14 +122,92 @@ where
     }
 }
 
+use leptos::portal::Portal;
+
+use crate::app::call_tauri;
+
 #[component]
 pub fn SettingsIcon(#[prop(into, optional)] class: String) -> impl IntoView {
+    let (is_open, set_is_open) = signal(false);
+
+    let (slider_value, set_slider_value) = signal(50);
+    let slider_action = Action::new_local(|new_value: &f64| {
+        let val_clone = new_value.clone();
+        async move {
+            call_tauri(
+                "change_screen_scaling",
+                serde_wasm_bindgen::to_value(&json!({"scale_factor": val_clone})).unwrap(),
+            )
+            .await
+        }
+    });
+    window_event_listener(leptos::ev::keydown, move |ev: KeyboardEvent| {
+        if is_open.get_untracked() && ev.key() == "Escape" {
+            set_is_open.set(false);
+        }
+    });
+
     view! {
-        <button class=format!(
+    <button
+        on:click=move |_| set_is_open.update(|v| *v = !*v)
+        class=format!(
             "text-muted hover:text-(--bright-text-color) cursor-pointer transition-transform duration-300 ease-in-out hover:rotate-[90deg] {class}",
-        )>
-            <Icon icon=GEAR size="20px" weight=IconWeight::Bold />
-        </button>
+        )
+    >
+        <Icon icon=GEAR size="20px" weight=IconWeight::Bold />
+    </button>
+
+    <Show
+        when=move || is_open.get()
+        fallback=|| view! { "" }
+    >
+        <Portal>
+            <div
+                on:click=move |_| set_is_open.set(false)
+                class="fixed inset-0 z-40 bg-transparent flex items-center justify-center p-6 md:p-12"
+            >
+                <div
+                    on:click=move |e| e.stop_propagation()
+                    class="bg-neutral-900 opacity-100 text-(--bright-text-color, black) rounded-xl shadow-2xl border border-neutral-700/50 w-full max-w-5xl h-full max-h-[85vh] min-h-[50vh] flex flex-col overflow-hidden z-50 p-6"
+                >
+                    <div class="flex-1 overflow-y-auto">
+                        <div class="flex items-center justify-between p-4 bg-neutral-800/40 rounded-xl border border-neutral-800/80 w-full">
+                            <div class="flex flex-col space-y-1 pr-4">
+                                <label for="scaling-slider" class="text-sm font-semibold text-(--bright-text-color, white)">
+                                    "UI scale"
+                                </label>
+                                <span class="text-xs text-muted font-mono">
+                                    {move || format!("{:.2}x", 0.5 + (slider_value.get() as f64 / 100.0) * 1.5)}
+                                </span>
+                            </div>
+
+                            <div class="w-full max-w-xs md:max-w-md">
+                                <input
+                                    id="scaling-slider"
+                                    type="range"
+                                    min="0"
+                                    max="100"
+                                    prop:value=move || slider_value.get()
+
+                                    on:input=move |ev| {
+                                        let val = event_target_value(&ev)
+                                            .parse::<i32>()
+                                            .unwrap_or(0);
+
+                                        set_slider_value.set(val);
+
+                                        let mapped_val = 0.5 + (val as f64 / 100.0) * 1.5;
+                                        slider_action.dispatch_local(mapped_val);
+                                    }
+                                    class="w-full h-2 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                                />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </Portal>
+    </Show>
     }
 }
 

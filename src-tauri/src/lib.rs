@@ -605,6 +605,7 @@ pub fn run() {
             frontend::profiles::get_user_profile,
             frontend::dialog::open_file_dialog,
             frontend::dialog::save_file_to_picked_dest,
+            frontend::settings::change_screen_scaling,
             // matrix API commands
             matrix_api::discovery::choose_home_server,
             // matrix_api::messages::fetch_messages,
