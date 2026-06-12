@@ -402,31 +402,52 @@ fn TypingUserIndicator() -> impl IntoView {
     let state: AppState = expect_context();
     let store: ProfileStore = expect_context();
 
-    let typing_signal = move || {
-        let room_id = state.active_room_id()?;
+    // Drives the animation — flips immediately.
+    let has_typing = Memo::new(move |_| {
+        let Some(room_id) = state.active_room_id() else { return false };
+        let own_id = state.user_id.get();
+        state.get_typing_users(&room_id).get().into_iter().any(|id| id != own_id)
+    });
 
-        Some(state.get_typing_users(&room_id))
-    };
+    // Drives the content — updates immediately on appear, clears after the
+    // transition delay so the exit animation has something to show.
+    let visible_users: RwSignal<Vec<String>> = RwSignal::new(Vec::new());
+
+    Effect::new(move |_| {
+        let Some(room_id) = state.active_room_id() else {
+            visible_users.set(Vec::new());
+            return;
+        };
+        let own_id = state.user_id.get();
+        let users: Vec<String> = state
+            .get_typing_users(&room_id)
+            .get()
+            .into_iter()
+            .filter(|id| id != &own_id)
+            .take(4)
+            .collect();
+
+        if !users.is_empty() {
+            visible_users.set(users);
+        } else {
+            set_timeout(move || visible_users.set(Vec::new()), Duration::from_millis(210));
+        }
+    });
 
     let content = move || {
-        typing_signal().map(|users_sig| {
-        let room_id = state.active_room_id()?;
-
-        let own_id = state.user_id.get();
-        let users: Vec<String> = users_sig.get().into_iter().filter(|id| id != &own_id).take(4).collect();
-
+        let users = visible_users.get();
         if users.is_empty() {
             return None;
         }
-
-        log::debug!("Typing users in room {}: {:?}", room_id, users_sig.get());
+        let room_id = state.active_room_id()?;
 
         let profiles: Vec<_> = users
             .into_iter()
-            .map(|user_id| store.get_member_profile(&room_id, &user_id)).collect();
+            .map(|user_id| store.get_member_profile(&room_id, &user_id))
+            .collect();
 
         let names = match profiles.len() {
-            0 => view! { "Nobody is typing..." }.into_any(),
+            0 => return None,
             1 => view! { <span>{profiles[0].get().render_name("14px")} " is typing..."</span> }.into_any(),
             2 => view! {
                 <span>
@@ -436,8 +457,9 @@ fn TypingUserIndicator() -> impl IntoView {
             }.into_any(),
             3 => view! {
                 <span>
-                    {profiles[0].get().render_name("14px")}, {profiles[1].get().render_name("14px")}
-                    " and " {profiles[2].get().render_name("14px")} " are typing..."
+                    {profiles[0].get().render_name("14px")}", "
+                    {profiles[1].get().render_name("14px")} " and "
+                    {profiles[2].get().render_name("14px")} " are typing..."
                 </span>
             }.into_any(),
             _ => view! { <span>"Several people are typing..."</span> }.into_any(),
@@ -447,12 +469,20 @@ fn TypingUserIndicator() -> impl IntoView {
             <TypingIndicator size="8px" />
             <div class="pl-3">{names}</div>
         })
-    })
     };
 
     view! {
-        <div class="h-0 relative w-full overflow-visible pointer-events-none text-bright">
-            <div class="absolute bottom-0 left-0 right-0 h-8 flex flex-row items-center px-3 [text-shadow:0_0_8px_var(--ui-solid-bg),0_0_4px_var(--ui-solid-bg)]">
+        <div class="h-8 -mt-8 w-full overflow-hidden shrink-0 pointer-events-none text-bright">
+            <div
+                class="h-8 w-full flex flex-row items-center px-3 [text-shadow:0_0_8px_var(--ui-solid-bg),0_0_4px_var(--ui-solid-bg)] transition-[transform,opacity] duration-200 ease-out"
+                style=move || {
+                    if has_typing.get() {
+                        "transform: translateY(0); opacity: 1;"
+                    } else {
+                        "transform: translateY(100%); opacity: 0;"
+                    }
+                }
+            >
                 {content}
             </div>
         </div>
