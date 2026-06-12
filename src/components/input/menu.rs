@@ -272,7 +272,7 @@ pub fn commit_selection(
 
 fn filter_items<T: RenderMenuRow>(filter: String, items: Vec<T>, matcher: &mut Matcher) -> Vec<T> {
     if filter.is_empty() {
-        return items;
+        return items.into_iter().take(50).collect();
     }
 
     let filter = filter.to_lowercase();
@@ -310,7 +310,7 @@ fn filter_items<T: RenderMenuRow>(filter: String, items: Vec<T>, matcher: &mut M
     }
 
     matched.sort_by_key(|b| std::cmp::Reverse(b.0));
-    matched.into_iter().map(|(_, item)| item).collect()
+    matched.into_iter().take(50).map(|(_, item)| item).collect()
 }
 
 fn scroll_into_view_when_selected(
