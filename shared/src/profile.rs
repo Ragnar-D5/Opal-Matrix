@@ -11,14 +11,18 @@ pub enum PresenceStatus {
     Busy,
 }
 
-impl ToString for PresenceStatus {
-    fn to_string(&self) -> String {
-        match self {
-            PresenceStatus::Online => "Online".to_string(),
-            PresenceStatus::Offline => "Offline".to_string(),
-            PresenceStatus::Unavailable => "Unavailable".to_string(),
-            PresenceStatus::Busy => "Busy".to_string(),
-        }
+impl std::fmt::Display for PresenceStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                PresenceStatus::Online => "Online",
+                PresenceStatus::Offline => "Offline",
+                PresenceStatus::Unavailable => "Unavailable",
+                PresenceStatus::Busy => "Busy",
+            }
+        )
     }
 }
 
