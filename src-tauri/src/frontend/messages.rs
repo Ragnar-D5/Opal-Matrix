@@ -5,6 +5,7 @@ use image::ImageReader;
 use matrix_sdk::{Client as MatrixClient, attachment::{AttachmentInfo, BaseFileInfo, BaseImageInfo, BaseVideoInfo}, room::edit::EditedContent, ruma::{EventId, api::client::receipt::create_receipt::v3::ReceiptType, events::room::MediaSource}, };
 use matrix_sdk_ui::timeline::{AttachmentConfig, AttachmentSource, TimelineEventItemId};
 use mime::Mime;
+use tauri_plugin_http::reqwest;
 use tokio_util::sync::CancellationToken;
 
 use ego_tree::NodeRef;
@@ -93,6 +94,10 @@ pub async fn send_attachment(
             tokio::fs::read(&path).await?
         }
         UiAttachmentSource::RawBytes(bytes) => bytes.clone(),
+        UiAttachmentSource::Url(url) => {
+            let response = reqwest::get(url).await?;
+            response.bytes().await?.to_vec()
+        }
     };
 
     let size = raw_bytes.len() as u32;
@@ -102,7 +107,7 @@ pub async fn send_attachment(
 
     let info = match file_type {
         mime::IMAGE => {
-            let dimensions = ImageReader::new(Cursor::new(raw_bytes)).with_guessed_format()?.into_dimensions().ok();
+            let dimensions = ImageReader::new(Cursor::new(&raw_bytes)).with_guessed_format()?.into_dimensions().ok();
 
             let info = BaseImageInfo {
                 width: dimensions.map(|(w, _)| w.into()),
@@ -145,7 +150,8 @@ pub async fn send_attachment(
         UiAttachmentSource::LocalFile(path) => {
              AttachmentSource::File(PathBuf::from(path))
         }
-        UiAttachmentSource::RawBytes(bytes) => AttachmentSource::Data { bytes, filename: file.file_name }
+        UiAttachmentSource::RawBytes(bytes) => AttachmentSource::Data { bytes, filename: file.file_name },
+        UiAttachmentSource::Url(url) => AttachmentSource::Data { bytes: raw_bytes, filename: url }
     };
 
     timeline.send_attachment(source, mime_type, config).await?;

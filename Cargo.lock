@@ -6289,6 +6289,7 @@ dependencies = [
  "csscolorparser",
  "emojis",
  "js-sys",
+ "klipy",
  "leptos",
  "leptos-use",
  "linkify",

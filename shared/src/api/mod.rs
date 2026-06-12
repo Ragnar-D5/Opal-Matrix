@@ -90,6 +90,7 @@ pub struct FileMetadata {
 pub enum UiAttachmentSource {
     LocalFile(String),
     RawBytes(Vec<u8>),
+    Url(String),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

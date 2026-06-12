@@ -1,3 +1,4 @@
+use klipy::{MediaItem, Page};
 use serde_json::json;
 use shared::{
     account_data::ServerOrder,
@@ -218,4 +219,20 @@ pub async fn indicate_typing(room_id: &str, is_typing: bool) -> Result<(), Strin
         .map_err(|e| format!("Tauri call failed: {:?}", e))?;
 
     Ok(())
+}
+
+pub async fn get_gifs(search_term: String, page: u32) -> Result<Page<MediaItem>, String> {
+    let args = serde_wasm_bindgen::to_value(&json!({ "search_term": search_term, "page": page }))
+        .map_err(|e| format!("Failed to serialize request: {:?}", e))?;
+
+    let res = call_tauri("search_gifs", args)
+        .await
+        .map_err(|e| format!("Tauri call failed: {:?}", e))?;
+
+    let json_string: String = js_sys::JSON::stringify(&res)
+        .map_err(|e| format!("Failed to convert response to string: {:?}", e))?
+        .into();
+
+    serde_json::from_str(&json_string)
+        .map_err(|e| format!("Failed to parse JSON response: {:?}", e))
 }

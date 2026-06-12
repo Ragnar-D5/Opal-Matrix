@@ -295,6 +295,9 @@
   .right-1\.5 {
     right: calc(var(--spacing) * 1.5);
   }
+  .right-2 {
+    right: calc(var(--spacing) * 2);
+  }
   .right-4 {
     right: calc(var(--spacing) * 4);
   }
@@ -524,6 +527,9 @@
   }
   .h-0 {
     height: calc(var(--spacing) * 0);
+  }
+  .h-1 {
+    height: calc(var(--spacing) * 1);
   }
   .h-2 {
     height: calc(var(--spacing) * 2);
@@ -1241,6 +1247,9 @@
   .pt-10 {
     padding-top: calc(var(--spacing) * 10);
   }
+  .pt-12 {
+    padding-top: calc(var(--spacing) * 12);
+  }
   .pt-30 {
     padding-top: calc(var(--spacing) * 30);
   }
@@ -1666,6 +1675,13 @@
     &:is(:where(.group):hover *) {
       @media (hover: hover) {
         width: calc(var(--spacing) * 5);
+      }
+    }
+  }
+  .group-hover\:opacity-75 {
+    &:is(:where(.group):hover *) {
+      @media (hover: hover) {
+        opacity: 75%;
       }
     }
   }

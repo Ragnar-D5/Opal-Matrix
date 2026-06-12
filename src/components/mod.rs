@@ -7,12 +7,11 @@ use web_sys::{KeyboardEvent, MouseEvent};
 
 pub(crate) mod authentication;
 pub(crate) mod chat;
-pub(crate) mod emoji_picker;
 pub(crate) mod input;
 pub(crate) mod loading;
+pub(crate) mod overlays;
 pub(crate) mod presence;
 pub(crate) mod previews;
-pub(crate) mod profile_card;
 pub(crate) mod shader;
 pub(crate) mod sidebar;
 pub(crate) mod text;
@@ -142,7 +141,7 @@ pub fn SettingsIcon(#[prop(into, optional)] class: String) -> impl IntoView {
         }
     });
     window_event_listener(leptos::ev::keydown, move |ev: KeyboardEvent| {
-        if is_open.get_untracked() && ev.key() == "Escape" {
+        if is_open.try_get_untracked().unwrap_or(false) && ev.key() == "Escape" {
             set_is_open.set(false);
         }
     });

@@ -25,10 +25,9 @@ use crate::{
     components::{
         CloseButton, TextCircle, TextCircleProps,
         chat::{Attachment, ChatInputInfo},
-        emoji_picker::{EmojiPickerState, pick_emoji},
+        overlays::{emoji_picker::{EmojiPickerState, pick_emoji}, profile_card::ProfileCardState},
         input::move_caret_to_end,
         previews::render_link,
-        profile_card::ProfileCardState,
         text::{RichTextExt, richt_text_spans_to_html},
         user_profile::{MemberProfileExt, render_profile_name},
     },
@@ -312,7 +311,7 @@ fn render_message_content(
             width,
             height,
             size,
-            ..
+            mime_type,
         } => {
             let (thumb_w, thumb_h) = shared::timeline::fit_dimensions(
                 width.unwrap_or(MAX_W),
@@ -320,7 +319,15 @@ fn render_message_content(
                 MAX_W,
                 MAX_H,
             );
-            let thumb_src = source.thumbnail_url(thumb_w, thumb_h);
+            let is_animated = matches!(
+                mime_type.as_deref(),
+                Some("image/gif") | Some("image/webp")
+            );
+            let thumb_src = if is_animated {
+                source.url()
+            } else {
+                source.thumbnail_url(thumb_w, thumb_h)
+            };
             let state: AppState = expect_context();
 
             let lightbox = state.lightbox_image;

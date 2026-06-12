@@ -3,23 +3,17 @@ use std::time::Duration;
 use crate::{
     app::{call_tauri, convertFileSrc, format_bytes},
     components::{
-        FloatingTile, TypingIndicator,
-        chat::messages::render_timeline_item,
-        emoji_picker::EmojiPickerState,
-        input::{
+        FloatingTile, TypingIndicator, chat::messages::render_timeline_item, input::{
             get_active_filter, get_caret_position, handle_input, handle_keydown,
             insert_text_at_caret,
             menu::{MenuCompletionMatches, MenuType, SelectionMenu},
-        },
-        presence::PresenceBadge,
-        user_profile::MemberProfileExt,
+        }, overlays::emoji_picker::{EmojiPickerState, pick_emoji}, overlays::gif_picker::{GifPickerState, pick_gif}, presence::PresenceBadge, user_profile::MemberProfileExt
     },
     hooks::use_tauri_event,
     state::{AppState, ProfileStore, RoomHeader},
     tauri_functions::{get_timeline, indicate_typing, pick_files, scroll_timeline},
 };
 
-use crate::components::emoji_picker::pick_emoji;
 use phosphor_leptos::{
     GIF, HASH, INFO, Icon, IconWeight, MATRIX_LOGO, PHONE, PHONE_DISCONNECT, SMILEY, SPEAKER_HIGH,
     TRASH, UPLOAD_SIMPLE, X_CIRCLE,
@@ -34,6 +28,7 @@ use shared::{
     sidebar::RoomKind,
     timeline::{DetailState, EventContent, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind},
 };
+use uuid::Uuid;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{
@@ -642,6 +637,27 @@ pub struct Attachment {
 }
 
 impl Attachment {
+    pub fn from_klipy_file(url: String, file_name: String, size: u64) -> Self {
+        let mime_type = if url.ends_with(".webp") {
+            "image/webp"
+        } else if url.ends_with(".gif") {
+            "image/gif"
+        } else {
+            "application/octet-stream"
+        };
+
+        let source = UiAttachmentSource::Url(url.clone());
+
+        Attachment {
+            id: Uuid::new_v4().to_string(),
+            file_name,
+            mime_type: mime_type.to_string(),
+            size,
+            preview_url: Some(url),
+            source
+        }
+    }
+
     pub fn into_file_metadata(self) -> FileMetadata {
         FileMetadata {
             source: self.source.clone(),
@@ -658,6 +674,7 @@ impl Attachment {
                 log::warn!("Not implemented yet");
                 todo!()
             }
+            UiAttachmentSource::Url(url) => Some(url),
         };
 
         Self {
@@ -1033,6 +1050,7 @@ fn ChatInput() -> impl IntoView {
         Memo::new(move |_| matches!(input_info.get(), Some(ChatInputInfo::Editing { .. })));
 
     let emoji_state: EmojiPickerState = expect_context();
+    let gif_state: GifPickerState = expect_context();
 
     let is_typing = RwSignal::new(false);
     let timing_timeout: StoredValue<Option<TimeoutHandle>> = StoredValue::new(None);
@@ -1133,8 +1151,22 @@ fn ChatInput() -> impl IntoView {
                 </div>
                 <button
                     class="text-(--ui-base-color) hover:text-(--bright-text-color) rounded-(--ui-border-radius) hover:bg-(--ui-solid-hover-bg) p-1 cursor-pointer"
+                    on:click=move |ev| {
+                        let anchor: Element = ev.target().unwrap().unchecked_into();
+                        spawn_local(async move {
+                            let Some(string) = pick_gif(&anchor, gif_state).await else {
+                                return;
+                            };
+                            if let Ok((url, name, size)) = serde_json::from_str::<
+                                (String, String, u64),
+                            >(&string) {
+                                let attachment = Attachment::from_klipy_file(url, name, size);
+                                attachments.update(|v| v.push(attachment));
+                            }
+                        });
+                    }
                 >
-                    <Icon icon=GIF size="20px"/>
+                    <Icon icon=GIF weight=IconWeight::Fill size="20px" />
                 </button>
                 <button
                     class="text-(--ui-base-color) hover:text-(--bright-text-color) rounded-(--ui-border-radius) hover:bg-(--ui-solid-hover-bg) p-1 cursor-pointer"

@@ -18,8 +18,9 @@ use web_sys::HtmlImageElement;
 
 use crate::components::{
     chat::Chat,
-    emoji_picker::{EmojiPickerPortal, EmojiPickerState},
-    profile_card::{ProfileCardPortal, ProfileCardState},
+    overlays::emoji_picker::{EmojiPickerPortal, EmojiPickerState},
+    overlays::gif_picker::{GifPickerPortal, GifPickerState},
+    overlays::profile_card::{ProfileCardPortal, ProfileCardState},
     sidebar::Sidebar,
 };
 use crate::hooks::use_tauri_event;
@@ -350,6 +351,9 @@ fn HomePage() -> impl IntoView {
     let emoji_picker_state = EmojiPickerState::default();
     provide_context(emoji_picker_state);
 
+    let gif_picker_state = GifPickerState::default();
+    provide_context(gif_picker_state);
+
     let profile_card_state = ProfileCardState::default();
     provide_context(profile_card_state);
 
@@ -363,6 +367,7 @@ fn HomePage() -> impl IntoView {
             <Chat />
             <ImageLightbox />
             <EmojiPickerPortal />
+            <GifPickerPortal />
             <ProfileCardPortal />
         </div>
     }

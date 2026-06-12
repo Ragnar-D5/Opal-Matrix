@@ -606,6 +606,7 @@ pub fn run() {
             frontend::dialog::open_file_dialog,
             frontend::dialog::save_file_to_picked_dest,
             frontend::settings::change_screen_scaling,
+            frontend::klipy::search_gifs,
             // matrix API commands
             matrix_api::discovery::choose_home_server,
             // matrix_api::messages::fetch_messages,
