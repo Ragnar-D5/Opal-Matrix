@@ -1,10 +1,8 @@
 use leptos::{portal::Portal, prelude::*};
+use shared::synth::signature_audio_src;
 use web_sys::Element;
 
-use crate::{
-    components::{presence::PresenceBadge, user_profile::MemberProfileExt},
-    state::ProfileStore,
-};
+use crate::{components::presence::PresenceBadge, state::ProfileStore};
 
 #[derive(Clone, Copy)]
 pub struct ProfileCardState {
@@ -24,12 +22,12 @@ impl Default for ProfileCardState {
 }
 
 impl ProfileCardState {
-    pub fn open(&self, anchor: &Element, user_id: String, room_id: String) {
+    pub fn open(&self, anchor: &Element, user_id: String, room_id: Option<String>) {
         let rect = anchor.get_bounding_client_rect();
         self.anchor_rect
             .set(Some((rect.left(), rect.top(), rect.right(), rect.bottom())));
         self.user_id.set(Some(user_id));
-        self.room_id.set(Some(room_id));
+        self.room_id.set(room_id);
     }
 
     pub fn close(&self) {
@@ -158,69 +156,10 @@ pub fn ProfileCardPortal() -> impl IntoView {
                 <div class="fixed inset-0 z-[999]" on:click=move |_| state.close() />
 
                 <div
-                    class="fixed z-[1000] bg-(--ui-solid-bg) border border-(--tile-border-color) rounded-(--floating-border-radius) shadow-xl overflow-hidden"
+                    class="fixed z-[1000] bg-(--ui-solid-bg) border border-(--tile-border-color) rounded-(--floating-border-radius) overflow-hidden"
                     style=style
                 >
-                    {move || {
-                        let Some(user_id) = state.user_id.get() else {
-                            return ().into_any();
-                        };
-                        let Some(room_id) = state.room_id.get() else {
-                            return ().into_any();
-                        };
-
-                        let profile_sig = store.with_value(|s| s.get_member_profile(&room_id, &user_id));
-                        let presence = store.with_value(|s| s.get_presence(&user_id));
-
-                        let banner_height = 80.0_f64;
-                        let icon_size = 60.0_f64;
-                        let icon_radius = icon_size / 2.0;
-                        let ring_width = 5.0_f64;
-                        let left_offset = 12.0_f64;
-                        let cutout_radius = icon_radius + ring_width;
-                        let smooth_cutout_radius = cutout_radius + 0.5;
-                        let cx = left_offset + icon_radius;
-                        let cy = banner_height;
-
-                        let banner_mask = format!(
-                            "-webkit-mask-image: radial-gradient(circle at {cx}px {cy}px, transparent {cutout_radius}px, black {smooth_cutout_radius}px); \
-                             mask-image: radial-gradient(circle at {cx}px {cy}px, transparent {cutout_radius}px, black {smooth_cutout_radius}px); \
-                             -webkit-mask-composite: destination-out; \
-                             mask-composite: exclude;",
-                        );
-
-                        let profile_sig_icon = profile_sig.clone();
-                        let profile_sig_name = profile_sig.clone();
-
-                        view! {
-                            <div class="relative flex flex-col w-full">
-                                <div
-                                    class="w-full"
-                                    style=move || {
-                                        let color = profile_sig.get().banner_color().to_css_hsl();
-                                        format!("height: {banner_height}px; background-color: {color}; {banner_mask}")
-                                    }
-                                ></div>
-
-                                <div
-                                    class="absolute left-3"
-                                    style=format!("top: {}px;", banner_height - icon_size / 2.0)
-                                >
-                                    <PresenceBadge presence=presence size=20.0>
-                                        {move || profile_sig_icon.get().render_icon(format!("{icon_size}px"))}
-                                    </PresenceBadge>
-                                </div>
-
-                                <div class="px-3 pt-9 pb-4">
-                                    <p class="text-base font-bold text-(--bright-text-color)">
-                                        {move || profile_sig_name.get().get_name()}
-                                    </p>
-                                    <p class="text-xs text-(--muted-text-color)">{user_id}</p>
-                                </div>
-                            </div>
-                        }
-                        .into_any()
-                    }}
+                    {content}
                 </div>
             </Portal>
         </Show>
