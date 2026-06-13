@@ -1,6 +1,6 @@
 use crate::openUrl;
 use leptos::{prelude::*, task::spawn_local};
-use shared::{ColorExt, timeline::RichTextSpan};
+use shared::{timeline::RichTextSpan, ColorExt};
 
 use crate::state::ProfileStore;
 

@@ -8696,6 +8696,7 @@ dependencies = [
 name = "shared"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "csscolorparser",
  "ego-tree",
  "linkify",

@@ -371,7 +371,7 @@ pub async fn get_timeline(
             let (messages, stream) = timeline.subscribe().await;
 
             let media_for_stream = (*media_manager).clone();
-            let room_for_stream = room.clone();
+            let timeline_for_stream = timeline.clone();
             timeline_manager
                 .set_stream_handle(tokio::spawn(async move {
                     tokio::pin!(stream);
@@ -387,8 +387,8 @@ pub async fn get_timeline(
 
                         for event_id in unknown_reply_event_ids {
                             log::debug!("Fetching unknown reply event {}", event_id);
-                            if let Err(e) = room_for_stream.load_or_fetch_event_with_relations(&event_id, None, None).await {
-                                warn!("Failed to load event {}: {:?}", event_id, e);
+                            if let Err(e) = timeline_for_stream.fetch_details_for_event(&event_id).await {
+                                warn!("Failed to fetch details for event {}: {:?}", event_id, e);
                             }
                         }
 
@@ -402,14 +402,20 @@ pub async fn get_timeline(
             timeline.mark_as_read(ReceiptType::FullyRead).await?;
 
             let mut unknown_reply_event_ids = HashSet::new();
-            let messages = messages.iter().map(|v| timeline_item_to_ui(v, &mut media_store, &mut unknown_reply_event_ids)).collect();
+            for item in messages.iter() {
+                timeline_item_to_ui(item, &mut media_store, &mut unknown_reply_event_ids);
+            }
 
             for event_id in unknown_reply_event_ids {
                 log::debug!("Fetching unknown reply event {}", event_id);
-                if let Err(e) = room.load_or_fetch_event_with_relations(&event_id, None, None).await {
-                    warn!("Failed to load event {}: {:?}", event_id, e);
+                if let Err(e) = timeline.fetch_details_for_event(&event_id).await {
+                    warn!("Failed to fetch details for event {}: {:?}", event_id, e);
                 }
             }
+
+            let current_items = timeline.items().await;
+            log::debug!("Returning {} messages for room {} after detail fetch", current_items.len(), room_id);
+            let messages = current_items.iter().map(|v| timeline_item_to_ui(v, &mut media_store, &mut HashSet::new())).collect();
 
             media_manager.sources.write().await.extend(media_store);
 

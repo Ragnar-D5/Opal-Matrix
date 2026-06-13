@@ -5,14 +5,14 @@ use log::error;
 use serde_json::json;
 use shared::{
     account_data::{Breadcrumbs, ServerOrder},
-    profile::{CustomProperties, MemberProfile, PresenceInfo, RoomProfile, UserProfile},
+    profile::{CustomProperties, MemberProfile, PresenceInfo, RoomProfile, SonicSignature, UserProfile},
     sidebar::{NotificationCounts, RoomKind, RoomNode, SidebarState, UserDevice},
     timeline::UiMediaSource,
 };
 
 use crate::{
     app::{CurrentWindow, call_tauri},
-    components::{chat::Attachment, user_profile::room_as_profile},
+    components::{chat::Attachment, user_profile::{MemberProfileExt, room_as_profile}},
     tauri_functions::get_user_profile,
 };
 use leptos::prelude::*;
@@ -602,6 +602,14 @@ impl ProfileStore {
         sig
     }
 
+    pub fn get_profile_signal(&self, room_id: Option<String>, user_id: &str) -> ProfileSignal {
+        if let Some(room_id) = room_id {
+            ProfileSignal::Member(self.get_member_profile(&room_id, user_id))
+        } else {
+            ProfileSignal::User(self.get_user_profile(user_id))
+        }
+    }
+
     pub fn get_members(self, room_id: &str) -> Vec<MemberProfile> {
         self.members
             .get()
@@ -612,5 +620,41 @@ impl ProfileStore {
 
     pub fn get_member_signals(self, room_id: &str) -> HashMap<String, ArcRwSignal<MemberProfile>> {
         self.members.get().get(room_id).cloned().unwrap_or_default()
+    }
+}
+
+#[derive(Clone)]
+pub enum ProfileSignal {
+    User(ArcRwSignal<UserProfile>),
+    Member(ArcRwSignal<MemberProfile>),
+}
+
+impl ProfileSignal {
+    pub fn banner_color(&self) -> String {
+        match self {
+            ProfileSignal::User(sig) => sig.get().banner_color().to_css_hsl(),
+            ProfileSignal::Member(sig) => sig.get().profile.name_color().to_css_hsl(),
+        }
+    }
+
+    pub fn sonic_signature(&self) -> SonicSignature {
+        match self {
+            ProfileSignal::User(sig) => sig.get().get_sonic_signature(),
+            ProfileSignal::Member(sig) => sig.get().get_sonic_signature(),
+        }
+    }
+
+    pub fn icon(self, size_str: String) -> impl IntoView {
+        match self {
+            ProfileSignal::User(sig) => sig.get().render_icon(size_str).into_any(),
+            ProfileSignal::Member(sig) => sig.get().render_icon(size_str).into_any(),
+        }
+    }
+
+    pub fn name(self, font_size_str: String) -> impl IntoView {
+        match self {
+            ProfileSignal::User(sig) => sig.get().render_name(font_size_str).into_any(),
+            ProfileSignal::Member(sig) => sig.get().render_name(font_size_str).into_any(),
+        }
     }
 }

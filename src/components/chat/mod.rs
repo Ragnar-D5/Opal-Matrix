@@ -301,6 +301,9 @@ fn TimeLine() -> impl IntoView {
     let important_event_id: RwSignal<Option<String>> = RwSignal::new(None);
     provide_context(important_event_id);
 
+    let scroll_target: RwSignal<Option<String>> = RwSignal::new(None);
+    provide_context(scroll_target);
+
     let input_info: RwSignal<Option<ChatInputInfo>> = expect_context();
     Effect::new(move |_| {
         if input_info.get().is_none() {
@@ -350,14 +353,9 @@ fn TimeLine() -> impl IntoView {
                     messages.set(tl.into_iter().map(RwSignal::new).collect());
                     initial_loaded.set(true);
                     is_loading.set(false);
+                    scroll_target.set(Some(event_id.clone()));
 
-                    // request_animation_frame(move || {
-                    //     if let Some(el) = document().get_element_by_id(&element_id) {
-                    //         el.scroll_into_view_with_scroll_into_view_options(&options);
-                    //     }
-                    // });
-
-                    log::debug!("Scrolled to event {} in room {}", event_id, room_id);
+                    log::debug!("Loaded focused timeline for event {} in room {}", event_id, room_id);
                 }
                 Err(e) => {
                     log::error!("Failed to load timeline for scroll: {}", e);

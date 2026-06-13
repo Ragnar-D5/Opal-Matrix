@@ -7,6 +7,7 @@ pub mod commands;
 pub mod parsing;
 pub mod profile;
 pub mod sidebar;
+pub mod synth;
 pub mod timeline;
 
 pub trait ColorExt {

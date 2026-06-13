@@ -26,7 +26,7 @@ use crate::{
         CloseButton, TextCircle, TextCircleProps,
         blurhash::Blurhash,
         chat::{Attachment, ChatInputInfo},
-        overlays::{emoji_picker::{EmojiPickerState, pick_emoji}, profile_card::ProfileCardState},
+        overlays::{emoji_picker::{EmojiPickerState, pick_emoji}},
         input::move_caret_to_end,
         previews::render_link,
         text::{RichTextExt, richt_text_spans_to_html},
@@ -127,7 +127,6 @@ fn MessageHeader(
     children: Children,
 ) -> impl IntoView {
     let has_reply = reply_info.is_some();
-    let card_state: ProfileCardState = expect_context();
     let room_id_for_card = active_room_id.clone();
     let sender_id_for_card = sender_profile_sig.get_untracked().user_id().to_string();
 
@@ -171,23 +170,15 @@ fn MessageHeader(
 
                 {if show_header {
                     let sender_id = sender_id_for_card.clone();
-                    let room_id = room_id_for_card.clone();
                     view! {
                         <div class="flex items-baseline gap-2">
-                            <span
-                                class="text-bright truncate cursor-pointer"
-                                on:click=move |ev| {
-                                    if let Some(el) = ev
-                                        .current_target()
-                                        .and_then(|t| t.dyn_into::<web_sys::Element>().ok())
-                                    {
-                                        card_state.open(&el, sender_id.clone(), room_id.clone());
-                                    }
-                                }
-                            >
-                                {render_profile_name(name, color, "16px")}
-                            </span>
-                            <span class="text-muted text-xs">{format_date(date)}</span>
+                            {render_profile_name(
+                                name,
+                                color,
+                                Some(sender_id),
+                                Some(room_id_for_card),
+                                "16px",
+                            )} <span class="text-muted text-xs">{format_date(date)}</span>
                         </div>
                     }
                         .into_any()
@@ -1238,6 +1229,9 @@ fn render_timeline_event(
     let picker_open = RwSignal::new(false);
     let show_delete_confirm = RwSignal::new(false);
 
+    let scroll_target: RwSignal<Option<String>> = expect_context();
+    let node_ref = NodeRef::<Div>::new();
+
     let (show_highlight, date, sender_id, name, color, reply_info, event_id) = item_sig
         .with_untracked(|item| {
             if let UiTimelineItemKind::Event(event) = &item.kind {
@@ -1261,6 +1255,29 @@ fn render_timeline_event(
                 unreachable!("Must be an event")
             }
         });
+
+    let this_event_id = event_id.clone();
+    Effect::new(move |_| {
+        let Some(el) = node_ref.get() else { return };
+        let Some(target) = scroll_target.get() else { return };
+        if Some(&target) == this_event_id.as_ref() {
+            let options = web_sys::ScrollIntoViewOptions::new();
+            options.set_behavior(web_sys::ScrollBehavior::Smooth);
+            options.set_block(web_sys::ScrollLogicalPosition::Center);
+            el.class_list().add_1("animate-highlight").ok();
+            el.scroll_into_view_with_scroll_into_view_options(&options);
+            scroll_target.set(None);
+            let el_id = format!("timeline-event-{target}");
+            set_timeout(
+                move || {
+                    if let Some(el) = document().get_element_by_id(&el_id) {
+                        el.class_list().remove_1("animate-highlight").ok();
+                    }
+                },
+                std::time::Duration::from_secs(4),
+            );
+        }
+    });
 
     let room_id_for_content = room_id.to_string();
     let store_for_content = store.clone();
@@ -1361,6 +1378,7 @@ fn render_timeline_event(
 
     view! {
         <div
+            node_ref=node_ref
             class="group/msg mx-1 relative flex flex-col gap-[var(--gap)] hover:bg-black/20 rounded-md transform-gpu border border-transparent hover:border-[var(--tile-border-color)] pt-0.75"
             class=("mt-4", show_header && !preview)
             class=("pointer-events-none", preview)

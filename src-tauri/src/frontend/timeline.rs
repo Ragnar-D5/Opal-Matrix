@@ -16,7 +16,7 @@ use matrix_sdk::ruma::{
         StateEventContentChange, StateEventType,
     },
     room::JoinRule,
-    MilliSecondsSinceUnixEpoch, OwnedEventId,
+    EventId, MilliSecondsSinceUnixEpoch, OwnedEventId,
 };
 use matrix_sdk_ui::{
     eyeball_im::VectorDiff,
@@ -190,17 +190,18 @@ fn from_embedded_event_to_ui(value: &EmbeddedEvent) -> ReplyPreview {
 
 fn in_reply_to_details_to_ui(
     value: InReplyToDetails,
+    outer_event_id: Option<&EventId>,
     unknown_reply_event_ids: &mut HashSet<OwnedEventId>,
 ) -> ReplyInfo {
-    let event_id = value.event_id.clone();
-
     ReplyInfo {
         event_id: value.event_id.to_string(),
         event: match value.event {
             TimelineDetails::Error(e) => DetailState::Error(e.to_string()),
             TimelineDetails::Pending => DetailState::Pending,
             TimelineDetails::Unavailable => {
-                unknown_reply_event_ids.insert(event_id);
+                if let Some(id) = outer_event_id {
+                    unknown_reply_event_ids.insert(id.to_owned());
+                }
                 DetailState::Unavailable
             }
             TimelineDetails::Ready(event) => DetailState::Ready(from_embedded_event_to_ui(&event)),
@@ -297,6 +298,7 @@ fn from_call_intent_to_ui(value: CallIntent) -> UiCallIntent {
 fn timeline_item_content_to_ui(
     value: &TimelineItemContent,
     media_store: &mut HashMap<Uuid, MediaSource>,
+    outer_event_id: Option<&EventId>,
     unknown_reply_event_ids: &mut HashSet<OwnedEventId>,
 ) -> EventContent {
     match value.clone() {
@@ -507,7 +509,7 @@ fn timeline_item_content_to_ui(
                 in_reply_to: content
                     .clone()
                     .in_reply_to
-                    .map(|v| in_reply_to_details_to_ui(v, unknown_reply_event_ids)),
+                    .map(|v| in_reply_to_details_to_ui(v, outer_event_id, unknown_reply_event_ids)),
                 thread_root: content.clone().thread_root.map(|v| v.to_string()),
                 is_edited,
 
@@ -810,7 +812,12 @@ fn event_timeline_item_to_ui(
             }),
         },
 
-        content: timeline_item_content_to_ui(item.content(), media_store, unknown_reply_event_ids),
+        content: timeline_item_content_to_ui(
+            item.content(),
+            media_store,
+            item.event_id(),
+            unknown_reply_event_ids,
+        ),
     };
 
     event.calculate_flags(item.is_own());

@@ -5,6 +5,10 @@ use shared::{
     timeline::{RichTextSpan, RoomIdFormat},
     unknown_color,
 };
+use wasm_bindgen::JsCast;
+use web_sys::MouseEvent;
+
+use crate::components::overlays::profile_card::ProfileCardState;
 
 use super::TextCircle;
 
@@ -68,15 +72,32 @@ pub fn render_unknown_icon<T: AsRef<str>>(size_str: T) -> impl IntoView {
 pub fn render_profile_name<T: AsRef<str>>(
     name: String,
     color: Color,
+    user_id: Option<String>,
+    room_id: Option<String>,
     font_size_str: T,
 ) -> impl IntoView {
     let font_size_str = font_size_str.as_ref().to_string();
+    let card_state: ProfileCardState = expect_context();
+
+    let on_click = move |ev: MouseEvent| {
+        let Some(user_id) = user_id.clone() else {
+            return;
+        };
+
+        if let Some(el) = ev
+            .current_target()
+            .and_then(|t| t.dyn_into::<web_sys::Element>().ok())
+        {
+            card_state.open(&el, user_id, room_id.clone());
+        }
+    };
 
     view! {
         <span
             style:font-size=font_size_str
             style:color=color.to_css_hsl()
             class="font-bold cursor-pointer hover:underline"
+            on:click=on_click
         >
             {name.clone()}
         </span>
@@ -84,7 +105,13 @@ pub fn render_profile_name<T: AsRef<str>>(
 }
 
 pub fn render_unknown_name<T: AsRef<str>>(font_size_str: T) -> impl IntoView {
-    render_profile_name("Unknown".to_string(), unknown_color(), font_size_str)
+    render_profile_name(
+        "Unknown".to_string(),
+        unknown_color(),
+        None,
+        None,
+        font_size_str,
+    )
 }
 
 pub trait MemberProfileExt {
@@ -132,7 +159,13 @@ impl MemberProfileExt for MemberProfile {
     }
 
     fn render_name<T: AsRef<str>>(self, font_size_str: T) -> impl IntoView {
-        render_profile_name(self.get_name(), self.name_color(), font_size_str)
+        render_profile_name(
+            self.get_name(),
+            self.name_color(),
+            Some(self.profile.user_id.clone()),
+            Some(self.room_id.clone()),
+            font_size_str,
+        )
     }
 }
 
@@ -175,7 +208,13 @@ impl MemberProfileExt for UserProfile {
     }
 
     fn render_name<T: AsRef<str>>(self, font_size_str: T) -> impl IntoView {
-        render_profile_name(self.get_name(), self.name_color(), font_size_str)
+        render_profile_name(
+            self.get_name(),
+            self.name_color(),
+            Some(self.user_id),
+            None,
+            font_size_str,
+        )
     }
 }
 
