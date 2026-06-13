@@ -21,8 +21,10 @@ pub struct AppState {
     pub frontend_is_focused: RwLock<bool>,
 }
 
+type TimelineKey = (OwnedRoomId, Option<OwnedEventId>);
+
 pub struct TimelineManager {
-    pub timelines: RwLock<HashMap<(OwnedRoomId, Option<OwnedEventId>), Arc<Timeline>>>,
+    pub timelines: RwLock<HashMap<TimelineKey, Arc<Timeline>>>,
     pub stream_handle: Mutex<Option<JoinHandle<()>>>,
 }
 

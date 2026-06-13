@@ -319,12 +319,14 @@ pub async fn scroll_timeline(
     let timeline_manager = timeline_manager.inner();
     let timeline = timeline_manager.get_or_create_timeline(&room, None).await?;
 
-    let has_more = match direction {
+    let hit_end = match direction {
         ScrollDirection::Up => timeline.paginate_backwards(30).await?,
         ScrollDirection::Down => timeline.paginate_forwards(30).await?,
     };
 
-    Ok(!has_more)
+    log::debug!("Pagination result: hit_end={hit_end}");
+
+    Ok(!hit_end)
 }
 
 #[command(rename_all = "snake_case")]

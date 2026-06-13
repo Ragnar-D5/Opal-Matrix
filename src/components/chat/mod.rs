@@ -200,11 +200,10 @@ fn TimeLine() -> impl IntoView {
         processed_items
     });
 
-    let is_loading = RwSignal::new(false);
+    let is_loading_top = RwSignal::new(false);
     let is_loading_bottom = RwSignal::new(false);
     let has_more_top = RwSignal::new(true);
     let has_more_bottom = RwSignal::new(true);
-    let initial_loaded = RwSignal::new(false);
 
     let sentinel_ref_top = NodeRef::<Div>::new();
     let sentinel_ref_bottom = NodeRef::<Div>::new();
@@ -237,11 +236,10 @@ fn TimeLine() -> impl IntoView {
         sentinel_ref_top,
         move |entries: Vec<IntersectionObserverEntry>, _| {
             if entries[0].is_intersecting()
-                && initial_loaded.get()
                 && has_more_top.get()
-                && !is_loading.get()
+                && !is_loading_top.get()
             {
-                fetch_more(ScrollDirection::Up, is_loading, has_more_top);
+                fetch_more(ScrollDirection::Up, is_loading_top, has_more_top);
             };
         },
     );
@@ -249,8 +247,9 @@ fn TimeLine() -> impl IntoView {
     let UseIntersectionObserverReturn { .. } = use_intersection_observer(
         sentinel_ref_bottom,
         move |entries: Vec<IntersectionObserverEntry>, _| {
+            log::debug!("Bottom sentinel intersecting: {}", entries[0].is_intersecting());
+            log::debug!("has_more_bottom: {}, is_loading_bottom: {}", has_more_bottom.get(), is_loading_bottom.get());
             if entries[0].is_intersecting()
-                && initial_loaded.get()
                 && has_more_bottom.get()
                 && !is_loading_bottom.get()
             {
@@ -263,10 +262,9 @@ fn TimeLine() -> impl IntoView {
         if let Some(room_id) = state.active_room_id() {
             log::debug!("Loading room {}, resetting messages to empty", room_id);
             messages.set(Vec::new());
-            initial_loaded.set(false);
             has_more_top.set(true);
             has_more_bottom.set(true);
-            is_loading.set(true);
+            is_loading_top.set(true);
 
             let current_room_id = room_id.clone();
 
@@ -275,8 +273,7 @@ fn TimeLine() -> impl IntoView {
                     Ok(tl) => {
                         if state.active_room_id_untracked() == Some(current_room_id.clone()) {
                             messages.set(tl.into_iter().map(RwSignal::new).collect());
-                            initial_loaded.set(true);
-                            is_loading.set(false);
+                            is_loading_top.set(false);
                         }
                     }
                     Err(e) => {
@@ -289,7 +286,7 @@ fn TimeLine() -> impl IntoView {
                         } else {
                             log::error!("Failed to load timeline: {}", e);
                             if state.active_room_id_untracked() == Some(current_room_id) {
-                                is_loading.set(false);
+                                is_loading_top.set(false);
                             }
                         }
                     }
@@ -342,19 +339,17 @@ fn TimeLine() -> impl IntoView {
         }
 
         messages.set(Vec::new());
-        initial_loaded.set(false);
         has_more_top.set(true);
         has_more_bottom.set(true);
-        is_loading.set(true);
+        is_loading_top.set(true);
 
         spawn_local(async move {
             log::debug!("Fetching timeline around event {} in room {}", event_id, room_id);
             match get_timeline(&room_id, Some(event_id.clone())).await {
                 Ok(tl) => {
-                    log::info!("Event id in room: {}", tl.iter().any(|e| e.event_id() == Some(event_id.clone())));
                     messages.set(tl.into_iter().map(RwSignal::new).collect());
-                    initial_loaded.set(true);
-                    is_loading.set(false);
+                    is_loading_top.set(false);
+                    is_loading_bottom.set(false);
                     scroll_target.set(Some(event_id.clone()));
 
                     log::debug!("Loaded focused timeline for event {} in room {}", event_id, room_id);
@@ -388,7 +383,7 @@ fn TimeLine() -> impl IntoView {
             />
 
             <Show
-                when=move || !is_loading.get()
+                when=move || !is_loading_top.get()
                 fallback=|| view! { <div class="text-center p-4 text-muted">"Loading..."</div> }
             >
                 <div node_ref=sentinel_ref_top class="h-[1px] w-full shrink-0" />
