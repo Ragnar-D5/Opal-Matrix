@@ -22,7 +22,7 @@ pub struct AppState {
 }
 
 pub struct TimelineManager {
-    pub timelines: RwLock<HashMap<OwnedRoomId, Arc<Timeline>>>,
+    pub timelines: RwLock<HashMap<(OwnedRoomId, Option<OwnedEventId>), Arc<Timeline>>>,
     pub stream_handle: Mutex<Option<JoinHandle<()>>>,
 }
 
@@ -43,7 +43,9 @@ impl TimelineManager {
     ) -> Result<Arc<Timeline>, TauriError> {
         let mut guard = self.timelines.write().await;
 
-        if let Some(timeline) = guard.get(room.room_id()) {
+        let index = (room.room_id().to_owned(), event_id.clone());
+
+        if let Some(timeline) = guard.get(&index) {
             return Ok(timeline.clone());
         }
 
@@ -83,7 +85,7 @@ impl TimelineManager {
 
         let timeline = Arc::new(timeline);
 
-        guard.insert(room.room_id().to_owned(), timeline.clone());
+        guard.insert(index, timeline.clone());
         Ok(timeline)
     }
 

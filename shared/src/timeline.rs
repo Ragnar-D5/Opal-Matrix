@@ -706,6 +706,14 @@ impl UiTimelineItem {
             }
         )
     }
+
+    pub fn event_id(&self) -> Option<String> {
+        if let UiTimelineItemKind::Event(event) = &self.kind {
+            event.event_id.clone()
+        } else {
+            None
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

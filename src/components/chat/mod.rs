@@ -348,8 +348,10 @@ fn TimeLine() -> impl IntoView {
         is_loading.set(true);
 
         spawn_local(async move {
+            log::debug!("Fetching timeline around event {} in room {}", event_id, room_id);
             match get_timeline(&room_id, Some(event_id.clone())).await {
                 Ok(tl) => {
+                    log::info!("Event id in room: {}", tl.iter().any(|e| e.event_id() == Some(event_id.clone())));
                     messages.set(tl.into_iter().map(RwSignal::new).collect());
                     initial_loaded.set(true);
                     is_loading.set(false);
