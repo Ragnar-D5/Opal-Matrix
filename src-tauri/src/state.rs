@@ -24,7 +24,8 @@ pub struct AppState {
 type TimelineKey = (OwnedRoomId, Option<OwnedEventId>);
 
 pub struct TimelineManager {
-    pub timelines: RwLock<HashMap<TimelineKey, Arc<Timeline>>>,
+    pub timelines: RwLock<HashMap<TimelineKey, (Uuid, Arc<Timeline>)>>,
+    pub timelines_by_id: RwLock<HashMap<Uuid, Arc<Timeline>>>,
     pub stream_handle: Mutex<Option<JoinHandle<()>>>,
 }
 
@@ -32,6 +33,7 @@ impl Default for TimelineManager {
     fn default() -> Self {
         TimelineManager {
             timelines: RwLock::new(HashMap::new()),
+            timelines_by_id: RwLock::new(HashMap::new()),
             stream_handle: Mutex::new(None),
         }
     }
@@ -42,13 +44,14 @@ impl TimelineManager {
         &self,
         room: &Room,
         event_id: Option<OwnedEventId>,
-    ) -> Result<Arc<Timeline>, TauriError> {
-        let mut guard = self.timelines.write().await;
-
+    ) -> Result<(Uuid, Arc<Timeline>), TauriError> {
         let index = (room.room_id().to_owned(), event_id.clone());
 
-        if let Some(timeline) = guard.get(&index) {
-            return Ok(timeline.clone());
+        {
+            let guard = self.timelines.read().await;
+            if let Some((id, timeline)) = guard.get(&index) {
+                return Ok((*id, timeline.clone()));
+            }
         }
 
         let focus = if let Some(event_id) = &event_id {
@@ -85,10 +88,17 @@ impl TimelineManager {
             timeline.paginate_backwards(30).await?;
         }
 
+        let id = Uuid::new_v4();
         let timeline = Arc::new(timeline);
 
-        guard.insert(index, timeline.clone());
-        Ok(timeline)
+        self.timelines.write().await.insert(index, (id, timeline.clone()));
+        self.timelines_by_id.write().await.insert(id, timeline.clone());
+
+        Ok((id, timeline))
+    }
+
+    pub async fn get_timeline_by_id(&self, id: Uuid) -> Option<Arc<Timeline>> {
+        self.timelines_by_id.read().await.get(&id).cloned()
     }
 
     pub async fn set_stream_handle(&self, handle: JoinHandle<()>) {

@@ -18,7 +18,7 @@ use matrix_sdk::ruma::{
     },
 };
 use scraper::{Html, Node};
-use shared::{api::{FileMetadata, ScrollDirection, UiAttachmentSource}, timeline::{UiTimelineDiff, UiTimelineItem, coalesce_diffs}};
+use shared::{api::{FileMetadata, GetTimelineResult, ScrollDirection, UiAttachmentSource}, timeline::{UiTimelineDiff, coalesce_diffs}};
 use tauri::{AppHandle, Emitter, State, command};
 use tokio::sync::RwLock;
 use uuid::Uuid;
@@ -43,7 +43,7 @@ pub async fn commit_message(
         .get_room(&RoomId::parse(&room_id)?)
         .ok_or("Room not found")?;
 
-    let timeline = timeline_manager.get_or_create_timeline(&room, None).await?;
+    let (_, timeline) = timeline_manager.get_or_create_timeline(&room, None).await?;
 
     let mut mentions = Mentions::default();
 
@@ -85,7 +85,7 @@ pub async fn send_attachment(
         .get_room(&RoomId::parse(&room_id)?)
         .ok_or("Room not found")?;
 
-    let timeline = timeline_manager.get_or_create_timeline(&room, None).await?;
+    let (_, timeline) = timeline_manager.get_or_create_timeline(&room, None).await?;
 
     let raw_bytes = match &file.source {
         UiAttachmentSource::LocalFile(path) => {
@@ -185,7 +185,7 @@ pub async fn edit_message(
         .ok_or("Room not found")?;
 
     let event_id = EventId::parse(event_id)?;
-    let timeline = timeline_manager.get_or_create_timeline(&room, Some(event_id.clone())).await?;
+    let (_, timeline) = timeline_manager.get_or_create_timeline(&room, Some(event_id.clone())).await?;
 
     let mut mentions = Mentions::default();
 
@@ -304,20 +304,15 @@ fn extract_text(node: NodeRef<'_, Node>) -> String {
 
 #[command(rename_all = "snake_case")]
 pub async fn scroll_timeline(
-    matrix_client: State<'_, RwLock<MatrixClient>>,
     timeline_manager: State<'_, TimelineManager>,
-    room_id: String,
+    timeline_id: String,
     direction: ScrollDirection,
 ) -> Result<bool, TauriError> {
-    log::debug!("Scrolling up");
-    let room = matrix_client
-        .read()
+    let id = Uuid::parse_str(&timeline_id).map_err(|e| format!("Invalid timeline ID: {e}"))?;
+    let timeline = timeline_manager
+        .get_timeline_by_id(id)
         .await
-        .get_room(&RoomId::parse(&room_id)?)
-        .ok_or("No room found")?;
-
-    let timeline_manager = timeline_manager.inner();
-    let timeline = timeline_manager.get_or_create_timeline(&room, None).await?;
+        .ok_or("Timeline not found")?;
 
     let hit_end = match direction {
         ScrollDirection::Up => timeline.paginate_backwards(30).await?,
@@ -338,7 +333,7 @@ pub async fn get_timeline(
     handle: AppHandle,
     room_id: String,
     event_id: Option<String>
-) -> Result<Vec<UiTimelineItem>, TauriError> {
+) -> Result<GetTimelineResult, TauriError> {
     log::debug!("Fetching timeline for room {}{}", room_id, event_id.as_ref().map(|id| format!(" at event {}", id)).unwrap_or_default());
 
     let token = CancellationToken::new();
@@ -362,13 +357,13 @@ pub async fn get_timeline(
     tokio::select! {
         _ = token.cancelled() => {
             log::debug!("Timeline fetch for room {} was cancelled by a newer request", room_id);
-            Ok(Vec::new())
+            Ok(GetTimelineResult { timeline_id: Uuid::nil().to_string(), messages: Vec::new() })
         }
 
         result = async {
             timeline_manager.abort_stream().await;
 
-            let timeline = timeline_manager.get_or_create_timeline(&room, event_id).await?;
+            let (timeline_id, timeline) = timeline_manager.get_or_create_timeline(&room, event_id).await?;
 
             let (messages, stream) = timeline.subscribe().await;
 
@@ -421,7 +416,7 @@ pub async fn get_timeline(
 
             media_manager.sources.write().await.extend(media_store);
 
-            Ok(messages)
+            Ok(GetTimelineResult { timeline_id: timeline_id.to_string(), messages })
         } => {
             result
         }
@@ -456,7 +451,7 @@ pub async fn toggle_reaction(
         .ok_or("No room found")?;
 
     let event_id = EventId::parse(event_id)?;
-    let timeline = timeline_manager.get_or_create_timeline(&room, Some(event_id.clone())).await?;
+    let (_, timeline) = timeline_manager.get_or_create_timeline(&room, Some(event_id.clone())).await?;
 
     timeline
         .toggle_reaction(
@@ -483,7 +478,7 @@ pub async fn delete_message(
         .ok_or("No room found")?;
 
     let event_id = EventId::parse(event_id)?;
-    let timeline = timeline_manager.get_or_create_timeline(&room, Some(event_id.clone())).await?;
+    let (_, timeline) = timeline_manager.get_or_create_timeline(&room, Some(event_id.clone())).await?;
 
     timeline
         .redact(&TimelineEventItemId::EventId(event_id), None)

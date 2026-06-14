@@ -5,6 +5,7 @@ use livekit::e2ee::key_provider::{KeyProvider, KeyProviderOptions};
 use log::{debug, error, info};
 use matrix_sdk::deserialized_responses::ProcessedToDeviceEvent;
 use matrix_sdk::event_handler::Ctx;
+use matrix_sdk::ruma::api::client::rtc::RtcTransport;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
@@ -18,7 +19,6 @@ use livekit::webrtc::audio_stream::native::NativeAudioStream;
 use livekit::webrtc::prelude::{AudioFrame, AudioSourceOptions};
 use livekit::{E2eeOptions, RoomEvent};
 use matrix_sdk::ruma::MilliSecondsSinceUnixEpoch;
-use matrix_sdk::ruma::api::client::discovery::discover_homeserver::RtcFocusInfo;
 use matrix_sdk::ruma::events::call::member::{
     ActiveLivekitFocus, Application, CallApplicationContent, CallMemberEventContent,
     CallMemberStateKey, Focus, LivekitFocus,
@@ -63,7 +63,7 @@ pub(crate) async fn join_matrixrtc_call(
     let default_livekit_focus_info = rtc_foci
         .iter()
         .find_map(|focus| match focus {
-            RtcFocusInfo::LiveKit(info) => Some(info),
+            RtcTransport::LiveKit(info) => Some(info),
             _ => None,
         })
         .ok_or_else(|| "No rtc focus information found".to_string())?;

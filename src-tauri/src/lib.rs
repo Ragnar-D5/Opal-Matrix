@@ -496,9 +496,9 @@ pub fn run() {
 
             let log_level = cli_log_level("log-level").unwrap_or(log::LevelFilter::Debug);
             let livekit_log_level =
-                cli_log_level("livekit-log-level").unwrap_or(log::LevelFilter::max());
+                cli_log_level("livekit-log-level").unwrap_or(log::LevelFilter::Off);
             let keyring_log_level =
-                cli_log_level("keyring-log-level").unwrap_or(log::LevelFilter::Info);
+                cli_log_level("keyring-log-level").unwrap_or(log::LevelFilter::Off);
 
             app.handle().plugin(
                 tauri_plugin_log::Builder::new()

@@ -153,10 +153,10 @@ pub fn ProfileCardPortal() -> impl IntoView {
     view! {
         <Show when=move || state.user_id.get().is_some()>
             <Portal>
-                <div class="fixed inset-0 z-[999]" on:click=move |_| state.close() />
+                <div class="fixed inset-0" on:click=move |_| state.close() />
 
                 <div
-                    class="fixed z-[1000] bg-(--ui-solid-bg) border border-(--tile-border-color) rounded-(--floating-border-radius) overflow-hidden"
+                    class="fixed bg-(--ui-solid-bg) border border-(--tile-border-color) rounded-(--floating-border-radius) overflow-hidden"
                     style=style
                 >
                     {content}

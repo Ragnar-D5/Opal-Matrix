@@ -208,15 +208,29 @@ fn TimeLine() -> impl IntoView {
     let sentinel_ref_top = NodeRef::<Div>::new();
     let sentinel_ref_bottom = NodeRef::<Div>::new();
 
-    let fetch_more = move |scroll_direction, loading: RwSignal<bool>, has_more: RwSignal<bool>| {
-        let Some(room_id) = state.active_room_id_untracked() else {
-            log::error!("No active room ID, cannot fetch more messages");
+    let timeline_id: RwSignal<Option<String>> = RwSignal::new(None);
+
+    let fetch_more = move |scroll_direction: ScrollDirection, loading: RwSignal<bool>, has_more: RwSignal<bool>| {
+        let Some(id) = timeline_id.get_untracked() else {
+            log::error!("No active timeline ID, cannot fetch more messages");
             return;
+        };
+
+        // For paginate_forwards: capture the first message element (sibling of the sentinel)
+        // BEFORE setting loading=true (while the sentinel is still in the DOM).
+        // After new messages are prepended in front of it, we'll scroll it back to
+        // the bottom of the viewport so the sentinel and new messages go off-screen.
+        let forward_anchor: Option<web_sys::Element> = if matches!(scroll_direction, ScrollDirection::Down) {
+            sentinel_ref_bottom
+                .get_untracked()
+                .and_then(|s| s.next_element_sibling())
+        } else {
+            None
         };
 
         loading.set(true);
         spawn_local(async move {
-            match scroll_timeline(&room_id, scroll_direction).await {
+            match scroll_timeline(&id, scroll_direction).await {
                 Ok(new_has_more) => {
                     log::debug!("Fetched more messages");
                     has_more.set(new_has_more);
@@ -229,6 +243,18 @@ fn TimeLine() -> impl IntoView {
                 }
             };
             loading.set(false);
+
+            if let Some(anchor) = forward_anchor {
+                set_timeout(
+                    move || {
+                        let options = ScrollIntoViewOptions::new();
+                        options.set_behavior(ScrollBehavior::Instant);
+                        options.set_block(ScrollLogicalPosition::Start);
+                        anchor.scroll_into_view_with_scroll_into_view_options(&options);
+                    },
+                    Duration::ZERO,
+                );
+            }
         });
     };
 
@@ -270,9 +296,10 @@ fn TimeLine() -> impl IntoView {
 
             spawn_local(async move {
                 match get_timeline(&current_room_id, None).await {
-                    Ok(tl) => {
+                    Ok(result) => {
                         if state.active_room_id_untracked() == Some(current_room_id.clone()) {
-                            messages.set(tl.into_iter().map(RwSignal::new).collect());
+                            timeline_id.set(Some(result.timeline_id));
+                            messages.set(result.messages.into_iter().map(RwSignal::new).collect());
                             is_loading_top.set(false);
                         }
                     }
@@ -346,8 +373,9 @@ fn TimeLine() -> impl IntoView {
         spawn_local(async move {
             log::debug!("Fetching timeline around event {} in room {}", event_id, room_id);
             match get_timeline(&room_id, Some(event_id.clone())).await {
-                Ok(tl) => {
-                    messages.set(tl.into_iter().map(RwSignal::new).collect());
+                Ok(result) => {
+                    timeline_id.set(Some(result.timeline_id));
+                    messages.set(result.messages.into_iter().map(RwSignal::new).collect());
                     is_loading_top.set(false);
                     is_loading_bottom.set(false);
                     scroll_target.set(Some(event_id.clone()));

@@ -4,8 +4,6 @@ version = "0.1.0"
 edition = "2024"
 description = "A Tauri App"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [lib]
 crate-type = ["cdylib", "rlib", "staticlib"]
 # The `_lib` suffix may seem redundant but it is necessary
@@ -18,6 +16,7 @@ aes = "0.9.0"
 anyhow = "1.0.102"
 async-recursion = "1.1.1"
 base64 = "0.22.1"
+blurhash = "0.2.3"
 bs58 = "0.5.1"
 bytes = "1.11.1"
 chrono = "0.4.44"
@@ -33,15 +32,14 @@ hex = "0.4.3"
 hkdf = "0.13.0"
 hmac = "0.13.0"
 http = "1.4.0"
-blurhash = "0.2.3"
 image = "0.25.10"
 keyring-core = "1.0.0"
-klipy = {git = "https://github.com/Ragnar-D5/klipy-rs.git"}
+klipy = { git = "https://github.com/Ragnar-D5/klipy-rs.git" }
 linkify = "0.11.0"
 livekit = { version = "0.7.42", features = ["native-tls"] }
 log = "0.4.29"
 matrix-sdk = {
-  version = "0.17.0",
+  version = "0.18",
   features = [
     "anyhow",
     "e2e-encryption",
@@ -49,7 +47,7 @@ matrix-sdk = {
     "sqlite"
   ]
 }
-matrix-sdk-ui = "0.17.0"
+matrix-sdk-ui = "0.18"
 mime = "0.3.17"
 mime_guess = "2.0.5"
 percent-encoding = "2.3.2"

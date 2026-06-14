@@ -2,10 +2,10 @@ use klipy::{MediaItem, Page};
 use serde_json::json;
 use shared::{
     account_data::ServerOrder,
-    api::{FileMetadata, LinkPreviewResponse, ScrollDirection},
+    api::{FileMetadata, GetTimelineResult, LinkPreviewResponse, ScrollDirection},
     commands::Command,
     profile::UserProfile,
-    timeline::{UiMediaSource, UiTimelineItem},
+    timeline::UiMediaSource,
 };
 
 use crate::app::{call_tauri, call_tauri_no_args};
@@ -86,7 +86,7 @@ pub async fn get_commands() -> Result<Vec<Command>, String> {
 pub async fn get_timeline(
     room_id: &str,
     event_id: Option<String>,
-) -> Result<Vec<UiTimelineItem>, String> {
+) -> Result<GetTimelineResult, String> {
     let args = serde_wasm_bindgen::to_value(&json!({ "room_id": room_id, "event_id": event_id }))
         .map_err(|e| format!("Failed to serialize request: {:?}", e))?;
 
@@ -98,19 +98,20 @@ pub async fn get_timeline(
         .map_err(|e| format!("Failed to convert response to string: {:?}", e))?
         .into();
 
-    let res: Vec<UiTimelineItem> = serde_json::from_str(&json_string)
+    let res: GetTimelineResult = serde_json::from_str(&json_string)
         .map_err(|e| format!("Failed to parse JSON response: {:?}", e))?;
 
     Ok(res)
 }
 
 pub async fn scroll_timeline(
-    room_id: &str,
+    timeline_id: &str,
     scroll_direction: ScrollDirection,
 ) -> Result<bool, String> {
-    let args =
-        serde_wasm_bindgen::to_value(&json!({ "room_id": room_id, "direction": scroll_direction }))
-            .map_err(|e| format!("Failed to serialize request: {:?}", e))?;
+    let args = serde_wasm_bindgen::to_value(
+        &json!({ "timeline_id": timeline_id, "direction": scroll_direction }),
+    )
+    .map_err(|e| format!("Failed to serialize request: {:?}", e))?;
 
     let res = call_tauri("scroll_timeline", args)
         .await

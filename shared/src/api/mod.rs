@@ -98,3 +98,9 @@ pub enum ScrollDirection {
     Up,
     Down,
 }
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct GetTimelineResult {
+    pub timeline_id: String,
+    pub messages: Vec<crate::timeline::UiTimelineItem>,
+}
