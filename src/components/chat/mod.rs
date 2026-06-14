@@ -15,8 +15,7 @@ use crate::{
 };
 
 use phosphor_leptos::{
-    GIF, HASH, INFO, Icon, IconWeight, MATRIX_LOGO, PHONE, PHONE_DISCONNECT, SMILEY, SPEAKER_HIGH,
-    TRASH, UPLOAD_SIMPLE, X_CIRCLE,
+    GIF, HASH, INFO, Icon, IconWeight, MATRIX_LOGO, PHONE, PHONE_DISCONNECT, SMILEY, SPEAKER_HIGH, TRASH, UPLOAD_SIMPLE, USER_CIRCLE, USER_LIST, X_CIRCLE
 };
 
 use leptos::{ev, html::Div, prelude::*, task::spawn_local};
@@ -505,13 +504,25 @@ fn TypingUserIndicator() -> impl IntoView {
 #[component]
 fn ChatHeader(
     header: Memo<RoomHeader>,
-    chat_sidebar_open: ReadSignal<bool>,
-    set_chat_sidebar_open: WriteSignal<bool>,
+    chat_sidebar_open: RwSignal<bool>,
 ) -> impl IntoView {
     let member_store: ProfileStore = expect_context();
     let state: AppState = expect_context();
 
-    let (info_hovered, set_info_hovered) = signal(false);
+    let info_hovered = RwSignal::new(false);
+
+    Effect::new(move |_| {
+        let header = header.get();
+        chat_sidebar_open.set(matches!(header, RoomHeader::TextChannel(_) | RoomHeader::VoiceChannel(_)));
+    });
+
+    let toggle_icon = move || {
+        match header.get() {
+            RoomHeader::DM(_) => USER_CIRCLE,
+            RoomHeader::TextChannel(_) | RoomHeader::VoiceChannel(_) => USER_LIST,
+            _ => INFO,
+        }
+    };
 
     view! {
         <FloatingTile class="h-(--header-height) items-start flex-row gap-1 pl-[5px]">
@@ -596,23 +607,28 @@ fn ChatHeader(
                     class="transition-opacity h-full mr-1"
                     class=("text-(--ui-hover-color)", move || info_hovered.get())
                     class=("text-(--ui-base-color)", move || !info_hovered.get())
-                    on:click=move |_| set_chat_sidebar_open.update(|v| *v = !*v)
-                    on:mouseenter=move |_| set_info_hovered.set(true)
-                    on:mouseleave=move |_| set_info_hovered.set(false)
+                    on:click=move |_| chat_sidebar_open.update(|v| *v = !*v)
+                    on:mouseenter=move |_| info_hovered.set(true)
+                    on:mouseleave=move |_| info_hovered.set(false)
                 >
                     <div class="h-full justify-center items-center flex cursor-pointer">
-                        <Icon
-                            icon=INFO
-                            size="80%"
-                            color="currentColor"
-                            weight=move || {
-                                if chat_sidebar_open.get() {
-                                    IconWeight::Fill
-                                } else {
-                                    IconWeight::Light
-                                }
+                        {move || {
+                            let icon = toggle_icon();
+                            view! {
+                                <Icon
+                                    icon=icon
+                                    size="80%"
+                                    color="currentColor"
+                                    weight=move || {
+                                        if chat_sidebar_open.get() {
+                                            IconWeight::Fill
+                                        } else {
+                                            IconWeight::Light
+                                        }
+                                    }
+                                />
                             }
-                        />
+                        }}
                     </div>
                 </button>
             </div>
@@ -631,8 +647,8 @@ fn ChatHeader(
                             );
                         })
                     }
-                    on:mouseenter=move |_| set_info_hovered.set(true)
-                    on:mouseleave=move |_| set_info_hovered.set(false)
+                    on:mouseenter=move |_| info_hovered.set(true)
+                    on:mouseleave=move |_| info_hovered.set(false)
                 >
                     <div class="h-full justify-center items-center flex cursor-pointer">
                         <Icon
@@ -659,8 +675,8 @@ fn ChatHeader(
                             );
                         })
                     }
-                    on:mouseenter=move |_| set_info_hovered.set(true)
-                    on:mouseleave=move |_| set_info_hovered.set(false)
+                    on:mouseenter=move |_| info_hovered.set(true)
+                    on:mouseleave=move |_| info_hovered.set(false)
                 >
                     <div class="h-full justify-center items-center flex cursor-pointer">
                         <Icon
@@ -1248,18 +1264,14 @@ pub fn Chat() -> impl IntoView {
         move |_| state.get_room_header(member_store.clone())
     });
 
-    let (chat_sidebar_open, set_chat_sidebar_open) = signal(true);
+    let chat_sidebar_open = RwSignal::new(true);
 
     let input_info: RwSignal<Option<ChatInputInfo>> = RwSignal::new(None);
     provide_context(input_info);
 
     view! {
         <div class="flex-1 h-full flex gap-[var(--gap)] flex-col overflow-hidden">
-            <ChatHeader
-                header=header
-                chat_sidebar_open=chat_sidebar_open
-                set_chat_sidebar_open=set_chat_sidebar_open
-            />
+            <ChatHeader header=header chat_sidebar_open=chat_sidebar_open />
             <div class="flex flex-row h-full min-h-0">
                 <FloatingTile class="flex-1 flex flex-col h-full min-h-0 overflow-hidden">
                     {move || match state.active_room.get() {

@@ -708,8 +708,6 @@ pub async fn handle_to_device_messages(
     events: Vec<ProcessedToDeviceEvent>,
     app_handle: AppHandle,
 ) -> Result<(), TauriError> {
-    debug!("Handling to-device events");
-
     let key_updates = events
         .into_iter()
         .filter_map(|e| {
@@ -756,12 +754,6 @@ pub async fn handle_to_device_messages(
                 continue;
             }
         };
-        debug!(
-            "New key is {:?}",
-            general_purpose::STANDARD
-                .decode(update_event.1.keys.key.clone())
-                .unwrap()
-        );
 
         let livekit_room = &call_data.livekit_room;
 
@@ -799,8 +791,6 @@ pub async fn handle_to_device_messages(
                 debug!("Updated FrameCryptor key index for {id}");
             });
     }
-
-    debug!("Finished handling to-device events");
     Ok(())
 }
 
