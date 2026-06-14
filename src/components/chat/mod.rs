@@ -212,14 +212,9 @@ fn TimeLine() -> impl IntoView {
 
     let fetch_more = move |scroll_direction: ScrollDirection, loading: RwSignal<bool>, has_more: RwSignal<bool>| {
         let Some(id) = timeline_id.get_untracked() else {
-            log::error!("No active timeline ID, cannot fetch more messages");
             return;
         };
 
-        // For paginate_forwards: capture the first message element (sibling of the sentinel)
-        // BEFORE setting loading=true (while the sentinel is still in the DOM).
-        // After new messages are prepended in front of it, we'll scroll it back to
-        // the bottom of the viewport so the sentinel and new messages go off-screen.
         let forward_anchor: Option<web_sys::Element> = if matches!(scroll_direction, ScrollDirection::Down) {
             sentinel_ref_bottom
                 .get_untracked()
@@ -273,8 +268,6 @@ fn TimeLine() -> impl IntoView {
     let UseIntersectionObserverReturn { .. } = use_intersection_observer(
         sentinel_ref_bottom,
         move |entries: Vec<IntersectionObserverEntry>, _| {
-            log::debug!("Bottom sentinel intersecting: {}", entries[0].is_intersecting());
-            log::debug!("has_more_bottom: {}, is_loading_bottom: {}", has_more_bottom.get(), is_loading_bottom.get());
             if entries[0].is_intersecting()
                 && has_more_bottom.get()
                 && !is_loading_bottom.get()
