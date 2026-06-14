@@ -1,14 +1,29 @@
 use leptos::prelude::*;
+use leptos_use::use_resize_observer;
 use shared::{sidebar::RoomNode, ColorExt};
+use web_sys::ResizeObserverEntry;
 
 use crate::{
     components::user_profile::MemberProfileExt,
     state::{AppState, ProfileStore},
 };
 
-pub fn render_call_view(node: RoomNode) -> impl IntoView {
+#[component]
+pub fn CallView(node: RoomNode) -> impl IntoView {
     let state: AppState = expect_context();
     let store: ProfileStore = expect_context();
+
+    let container_ref = NodeRef::<leptos::html::Div>::new();
+    let (is_large, set_is_large) = signal(false);
+    use_resize_observer(
+        container_ref,
+        move |entries: Vec<ResizeObserverEntry>, _| {
+            if let Some(entry) = entries.first() {
+                let rect = entry.content_rect();
+                set_is_large.set(rect.width() > 400.0 && rect.height() > 400.0);
+            }
+        },
+    );
 
     let room_id = node.room_id.clone();
     let part_room_id = room_id.clone();
@@ -61,16 +76,25 @@ pub fn render_call_view(node: RoomNode) -> impl IntoView {
                             let clone = profile.clone();
                             view! {
                                 <div
-                                    class=format!(
-                                        "{} aspect-video rounded-2xl flex flex-col items-center justify-center overflow-hidden transition-all duration-300 rounded-3xl",
-                                        width_class,
-                                    )
-                                    style=colors
+                                    class=move || {
+                                        if is_large.get() {
+                                            format!(
+                                                "{} aspect-video rounded-3xl flex flex-col items-center justify-center overflow-hidden transition-all duration-300",
+                                                width_class,
+                                            )
+                                        } else {
+                                            "flex flex-col items-center justify-center transition-all duration-300"
+                                                .to_string()
+                                        }
+                                    }
+                                    style=move || {
+                                        if is_large.get() { colors() } else { String::new() }
+                                    }
                                 >
-
-                                    // Discord-like Avatar Placeholder
                                     {move || profile.get().render_icon("64px")}
-                                    {move || clone.get().render_name("16px")}
+                                    {move || {
+                                        is_large.get().then(|| clone.get().render_name("16px"))
+                                    }}
                                 </div>
                             }
                         })
@@ -81,5 +105,10 @@ pub fn render_call_view(node: RoomNode) -> impl IntoView {
         }
     };
 
-    view! { <div class="flex w-full h-full bg-(--ui-solid-bg)">{content}</div> }.into_any()
+    view! {
+        <div node_ref=container_ref class="flex w-full h-full bg-(--ui-solid-bg)">
+            {content}
+        </div>
+    }
+    .into_any()
 }

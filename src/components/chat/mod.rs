@@ -3,7 +3,7 @@ use std::time::Duration;
 use crate::{
     app::{call_tauri, convertFileSrc, format_bytes},
     components::{
-        FloatingTile, TypingIndicator, chat::{calls::render_call_view, messages::render_timeline_item}, input::{
+        FloatingTile, TypingIndicator, chat::{calls::CallView, messages::render_timeline_item}, input::{
             get_active_filter, get_caret_position, handle_input, handle_keydown,
             insert_text_at_caret,
             menu::{MenuCompletionMatches, MenuType, SelectionMenu},
@@ -1286,14 +1286,45 @@ pub fn Chat() -> impl IntoView {
                         Some(node) => {
                             match &node.kind {
                                 RoomKind::Dm { .. } | RoomKind::TextChannel => {
+                                    let Some(room_id) = state.active_room_id() else {
+                                        return ().into_any();
+                                    };
+                                    let call_members = state.get_call_members(&room_id).get();
+                                    let call_view = if !call_members.is_empty() {
+
+                                        view! {
+                                            <div class="h-50 w-full border-(--tile-border-color) border-b">
+                                                <CallView node=node />
+                                            </div>
+                                        }
+                                            .into_any()
+                                    } else {
+                                        ().into_any()
+                                    };
+
                                     view! {
+                                        {call_view}
                                         <TimeLine />
                                         <TypingUserIndicator />
                                         <ChatInput />
                                     }
                                         .into_any()
                                 }
-                                RoomKind::VoiceChannel => render_call_view(node).into_any(),
+                                RoomKind::VoiceChannel => {
+                                    view! {
+                                        <div class="flex flex-row gap-(--gap) h-full w-full">
+                                            <div class="flex flex-1 h-full border-(--tile-border-color) border-r">
+                                                <CallView node=node />
+                                            </div>
+                                            <div class="flex flex-col h-full min-h-0 w-100">
+                                                <TimeLine />
+                                                <TypingUserIndicator />
+                                                <ChatInput />
+                                            </div>
+                                        </div>
+                                    }
+                                        .into_any()
+                                }
                                 RoomKind::Space { .. } => {
                                     view! {
                                         <div class="flex-1 flex items-center justify-center text-muted">
