@@ -1,11 +1,11 @@
-use phosphor_leptos::{HASH, Icon, IconData, IconWeight, MATRIX_LOGO, SPEAKER_HIGH};
-use shared::{get_color, profile::MemberProfile, unknown_color};
+use phosphor_leptos::{Icon, IconData, IconWeight, HASH, MATRIX_LOGO, SPEAKER_HIGH};
+use shared::{get_color, profile::MemberProfile, sidebar::UserDevice, unknown_color};
 
 use crate::{
     components::{
-        DeafenMenu, FloatingTile, MuteMenu, SettingsIcon,
         presence::PresenceBadge,
-        user_profile::{MemberProfileExt, render_url_icon},
+        user_profile::{render_url_icon, MemberProfileExt},
+        DeafenMenu, FloatingTile, MuteMenu, SettingsIcon,
     },
     state::{AppState, ProfileStore},
 };
@@ -84,18 +84,19 @@ fn DmDiv(dm: RoomNode) -> impl IntoView {
     let failed = RwSignal::new(avatar_url.is_none());
     let first_char = name.chars().next().unwrap_or('?').to_string();
     let avatar_content = view! {
-        {avatar_url.map(|url| {
-            view! {
-                <img
-                    class="avatar-img w-8 h-8 rounded-full object-cover"
-                    class:hidden=failed
-                    src=url
-                    alt=name.clone()
-                    on:error=move |_| failed.set(true)
-                    on:load=move |_| failed.set(false)
-                />
-            }
-        })}
+        {avatar_url
+            .map(|url| {
+                view! {
+                    <img
+                        class="avatar-img w-8 h-8 rounded-full object-cover"
+                        class:hidden=failed
+                        src=url
+                        alt=name.clone()
+                        on:error=move |_| failed.set(true)
+                        on:load=move |_| failed.set(false)
+                    />
+                }
+            })}
         <TextCircle
             text=first_char
             color=color
@@ -104,6 +105,8 @@ fn DmDiv(dm: RoomNode) -> impl IntoView {
         />
     };
 
+    let call_room_id = dm.room_id.clone();
+
     let notifications = move || {
         state
             .notification_counts
@@ -111,6 +114,35 @@ fn DmDiv(dm: RoomNode) -> impl IntoView {
             .get(&dm.room_id)
             .cloned()
             .unwrap_or_default()
+    };
+
+    let call_icon = move || {
+        let members_in_call = state.get_call_members(&call_room_id).get();
+        if !members_in_call.is_empty() {
+            let user_in_call = members_in_call
+                .iter()
+                .any(|d| d.user_id == state.user_id.get());
+
+            Some(
+                view! {
+                    <div class="pl-2 h-full items-center flex">
+                        <Icon
+                            icon=SPEAKER_HIGH
+                            weight=IconWeight::Fill
+                            size="16px"
+                            color=if user_in_call {
+                                "var(--online-color)"
+                            } else {
+                                "var(--offline-color)"
+                            }
+                        />
+                    </div>
+                }
+                .into_any(),
+            )
+        } else {
+            None
+        }
     };
 
     view! {
@@ -125,6 +157,7 @@ fn DmDiv(dm: RoomNode) -> impl IntoView {
             >
                 <PresenceBadge presence=presence>{avatar_content}</PresenceBadge>
                 <span class="inline-block align-center pl-2">{name}</span>
+                {call_icon}
                 {move || {
                     let notifications = notifications().notification_count;
                     if notifications > 0 {
@@ -253,6 +286,100 @@ pub fn CutoutBadge(
             {render_corner(bottom_right, "-bottom-0 -right-0")}
             {render_corner(bottom_left, "-bottom-0 -left-0")}
             {render_corner(top_left, "-top-0 -left-0")}
+        </div>
+    }
+}
+
+fn render_dm_preview(dm: RoomNode, members: Option<Vec<UserDevice>>) -> impl IntoView {
+    let state: AppState = expect_context();
+
+    let click_id = dm.room_id.to_string();
+    let clone = click_id.clone();
+
+    let initial = dm
+        .name
+        .clone()
+        .unwrap_or_else(|| "Unnamed".to_string())
+        .chars()
+        .next()
+        .unwrap_or_default()
+        .to_string();
+
+    let is_active = Memo::new(move |_| state.active_room_id() == Some(click_id.clone()));
+    let room_id_for_count = dm.room_id.clone();
+
+    let notifications = Memo::new(move |_| {
+        state
+            .notification_counts
+            .get()
+            .get(&room_id_for_count)
+            .cloned()
+            .unwrap_or_default()
+    });
+
+    let br_corner = move || {
+        if notifications.get().has_notifications() {
+            Some(CutoutBadgeCorner {
+                fg_color: "white".to_string(),
+                bg_color: "var(--mention-color)".to_string(),
+                content: CutoutBadgeContent::Number(notifications.get().notification_count),
+            })
+        } else {
+            None
+        }
+    };
+
+    let tr_corner = move || {
+        if let Some(members) = &members {
+            let user_ids_in_calls = members
+                .iter()
+                .map(|d| d.user_id.clone())
+                .collect::<Vec<_>>();
+
+            if !user_ids_in_calls.is_empty() {
+                let user_in_call = user_ids_in_calls.contains(&state.user_id.get());
+                Some(CutoutBadgeCorner {
+                    fg_color: "white".to_string(),
+                    bg_color: if user_in_call {
+                        "var(--online-color)".to_string()
+                    } else {
+                        "var(--offline-color)".to_string()
+                    },
+                    content: CutoutBadgeContent::Icon(SPEAKER_HIGH),
+                })
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    };
+
+    view! {
+        <div class="h-2"></div>
+        <div
+            class="relative flex items-center justify-center group w-full cursor-pointer"
+            on:click=move |_| {
+                state.set_active_server_id(None);
+                state.set_active_room_with_id(Some(clone.clone()));
+            }
+        >
+            <IndicatorPill
+                is_active=is_active
+                has_notifications=move || { notifications.get().has_notifications() }
+            />
+
+            <CutoutBadge bottom_right=br_corner top_right=tr_corner class="justify-center flex">
+                <div class="avatar-circle w-10 h-10 rounded-full" style:justify-content="center">
+                    {render_url_icon(
+                        dm.avatar_url(),
+                        initial,
+                        "40px",
+                        get_color(&dm.dm_user_id().unwrap_or_default()),
+                        "full",
+                    )}
+                </div>
+            </CutoutBadge>
         </div>
     }
 }
@@ -516,21 +643,29 @@ pub fn Sidebar() -> impl IntoView {
     let active_dms = Memo::new(move |_| {
         let notifications = state.notification_counts.get();
 
-        state.sidebar_state.with(|state| {
-            state
-                .dms
-                .iter()
-                .filter(|dm| {
-                    notifications
-                        .get(&dm.room_id)
-                        .cloned()
-                        .unwrap_or_default()
-                        .notification_count
-                        > 0
-                })
-                .cloned()
-                .collect::<Vec<_>>()
-        })
+        let sidebar = state.sidebar_state.get();
+
+        sidebar
+            .dms
+            .into_iter()
+            .filter_map(|dm| {
+                let has_notifications = notifications
+                    .get(&dm.room_id)
+                    .cloned()
+                    .unwrap_or_default()
+                    .notification_count
+                    > 0;
+
+                let call_members = state.get_call_members(&dm.room_id).get();
+
+                if !has_notifications && call_members.is_empty() {
+                    None
+                } else {
+                    let members = (!call_members.is_empty()).then_some(call_members);
+                    Some((dm, members))
+                }
+            })
+            .collect::<Vec<_>>()
     });
 
     view! {
@@ -584,76 +719,8 @@ pub fn Sidebar() -> impl IntoView {
 
                     <For
                         each=move || active_dms.get()
-                        key=|dm| dm.room_id.to_string()
-                        children=move |dm| {
-                            let click_id = dm.room_id.to_string();
-                            let clone = click_id.clone();
-                            let initial = dm
-                                .name
-                                .clone()
-                                .unwrap_or_else(|| "Unnamed".to_string())
-                                .chars()
-                                .next()
-                                .unwrap_or_default()
-                                .to_string();
-                            let is_active = Memo::new(move |_| {
-                                state.active_room_id() == Some(click_id.clone())
-                            });
-                            let room_id_for_count = dm.room_id.clone();
-                            let notifications = Memo::new(move |_| {
-                                state
-                                    .notification_counts
-                                    .get()
-                                    .get(&room_id_for_count)
-                                    .cloned()
-                                    .unwrap_or_default()
-                            });
-                            let corner = move || {
-                                if notifications.get().has_notifications() {
-                                    Some(CutoutBadgeCorner {
-                                        fg_color: "white".to_string(),
-                                        bg_color: "var(--mention-color)".to_string(),
-                                        content: CutoutBadgeContent::Number(
-                                            notifications.get().notification_count,
-                                        ),
-                                    })
-                                } else {
-                                    None
-                                }
-                            };
-                            view! {
-                                <div class="h-2"></div>
-                                <div
-                                    class="relative flex items-center justify-center group w-full cursor-pointer"
-                                    on:click=move |_| {
-                                        state.set_active_server_id(None);
-                                        state.set_active_room_with_id(Some(clone.clone()));
-                                    }
-                                >
-                                    <IndicatorPill
-                                        is_active=is_active
-                                        has_notifications=move || {
-                                            notifications.get().has_notifications()
-                                        }
-                                    />
-
-                                    <CutoutBadge bottom_right=corner class="justify-center flex">
-                                        <div
-                                            class="avatar-circle w-10 h-10 rounded-full"
-                                            style:justify-content="center"
-                                        >
-                                            {render_url_icon(
-                                                dm.avatar_url(),
-                                                initial,
-                                                "40px",
-                                                get_color(&dm.dm_user_id().unwrap_or_default()),
-                                                "full",
-                                            )}
-                                        </div>
-                                    </CutoutBadge>
-                                </div>
-                            }
-                        }
+                        key=|(dm, _)| dm.room_id.to_string()
+                        children=move |(dm, members)| { render_dm_preview(dm, members) }
                     />
 
                     <div class="w-8 h-[1px] bg-red-500 rounded-full my-2 gap-[1px]"></div>
@@ -814,8 +881,8 @@ pub fn ProfileCard() -> impl IntoView {
     };
 
     view! {
-        <div class="flex items-center justify-start w-full h-full px-2 gap-2">{current_room_profile}
-            <div class="ml-auto flex items-center h-full gap-2">
+        <div class="flex items-center justify-start w-full h-full px-2 gap-2">
+            {current_room_profile} <div class="ml-auto flex items-center h-full gap-2">
                 <MuteMenu />
                 <DeafenMenu />
                 <SettingsIcon />
