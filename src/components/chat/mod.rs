@@ -3,11 +3,11 @@ use std::time::Duration;
 use crate::{
     app::{call_tauri, convertFileSrc, format_bytes},
     components::{
-        FloatingTile, TypingIndicator, chat::messages::render_timeline_item, input::{
+        FloatingTile, TypingIndicator, chat::{calls::render_call_view, messages::render_timeline_item}, input::{
             get_active_filter, get_caret_position, handle_input, handle_keydown,
             insert_text_at_caret,
             menu::{MenuCompletionMatches, MenuType, SelectionMenu},
-        }, overlays::emoji_picker::{EmojiPickerState, pick_emoji}, overlays::gif_picker::{GifPickerState, pick_gif}, presence::PresenceBadge, user_profile::MemberProfileExt
+        }, overlays::{emoji_picker::{EmojiPickerState, pick_emoji}, gif_picker::{GifPickerState, pick_gif}}, presence::PresenceBadge, user_profile::MemberProfileExt
     },
     hooks::use_tauri_event,
     state::{AppState, ProfileStore, RoomHeader},
@@ -22,7 +22,6 @@ use phosphor_leptos::{
 use leptos::{ev, html::Div, prelude::*, task::spawn_local};
 use leptos_use::{UseIntersectionObserverReturn, use_event_listener, use_intersection_observer};
 use shared::{
-    ColorExt,
     api::{FileMetadata, ScrollDirection, UiAttachmentSource},
     profile::{MemberProfile, PresenceInfo},
     sidebar::RoomKind,
@@ -37,6 +36,7 @@ use web_sys::{
 };
 
 pub(crate) mod messages;
+pub(crate) mod calls;
 
 #[component]
 fn TimeLine() -> impl IntoView {
@@ -1250,10 +1250,6 @@ pub fn Chat() -> impl IntoView {
 
     let (chat_sidebar_open, set_chat_sidebar_open) = signal(true);
 
-    let room_id = move || state.active_room_id().unwrap_or_default();
-
-    let participants = Memo::new(move |_| state.get_call_members(&room_id()).get());
-
     let input_info: RwSignal<Option<ChatInputInfo>> = RwSignal::new(None);
     provide_context(input_info);
 
@@ -1285,72 +1281,7 @@ pub fn Chat() -> impl IntoView {
                                     }
                                         .into_any()
                                 }
-                                RoomKind::VoiceChannel => {
-                                    let participants = participants.get();
-                                    if participants.is_empty() {
-                                        view! {
-                                            <div class="flex-1 flex items-center justify-center text-muted flex-col gap-2 bg-radial-[at_50%_100%] from-(--accent-color) to-transparent to-80% w-full h-full">
-                                                <span class="text-3xl text-bright font-bold text-shadow-xs">
-                                                    {node.get_name()}
-                                                </span>
-                                                <span class="text-muted">
-                                                    "No one is currently in this voice channel"
-                                                </span>
-                                            </div>
-                                        }
-                                            .into_any()
-                                    } else {
-                                        let count = participants.len();
-                                        let width_class = match count {
-                                            1 => "w-full max-w-5xl",
-                                            2 => "w-[calc(50%-0.5*var(--gap))] max-w-3xl",
-                                            3 | 4 => "w-[calc(50%-0.5*var(--gap))] max-w-2xl",
-                                            5..=6 => "w-[calc(33.33%-0.66*var(--gap))] max-w-xl",
-                                            7..=9 => "w-[calc(33.33%-0.66*var(--gap))] max-w-lg",
-                                            10..=12 => "w-[calc(25%-0.75*var(--gap))] max-w-md",
-                                            _ => "w-[calc(20%-0.8*var(--gap))] max-w-sm",
-                                        };
-
-                                        view! {
-                                            <div class="flex-1 flex flex-wrap justify-center content-center w-full h-full min-h-0 gap-[var(--gap)] p-[var(--gap)] overflow-y-auto">
-                                                {participants
-                                                    .iter()
-                                                    .map(|device| {
-                                                        let profile = member_store
-                                                            .get_member_profile(&node.room_id, &device.user_id);
-                                                        let clone = profile.clone();
-                                                        let colors = move || {
-                                                            let mut color = clone.get().banner_color();
-                                                            let fg_color = color.clone().to_css_hsl();
-                                                            color.set_lightness(0.1);
-                                                            format!(
-                                                                "background-color: {}; box-shadow: inset 0 0 20px 0px {};",
-                                                                color.to_css_hsl(),
-                                                                fg_color,
-                                                            )
-                                                        };
-                                                        let clone = profile.clone();
-                                                        view! {
-                                                            <div
-                                                                class=format!(
-                                                                    "{} aspect-video rounded-2xl flex flex-col items-center justify-center overflow-hidden transition-all duration-300 rounded-3xl",
-                                                                    width_class,
-                                                                )
-                                                                style=colors
-                                                            >
-
-                                                                // Discord-like Avatar Placeholder
-                                                                {move || profile.get().render_icon("64px")}
-                                                                {move || clone.get().render_name("16px")}
-                                                            </div>
-                                                        }
-                                                    })
-                                                    .collect_view()}
-                                            </div>
-                                        }
-                                            .into_any()
-                                    }
-                                }
+                                RoomKind::VoiceChannel => render_call_view(node).into_any(),
                                 RoomKind::Space { .. } => {
                                     view! {
                                         <div class="flex-1 flex items-center justify-center text-muted">

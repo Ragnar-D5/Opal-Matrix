@@ -908,16 +908,33 @@ fn render_system_message(
                 "started a call"
             };
 
-            let declined_string = if !declined_by.is_empty() {
-                format!(" which was declined by {}", declined_by.join(", "))
+            let declined_views = declined_by.iter().map(|user_id| {
+                let profile_sig = store.get_member_profile(&room_id, user_id);
+                let name_sig = profile_sig.clone();
+
+                view! {
+                    <div class="flex items-center gap-1 pr-1">
+                        {move || profile_sig.get().render_icon("20px")}
+                        {move || name_sig.get().render_name("16px")}
+                    </div>
+                }                .into_any()
+            });
+
+            let declined_view = if !declined_by.is_empty() {
+                declined_views.collect_view().into_any()
             } else {
-                "".to_string()
+                ().into_any()
             };
 
             view! {
-                <div class="flex flex-row gap-1">
+                <div class="flex flex-column gap-1.5">
                     {user_div(&sender_id_str)}
-                    <span>{format!("started {intent_string}{declined_string}")}</span>
+                    <span>
+                        {format!(
+                            "started {intent_string}{}",
+                            if !declined_by.is_empty() { " which was declined by" } else { "" },
+                        )}
+                    </span> {declined_view}
                 </div>
             }
             .into_any()
