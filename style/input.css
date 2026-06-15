@@ -5,19 +5,15 @@
     --color-item-selected: rgba(255, 255, 255, 0.1);
     --bg-color: #1e1e2e;
     --tile-bg-color: rgba(0, 0, 0, 0.3);
-    
-    --dim-text-color: hsl(220, 15%, 65%);     
-    --text-color: hsl(220, 25%, 82%);         
-    --bright-text-color: hsl(220, 25%, 95%);  
-    --muted-text-color: hsl(220, 35%, 62%);   
-    
+
+    --dim-text-color: hsl(220, 15%, 65%);
+    --text-color: hsl(220, 25%, 82%);
+    --bright-text-color: hsl(220, 25%, 95%);
+    --muted-text-color: hsl(220, 35%, 62%);
+
     --tile-border-color: rgba(255, 255, 255, 0.175);
     --gap: 5px;
     --mention-color: rgb(255, 100, 100);
-    --presence-online-color: rgb(100, 255, 100);
-    --presence-idle-color: rgb(255, 255, 100);
-    --presence-busy-color: rgb(255, 100, 100);
-    --presence-offline-color: rgb(150, 150, 150);
 
     --accent-color: #46aec5;
     --accent-bg-color: #183c43;
@@ -98,14 +94,16 @@
 }
 
 @utility text-normal {
-    color: var(--text-color, #f2f3f5);}
+    color: var(--text-color, #f2f3f5);
+}
 
 @utility text-bright {
     color: var(--bright-text-color, #ffffff);
 }
 
 @utility text-muted {
-    color: var(--muted-text-color, #a2aeff);}
+    color: var(--muted-text-color, #a2aeff);
+}
 
 @utility typing-indicator {
     animation: grow-change-color 1.4s infinite ease-in-out both;
