@@ -26,8 +26,8 @@ use crate::{
         CloseButton, TextCircle, TextCircleProps,
         blurhash::Blurhash,
         chat::{Attachment, ChatInputInfo},
-        overlays::{emoji_picker::{EmojiPickerState, pick_emoji}},
         input::move_caret_to_end,
+        overlays::emoji_picker::{EmojiPickerState, pick_emoji},
         previews::render_link,
         text::{RichTextExt, richt_text_spans_to_html},
         user_profile::{MemberProfileExt, render_profile_name},
@@ -691,7 +691,7 @@ fn render_system_message(
             let before = if let Some(change) = &change {
                 match change {
                     UiMembershipChange::Joined => {
-                        view! { <Icon icon=ARROW_RIGHT color="var(--online-color)" weight=IconWeight::Bold size="15px" /> }.into_any()
+                        view! { <Icon icon=ARROW_RIGHT color="var(--status-online)" weight=IconWeight::Bold size="15px" /> }.into_any()
                     }
                     _ => ().into_any(),
                 }
@@ -917,7 +917,8 @@ fn render_system_message(
                         {move || profile_sig.get().render_icon("20px")}
                         {move || name_sig.get().render_name("16px")}
                     </div>
-                }                .into_any()
+                }
+                .into_any()
             });
 
             let declined_view = if !declined_by.is_empty() {
@@ -1185,7 +1186,7 @@ fn MesssageButtons(
             </div>
             <div class="flex gap-2 pt-2 justify-end w-full">
                 <button
-                    class="px-4 py-1.5 rounded-(--ui-border-radius) text-sm bg-(--ui-solid-hover-bg) hover:bg-(--ui-floating-hover-bg) text-(--text-color) cursor-pointer border border-(--tile-border-color) flex flex-grow items-center justify-center"
+                    class="px-4 py-1.5 rounded-(--ui-border-radius) text-sm bg-(--ui-solid-hover-bg) hover:bg-(--ui-floating-hover-bg) text-normal cursor-pointer border border-(--tile-border-color) flex flex-grow items-center justify-center"
                     on:click=move |_| show_delete_confirm.set(false)
                 >
                     "Cancel"
@@ -1276,7 +1277,9 @@ fn render_timeline_event(
     let this_event_id = event_id.clone();
     Effect::new(move |_| {
         let Some(el) = node_ref.get() else { return };
-        let Some(target) = scroll_target.get() else { return };
+        let Some(target) = scroll_target.get() else {
+            return;
+        };
         if Some(&target) == this_event_id.as_ref() {
             let options = web_sys::ScrollIntoViewOptions::new();
             options.set_behavior(web_sys::ScrollBehavior::Smooth);
@@ -1524,20 +1527,25 @@ pub fn render_timeline_item(
             let is_today = date.date_naive() == Local::now().date_naive();
             let is_yesterday = date.date_naive()
                 == (Local::now().date_naive() - chrono::Duration::days(1));
+            let is_week_ago = date > Local::now() - chrono::Duration::days(7);
 
             let label = if is_today {
                 "Today".to_string()
             } else if is_yesterday {
                 "Yesterday".to_string()
             } else {
-                date.format("%d %B %Y").to_string()
+                date.format(&format!("{}%d %B %Y", if is_week_ago {
+                    "%a "
+                } else {
+                    ""
+                })).to_string()
             };
 
             view! {
                 <div class="flex items-center gap-2 mt-4 drop-shadow">
-                    <div class="flex-1 border-t-1 border-[var(--muted-text-color)] bdf"></div>
+                    <div class="flex-1 border-t-1 border-(--tile-border-color) bdf"></div>
                     <span class="text-muted text-sm bdf-text">{label}</span>
-                    <div class="flex-1 border-t-1 border-[var(--muted-text-color)] bdf"></div>
+                    <div class="flex-1 border-t-1 border-(--tile-border-color) bdf"></div>
                 </div>
             }
         }
@@ -1584,7 +1592,7 @@ pub fn render_timeline_item(
                             icon=icon
                             size="36px"
                             weight=IconWeight::Bold
-                            color="var(--text-color)"
+                            color="var(--text-base)"
                         />
                     </div>
                     <h2 class="text-3xl font-bold text-bright">{heading}</h2>

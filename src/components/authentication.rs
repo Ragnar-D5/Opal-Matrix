@@ -168,7 +168,7 @@ pub fn LoginPage(window: RwSignal<CurrentWindow>) -> impl IntoView {
     view! {
         <div class="relative flex items-center justify-center w-full text-(--accent-color) text-3xl font-bold pb-5">
             <button
-                class="absolute left-0 -translate-y-1/2 hover:underline text-sm text-(--dim-text-color) cursor-pointer select-none"
+                class="absolute left-0 -translate-y-1/2 hover:underline text-sm text-dim cursor-pointer select-none"
                 on:click=move |_| window.set(CurrentWindow::HomeserverDiscovery)
             >
                 "⟵ back"
@@ -182,7 +182,7 @@ pub fn LoginPage(window: RwSignal<CurrentWindow>) -> impl IntoView {
                 <input
                     id="username-input"
                     placeholder="luke"
-                    class="p-2.5 text-xl rounded-lg select-none w-full bg-(--ui-floating-bg) placeholder:text-(--muted-text-color) text-(--text-color) border border-(--tile-border-color) outline-none focus:border-(--accent-color) focus:bg-(--ui-floating-hover-bg) mb-5"
+                    class="p-2.5 text-xl rounded-lg select-none w-full bg-(--ui-floating-bg) placeholder:text-muted text-normal border border-(--tile-border-color) outline-none focus:border-(--accent-color) focus:bg-(--ui-floating-hover-bg) mb-5"
                     node_ref=username_ref
                     on:input=move |ev| username.set(event_target_value(&ev))
                 />
@@ -193,7 +193,7 @@ pub fn LoginPage(window: RwSignal<CurrentWindow>) -> impl IntoView {
                 <input
                     id="password-input"
                     placeholder="••••••••"
-                    class="p-2.5 text-xl rounded-lg select-none w-full bg-(--ui-floating-bg) placeholder:text-(--muted-text-color) text-(--text-color) border border-(--tile-border-color) outline-none focus:border-(--accent-color) focus:bg-(--ui-floating-hover-bg) mb-5"
+                    class="p-2.5 text-xl rounded-lg select-none w-full bg-(--ui-floating-bg) placeholder:text-muted text-normal border border-(--tile-border-color) outline-none focus:border-(--accent-color) focus:bg-(--ui-floating-hover-bg) mb-5"
                     on:input=move |ev| password.set(event_target_value(&ev))
                     type="password"
                 />
@@ -204,7 +204,7 @@ pub fn LoginPage(window: RwSignal<CurrentWindow>) -> impl IntoView {
                 <input
                     id="recovery-key-input"
                     placeholder="Es9X xxxx xxxx..."
-                    class="p-2.5 text-xl rounded-lg select-none w-full bg-(--ui-floating-bg) placeholder:text-(--muted-text-color) text-(--text-color) border border-(--tile-border-color) outline-none focus:border-(--accent-color) focus:bg-(--ui-floating-hover-bg)"
+                    class="p-2.5 text-xl rounded-lg select-none w-full bg-(--ui-floating-bg) placeholder:text-muted text-normal border border-(--tile-border-color) outline-none focus:border-(--accent-color) focus:bg-(--ui-floating-hover-bg)"
                     on:input=move |ev| recovery_key.set(event_target_value(&ev))
                     type="password"
                 />
@@ -218,8 +218,8 @@ pub fn LoginPage(window: RwSignal<CurrentWindow>) -> impl IntoView {
                 class=("bg-(--confirm-color)", move || is_valid())
                 class=("text-(--confirm-text-color)", move || is_valid())
                 class=("cursor-pointer", move || is_valid())
-                class=("bg-(--muted-text-color)", move || !is_valid())
-                class=("text-(--text-color)", move || !is_valid())
+                class=("bg-(--text-muted)", move || !is_valid())
+                class=("text-normal", move || !is_valid())
                 class=("cursor-not-allowed", move || !is_valid())
                 class=("hover:bg-(--confirm-hover-color)", move || is_valid())
                 disabled=move || !is_valid()
@@ -328,7 +328,7 @@ pub fn HomeserverDiscoveryPage(window: RwSignal<CurrentWindow>) -> impl IntoView
             type="text"
             node_ref=input_ref
             placeholder="example.org"
-            class="p-2.5 text-xl rounded-lg select-none w-full bg-(--ui-floating-bg) placeholder:text-(--muted-text-color) text-(--text-color) border border-(--tile-border-color) outline-none focus:border-(--accent-color) focus:bg-(--ui-floating-hover-bg)"
+            class="p-2.5 text-xl rounded-lg select-none w-full bg-(--ui-floating-bg) placeholder:text-muted text-normal border border-(--tile-border-color) outline-none focus:border-(--accent-color) focus:bg-(--ui-floating-hover-bg)"
             autofocus
             on:input=move |ev| {
                 status_message.set(DiscoveryStatus::Checking);
@@ -351,8 +351,8 @@ pub fn HomeserverDiscoveryPage(window: RwSignal<CurrentWindow>) -> impl IntoView
             class=("bg-(--confirm-color)", move || is_valid.get())
             class=("text-(--confirm-text-color)", move || is_valid.get())
             class=("cursor-pointer", move || is_valid.get())
-            class=("bg-(--muted-text-color)", move || !is_valid.get())
-            class=("text-(--text-color)", move || !is_valid.get())
+            class=("bg-(--text-muted)", move || !is_valid.get())
+            class=("text-normal", move || !is_valid.get())
             class=("cursor-not-allowed", move || !is_valid.get())
             class=("hover:bg-(--confirm-hover-color)", move || is_valid.get())
             disabled=move || !is_valid.get()

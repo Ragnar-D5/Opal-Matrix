@@ -217,14 +217,14 @@ pub fn EmojiPickerPortal() -> impl IntoView {
                 // search bar
                 <div class="p-2 border-b border-(--tile-border-color) flex-shrink-0">
                     <div class="relative flex items-center">
-                        <div class="absolute left-2 flex items-center pointer-events-none text-(--muted-text-color)">
+                        <div class="absolute left-2 flex items-center pointer-events-none text-muted">
                             <Icon icon=MAGNIFYING_GLASS weight=IconWeight::Bold size="14px" />
                         </div>
                         <input
                             type="text"
                             node_ref=search_ref
                             placeholder="Search emoji..."
-                            class="w-full bg-(--ui-solid-bg) border border-(--tile-border-color) rounded-(--ui-border-radius) pl-7 pr-2 py-1 text-sm text-(--bright-text-color) outline-none"
+                            class="w-full bg-(--ui-solid-bg) border border-(--tile-border-color) rounded-(--ui-border-radius) pl-7 pr-2 py-1 text-sm text-bright outline-none"
                             on:input=move |ev| {
                                 let el = ev
                                     .target()
@@ -250,7 +250,7 @@ pub fn EmojiPickerPortal() -> impl IntoView {
                             .map(|&group| {
                                 view! {
                                     <button
-                                        class="p-1.5 rounded text-base cursor-pointer flex-shrink-0 transition-colors text-(--muted-text-color) hover:text-(--bright-text-color)"
+                                        class="p-1.5 rounded text-base cursor-pointer flex-shrink-0 transition-colors text-muted hover:text-bright"
                                         class=(
                                             "bg-(--ui-hover-bg)",
                                             move || active_group.get() == group,
@@ -301,7 +301,7 @@ pub fn EmojiPickerPortal() -> impl IntoView {
                                                     <div id=format!("emoji-group-{group:?}")>
                                                         // Sticky group header / dropdown trigger
                                                         <button
-                                                            class="sticky top-[-8px] z-10 w-full flex items-center bg-(--ui-floating-hover-bg) backdrop-blur-md py-1 mb-1 px-1 text-sm font-semibold text-(--text-color) hover:text-(--bright-text-color) cursor-pointer transition-colors"
+                                                            class="sticky top-[-8px] z-10 w-full flex items-center bg-(--ui-floating-hover-bg) backdrop-blur-md py-1 mb-1 px-1 text-sm font-semibold text-normal hover:text-bright cursor-pointer transition-colors"
                                                             on:click=move |_| {
                                                                 if let Some(el) = search_ref.get() {
                                                                     let _ = el.focus();
@@ -395,7 +395,7 @@ pub fn EmojiPickerPortal() -> impl IntoView {
                                         .into_any()
                                 } else {
                                     view! {
-                                        <div class="w-full h-full flex flex-col items-center justify-center text-(--muted-text-color)">
+                                        <div class="w-full h-full flex flex-col items-center justify-center text-muted">
                                             <Icon
                                                 icon=SMILEY_SAD
                                                 size="100px"

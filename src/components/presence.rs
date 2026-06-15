@@ -21,7 +21,7 @@ pub fn PresenceBadge(
         >
             {move || match presence.get().status {
                 PresenceStatus::Online => {
-                    view! { <circle cx="10" cy="10" r="10" fill="#23a55a" /> }.into_any()
+                    view! { <circle cx="10" cy="10" r="10" fill="var(--online-color)" /> }.into_any()
                 }
                 PresenceStatus::Unavailable => {
                     view! {
@@ -31,13 +31,13 @@ pub fn PresenceBadge(
                                 <circle cx="6" cy="6" r="8" fill="black" />
                             </mask>
                         </defs>
-                        <circle cx="10" cy="10" r="10" fill="#f0b232" mask="url(#idle-mask)" />
+                        <circle cx="10" cy="10" r="10" fill="var(--idle-color)" mask="url(#idle-mask)" />
                     }
                         .into_any()
                 }
                 PresenceStatus::Busy => {
                     view! {
-                        <circle cx="10" cy="10" r="10" fill="#f23f43" />
+                        <circle cx="10" cy="10" r="10" fill="var(--busy-color)" />
                         <rect x="4" y="8" width="12" height="4" rx="2" fill="white" />
                     }
                         .into_any()
@@ -48,7 +48,7 @@ pub fn PresenceBadge(
                             cx="10"
                             cy="10"
                             r="7.5"
-                            stroke="#80848e"
+                            stroke="var(--offline-color)"
                             stroke-width="5"
                             fill="none"
                         />

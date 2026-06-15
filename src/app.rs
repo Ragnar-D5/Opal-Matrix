@@ -60,6 +60,7 @@ pub fn format_date(date: DateTime<Local>) -> String {
     match (date.date_naive() - Local::now().date_naive()).num_days() {
         0 => date.format("Today, %H:%M").to_string(),
         -1 => date.format("Yesterday, %H:%M").to_string(),
+        -6..-1 => date.format("%a %d/%m/%Y, %H:%M").to_string(),
         _ => date.format("%d/%m/%Y, %H:%M").to_string(),
     }
 }

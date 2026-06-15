@@ -244,14 +244,14 @@ pub fn GifPickerPortal() -> impl IntoView {
             >
                 <div class="p-2 border-b border-(--tile-border-color) flex-shrink-0">
                     <div class="relative flex items-center">
-                        <div class="absolute left-2 flex items-center pointer-events-none text-(--muted-text-color)">
+                        <div class="absolute left-2 flex items-center pointer-events-none text-muted">
                             <Icon icon=MAGNIFYING_GLASS weight=IconWeight::Bold size="14px" />
                         </div>
                         <input
                             type="text"
                             node_ref=search_ref
                             placeholder="Search KLIPY"
-                            class="w-full bg-(--ui-solid-bg) border border-(--tile-border-color) rounded-(--ui-border-radius) pl-7 pr-2 py-1 text-sm text-(--bright-text-color) outline-none placeholder:text-muted"
+                            class="w-full bg-(--ui-solid-bg) border border-(--tile-border-color) rounded-(--ui-border-radius) pl-7 pr-2 py-1 text-sm text-bright outline-none placeholder:text-muted"
                             on:keydown=on_keydown
                             on:input=move |ev| {
                                 let el = ev
@@ -272,7 +272,7 @@ pub fn GifPickerPortal() -> impl IntoView {
 
                 <div class="overflow-y-auto flex-1 p-1.5" style="scrollbar-width: thin;">
                     <Show when=move || gifs.get().is_empty() && !loading.get()>
-                        <div class="w-full h-full flex flex-col items-center justify-center text-(--muted-text-color) gap-2 pt-12">
+                        <div class="w-full h-full flex flex-col items-center justify-center text-muted gap-2 pt-12">
                             <Icon icon=SMILEY_SAD size="60px" weight=IconWeight::Thin />
                             <span class="text-sm">"No GIFs found"</span>
                         </div>

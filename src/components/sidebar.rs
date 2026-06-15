@@ -131,9 +131,9 @@ fn DmDiv(dm: RoomNode) -> impl IntoView {
                             weight=IconWeight::Fill
                             size="16px"
                             color=if user_in_call {
-                                "var(--online-color)"
+                                "var(--status-online)"
                             } else {
-                                "var(--offline-color)"
+                                "var(--status-offline)"
                             }
                         />
                     </div>
@@ -341,9 +341,9 @@ fn render_dm_preview(dm: RoomNode, members: Option<Vec<UserDevice>>) -> impl Int
                 Some(CutoutBadgeCorner {
                     fg_color: "white".to_string(),
                     bg_color: if user_in_call {
-                        "var(--online-color)".to_string()
+                        "var(--status-online)".to_string()
                     } else {
-                        "var(--offline-color)".to_string()
+                        "var(--status-offline)".to_string()
                     },
                     content: CutoutBadgeContent::Icon(SPEAKER_HIGH),
                 })
@@ -423,9 +423,9 @@ pub fn ServerIcon(server: impl RoomNodeExt) -> impl IntoView {
                 Some(CutoutBadgeCorner {
                     fg_color: "white".to_string(),
                     bg_color: if user_in_call {
-                        "var(--online-color)".to_string()
+                        "var(--status-online)".to_string()
                     } else {
-                        "var(--offline-color)".to_string()
+                        "var(--status-offline)".to_string()
                     },
                     content: CutoutBadgeContent::Icon(SPEAKER_HIGH),
                 })
@@ -557,7 +557,7 @@ pub fn render_server_channel(child: RoomNode) -> impl IntoView {
                     .get()
                     .then(|| {
                         view! {
-                            <div class="absolute top-1/2 -translate-y-1/2 -left-1 group-hover:left-1.5 transition-[left] duration-300 ease-out w-2 h-2 bg-[var(--bright-text-color)] rounded-full z-10 pointer-events-none"></div>
+                            <div class="absolute top-1/2 -translate-y-1/2 -left-1 group-hover:left-1.5 transition-[left] duration-300 ease-out w-2 h-2 bg-[var(--text-bright)] rounded-full z-10 pointer-events-none"></div>
                         }
                     })
             }}
@@ -577,7 +577,7 @@ pub fn render_server_channel(child: RoomNode) -> impl IntoView {
                 <Icon
                     icon=channel_icon
                     size="20px"
-                    color=move || if call_empty() { "currentColor" } else { "var(--online-color)" }
+                    color=move || if call_empty() { "currentColor" } else { "var(--status-online)" }
                 />
                 <div class="w-1"></div>
                 {child.name}

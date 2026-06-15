@@ -111,7 +111,7 @@ where
     view! {
         <button
             class=format!(
-                "absolute text-muted hover:text-(--bright-text-color) border border-transparent hover:bg-(--ui-solid-hover-bg) hover:border-(--tile-border-color) cursor-pointer p-1 rounded-(--gap) {class}",
+                "absolute text-muted hover:text-bright border border-transparent hover:bg-(--ui-solid-hover-bg) hover:border-(--tile-border-color) cursor-pointer p-1 rounded-(--gap) {class}",
             )
             style:top=inset.clone()
             style:right=inset
@@ -151,7 +151,7 @@ pub fn SettingsIcon(#[prop(into, optional)] class: String) -> impl IntoView {
         <button
             on:click=move |_| set_is_open.update(|v| *v = !*v)
             class=format!(
-                "text-muted hover:text-(--bright-text-color) cursor-pointer transition-transform duration-300 ease-in-out hover:rotate-[90deg] {class}",
+                "text-muted hover:text-bright cursor-pointer transition-transform duration-300 ease-in-out hover:rotate-[90deg] {class}",
             )
         >
             <Icon icon=GEAR size="20px" weight=IconWeight::Bold />
@@ -165,14 +165,14 @@ pub fn SettingsIcon(#[prop(into, optional)] class: String) -> impl IntoView {
                 >
                     <div
                         on:click=move |e| e.stop_propagation()
-                        class="bg-neutral-900 opacity-100 text-(--bright-text-color, black) rounded-xl shadow-2xl border border-neutral-700/50 w-full max-w-5xl h-full max-h-[85vh] min-h-[50vh] flex flex-col overflow-hidden z-50 p-6"
+                        class="bg-neutral-900 opacity-100 text-bright rounded-xl shadow-2xl border border-neutral-700/50 w-full max-w-5xl h-full max-h-[85vh] min-h-[50vh] flex flex-col overflow-hidden z-50 p-6"
                     >
                         <div class="flex-1 overflow-y-auto">
                             <div class="flex items-center justify-between p-4 bg-neutral-800/40 rounded-xl border border-neutral-800/80 w-full">
                                 <div class="flex flex-col space-y-1 pr-4">
                                     <label
                                         for="scaling-slider"
-                                        class="text-sm font-semibold text-(--bright-text-color, white)"
+                                        class="text-sm font-semibold text-bright"
                                     >
                                         "UI scale"
                                     </label>
@@ -225,7 +225,7 @@ pub fn MuteMenu(#[prop(into, optional)] class: String) -> impl IntoView {
             on:mouseleave=move |_| hovered.set(None)
         >
             <button
-                class="text-muted hover:text-(--bright-text-color) cursor-pointer hover:text-bright rounded-l-(--ui-border-radius) h-full aspect-square flex items-center justify-center"
+                class="text-muted hover:text-bright cursor-pointer hover:text-bright rounded-l-(--ui-border-radius) h-full aspect-square flex items-center justify-center"
                 class=("bg-(--color-item-selected)", move || hovered.get() == Some(true))
                 class=("bg-(--color-item-hover)", move || hovered.get() == Some(false))
                 on:mouseenter=move |_| hovered.set(Some(true))
@@ -233,7 +233,7 @@ pub fn MuteMenu(#[prop(into, optional)] class: String) -> impl IntoView {
                 <Icon icon=MICROPHONE size="18px" weight=IconWeight::Fill />
             </button>
             <button
-                class="text-muted hover:text-(--bright-text-color) cursor-pointer hover:text-bright rounded-r-(--ui-border-radius) h-full"
+                class="text-muted hover:text-bright cursor-pointer hover:text-bright rounded-r-(--ui-border-radius) h-full"
                 class=("bg-(--color-item-selected)", move || hovered.get() == Some(false))
                 class=("bg-(--color-item-hover)", move || hovered.get() == Some(true))
                 on:mouseenter=move |_| hovered.set(Some(false))
@@ -255,7 +255,7 @@ pub fn DeafenMenu(#[prop(into, optional)] class: String) -> impl IntoView {
             on:mouseleave=move |_| hovered.set(None)
         >
             <button
-                class="text-muted hover:text-(--bright-text-color) cursor-pointer hover:text-bright rounded-l-(--ui-border-radius) h-full aspect-square flex items-center justify-center"
+                class="text-muted hover:text-bright cursor-pointer hover:text-bright rounded-l-(--ui-border-radius) h-full aspect-square flex items-center justify-center"
                 class=("bg-(--color-item-selected)", move || hovered.get() == Some(true))
                 class=("bg-(--color-item-hover)", move || hovered.get() == Some(false))
                 on:mouseenter=move |_| hovered.set(Some(true))
@@ -263,7 +263,7 @@ pub fn DeafenMenu(#[prop(into, optional)] class: String) -> impl IntoView {
                 <Icon icon=HEADPHONES size="18px" weight=IconWeight::Fill />
             </button>
             <button
-                class="text-muted hover:text-(--bright-text-color) cursor-pointer hover:text-bright rounded-r-(--ui-border-radius) h-full"
+                class="text-muted hover:text-bright cursor-pointer hover:text-bright rounded-r-(--ui-border-radius) h-full"
                 class=("bg-(--color-item-selected)", move || hovered.get() == Some(false))
                 class=("bg-(--color-item-hover)", move || hovered.get() == Some(true))
                 on:mouseenter=move |_| hovered.set(Some(false))

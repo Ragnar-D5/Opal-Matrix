@@ -143,7 +143,7 @@ pub fn ProfileCardPortal() -> impl IntoView {
                 </div>
 
                 <div class="px-3 pt-9 pb-4">
-                    {profile_name} <p class="text-xs text-(--muted-text-color)">{user_id}</p>
+                    {profile_name} <p class="text-xs text-muted">{user_id}</p>
                 </div>
             </div>
         }
