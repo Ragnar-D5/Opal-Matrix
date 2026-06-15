@@ -1,3 +1,4 @@
+use macros::matrix_settings;
 use tauri::{AppHandle, Manager, command};
 
 use crate::TauriError;
@@ -9,4 +10,13 @@ pub async fn change_screen_scaling(handle: AppHandle, scale_factor: f64) -> Resu
         .ok_or("Couldn't get main window")?;
     window.set_zoom(scale_factor)?;
     Ok(())
+}
+
+#[matrix_settings]
+#[derive(Debug)]
+pub struct Settings {
+    #[setting("Skalierung", false, default = 1.0)]
+    pub scaling: f64,
+
+    pub test: u32,
 }

@@ -5109,6 +5109,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "macros"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "quote",
+ "syn 2.0.117",
+]
+
+[[package]]
 name = "manyhow"
 version = "0.11.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6254,6 +6263,7 @@ dependencies = [
  "linkify",
  "livekit",
  "log",
+ "macros",
  "matrix-sdk",
  "matrix-sdk-ui",
  "mime",
