@@ -997,9 +997,6 @@
   .border-\[\#00ffff\] {
     border-color: #00ffff;
   }
-  .border-\[var\(--muted-text-color\)\] {
-    border-color: var(--muted-text-color);
-  }
   .border-\[var\(--tile-border-color\)\] {
     border-color: var(--tile-border-color);
   }
@@ -1042,14 +1039,14 @@
   .bg-\(--confirm-color\) {
     background-color: var(--confirm-color);
   }
-  .bg-\(--muted-text-color\) {
-    background-color: var(--muted-text-color);
-  }
   .bg-\(--offline-color\) {
     background-color: var(--offline-color);
   }
   .bg-\(--online-color\) {
     background-color: var(--online-color);
+  }
+  .bg-\(--text-muted\) {
+    background-color: var(--text-muted);
   }
   .bg-\(--tile-bg-color\) {
     background-color: var(--tile-bg-color);
@@ -1075,9 +1072,6 @@
   .bg-\[color\:var\(--color-item-selected\)\] {
     background-color: var(--color-item-selected);
   }
-  .bg-\[var\(--bright-text-color\)\] {
-    background-color: var(--bright-text-color);
-  }
   .bg-\[var\(--color-icon-bg\)\] {
     background-color: var(--color-icon-bg);
   }
@@ -1089,6 +1083,9 @@
   }
   .bg-\[var\(--mention-color\)\] {
     background-color: var(--mention-color);
+  }
+  .bg-\[var\(--text-bright\)\] {
+    background-color: var(--text-bright);
   }
   .bg-\[var\(--tile-bg-color\)\] {
     background-color: var(--tile-bg-color);
@@ -1432,20 +1429,11 @@
   .text-\(--confirm-text-color\) {
     color: var(--confirm-text-color);
   }
-  .text-\(--dim-text-color\) {
-    color: var(--dim-text-color);
-  }
-  .text-\(--muted-text-color\) {
-    color: var(--muted-text-color);
-  }
   .text-\(--offline-color\) {
     color: var(--offline-color);
   }
   .text-\(--online-color\) {
     color: var(--online-color);
-  }
-  .text-\(--text-color\) {
-    color: var(--text-color);
   }
   .text-\(--ui-base-color\) {
     color: var(--ui-base-color);
@@ -1484,10 +1472,10 @@
     color: var(--color-green-600);
   }
   .text-muted {
-    color: var(--muted-text-color, #5865f2);
+    color: var(--muted-text-color, #a2aeff);
   }
   .text-normal {
-    color: var(--text-color, #dbdee1);
+    color: var(--text-color, #f2f3f5);
   }
   .text-red-300 {
     color: var(--color-red-300);
@@ -1741,14 +1729,9 @@
       }
     }
   }
-  .placeholder\:text-\(--muted-text-color\) {
-    &::placeholder {
-      color: var(--muted-text-color);
-    }
-  }
   .placeholder\:text-muted {
     &::placeholder {
-      color: var(--muted-text-color, #5865f2);
+      color: var(--muted-text-color, #a2aeff);
     }
   }
   .first\:ml-0 {
@@ -1881,7 +1864,7 @@
   .hover\:text-normal {
     &:hover {
       @media (hover: hover) {
-        color: var(--text-color, #dbdee1);
+        color: var(--text-color, #f2f3f5);
       }
     }
   }
@@ -1949,17 +1932,13 @@
   --color-item-selected: rgba(255, 255, 255, 0.1);
   --bg-color: #1e1e2e;
   --tile-bg-color: rgba(0, 0, 0, 0.3);
-  --dim-text-color: hsl(220, 15%, 40%);
-  --text-color: hsl(220, 25%, 55%);
-  --bright-text-color: hsl(220, 25%, 80%);
+  --dim-text-color: hsl(220, 15%, 65%);
+  --text-color: hsl(220, 25%, 82%);
+  --bright-text-color: hsl(220, 25%, 95%);
+  --muted-text-color: hsl(220, 15%, 32%);
   --tile-border-color: rgba(255, 255, 255, 0.175);
-  --muted-text-color: hsl(220, 15%, 30%);
   --gap: 5px;
   --mention-color: rgb(255, 100, 100);
-  --presence-online-color: rgb(100, 255, 100);
-  --presence-idle-color: rgb(255, 255, 100);
-  --presence-busy-color: rgb(255, 100, 100);
-  --presence-offline-color: rgb(150, 150, 150);
   --accent-color: #46aec5;
   --accent-bg-color: #183c43;
   --accent-text-color: #181825;
