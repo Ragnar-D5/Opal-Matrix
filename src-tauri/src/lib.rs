@@ -4,6 +4,7 @@ use const_format::formatcp;
 use log::{error, trace};
 use matrix_sdk::authentication::matrix::MatrixSession;
 use matrix_sdk::ruma::{OwnedDeviceId, UserId};
+use matrix_sdk::encryption::{BackupDownloadStrategy, EncryptionSettings};
 use matrix_sdk::{AuthSession, Client as MatrixClient, SessionMeta, SessionTokens};
 use percent_encoding::percent_decode_str;
 use shared::api::RestoreResponse;
@@ -193,6 +194,10 @@ async fn try_restore(
         .homeserver_url(session.homeserver_url.clone())
         .handle_refresh_tokens()
         .sqlite_store(path, None)
+        .with_encryption_settings(EncryptionSettings {
+            backup_download_strategy: BackupDownloadStrategy::AfterDecryptionFailure,
+            ..Default::default()
+        })
         .build()
         .await?;
 
@@ -270,6 +275,10 @@ async fn login(
         )
         .handle_refresh_tokens()
         .sqlite_store(path, None)
+        .with_encryption_settings(EncryptionSettings {
+            backup_download_strategy: BackupDownloadStrategy::AfterDecryptionFailure,
+            ..Default::default()
+        })
         .build()
         .await
         .map_err(|e| {
