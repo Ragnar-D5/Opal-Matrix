@@ -3,11 +3,19 @@ use std::time::Duration;
 use crate::{
     app::{call_tauri, convertFileSrc, format_bytes},
     components::{
-        FloatingTile, TypingIndicator, chat::{calls::CallView, messages::render_timeline_item}, input::{
+        FloatingTile, TypingIndicator,
+        chat::{calls::CallView, messages::render_timeline_item},
+        input::{
             get_active_filter, get_caret_position, handle_input, handle_keydown,
             insert_text_at_caret,
             menu::{MenuCompletionMatches, MenuType, SelectionMenu},
-        }, overlays::{emoji_picker::{EmojiPickerState, pick_emoji}, gif_picker::{GifPickerState, pick_gif}}, presence::PresenceBadge, user_profile::MemberProfileExt
+        },
+        overlays::{
+            emoji_picker::{EmojiPickerState, pick_emoji},
+            gif_picker::{GifPickerState, pick_gif},
+        },
+        presence::PresenceBadge,
+        user_profile::MemberProfileExt,
     },
     hooks::use_tauri_event,
     state::{AppState, ProfileStore, RoomHeader},
@@ -15,11 +23,15 @@ use crate::{
 };
 
 use phosphor_leptos::{
-    GIF, HASH, INFO, Icon, IconWeight, MATRIX_LOGO, PHONE, PHONE_DISCONNECT, SMILEY, SPEAKER_HIGH, TRASH, UPLOAD_SIMPLE, USER_CIRCLE, USER_LIST, X_CIRCLE
+    GIF, HASH, INFO, Icon, IconWeight, MATRIX_LOGO, PHONE, PHONE_DISCONNECT, SMILEY, SPEAKER_HIGH,
+    TRASH, UPLOAD_SIMPLE, USER_CIRCLE, USER_LIST, X_CIRCLE,
 };
 
 use leptos::{ev, html::Div, prelude::*, task::spawn_local};
-use leptos_use::{UseIntersectionObserverReturn, use_event_listener, use_intersection_observer};
+use leptos_use::{
+    UseIntersectionObserverOptions, UseIntersectionObserverReturn, use_event_listener,
+    use_intersection_observer_with_options,
+};
 use shared::{
     api::{FileMetadata, ScrollDirection, UiAttachmentSource},
     profile::{MemberProfile, PresenceInfo},
@@ -34,8 +46,8 @@ use web_sys::{
     ScrollLogicalPosition,
 };
 
-pub(crate) mod messages;
 pub(crate) mod calls;
+pub(crate) mod messages;
 
 #[component]
 fn TimeLine() -> impl IntoView {
@@ -209,32 +221,31 @@ fn TimeLine() -> impl IntoView {
 
     let timeline_id: RwSignal<Option<String>> = RwSignal::new(None);
 
-    let fetch_more = move |scroll_direction: ScrollDirection, loading: RwSignal<bool>, has_more: RwSignal<bool>| {
+    let fetch_more = move |scroll_direction: ScrollDirection,
+                           loading: RwSignal<bool>,
+                           has_more: RwSignal<bool>| {
         let Some(id) = timeline_id.get_untracked() else {
             return;
         };
 
-        let forward_anchor: Option<web_sys::Element> = if matches!(scroll_direction, ScrollDirection::Down) {
-            sentinel_ref_bottom
-                .get_untracked()
-                .and_then(|s| s.next_element_sibling())
-        } else {
-            None
-        };
+        // Preserve scroll position when paginating down (newer messages): anchor to
+        // the row just past the bottom sentinel and pull it back into view once the
+        // new rows mount. Upward pagination needs no correction — `flex-col-reverse`
+        // keeps the view stable when older rows are prepended above it.
+        let forward_anchor: Option<web_sys::Element> =
+            if matches!(scroll_direction, ScrollDirection::Down) {
+                sentinel_ref_bottom
+                    .get_untracked()
+                    .and_then(|s| s.next_element_sibling())
+            } else {
+                None
+            };
 
         loading.set(true);
         spawn_local(async move {
             match scroll_timeline(&id, scroll_direction).await {
-                Ok(new_has_more) => {
-                    log::debug!("Fetched more messages");
-                    has_more.set(new_has_more);
-                    if !new_has_more {
-                        log::debug!("No more messages to load");
-                    }
-                }
-                Err(e) => {
-                    log::error!("Failed to fetch more messages: {}", e);
-                }
+                Ok(new_has_more) => has_more.set(new_has_more),
+                Err(e) => log::error!("Failed to fetch more messages: {}", e),
             };
             loading.set(false);
 
@@ -252,28 +263,24 @@ fn TimeLine() -> impl IntoView {
         });
     };
 
-    let UseIntersectionObserverReturn { .. } = use_intersection_observer(
+    let UseIntersectionObserverReturn { .. } = use_intersection_observer_with_options(
         sentinel_ref_top,
         move |entries: Vec<IntersectionObserverEntry>, _| {
-            if entries[0].is_intersecting()
-                && has_more_top.get()
-                && !is_loading_top.get()
-            {
+            if entries[0].is_intersecting() && has_more_top.get() && !is_loading_top.get() {
                 fetch_more(ScrollDirection::Up, is_loading_top, has_more_top);
             };
         },
+        UseIntersectionObserverOptions::default().root_margin("200px 0px 200px 0px"),
     );
 
-    let UseIntersectionObserverReturn { .. } = use_intersection_observer(
+    let UseIntersectionObserverReturn { .. } = use_intersection_observer_with_options(
         sentinel_ref_bottom,
         move |entries: Vec<IntersectionObserverEntry>, _| {
-            if entries[0].is_intersecting()
-                && has_more_bottom.get()
-                && !is_loading_bottom.get()
-            {
+            if entries[0].is_intersecting() && has_more_bottom.get() && !is_loading_bottom.get() {
                 fetch_more(ScrollDirection::Down, is_loading_bottom, has_more_bottom);
             };
         },
+        UseIntersectionObserverOptions::default().root_margin("200px 0px 200px 0px"),
     );
 
     Effect::new(move || {
@@ -363,7 +370,11 @@ fn TimeLine() -> impl IntoView {
         is_loading_top.set(true);
 
         spawn_local(async move {
-            log::debug!("Fetching timeline around event {} in room {}", event_id, room_id);
+            log::debug!(
+                "Fetching timeline around event {} in room {}",
+                event_id,
+                room_id
+            );
             match get_timeline(&room_id, Some(event_id.clone())).await {
                 Ok(result) => {
                     timeline_id.set(Some(result.timeline_id));
@@ -372,7 +383,11 @@ fn TimeLine() -> impl IntoView {
                     is_loading_bottom.set(false);
                     scroll_target.set(Some(event_id.clone()));
 
-                    log::debug!("Loaded focused timeline for event {} in room {}", event_id, room_id);
+                    log::debug!(
+                        "Loaded focused timeline for event {} in room {}",
+                        event_id,
+                        room_id
+                    );
                 }
                 Err(e) => {
                     log::error!("Failed to load timeline for scroll: {}", e);
@@ -382,7 +397,7 @@ fn TimeLine() -> impl IntoView {
     });
 
     view! {
-        <div class="flex-1 w-full w-full overflow-y-auto flex flex-col-reverse overflow-anchor-auto pb-8 [mask-image:linear-gradient(to_top,transparent_0%,black_2rem)]">
+        <div class="flex-1 w-full w-full overflow-y-auto flex flex-col-reverse pb-8 [mask-image:linear-gradient(to_top,transparent_0%,black_2rem)]">
             <Show
                 when=move || !is_loading_bottom.get()
                 fallback=|| view! { <div class="text-center p-4 text-muted">"Loading..."</div> }
@@ -418,9 +433,15 @@ fn TypingUserIndicator() -> impl IntoView {
     let store: ProfileStore = expect_context();
 
     let has_typing = Memo::new(move |_| {
-        let Some(room_id) = state.active_room_id() else { return false };
+        let Some(room_id) = state.active_room_id() else {
+            return false;
+        };
         let own_id = state.user_id.get();
-        state.get_typing_users(&room_id).get().into_iter().any(|id| id != own_id)
+        state
+            .get_typing_users(&room_id)
+            .get()
+            .into_iter()
+            .any(|id| id != own_id)
     });
 
     let visible_users: RwSignal<Vec<String>> = RwSignal::new(Vec::new());
@@ -442,7 +463,10 @@ fn TypingUserIndicator() -> impl IntoView {
         if !users.is_empty() {
             visible_users.set(users);
         } else {
-            set_timeout(move || visible_users.set(Vec::new()), Duration::from_millis(210));
+            set_timeout(
+                move || visible_users.set(Vec::new()),
+                Duration::from_millis(210),
+            );
         }
     });
 
@@ -460,20 +484,23 @@ fn TypingUserIndicator() -> impl IntoView {
 
         let names = match profiles.len() {
             0 => return None,
-            1 => view! { <span>{profiles[0].get().render_name("14px")} " is typing..."</span> }.into_any(),
+            1 => view! { <span>{profiles[0].get().render_name("14px")} " is typing..."</span> }
+                .into_any(),
             2 => view! {
                 <span>
                     {profiles[0].get().render_name("14px")} " and "
                     {profiles[1].get().render_name("14px")} " are typing..."
                 </span>
-            }.into_any(),
+            }
+            .into_any(),
             3 => view! {
                 <span>
                     {profiles[0].get().render_name("14px")}", "
                     {profiles[1].get().render_name("14px")} " and "
                     {profiles[2].get().render_name("14px")} " are typing..."
                 </span>
-            }.into_any(),
+            }
+            .into_any(),
             _ => view! { <span>"Several people are typing..."</span> }.into_any(),
         };
 
@@ -502,10 +529,7 @@ fn TypingUserIndicator() -> impl IntoView {
 }
 
 #[component]
-fn ChatHeader(
-    header: Memo<RoomHeader>,
-    chat_sidebar_open: RwSignal<bool>,
-) -> impl IntoView {
+fn ChatHeader(header: Memo<RoomHeader>, chat_sidebar_open: RwSignal<bool>) -> impl IntoView {
     let member_store: ProfileStore = expect_context();
     let state: AppState = expect_context();
 
@@ -513,15 +537,16 @@ fn ChatHeader(
 
     Effect::new(move |_| {
         let header = header.get();
-        chat_sidebar_open.set(matches!(header, RoomHeader::TextChannel(_) | RoomHeader::VoiceChannel(_)));
+        chat_sidebar_open.set(matches!(
+            header,
+            RoomHeader::TextChannel(_) | RoomHeader::VoiceChannel(_)
+        ));
     });
 
-    let toggle_icon = move || {
-        match header.get() {
-            RoomHeader::DM(_) => USER_CIRCLE,
-            RoomHeader::TextChannel(_) | RoomHeader::VoiceChannel(_) => USER_LIST,
-            _ => INFO,
-        }
+    let toggle_icon = move || match header.get() {
+        RoomHeader::DM(_) => USER_CIRCLE,
+        RoomHeader::TextChannel(_) | RoomHeader::VoiceChannel(_) => USER_LIST,
+        _ => INFO,
     };
 
     view! {
@@ -726,7 +751,7 @@ impl Attachment {
             mime_type: mime_type.to_string(),
             size,
             preview_url: Some(url),
-            source
+            source,
         }
     }
 

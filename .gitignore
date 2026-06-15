@@ -2,6 +2,8 @@
 /target/
 .env
 /src-tauri/gen/
+.vscode
+.claude
 
 *.db
 *.sqlite3
