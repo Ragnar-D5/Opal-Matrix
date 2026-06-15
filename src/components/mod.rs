@@ -2,7 +2,7 @@ use csscolorparser::Color;
 use icondata as i;
 use leptos::prelude::*;
 use leptos_icons::Icon as LIcon;
-use phosphor_leptos::{CARET_DOWN, GEAR, HEADPHONES, Icon, IconWeight, MICROPHONE, X};
+use phosphor_leptos::{CARET_DOWN, HEADPHONES, Icon, IconWeight, MICROPHONE, X};
 use serde_json::json;
 use shared::ColorExt;
 use web_sys::{KeyboardEvent, MouseEvent};
