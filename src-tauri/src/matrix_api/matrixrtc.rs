@@ -131,6 +131,45 @@ pub(crate) async fn join_matrixrtc_call(
         });
     }
 
+    // send matrix events to signal joining the call
+    let call_content = CallMemberEventContent::new(
+        Application::Call(CallApplicationContent::new(
+            "".to_string(),
+            matrix_sdk::ruma::events::call::member::CallScope::Room,
+        )),
+        client.device_id().ok_or("No DeviceId")?.into(),
+        matrix_sdk::ruma::events::call::member::ActiveFocus::Livekit(ActiveLivekitFocus::new()),
+        vec![Focus::Livekit(LivekitFocus::new(
+            room_id.clone(),
+            default_livekit_focus_info.service_url.to_string(),
+        ))],
+        None,
+        None,
+    );
+
+    let response = room
+        .send_state_event_for_key(
+            &CallMemberStateKey::new(
+                client.user_id().ok_or("No UserId")?.into(),
+                Some(client.device_id().ok_or("No DeviceId")?.into()),
+                true,
+            ),
+            call_content,
+        )
+        .await?;
+
+    let mut notification_event = RtcNotificationEventContent::new(
+        MilliSecondsSinceUnixEpoch::now(),
+        Duration::from_mins(1),
+        matrix_sdk::ruma::events::rtc::notification::NotificationType::Ring,
+    );
+    notification_event.mentions = Some(Mentions::with_room_mention());
+    notification_event.call_intent =
+        Some(matrix_sdk::ruma::events::rtc::notification::CallIntent::Audio);
+    notification_event.relates_to = Some(Reference::new(response.event_id));
+
+    room.send(notification_event).await?;
+
     let host = cpal::default_host();
     let out_device = host
         .default_output_device()
@@ -387,46 +426,6 @@ pub(crate) async fn join_matrixrtc_call(
             }
         }
     });
-
-    // send matrix events to signal joining the call
-    let call_content = CallMemberEventContent::new(
-        Application::Call(CallApplicationContent::new(
-            "".to_string(),
-            matrix_sdk::ruma::events::call::member::CallScope::Room,
-        )),
-        client.device_id().ok_or("No DeviceId")?.into(),
-        matrix_sdk::ruma::events::call::member::ActiveFocus::Livekit(ActiveLivekitFocus::new()),
-        vec![Focus::Livekit(LivekitFocus::new(
-            room_id.clone(),
-            default_livekit_focus_info.service_url.to_string(),
-        ))],
-        None,
-        None,
-    );
-
-    let response = room
-        .send_state_event_for_key(
-            &CallMemberStateKey::new(
-                client.user_id().ok_or("No UserId")?.into(),
-                Some(client.device_id().ok_or("No DeviceId")?.into()),
-                true,
-            ),
-            call_content,
-        )
-        .await?;
-
-    let mut notification_event = RtcNotificationEventContent::new(
-        MilliSecondsSinceUnixEpoch::now(),
-        Duration::from_mins(1),
-        matrix_sdk::ruma::events::rtc::notification::NotificationType::Ring,
-    );
-    notification_event.mentions = Some(Mentions::with_room_mention());
-    notification_event.call_intent =
-        Some(matrix_sdk::ruma::events::rtc::notification::CallIntent::Audio);
-    notification_event.relates_to = Some(Reference::new(response.event_id));
-
-    room.send(notification_event).await?;
-
     Ok(response_json)
 }
 
@@ -507,7 +506,9 @@ pub async fn handle_call_member_change(
             &local_call_key,
             new_key_index,
             call_data.call_id,
-        ).await {
+        )
+        .await
+        {
             log::error!("{e:?}");
         };
     } else {
@@ -783,9 +784,7 @@ pub async fn handle_to_device_messages(
         e2ee_manager
             .frame_cryptors()
             .iter()
-            .filter(|((id, _), _)| {
-                id == &From::from(livekit_id.clone())
-            })
+            .filter(|((id, _), _)| id == &From::from(livekit_id.clone()))
             .for_each(|((id, _), frame_cryptor)| {
                 frame_cryptor.set_key_index(update_event.1.keys.index);
                 debug!("Updated FrameCryptor key index for {id}");
