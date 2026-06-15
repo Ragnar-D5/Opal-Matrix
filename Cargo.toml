@@ -74,6 +74,8 @@ web-sys = {
 }
 wgpu = "29.0.3"
 blurhash = "0.2.3"
+leptos_icons = "0.7.1"
+icondata = "0.7.0"
 
 [profile.release]
 opt-level = "z"

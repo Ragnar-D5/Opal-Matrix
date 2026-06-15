@@ -1,6 +1,8 @@
 use csscolorparser::Color;
+use icondata as i;
 use leptos::prelude::*;
-use phosphor_leptos::{Icon, IconWeight, CARET_DOWN, GEAR, HEADPHONES, MICROPHONE, X};
+use leptos_icons::Icon as LIcon;
+use phosphor_leptos::{CARET_DOWN, GEAR, HEADPHONES, Icon, IconWeight, MICROPHONE, X};
 use serde_json::json;
 use shared::ColorExt;
 use web_sys::{KeyboardEvent, MouseEvent};
@@ -154,7 +156,7 @@ pub fn SettingsIcon(#[prop(into, optional)] class: String) -> impl IntoView {
                 "text-muted hover:text-bright cursor-pointer transition-transform duration-300 ease-in-out hover:rotate-[90deg] {class}",
             )
         >
-            <Icon icon=GEAR size="20px" weight=IconWeight::Bold />
+            <LIcon icon={i::BsGearWideConnected} height="20px" />
         </button>
 
         <Show when=move || is_open.get() fallback=|| view! { "" }>
