@@ -93,7 +93,9 @@ pub fn CallView(node: RoomNode) -> impl IntoView {
                                 >
                                     {move || profile.get().render_icon("64px")}
                                     {move || {
-                                        is_large.get().then(|| clone.get().render_name("16px"))
+                                        is_large
+                                            .get()
+                                            .then(|| clone.get().render_name_popup("16px"))
                                     }}
                                 </div>
                             }

@@ -382,14 +382,14 @@ pub async fn get_timeline(
                             media_for_stream.sources.write().await.extend(new_sources);
                         }
 
+                        send_timeline_diffs(handle.clone(), diffs);
+
                         for event_id in unknown_reply_event_ids {
                             log::debug!("Fetching unknown reply event {}", event_id);
                             if let Err(e) = timeline_for_stream.fetch_details_for_event(&event_id).await {
                                 warn!("Failed to fetch details for event {}: {:?}", event_id, e);
                             }
                         }
-
-                        send_timeline_diffs(handle.clone(), diffs);
                     }
                 }))
                 .await;

@@ -354,7 +354,7 @@ fn LightboxHeader(
             <div class="flex items-center gap-2 p-3">
                 {move || profile_sig.get().render_icon("35px")}
                 <div class="flex flex-col min-w-0">
-                    {move || name_sig.get().render_name("16px")}
+                    {move || name_sig.get().render_name_popup("16px")}
                     <span class="text-dim text-xs">{timestamp_str.clone()}</span>
                 </div>
             </div>

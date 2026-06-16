@@ -390,7 +390,7 @@ impl RenderMenuRow for MemberProfile {
                     profile.render_icon("30px").into_any()
                 }
             }}
-            {p_clone.render_name("14px")}
+            {p_clone.render_name_popup("14px")}
             <div class="flex flex-grow"></div>
             <span
                 class=("text-(--ui-hover-color)", move || idx == selected_index.get())

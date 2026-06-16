@@ -75,11 +75,16 @@ pub fn render_profile_name<T: AsRef<str>>(
     user_id: Option<String>,
     room_id: Option<String>,
     font_size_str: T,
+    popup: bool,
 ) -> impl IntoView {
     let font_size_str = font_size_str.as_ref().to_string();
     let card_state: ProfileCardState = expect_context();
 
     let on_click = move |ev: MouseEvent| {
+        if !popup {
+            return;
+        }
+
         let Some(user_id) = user_id.clone() else {
             return;
         };
@@ -96,7 +101,7 @@ pub fn render_profile_name<T: AsRef<str>>(
         <span
             style:font-size=font_size_str
             style:color=color.to_css_hsl()
-            class="font-bold cursor-pointer hover:underline"
+            class="font-bold cursor-pointer hover:underline group-hover:underline"
             on:click=on_click
         >
             {name.clone()}
@@ -111,6 +116,7 @@ pub fn render_unknown_name<T: AsRef<str>>(font_size_str: T) -> impl IntoView {
         None,
         None,
         font_size_str,
+        false,
     )
 }
 
@@ -121,7 +127,9 @@ pub trait MemberProfileExt {
         size_str: T,
         room_id: Option<U>,
     ) -> impl IntoView;
-    fn render_name<T: AsRef<str>>(self, font_size_str: T) -> impl IntoView;
+    fn render_name<T: AsRef<str>>(self, font_size_str: T, popup: bool) -> impl IntoView;
+    fn render_name_popup<T: AsRef<str>>(self, font_size_str: T) -> impl IntoView;
+    fn render_name_no_popup<T: AsRef<str>>(self, font_size_str: T) -> impl IntoView;
     fn to_span(&self) -> RichTextSpan;
 
     fn is_room(&self) -> bool;
@@ -158,14 +166,23 @@ impl MemberProfileExt for MemberProfile {
         self.profile.render_icon_room(size_str, room_id)
     }
 
-    fn render_name<T: AsRef<str>>(self, font_size_str: T) -> impl IntoView {
+    fn render_name<T: AsRef<str>>(self, font_size_str: T, popup: bool) -> impl IntoView {
         render_profile_name(
             self.get_name(),
             self.name_color(),
             Some(self.profile.user_id.clone()),
             Some(self.room_id.clone()),
             font_size_str,
+            popup,
         )
+    }
+
+    fn render_name_popup<T: AsRef<str>>(self, font_size_str: T) -> impl IntoView {
+        self.render_name(font_size_str, true)
+    }
+
+    fn render_name_no_popup<T: AsRef<str>>(self, font_size_str: T) -> impl IntoView {
+        self.render_name(font_size_str, false)
     }
 }
 
@@ -207,14 +224,23 @@ impl MemberProfileExt for UserProfile {
         self.render_icon_room(size_str, None::<T>)
     }
 
-    fn render_name<T: AsRef<str>>(self, font_size_str: T) -> impl IntoView {
+    fn render_name<T: AsRef<str>>(self, font_size_str: T, popup: bool) -> impl IntoView {
         render_profile_name(
             self.get_name(),
             self.name_color(),
             Some(self.user_id),
             None,
             font_size_str,
+            popup,
         )
+    }
+
+    fn render_name_popup<T: AsRef<str>>(self, font_size_str: T) -> impl IntoView {
+        self.render_name(font_size_str, true)
+    }
+
+    fn render_name_no_popup<T: AsRef<str>>(self, font_size_str: T) -> impl IntoView {
+        self.render_name(font_size_str, false)
     }
 }
 
@@ -253,12 +279,20 @@ impl MemberProfileExt for Option<MemberProfile> {
         }
     }
 
-    fn render_name<T: AsRef<str>>(self, font_size_str: T) -> impl IntoView {
+    fn render_name<T: AsRef<str>>(self, font_size_str: T, popup: bool) -> impl IntoView {
         if let Some(profile) = self {
-            profile.render_name(font_size_str).into_any()
+            profile.render_name(font_size_str, popup).into_any()
         } else {
             render_unknown_name(font_size_str).into_any()
         }
+    }
+
+    fn render_name_popup<T: AsRef<str>>(self, font_size_str: T) -> impl IntoView {
+        self.render_name(font_size_str, true)
+    }
+
+    fn render_name_no_popup<T: AsRef<str>>(self, font_size_str: T) -> impl IntoView {
+        self.render_name(font_size_str, false)
     }
 }
 
@@ -297,12 +331,20 @@ impl MemberProfileExt for Option<UserProfile> {
         }
     }
 
-    fn render_name<T: AsRef<str>>(self, font_size_str: T) -> impl IntoView {
+    fn render_name<T: AsRef<str>>(self, font_size_str: T, popup: bool) -> impl IntoView {
         if let Some(profile) = self {
-            profile.render_name(font_size_str).into_any()
+            profile.render_name(font_size_str, popup).into_any()
         } else {
             render_unknown_name(font_size_str).into_any()
         }
+    }
+
+    fn render_name_popup<T: AsRef<str>>(self, font_size_str: T) -> impl IntoView {
+        self.render_name(font_size_str, true)
+    }
+
+    fn render_name_no_popup<T: AsRef<str>>(self, font_size_str: T) -> impl IntoView {
+        self.render_name(font_size_str, false)
     }
 }
 

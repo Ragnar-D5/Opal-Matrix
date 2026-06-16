@@ -538,7 +538,7 @@ pub fn render_server_channel(child: RoomNode) -> impl IntoView {
                     view! {
                         <div class="hover:bg-(--color-item-hover) rounded-[10px] p-1 flex items-center gap-2 flex flex-grow cursor-pointer">
                             {move || profile.get().render_icon("22px")}
-                            {move || clone.get().render_name("14px")}
+                            {move || clone.get().render_name_popup("14px")}
                         </div>
                     }
                 });
@@ -875,7 +875,7 @@ pub fn ProfileCard() -> impl IntoView {
                 .get_presence(
                     &profile.clone().map(|p| p.profile.user_id.clone()).unwrap_or_default(),
                 )>{profile.render_icon("30px")}</PresenceBadge>
-            {name_profile.render_name("14px")}
+            {name_profile.render_name_popup("14px")}
         }
         .into_any()
     };

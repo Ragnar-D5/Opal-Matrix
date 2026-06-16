@@ -483,20 +483,20 @@ fn TypingUserIndicator() -> impl IntoView {
 
         let names = match profiles.len() {
             0 => return None,
-            1 => view! { <span>{profiles[0].get().render_name("14px")} " is typing..."</span> }
+            1 => view! { <span>{profiles[0].get().render_name_popup("14px")} " is typing..."</span> }
                 .into_any(),
             2 => view! {
                 <span>
-                    {profiles[0].get().render_name("14px")} " and "
-                    {profiles[1].get().render_name("14px")} " are typing..."
+                    {profiles[0].get().render_name_popup("14px")} " and "
+                    {profiles[1].get().render_name_popup("14px")} " are typing..."
                 </span>
             }
             .into_any(),
             3 => view! {
                 <span>
-                    {profiles[0].get().render_name("14px")}", "
-                    {profiles[1].get().render_name("14px")} " and "
-                    {profiles[2].get().render_name("14px")} " are typing..."
+                    {profiles[0].get().render_name_popup("14px")}", "
+                    {profiles[1].get().render_name_popup("14px")} " and "
+                    {profiles[2].get().render_name_popup("14px")} " are typing..."
                 </span>
             }
             .into_any(),
@@ -619,7 +619,10 @@ fn ChatHeader(header: Memo<RoomHeader>, chat_sidebar_open: RwSignal<bool>) -> im
                         view! { <span>{name.clone()}</span> }.into_any()
                     }
                     RoomHeader::DM(profile_sig) => {
-                        { view! { {move || profile_sig.get().render_name("16px")} }.into_any() }
+                        {
+                            view! { {move || profile_sig.get().render_name_popup("16px")} }
+                                .into_any()
+                        }
                             .into_any()
                     }
                     RoomHeader::Unknown => view! { <span>"Unknown Room"</span> }.into_any(),
@@ -1076,7 +1079,7 @@ fn ChatInput() -> impl IntoView {
                     .get_member_profile(&state.active_room_id().unwrap_or_default(), &sender_id);
                 view! {
                     <span class="text-sm text-bright">
-                        "Replying to " {move || profile.get().render_name("14px")}
+                        "Replying to " {move || profile.get().render_name_popup("14px")}
                     </span>
                 }
                 .into_any()
@@ -1433,7 +1436,7 @@ fn ChatInfo(header: Memo<RoomHeader>) -> impl IntoView {
 
                         <div class="px-4 pt-10 pb-6">
                             <h2 class="text-xl font-bold text-bright">
-                                {move || profile_sig_name.get().render_name("16px")}
+                                {move || profile_sig_name.get().render_name_popup("16px")}
                             </h2>
                             <p class="text-sm text-muted">"Direct Message"</p>
                         </div>
@@ -1501,7 +1504,7 @@ fn MemberList() -> impl IntoView {
                         <PresenceBadge presence=presence size=15.5>
                             {profile.render_icon("32px")}
                         </PresenceBadge>
-                        <span class="text-bright">{name_profile.render_name("16px")}</span>
+                        <span class="text-bright">{name_profile.render_name_popup("16px")}</span>
                     </div>
                 }
             })
@@ -1560,7 +1563,7 @@ fn MemberList() -> impl IntoView {
                         <PresenceBadge presence=presence size=15.5>
                             {profile.render_icon("32px")}
                         </PresenceBadge>
-                        <span class="text-bright">{name_profile.render_name("18px")}</span>
+                        <span class="text-bright">{name_profile.render_name_popup("18px")}</span>
                     </div>
                 }
             })

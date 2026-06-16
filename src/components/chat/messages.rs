@@ -98,7 +98,7 @@ fn ReplyPreview(
             on:click=move |_| scroll_to_item.run(target_event_id.clone())
         >
             {move || profile.get().render_icon("20px")}
-            {move || profile.get().render_name("12px")}
+            {move || profile.get().render_name_popup("12px")}
             <span class="truncate text-normal line-clamp-1">
                 {move || {
                     let spans = spans.get();
@@ -178,6 +178,7 @@ fn MessageHeader(
                                 Some(sender_id),
                                 Some(room_id_for_card),
                                 "16px",
+                                true,
                             )} <span class="text-muted text-xs">{format_date(date)}</span>
                         </div>
                     }
@@ -681,7 +682,7 @@ fn render_system_message(
         view! {
             <div class="flex items-center gap-1 pr-1">
                 {move || profile_sig.get().render_icon("20px")}
-                {move || name_sig.get().render_name("16px")}
+                {move || name_sig.get().render_name_popup("16px")}
             </div>
         }
     };
@@ -915,7 +916,7 @@ fn render_system_message(
                 view! {
                     <div class="flex items-center gap-1 pr-1">
                         {move || profile_sig.get().render_icon("20px")}
-                        {move || name_sig.get().render_name("16px")}
+                        {move || name_sig.get().render_name_popup("16px")}
                     </div>
                 }
                 .into_any()

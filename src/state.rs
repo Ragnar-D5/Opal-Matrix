@@ -653,8 +653,8 @@ impl ProfileSignal {
 
     pub fn name(self, font_size_str: String) -> impl IntoView {
         match self {
-            ProfileSignal::User(sig) => sig.get().render_name(font_size_str).into_any(),
-            ProfileSignal::Member(sig) => sig.get().render_name(font_size_str).into_any(),
+            ProfileSignal::User(sig) => sig.get().render_name_popup(font_size_str).into_any(),
+            ProfileSignal::Member(sig) => sig.get().render_name_popup(font_size_str).into_any(),
         }
     }
 }

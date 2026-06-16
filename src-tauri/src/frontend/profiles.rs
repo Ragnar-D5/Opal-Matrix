@@ -2,18 +2,18 @@ use std::collections::HashMap;
 
 use futures::future::join_all;
 use matrix_sdk::{
-    Client, Room, RoomMemberships,
     event_handler::Ctx,
     ruma::{
-        OwnedUserId, UserId,
         events::{room::member::OriginalSyncRoomMemberEvent, typing::SyncTypingEvent},
         profile::ProfileFieldName,
+        OwnedUserId, UserId,
     },
+    Client, Room, RoomMemberships,
 };
 use shared::profile::{CustomProperties, MemberProfile, UserProfile};
-use tauri::{AppHandle, Emitter, command};
+use tauri::{command, AppHandle, Emitter};
 
-use crate::{MatrixClientState, TauriError, matrix_api::profile::get_custom_fields};
+use crate::{matrix_api::profile::get_custom_fields, MatrixClientState, TauriError};
 
 pub async fn on_member_update(
     event: OriginalSyncRoomMemberEvent,
@@ -60,10 +60,11 @@ pub async fn send_all_members(
                 let has_avatar = member.avatar_url().is_some();
                 let display_name = member.display_name().map(|s| s.to_string());
 
-                user_memberships
-                    .entry(user_id.clone())
-                    .or_default()
-                    .push((room_id.clone(), has_avatar, display_name.clone()));
+                user_memberships.entry(user_id.clone()).or_default().push((
+                    room_id.clone(),
+                    has_avatar,
+                    display_name.clone(),
+                ));
 
                 MemberProfile {
                     room_id: room_id.clone(),
@@ -145,7 +146,7 @@ pub async fn get_user_profile(
         .account()
         .fetch_profile_field_of(user_id.clone(), ProfileFieldName::DisplayName)
         .await?
-        .map(|v| v.value().to_string());
+        .and_then(|v| v.value().as_str().map(|t| t.to_string()));
 
     let has_avatar = client
         .account()
