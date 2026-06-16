@@ -2,14 +2,16 @@ use icondata as i;
 use leptos::portal::Portal;
 use leptos::prelude::*;
 use leptos_icons::Icon as LIcon;
-use phosphor_leptos::{Icon, IconWeight, IconWeightData, CAMERA, PAINT_BRUSH, PENCIL_SIMPLE};
+use phosphor_leptos::{
+    Icon, IconWeight, IconWeightData, CAMERA, CARET_DOWN, PAINT_BRUSH, PENCIL_SIMPLE,
+};
 use serde_json::json;
 use web_sys::{HtmlButtonElement, KeyboardEvent};
 
 use crate::app::call_tauri;
 use crate::components::presence::PresenceBadge;
-use crate::components::user_profile::MemberProfileExt;
-use crate::components::FloatingTile;
+use crate::components::user_profile::{render_url_icon, MemberProfileExt};
+use crate::components::{CloseButton, FloatingTile};
 use crate::state::{AppState, ProfileStore};
 
 #[derive(Clone, PartialEq)]
@@ -177,7 +179,17 @@ pub fn SettingsIcon(#[prop(into, optional)] class: String) -> impl IntoView {
                                     {move || user_sig.get().get().render_icon("40px")}
                                     <div class="flex flex-col p-2 rounded-[10px]">
                                         {move || user_sig.get().get().render_name_no_popup("16px")}
-                                        <span class="text-xs text-muted flex flex-row pr-2">
+                                        <span
+                                            class="text-xs group-hover:underline flex flex-row pr-2"
+                                            class=(
+                                                "text-normal",
+                                                move || selected_section.get() == PROFILE_SECTION.id,
+                                            )
+                                            class=(
+                                                "text-muted",
+                                                move || selected_section.get() != PROFILE_SECTION.id,
+                                            )
+                                        >
                                             <Icon
                                                 icon=PENCIL_SIMPLE
                                                 size="12px"
@@ -226,8 +238,20 @@ pub fn SettingsIcon(#[prop(into, optional)] class: String) -> impl IntoView {
                                 }
                             />
                         </div>
-                        <div class="flex-1 overflow-y-auto">
-                            {move || current_section.get().render_fn}
+                        <div class="w-full h-full">
+                            <div class="w-full h-(--header-height)">
+                                <span class="text-xl font-bold text-normal p-4 block border-b border-(--tile-border-color)">
+                                    {move || current_section.get().title}
+                                </span>
+                                <CloseButton
+                                    on_click=move |_| set_is_open.set(false)
+                                    size="20px"
+                                    inset="12px"
+                                />
+                            </div>
+                            <div class="p-4 h-full overflow-auto">
+                                {move || current_section.get().render_fn}
+                            </div>
                         </div>
                     </FloatingTile>
                 </div>
@@ -317,12 +341,106 @@ fn render_profile_section() -> AnyView {
         }
     };
 
+    let room_resource = Memo::new(move |_| state.get_rooms());
+    let is_dropdown_open = RwSignal::new(false);
+
+    let picker_or_info = {
+        move || {
+            if in_room_selection.get() {
+                let current_selection = move || {
+                    let selected_id = selected_room.get();
+                    room_resource
+                        .get()
+                        .iter()
+                        .find(|&room| Some(room.room_id.clone()) == selected_id)
+                        .cloned()
+                };
+
+                view! {
+                    <span class="p-1 text-normal">"Selected room:"</span>
+
+                    <button
+                        class="h-7 items-center justify-between p-1 w-48 text-left border rounded-(--ui-border-radius) border-(--tile-border-color) hover:brightness-110"
+                        on:click=move |_| { is_dropdown_open.update(|open| *open = !*open) }
+                    >
+                        {move || {
+                            if let Some(room) = current_selection() {
+                                view! {
+                                    <div class="flex items-center gap-2 overflow-hidden">
+                                        {render_url_icon(
+                                            room.avatar_url(),
+                                            room.get_name(),
+                                            "16px",
+                                            room.color.clone(),
+                                            "[25%]",
+                                        )} <span class="truncate">{room.name.clone()}</span>
+                                    </div>
+                                }
+                                    .into_any()
+                            } else {
+                                view! { <span class="text-muted">"Select a room..."</span> }
+                                    .into_any()
+                            }
+                        }}
+                        <Icon icon=CARET_DOWN size="16px" color="var(--text-muted)" />
+                    </button>
+
+                    <Show when=move || is_dropdown_open.get()>
+                        <div
+                            class="fixed inset-0 z-40"
+                            on:click=move |_| is_dropdown_open.set(false)
+                        />
+
+                        <div class="absolute top-11 left-[110px] w-48 max-h-60 overflow-y-auto bg-(--ui-solid-bg) border border-(--tile-border-color) rounded-(--ui-border-radius) shadow-lg z-50 py-1 flex flex-col">
+                            <For
+                                each=move || room_resource.get()
+                                key=|room| room.room_id.clone()
+                                children=move |room| {
+                                    let room_id = room.room_id.clone();
+                                    let is_selected = Some(room_id.clone()) == selected_room.get();
+                                    view! {
+                                        <button
+                                            class="flex items-center w-full gap-2 px-3 py-2 text-left transition-colors hover:bg-(--overlay-bg-color)"
+                                            class=("bg-(--overlay-bg-color)", is_selected)
+                                            on:click=move |_| {
+                                                selected_room.set(Some(room_id.clone()));
+                                                is_dropdown_open.set(false);
+                                            }
+                                        >
+                                            {render_url_icon(
+                                                room.avatar_url(),
+                                                room.get_name(),
+                                                "16px",
+                                                room.color,
+                                                "[25%]",
+                                            )}
+                                            <span class="truncate text-normal">
+                                                {room.name.clone()}
+                                            </span>
+                                        </button>
+                                    }
+                                }
+                            />
+                        </div>
+                    </Show>
+                }.into_any()
+            } else {
+                view! {
+                    <div class="text-sm text-muted italic">
+                        "Settings that apply to all rooms and conversations."
+                    </div>
+                }
+                .into_any()
+            }
+        }
+    };
+
     view! {
         <div class="flex flex-col h-full">
             <div class="relative flex flex-row w-full gap-5 px-5 pt-5">
                 <button
                     node_ref=global_btn
-                    class="text-sm font-medium hover:text-normal"
+                    class="font-medium hover:text-normal cursor-pointer"
                     class=("text-(--accent-color)", move || !in_room_selection.get())
                     class=("text-dim", move || in_room_selection.get())
                     on:click=move |_| in_room_selection.set(false)
@@ -331,12 +449,12 @@ fn render_profile_section() -> AnyView {
                 </button>
                 <button
                     node_ref=room_btn
-                    class="text-sm font-medium hover:text-normal"
+                    class="font-medium hover:text-normal cursor-pointer"
                     class=("text-(--accent-color)", move || in_room_selection.get())
                     class=("text-dim", move || !in_room_selection.get())
                     on:click=move |_| in_room_selection.set(true)
                 >
-                    "Per Room"
+                    "Room-specific"
                 </button>
 
                 <div
@@ -346,6 +464,9 @@ fn render_profile_section() -> AnyView {
                     class=("ease-in-out", move || has_measured.get())
                     style=pill_style
                 />
+            </div>
+            <div class="border-b border-(--tile-border-color) p-2 h-20 flex flex-row items-center gap-4">
+                {picker_or_info}
             </div>
             <div class="w-56 shrink-0 border border-(--tile-border-color) flex flex-col m-5 rounded-(--ui-border-radius) overflow-hidden">
                 <div class="relative">
