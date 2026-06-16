@@ -146,12 +146,12 @@ fn DmDiv(dm: RoomNode) -> impl IntoView {
     };
 
     view! {
-        <div class="group flex flex-row w-full cursor-pointer px-3">
+        <div class="group flex flex-row w-full cursor-pointer px-2">
             <div class="transition-[width] duration-300 ease-out shrink-0 w-0 group-hover:w-3"></div>
             <div
-                class="flex flex-row flex-grow items-center p-1 pl-2 rounded-[10px] cursor-pointer hover:text-bright"
-                class=("bg-[var(--color-item-selected)]", move || is_active.get())
-                class=("text-bright", move || is_active.get())
+                class="flex flex-row flex-grow items-center p-1 pl-2 rounded-[10px] cursor-pointer hover:text-normal"
+                class=("bg-(--color-item-selected)", move || is_active.get())
+                class=("text-normal", move || is_active.get())
                 class=("hover:bg-[var(--color-item-hover)]", move || !is_active.get())
                 class=("text-dim", move || !is_active.get())
             >
@@ -557,33 +557,33 @@ pub fn render_server_channel(child: RoomNode) -> impl IntoView {
                     .get()
                     .then(|| {
                         view! {
-                            <div class="absolute top-1/2 -translate-y-1/2 -left-1 group-hover:left-1.5 transition-[left] duration-300 ease-out w-2 h-2 bg-[var(--text-bright)] rounded-full z-10 pointer-events-none"></div>
+                            <div class="absolute top-1/2 -translate-y-1/2 -left-1 group-hover:left-1.5 transition-[left] duration-300 ease-out w-2 h-2 bg-(--text-bright) rounded-full z-10 pointer-events-none"></div>
                         }
                     })
             }}
             <div class="transition-[width] duration-300 ease-out shrink-0 w-2 group-hover:w-5"></div>
 
             <div
-                class="flex flex-row flex-grow items-center p-1 rounded-[10px] cursor-pointer transition-colors hover:text-bright"
-                class=("hover:bg-[color:var(--color-item-hover)]", move || !is_active.get())
+                class="flex flex-row flex-grow items-center p-1 rounded-[10px] cursor-pointer transition-colors hover:text-normal"
+                class=("hover:bg-(--color-item-hover)", move || !is_active.get())
                 class=("text-dim", move || !is_active.get() && !has_notifications.get())
                 class=(
-                    "text-bright",
+                    "text-normal",
                     move || { !is_active.get() && has_notifications.get() || is_active.get() },
                 )
-                class=("bg-[color:var(--color-item-selected)]", move || is_active.get())
+                class=("bg-(--color-item-selected)", move || is_active.get())
                 on:click=move |_| { state.set_active_room_with_id(Some(click_id.clone())) }
             >
                 <Icon
                     icon=channel_icon
                     size="20px"
-                    color=move || if call_empty() { "currentColor" } else { "var(--status-online)" }
+                    color=move || if call_empty() { "currentColor" } else { "var(--online-color)" }
                 />
                 <div class="w-1"></div>
                 {child.name}
                 {if highlight_count() > 0 {
                     view! {
-                        <div class="ml-auto bg-[var(--mention-color)] text-white text-xs font-bold px-1.5 py-0.5 rounded-full">
+                        <div class="ml-auto bg-(--mention-color) text-white text-xs font-bold px-1.5 py-0.5 rounded-full">
                             {highlight_count}
                         </div>
                     }
@@ -610,7 +610,7 @@ pub fn ServerItems(active_server: RoomNode) -> impl IntoView {
                 <div class="header border-b border-(--tile-border-color) p-3 font-bold text-normal w-full">
                     {name}
                 </div>
-                <div class="list pr-2 w-full">
+                <div class="list pr-2 w-full pt-1">
                     <For
                         each=move || children.clone()
                         key=|room_id| room_id.clone()

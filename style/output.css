@@ -1039,11 +1039,17 @@
   .bg-\(--confirm-color\) {
     background-color: var(--confirm-color);
   }
+  .bg-\(--mention-color\) {
+    background-color: var(--mention-color);
+  }
   .bg-\(--offline-color\) {
     background-color: var(--offline-color);
   }
   .bg-\(--online-color\) {
     background-color: var(--online-color);
+  }
+  .bg-\(--text-bright\) {
+    background-color: var(--text-bright);
   }
   .bg-\(--text-muted\) {
     background-color: var(--text-muted);
@@ -1069,23 +1075,14 @@
   .bg-\[\#00ffff\] {
     background-color: #00ffff;
   }
-  .bg-\[color\:var\(--color-item-selected\)\] {
-    background-color: var(--color-item-selected);
-  }
   .bg-\[var\(--color-icon-bg\)\] {
     background-color: var(--color-icon-bg);
   }
   .bg-\[var\(--color-icon-selected\)\] {
     background-color: var(--color-icon-selected);
   }
-  .bg-\[var\(--color-item-selected\)\] {
-    background-color: var(--color-item-selected);
-  }
   .bg-\[var\(--mention-color\)\] {
     background-color: var(--mention-color);
-  }
-  .bg-\[var\(--text-bright\)\] {
-    background-color: var(--text-bright);
   }
   .bg-\[var\(--tile-bg-color\)\] {
     background-color: var(--tile-bg-color);
@@ -1809,13 +1806,6 @@
       }
     }
   }
-  .hover\:bg-\[color\:var\(--color-item-hover\)\] {
-    &:hover {
-      @media (hover: hover) {
-        background-color: var(--color-item-hover);
-      }
-    }
-  }
   .hover\:bg-\[var\(--color-icon-hover\)\] {
     &:hover {
       @media (hover: hover) {
@@ -1932,7 +1922,7 @@
   --color-item-selected: rgba(255, 255, 255, 0.1);
   --bg-color: #1e1e2e;
   --tile-bg-color: rgba(0, 0, 0, 0.3);
-  --dim-text-color: hsl(220, 15%, 65%);
+  --dim-text-color: hsl(220, 15%, 40%);
   --text-color: hsl(220, 25%, 65%);
   --bright-text-color: hsl(220, 25%, 95%);
   --muted-text-color: hsl(220, 15%, 32%);
