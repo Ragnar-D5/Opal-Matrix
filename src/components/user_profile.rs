@@ -373,3 +373,59 @@ impl RoomProfileExt for RoomProfile {
         }
     }
 }
+
+pub fn render_user_profile_card(
+    width: f64,
+    height: f64,
+    user_id: String,
+    room_id: Option<String>,
+) -> impl IntoView {
+    use crate::{components::presence::PresenceBadge, state::ProfileStore};
+
+    let store: ProfileStore = expect_context();
+    let profile_sig = store.get_profile_signal(room_id, &user_id);
+    let presence = store.get_presence(&user_id);
+
+    let icon_sig = profile_sig.clone();
+    let name_sig = profile_sig.clone();
+
+    let icon_size = width;
+    let icon_radius = icon_size / 2.0;
+    let ring_width = 6.0;
+    let left_offset = 16.0;
+    let cutout_radius = icon_radius + ring_width;
+    let smooth_cutout_radius = cutout_radius + 0.5;
+    let cx = left_offset + icon_radius;
+    let cy = height;
+    let banner_mask = format!(
+        "-webkit-mask-image: radial-gradient(circle at {cx}px {cy}px, transparent {cutout_radius}px, black {smooth_cutout_radius}px); \
+         mask-image: radial-gradient(circle at {cx}px {cy}px, transparent {cutout_radius}px, black {smooth_cutout_radius}px); \
+         -webkit-mask-composite: destination-out; \
+         mask-composite: exclude;",
+    );
+    let banner_style = move || {
+        format!(
+            "height: {height}px; background-color: {}; {banner_mask}",
+            profile_sig.banner_color()
+        )
+    };
+    let icon_top = height - icon_radius;
+    let icon_size_str = format!("{icon_size}px");
+    let badge_size = (icon_size * 25.0 / 70.0) as f32;
+
+    view! {
+        <div class="relative flex flex-col w-full">
+            <div class="w-full" style=banner_style></div>
+
+            <div class="absolute left-4" style=format!("top: {icon_top}px;")>
+                <PresenceBadge presence=presence.clone() size=badge_size>
+                    {move || icon_sig.clone().icon(icon_size_str.clone())}
+                </PresenceBadge>
+            </div>
+
+            <div class="px-4 pb-6" style=format!("padding-top: {icon_radius}px;")>
+                {move || name_sig.clone().name("16px".to_string())}
+            </div>
+        </div>
+    }
+}

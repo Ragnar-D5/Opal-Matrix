@@ -15,7 +15,7 @@ use crate::{
             gif_picker::{GifPickerState, pick_gif},
         },
         presence::PresenceBadge,
-        user_profile::MemberProfileExt,
+        user_profile::{MemberProfileExt, render_user_profile_card},
     },
     hooks::use_tauri_event,
     state::{AppState, ProfileStore, RoomHeader},
@@ -1388,61 +1388,13 @@ pub fn Chat() -> impl IntoView {
 
 #[component]
 fn ChatInfo(header: Memo<RoomHeader>) -> impl IntoView {
-    let member_store: ProfileStore = expect_context();
-
     let content = move || {
-        let store_clone = member_store.clone();
-
         match header.get() {
             RoomHeader::DM(profile_sig) => {
-                let banner_color = profile_sig.get().banner_color().to_css_hsl();
-                let banner_height = 108.0;
-                let icon_size = 70.0;
-                let icon_radius = icon_size / 2.0;
-                let ring_width = 6.0;
-                let left_offset = 16.0;
-                let cutout_radius = icon_radius + ring_width;
-                let smooth_cutout_radius = cutout_radius + 0.5;
-                let cx = left_offset + icon_radius;
-                let cy = banner_height;
-                let banner_mask = format!(
-                    "-webkit-mask-image: radial-gradient(circle at {cx}px {cy}px, transparent {cutout_radius}px, black {smooth_cutout_radius}px); \
-                 mask-image: radial-gradient(circle at {cx}px {cy}px, transparent {cutout_radius}px, black {smooth_cutout_radius}px); \
-                 -webkit-mask-composite: destination-out; \
-                 mask-composite: exclude;",
-                );
-                let profile_sig_icon = profile_sig.clone();
-                let profile_sig_name = profile_sig.clone();
-                view! {
-                    <div class="relative flex flex-col w-full">
-                        <div
-                            class="h-30 w-full"
-                            style=format!("background-color: {banner_color}; {banner_mask}")
-                        ></div>
-
-                        <div class="absolute top-[73px] left-4">
-                            {move || {
-                                let profile = profile_sig_icon.get();
-                                let presence = store_clone.get_presence(profile.user_id());
-                                let size_str = format!("{icon_size}px");
-                                view! {
-                                    <PresenceBadge presence=presence size=25.0>
-                                        {profile.render_icon(size_str)}
-                                    </PresenceBadge>
-                                }
-                                    .into_any()
-                            }}
-                        </div>
-
-                        <div class="px-4 pt-10 pb-6">
-                            <h2 class="text-xl font-bold text-bright">
-                                {move || profile_sig_name.get().render_name_popup("16px")}
-                            </h2>
-                            <p class="text-sm text-muted">"Direct Message"</p>
-                        </div>
-                    </div>
-                }
-                .into_any()
+                let member = profile_sig.get_untracked();
+                let user_id = member.profile.user_id.clone();
+                let room_id = member.room_id.clone();
+                render_user_profile_card(70.0, 108.0, user_id, Some(room_id)).into_any()
             }
             RoomHeader::TextChannel(_) => view! { <MemberList /> }.into_any(),
             RoomHeader::VoiceChannel(_) => view! { <MemberList /> }.into_any(),

@@ -7,6 +7,7 @@ pub fn PresenceBadge(
     children: Children,
     #[prop(optional)] size: Option<f32>,
     #[prop(into, optional)] class: String,
+    #[prop(into, optional)] indicator_class: String,
 ) -> impl IntoView {
     let size_px = size.unwrap_or(16.0);
     let svg_px = size_px * 10.0 / 16.0;
@@ -18,10 +19,12 @@ pub fn PresenceBadge(
             viewBox="0 0 20 20"
             fill="none"
             xmlns="http://www.w3.org/2000/svg"
+            class=indicator_class
         >
             {move || match presence.get().status {
                 PresenceStatus::Online => {
-                    view! { <circle cx="10" cy="10" r="10" fill="var(--online-color)" /> }.into_any()
+                    view! { <circle cx="10" cy="10" r="10" fill="var(--online-color)" /> }
+                        .into_any()
                 }
                 PresenceStatus::Unavailable => {
                     view! {
@@ -31,7 +34,13 @@ pub fn PresenceBadge(
                                 <circle cx="6" cy="6" r="8" fill="black" />
                             </mask>
                         </defs>
-                        <circle cx="10" cy="10" r="10" fill="var(--idle-color)" mask="url(#idle-mask)" />
+                        <circle
+                            cx="10"
+                            cy="10"
+                            r="10"
+                            fill="var(--idle-color)"
+                            mask="url(#idle-mask)"
+                        />
                     }
                         .into_any()
                 }
@@ -76,7 +85,7 @@ pub fn PresenceBadge(
             </div>
 
             <div
-                class="absolute flex items-center justify-center text-white text-[12px] font-extrabold rounded-full"
+                class="absolute flex items-center justify-center text-white text-[12px] font-extrabold rounded-full z-10"
                 style=format!(
                     "width: {size_px}px; height: {size_px}px; bottom: -{}px; right: -{}px;",
                     3.0 * badge_shift,

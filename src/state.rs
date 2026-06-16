@@ -464,6 +464,13 @@ impl AppState {
         None
     }
 
+    pub fn get_rooms(&self) -> Vec<RoomNode> {
+        let sidebar_state = self.sidebar_state.get();
+
+        let server_rooms: Vec<RoomNode> = sidebar_state.server_rooms.values().cloned().collect();
+        [server_rooms, sidebar_state.dms, sidebar_state.orphaned_rooms].concat()
+    }
+
     pub fn get_room(&self, room_id: &str) -> Option<RoomNode> {
         let sidebar_state = self.sidebar_state.get();
 
@@ -623,7 +630,7 @@ impl ProfileStore {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub enum ProfileSignal {
     User(ArcRwSignal<UserProfile>),
     Member(ArcRwSignal<MemberProfile>),

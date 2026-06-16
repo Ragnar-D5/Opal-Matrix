@@ -282,9 +282,6 @@
   .top-\[-8px\] {
     top: -8px;
   }
-  .top-\[73px\] {
-    top: 73px;
-  }
   .-right-0 {
     right: calc(var(--spacing) * -0);
   }
@@ -308,6 +305,9 @@
   }
   .bottom-\(--gap\) {
     bottom: var(--gap);
+  }
+  .bottom-0 {
+    bottom: calc(var(--spacing) * 0);
   }
   .bottom-1 {
     bottom: calc(var(--spacing) * 1);
@@ -354,6 +354,9 @@
   .z-50 {
     z-index: 50;
   }
+  .z-100 {
+    z-index: 100;
+  }
   .z-\[200\] {
     z-index: 200;
   }
@@ -386,6 +389,9 @@
   }
   .m-1 {
     margin: calc(var(--spacing) * 1);
+  }
+  .m-5 {
+    margin: calc(var(--spacing) * 5);
   }
   .mx-\(--gap\) {
     margin-inline: var(--gap);
@@ -566,14 +572,14 @@
   .h-25 {
     height: calc(var(--spacing) * 25);
   }
-  .h-30 {
-    height: calc(var(--spacing) * 30);
-  }
   .h-50 {
     height: calc(var(--spacing) * 50);
   }
   .h-\[1px\] {
     height: 1px;
+  }
+  .h-\[2px\] {
+    height: 2px;
   }
   .h-\[20px\] {
     height: 20px;
@@ -640,6 +646,9 @@
   }
   .w-50 {
     width: calc(var(--spacing) * 50);
+  }
+  .w-56 {
+    width: calc(var(--spacing) * 56);
   }
   .w-65 {
     width: calc(var(--spacing) * 65);
@@ -834,6 +843,9 @@
   }
   .gap-3 {
     gap: calc(var(--spacing) * 3);
+  }
+  .gap-5 {
+    gap: calc(var(--spacing) * 5);
   }
   .gap-\[1px\] {
     gap: 1px;
@@ -1034,6 +1046,9 @@
   }
   .bg-\(--accent-bg-color\) {
     background-color: var(--accent-bg-color);
+  }
+  .bg-\(--accent-color\) {
+    background-color: var(--accent-color);
   }
   .bg-\(--color-item-hover\) {
     background-color: var(--color-item-hover);
@@ -1250,6 +1265,9 @@
   }
   .pt-3 {
     padding-top: calc(var(--spacing) * 3);
+  }
+  .pt-5 {
+    padding-top: calc(var(--spacing) * 5);
   }
   .pt-9 {
     padding-top: calc(var(--spacing) * 9);
@@ -1631,6 +1649,10 @@
     transition-property: transform, translate, scale, rotate;
     transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));
     transition-duration: var(--tw-duration, var(--default-transition-duration));
+  }
+  .duration-100 {
+    --tw-duration: 100ms;
+    transition-duration: 100ms;
   }
   .duration-150 {
     --tw-duration: 150ms;
