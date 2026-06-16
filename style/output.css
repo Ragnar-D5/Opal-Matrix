@@ -1933,7 +1933,7 @@
   --bg-color: #1e1e2e;
   --tile-bg-color: rgba(0, 0, 0, 0.3);
   --dim-text-color: hsl(220, 15%, 65%);
-  --text-color: hsl(220, 25%, 82%);
+  --text-color: hsl(220, 25%, 65%);
   --bright-text-color: hsl(220, 25%, 95%);
   --muted-text-color: hsl(220, 15%, 32%);
   --tile-border-color: rgba(255, 255, 255, 0.175);

@@ -321,11 +321,10 @@ fn TimeLine() -> impl IntoView {
         }
     });
 
-    let important_event_id: RwSignal<Option<String>> = RwSignal::new(None);
-    provide_context(important_event_id);
+    let important_event_id: RwSignal<Option<String>> = expect_context();
 
     let scroll_target: RwSignal<Option<String>> = RwSignal::new(None);
-    provide_context(scroll_target);
+    provide_context(ScrollTarget(scroll_target));
 
     let input_info: RwSignal<Option<ChatInputInfo>> = expect_context();
     Effect::new(move |_| {
@@ -717,6 +716,9 @@ fn ChatHeader(header: Memo<RoomHeader>, chat_sidebar_open: RwSignal<bool>) -> im
     }
 }
 
+#[derive(Clone, Copy)]
+pub struct ScrollTarget(pub RwSignal<Option<String>>);
+
 #[derive(Clone, Debug)]
 pub enum ChatInputInfo {
     ReplyingTo { event_id: String, sender_id: String },
@@ -1062,6 +1064,7 @@ fn ChatInput() -> impl IntoView {
 
     let store_clone = store.clone();
 
+    let important_event_id: RwSignal<Option<String>> = expect_context();
     let input_info_content = move || {
         let Some(info) = input_info.get() else {
             return ().into_any();
@@ -1088,7 +1091,10 @@ fn ChatInput() -> impl IntoView {
                 {content}
                 <button
                     class="text-muted hover:text-bright cursor-pointer"
-                    on:click=move |_| input_info.set(None)
+                    on:click=move |_| {
+                        input_info.set(None);
+                        important_event_id.set(None);
+                    }
                 >
                     <Icon icon=X_CIRCLE size="18px" color="currentColor" weight=IconWeight::Fill />
                 </button>
@@ -1293,6 +1299,9 @@ pub fn Chat() -> impl IntoView {
 
     let input_info: RwSignal<Option<ChatInputInfo>> = RwSignal::new(None);
     provide_context(input_info);
+
+    let important_event_id: RwSignal<Option<String>> = RwSignal::new(None);
+    provide_context(important_event_id);
 
     view! {
         <div class="flex-1 h-full flex gap-[var(--gap)] flex-col overflow-hidden">

@@ -99,7 +99,7 @@ fn ReplyPreview(
         >
             {move || profile.get().render_icon("20px")}
             {move || profile.get().render_name("12px")}
-            <span class="truncate text-bright line-clamp-1">
+            <span class="truncate text-normal line-clamp-1">
                 {move || {
                     let spans = spans.get();
                     spans
@@ -1247,7 +1247,7 @@ fn render_timeline_event(
     let picker_open = RwSignal::new(false);
     let show_delete_confirm = RwSignal::new(false);
 
-    let scroll_target: RwSignal<Option<String>> = expect_context();
+    let scroll_target = expect_context::<super::ScrollTarget>().0;
     let node_ref = NodeRef::<Div>::new();
 
     let (show_highlight, date, sender_id, name, color, reply_info, event_id) = item_sig
@@ -1281,12 +1281,12 @@ fn render_timeline_event(
             return;
         };
         if Some(&target) == this_event_id.as_ref() {
+            scroll_target.set(None);
             let options = web_sys::ScrollIntoViewOptions::new();
             options.set_behavior(web_sys::ScrollBehavior::Smooth);
             options.set_block(web_sys::ScrollLogicalPosition::Center);
             el.class_list().add_1("animate-highlight").ok();
             el.scroll_into_view_with_scroll_into_view_options(&options);
-            scroll_target.set(None);
             let el_id = format!("timeline-event-{target}");
             set_timeout(
                 move || {
@@ -1367,15 +1367,14 @@ fn render_timeline_event(
 
     let important_event_id: RwSignal<Option<String>> = expect_context();
     let color_event_id = event_id.clone();
+
     let current_highlight = Memo::new(move |_| {
         if let Some(important_id) = important_event_id.get()
             && let Some(event_id) = &color_event_id
-        {
-            if important_id == *event_id {
+            && important_id == *event_id {
+                log::info!("Highlighting event {important_id}");
                 Some("white".to_string())
-            } else {
-                None
-            }
+
         } else if show_highlight {
             Some("var(--accent-color)".to_string())
         } else {
@@ -1414,6 +1413,7 @@ fn render_timeline_event(
                             if hovered { "0.10" } else { "0.15" },
                         )
                     })
+                    .unwrap_or_default()
             }
             on:mouseenter=move |_| hovered.set(true)
             on:mouseleave=move |_| hovered.set(false)
