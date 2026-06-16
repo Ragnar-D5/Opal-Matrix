@@ -230,7 +230,7 @@ pub fn EmojiPickerPortal() -> impl IntoView {
                             type="text"
                             node_ref=search_ref
                             placeholder="Search emoji..."
-                            class="w-full bg-(--ui-solid-bg) border border-(--tile-border-color) rounded-(--ui-border-radius) pl-7 pr-2 py-1 text-sm text-bright outline-none"
+                            class="w-full bg-(--ui-solid-bg) border border-(--tile-border-color) rounded-(--ui-border-radius) pl-7 pr-2 py-1 text-sm text-normal outline-none placeholder:text-muted"
                             on:input=move |ev| {
                                 let el = ev
                                     .target()
