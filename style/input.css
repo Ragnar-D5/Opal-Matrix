@@ -5,6 +5,7 @@
     --color-item-selected: rgba(255, 255, 255, 0.1);
     --bg-color: #1e1e2e;
     --tile-bg-color: rgba(0, 0, 0, 0.3);
+    --opaque-tile-bg-color: rgba(20, 20, 30, 0.7);
 
     --dim-text-color: hsl(220, 15%, 40%);
     --text-color: hsl(220, 25%, 65%);
@@ -27,7 +28,7 @@
     --ui-floating-bg: rgba(0, 0, 0, 0.2);
     --ui-floating-hover-bg: rgba(0, 0, 0, 0.4);
 
-    --ui-solid-bg: #0c0c14;
+    --ui-solid-bg: #04040c;
     --ui-solid-hover-bg: #1e1e2e;
 
     --ui-border-radius: 6px;
@@ -42,6 +43,8 @@
     --idle-color: #e5c100;
     --busy-color: #e53e3e;
     --offline-color: #6a6a6a;
+
+    --overlay-bg-color: rgba(0, 0, 0, 0.5);
 }
 
 @utility text-token {

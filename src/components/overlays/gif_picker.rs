@@ -224,11 +224,13 @@ pub fn GifPickerPortal() -> impl IntoView {
         format!("{x_style}{y_style}width:{actual_w}px;height:{actual_h}px;")
     };
 
-    let on_keydown = move |ev: web_sys::KeyboardEvent| {
-        if ev.key() == "Escape" {
+    window_event_listener(leptos::ev::keydown, move |ev: web_sys::KeyboardEvent| {
+        if state.resolve.try_get_untracked().flatten().is_some() && ev.key() == "Escape" {
             state.close(None);
         }
+    });
 
+    let on_keydown = move |_ev: web_sys::KeyboardEvent| {
         let term = search.get_untracked();
         current_page.set(0);
         do_search(term, 0, false);
@@ -318,17 +320,20 @@ pub fn GifPickerPortal() -> impl IntoView {
                                                 class="group-hover:opacity-75 transition-opacity rounded"
                                                 on:load=move |_| loaded.set(true)
                                             />
-                                            <div style=move || format!(
-                                                "position: absolute; inset: 0; overflow: hidden; pointer-events: none; transition: opacity 0.4s ease; opacity: {};",
-                                                if loaded.get() { "0" } else { "1" }
-                                            )>
+                                            <div style=move || {
+                                                format!(
+                                                    "position: absolute; inset: 0; overflow: hidden; pointer-events: none; transition: opacity 0.4s ease; opacity: {};",
+                                                    if loaded.get() { "0" } else { "1" },
+                                                )
+                                            }>
                                                 {move || match blur_preview.get_value() {
-                                                    Some(hash) => view! {
-                                                        <Blurhash hash=hash />
-                                                    }.into_any(),
-                                                    None => view! {
-                                                        <div class="w-full h-full animate-pulse bg-(--ui-hover-bg)" />
-                                                    }.into_any(),
+                                                    Some(hash) => view! { <Blurhash hash=hash /> }.into_any(),
+                                                    None => {
+                                                        view! {
+                                                            <div class="w-full h-full animate-pulse bg-(--ui-hover-bg)" />
+                                                        }
+                                                            .into_any()
+                                                    }
                                                 }}
                                             </div>
                                         </div>
@@ -393,17 +398,20 @@ pub fn GifPickerPortal() -> impl IntoView {
                                                 class="group-hover:opacity-75 transition-opacity rounded"
                                                 on:load=move |_| loaded.set(true)
                                             />
-                                            <div style=move || format!(
-                                                "position: absolute; inset: 0; overflow: hidden; pointer-events: none; transition: opacity 0.4s ease; opacity: {};",
-                                                if loaded.get() { "0" } else { "1" }
-                                            )>
+                                            <div style=move || {
+                                                format!(
+                                                    "position: absolute; inset: 0; overflow: hidden; pointer-events: none; transition: opacity 0.4s ease; opacity: {};",
+                                                    if loaded.get() { "0" } else { "1" },
+                                                )
+                                            }>
                                                 {move || match blur_preview.get_value() {
-                                                    Some(hash) => view! {
-                                                        <Blurhash hash=hash />
-                                                    }.into_any(),
-                                                    None => view! {
-                                                        <div class="w-full h-full animate-pulse bg-(--ui-hover-bg)" />
-                                                    }.into_any(),
+                                                    Some(hash) => view! { <Blurhash hash=hash /> }.into_any(),
+                                                    None => {
+                                                        view! {
+                                                            <div class="w-full h-full animate-pulse bg-(--ui-hover-bg)" />
+                                                        }
+                                                            .into_any()
+                                                    }
                                                 }}
                                             </div>
                                         </div>

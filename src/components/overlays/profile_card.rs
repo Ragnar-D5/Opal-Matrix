@@ -1,6 +1,6 @@
 use leptos::{portal::Portal, prelude::*};
 use shared::synth::signature_audio_src;
-use web_sys::Element;
+use web_sys::{Element, KeyboardEvent};
 
 use crate::{components::presence::PresenceBadge, state::ProfileStore};
 
@@ -41,6 +41,12 @@ impl ProfileCardState {
 pub fn ProfileCardPortal() -> impl IntoView {
     let state: ProfileCardState = expect_context();
     let store = StoredValue::new(expect_context::<ProfileStore>());
+
+    window_event_listener(leptos::ev::keydown, move |ev: KeyboardEvent| {
+        if state.user_id.try_get_untracked().flatten().is_some() && ev.key() == "Escape" {
+            state.close();
+        }
+    });
 
     let style = move || {
         let Some((left, top, _right, bottom)) = state.anchor_rect.get() else {

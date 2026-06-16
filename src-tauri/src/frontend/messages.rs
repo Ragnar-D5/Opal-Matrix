@@ -399,24 +399,26 @@ pub async fn get_timeline(
             timeline.mark_as_read(ReceiptType::FullyRead).await?;
 
             let mut unknown_reply_event_ids = HashSet::new();
-            for item in messages.iter() {
-                timeline_item_to_ui(item, &mut media_store, &mut unknown_reply_event_ids);
-            }
+            let ui_messages: Vec<_> = messages.iter().map(|v| timeline_item_to_ui(v, &mut media_store, &mut unknown_reply_event_ids)).collect();
 
-            for event_id in unknown_reply_event_ids {
-                log::debug!("Fetching unknown reply event {}", event_id);
-                if let Err(e) = timeline.fetch_details_for_event(&event_id).await {
-                    warn!("Failed to fetch details for event {}: {:?}", event_id, e);
-                }
+            // Fetch reply details in the background so the stream index stays in
+            // sync with what the frontend receives. The stream handler will deliver
+            // the resulting Set diffs once details are ready.
+            if !unknown_reply_event_ids.is_empty() {
+                let timeline_bg = timeline.clone();
+                tokio::spawn(async move {
+                    for event_id in unknown_reply_event_ids {
+                        log::debug!("Fetching unknown reply event {}", event_id);
+                        if let Err(e) = timeline_bg.fetch_details_for_event(&event_id).await {
+                            warn!("Failed to fetch details for event {}: {:?}", event_id, e);
+                        }
+                    }
+                });
             }
-
-            let current_items = timeline.items().await;
-            log::debug!("Returning {} messages for room {} after detail fetch", current_items.len(), room_id);
-            let messages = current_items.iter().map(|v| timeline_item_to_ui(v, &mut media_store, &mut HashSet::new())).collect();
 
             media_manager.sources.write().await.extend(media_store);
 
-            Ok(GetTimelineResult { timeline_id: timeline_id.to_string(), messages })
+            Ok(GetTimelineResult { timeline_id: timeline_id.to_string(), messages: ui_messages })
         } => {
             result
         }

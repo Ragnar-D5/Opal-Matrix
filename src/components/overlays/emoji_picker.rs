@@ -160,6 +160,12 @@ pub fn EmojiPickerPortal() -> impl IntoView {
         }
     });
 
+    window_event_listener(leptos::ev::keydown, move |ev: web_sys::KeyboardEvent| {
+        if state.resolve.try_get_untracked().flatten().is_some() && ev.key() == "Escape" {
+            state.close(None);
+        }
+    });
+
     let style = move || {
         let Some((left, top, right, bottom)) = state.anchor_rect.get() else {
             return String::new();
