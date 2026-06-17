@@ -272,13 +272,9 @@ fn render_profile_section() -> AnyView {
 
     let presence = store.get_presence(&user_id);
 
-    let store_banner = store.clone();
     let store_icon = store.clone();
-    let store_name = store.clone();
     let store_fields = store.clone();
-    let uid_banner = user_id.clone();
     let uid_icon = user_id.clone();
-    let uid_name = user_id.clone();
     let uid_fields = user_id.clone();
 
     // Banner geometry constants
@@ -494,6 +490,7 @@ fn render_profile_section() -> AnyView {
     let displayname_ref: NodeRef<leptos::html::Input> = NodeRef::new();
     let bannercolor_ref: NodeRef<leptos::html::Input> = NodeRef::new();
     let namecolor_ref: NodeRef<leptos::html::Input> = NodeRef::new();
+    let hue_bar_ref: NodeRef<leptos::html::Div> = NodeRef::new();
 
     let displayname_val = RwSignal::new(String::new());
     let bannercolor_val = RwSignal::new(String::new());
@@ -602,9 +599,7 @@ fn render_profile_section() -> AnyView {
                             style=move || {
                                 format!(
                                     "height: {banner_height}px; background-color: {}; {banner_mask}",
-                                    store_banner
-                                        .get_profile_signal(selected_room.get(), &uid_banner)
-                                        .banner_color(),
+                                    bannercolor_val.get(),
                                 )
                             }
                             on:click=move |_| {
@@ -659,11 +654,15 @@ fn render_profile_section() -> AnyView {
                                     }
                                 }
                             >
-                                {move || {
-                                    store_name
-                                        .get_profile_signal(selected_room.get(), &uid_name)
-                                        .name("16px".to_string())
-                                }}
+                                <span
+                                    class="font-bold"
+                                    style=move || format!(
+                                        "font-size: 16px; color: hsl({}deg, 90%, 70%);",
+                                        namecolor_val.get()
+                                    )
+                                >
+                                    {move || displayname_val.get()}
+                                </span>
                             </div>
                             <button class="ml-2 text-muted hover:text-normal" on:click=move |_| {
                                 if let Some(el) = namecolor_ref.get() {
@@ -743,6 +742,40 @@ fn render_profile_section() -> AnyView {
                             >
                                 "Save"
                             </button>
+                        </div>
+                        <div
+                            node_ref=hue_bar_ref
+                            class="relative h-3 rounded-full cursor-crosshair select-none touch-none"
+                            style="background: linear-gradient(to right in hsl increasing hue, hsl(0,90%,70%), hsl(359 ,90%,70%))"
+                            on:pointerdown=move |ev| {
+                                ev.prevent_default();
+                                if let Some(el) = hue_bar_ref.get() {
+                                    let _ = el.set_pointer_capture(ev.pointer_id());
+                                    let rect = el.get_bounding_client_rect();
+                                    let x = (ev.client_x() as f64 - rect.left()).clamp(0.0, rect.width());
+                                    namecolor_val.set(format!("{}", (x / rect.width() * 360.0).round() as u32));
+                                }
+                            }
+                            on:pointermove=move |ev| {
+                                if ev.buttons() == 0 { return; }
+                                if let Some(el) = hue_bar_ref.get() {
+                                    let rect = el.get_bounding_client_rect();
+                                    let x = (ev.client_x() as f64 - rect.left()).clamp(0.0, rect.width());
+                                    namecolor_val.set(format!("{}", (x / rect.width() * 360.0).round() as u32));
+                                }
+                            }
+                        >
+                            <div
+                                class="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full border-2 border-white pointer-events-none"
+                                style=move || {
+                                    let hue: f64 = namecolor_val.get().parse().unwrap_or(0.0);
+                                    format!(
+                                        "left: clamp(0px, calc({}% - 6px), calc(100% - 12px)); background-color: hsl({}deg, 90%, 70%); box-shadow: 0 0 0 1.5px black, 0 2px 6px rgba(0,0,0,0.5);",
+                                        hue / 360.0 * 100.0,
+                                        hue as u32,
+                                    )
+                                }
+                            />
                         </div>
                     </div>
                 </div>
