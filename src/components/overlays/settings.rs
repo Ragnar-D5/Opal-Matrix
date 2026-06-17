@@ -154,10 +154,11 @@ pub fn SettingsIcon(#[prop(into, optional)] class: String) -> impl IntoView {
             <LIcon icon=i::BsGearWideConnected height="20px" />
         </button>
 
-        <Show when=move || is_open.get() fallback=|| view! { "" }>
+        <Show when=move || is_open.get() fallback=|| ()>
             <Portal>
                 <div
                     on:click=move |_| set_is_open.set(false)
+                    on:wheel=|e| e.stop_propagation()
                     class="fixed inset-0 z-40 bg-(--overlay-bg-color) backdrop-blur-sm flex items-center justify-center p-6 md:p-12"
                 >
                     <FloatingTile
@@ -238,8 +239,8 @@ pub fn SettingsIcon(#[prop(into, optional)] class: String) -> impl IntoView {
                                 }
                             />
                         </div>
-                        <div class="w-full h-full">
-                            <div class="w-full h-(--header-height)">
+                        <div class="w-full h-full flex flex-col">
+                            <div class="w-full h-(--header-height) shrink-0">
                                 <span class="text-xl font-bold text-normal p-4 block border-b border-(--tile-border-color)">
                                     {move || current_section.get().title}
                                 </span>
@@ -249,7 +250,7 @@ pub fn SettingsIcon(#[prop(into, optional)] class: String) -> impl IntoView {
                                     inset="12px"
                                 />
                             </div>
-                            <div class="p-4 h-full overflow-auto">
+                            <div class="p-4 flex-1 min-h-0 overflow-auto">
                                 {move || current_section.get().render_fn}
                             </div>
                         </div>
@@ -343,86 +344,139 @@ fn render_profile_section() -> AnyView {
 
     let room_resource = Memo::new(move |_| state.get_rooms());
     let is_dropdown_open = RwSignal::new(false);
+    let search_text: RwSignal<String> = RwSignal::new(String::new());
+    let is_focused = RwSignal::new(false);
 
     let picker_or_info = {
         move || {
             if in_room_selection.get() {
-                let current_selection = move || {
-                    let selected_id = selected_room.get();
-                    room_resource
-                        .get()
-                        .iter()
-                        .find(|&room| Some(room.room_id.clone()) == selected_id)
-                        .cloned()
-                };
-
                 view! {
-                    <span class="p-1 text-normal">"Selected room:"</span>
+                    <span class="p-1 text-normal">"Select a room:"</span>
 
-                    <button
-                        class="h-7 items-center justify-between p-1 w-48 text-left border rounded-(--ui-border-radius) border-(--tile-border-color) hover:brightness-110"
-                        on:click=move |_| { is_dropdown_open.update(|open| *open = !*open) }
-                    >
-                        {move || {
-                            if let Some(room) = current_selection() {
-                                view! {
-                                    <div class="flex items-center gap-2 overflow-hidden">
-                                        {render_url_icon(
-                                            room.avatar_url(),
-                                            room.get_name(),
-                                            "16px",
-                                            room.color.clone(),
-                                            "[25%]",
-                                        )} <span class="truncate">{room.name.clone()}</span>
-                                    </div>
-                                }
-                                    .into_any()
-                            } else {
-                                view! { <span class="text-muted">"Select a room..."</span> }
-                                    .into_any()
-                            }
-                        }}
-                        <Icon icon=CARET_DOWN size="16px" color="var(--text-muted)" />
-                    </button>
-
-                    <Show when=move || is_dropdown_open.get()>
+                    <div class="relative">
                         <div
-                            class="fixed inset-0 z-40"
-                            on:click=move |_| is_dropdown_open.set(false)
-                        />
-
-                        <div class="absolute top-11 left-[110px] w-48 max-h-60 overflow-y-auto bg-(--ui-solid-bg) border border-(--tile-border-color) rounded-(--ui-border-radius) shadow-lg z-50 py-1 flex flex-col">
-                            <For
-                                each=move || room_resource.get()
-                                key=|room| room.room_id.clone()
-                                children=move |room| {
-                                    let room_id = room.room_id.clone();
-                                    let is_selected = Some(room_id.clone()) == selected_room.get();
-                                    view! {
-                                        <button
-                                            class="flex items-center w-full gap-2 px-3 py-2 text-left transition-colors hover:bg-(--overlay-bg-color)"
-                                            class=("bg-(--overlay-bg-color)", is_selected)
-                                            on:click=move |_| {
-                                                selected_room.set(Some(room_id.clone()));
-                                                is_dropdown_open.set(false);
-                                            }
-                                        >
-                                            {render_url_icon(
-                                                room.avatar_url(),
-                                                room.get_name(),
-                                                "16px",
-                                                room.color,
-                                                "[25%]",
-                                            )}
-                                            <span class="truncate text-normal">
-                                                {room.name.clone()}
-                                            </span>
-                                        </button>
-                                    }
+                            class="relative h-7 flex items-center w-48 border rounded-(--ui-border-radius) overflow-hidden"
+                            class=("border-(--accent-color)", move || is_dropdown_open.get())
+                            class=("border-(--tile-border-color)", move || !is_dropdown_open.get())
+                        >
+                            <input
+                                type="text"
+                                class="flex-1 min-w-0 px-2 bg-transparent text-left text-sm text-normal outline-none"
+                                placeholder=move || {
+                                    if selected_room.get().is_some() { "" } else { "Select a room..." }
                                 }
+                                prop:value=move || search_text.get()
+                                on:input=move |ev| {
+                                    search_text.set(event_target_value(&ev));
+                                    is_dropdown_open.set(true);
+                                }
+                                on:focus=move |_| {
+                                    is_focused.set(true);
+                                    search_text.set(String::new());
+                                    is_dropdown_open.set(true);
+                                }
+                                on:blur=move |_| is_focused.set(false)
                             />
+                            <button
+                                class="shrink-0 flex items-center pr-1 cursor-pointer"
+                                tabindex="-1"
+                                on:click=move |_| is_dropdown_open.update(|open| *open = !*open)
+                            >
+                                <Icon icon=CARET_DOWN size="16px" color="var(--text-muted)" />
+                            </button>
+                            <Show when=move || !is_focused.get() && selected_room.get().is_some()>
+                                <div class="absolute inset-0 flex items-center gap-2 px-2 pointer-events-none bg-(--opaque-tile-bg-color) overflow-hidden">
+                                    {move || {
+                                        let selected_id = selected_room.get();
+                                        room_resource
+                                            .get()
+                                            .into_iter()
+                                            .find(|room| Some(room.room_id.clone()) == selected_id)
+                                            .map(|room| {
+                                                view! {
+                                                    {render_url_icon(
+                                                        room.avatar_url(),
+                                                        room.get_name(),
+                                                        "16px",
+                                                        room.color.clone(),
+                                                        "[25%]",
+                                                    )}
+                                                    <span class="truncate text-sm text-normal">
+                                                        {room.name.clone()}
+                                                    </span>
+                                                }
+                                            })
+                                    }}
+                                </div>
+                            </Show>
                         </div>
-                    </Show>
+
+                        <Show when=move || is_dropdown_open.get()>
+                            <div
+                                class="fixed inset-0 z-40"
+                                on:click=move |_| is_dropdown_open.set(false)
+                            />
+                            <div class="absolute top-full left-0 mt-1 w-48 max-h-60 overflow-y-auto bg-(--ui-solid-bg) border border-(--tile-border-color) rounded-(--ui-border-radius) shadow-lg z-50 py-1 flex flex-col">
+                                <For
+                                    each=move || {
+                                        let search = search_text.get().to_lowercase();
+                                        room_resource
+                                            .get()
+                                            .into_iter()
+                                            .filter(move |room| {
+                                                search.is_empty()
+                                                    || room
+                                                        .get_name()
+                                                        .to_lowercase()
+                                                        .contains(&search)
+                                                    || room.room_id.to_lowercase().contains(&search)
+                                            })
+                                            .collect::<Vec<_>>()
+                                    }
+                                    key=|room| room.room_id.clone()
+                                    children=move |room| {
+                                        let room_id = room.room_id.clone();
+                                        let is_selected =
+                                            Some(room_id.clone()) == selected_room.get();
+                                        view! {
+                                            <button
+                                                class="flex items-center w-full gap-2 px-3 py-2 text-left transition-colors hover:bg-(--overlay-bg-color)"
+                                                class=("bg-(--overlay-bg-color)", is_selected)
+                                                on:click=move |_| {
+                                                    selected_room.set(Some(room_id.clone()));
+                                                    search_text.set(String::new());
+                                                    is_dropdown_open.set(false);
+                                                }
+                                            >
+                                                {render_url_icon(
+                                                    room.avatar_url(),
+                                                    room.get_name(),
+                                                    "16px",
+                                                    room.color,
+                                                    "[25%]",
+                                                )}
+                                                <span class="truncate text-normal">
+                                                    {room.name.clone()}
+                                                </span>
+                                            </button>
+                                        }
+                                    }
+                                />
+                                <Show when=move || {
+                                    let search = search_text.get().to_lowercase();
+                                    !search.is_empty()
+                                        && room_resource.get().into_iter().all(|room| {
+                                            !room.get_name().to_lowercase().contains(&search)
+                                                && !room.room_id.to_lowercase().contains(&search)
+                                        })
+                                }>
+                                    <span class="px-3 py-2 text-sm text-muted italic">
+                                        "No rooms found"
+                                    </span>
+                                </Show>
+                            </div>
+                        </Show>
+                    </div>
                 }.into_any()
             } else {
                 view! {
@@ -465,7 +519,7 @@ fn render_profile_section() -> AnyView {
                     style=pill_style
                 />
             </div>
-            <div class="border-b border-(--tile-border-color) p-2 h-20 flex flex-row items-center gap-4">
+            <div class="border-b border-(--tile-border-color) p-2 h-13 flex flex-row items-center gap-4">
                 {picker_or_info}
             </div>
             <div class="w-56 shrink-0 border border-(--tile-border-color) flex flex-col m-5 rounded-(--ui-border-radius) overflow-hidden">
