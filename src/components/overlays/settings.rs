@@ -12,7 +12,7 @@ use crate::app::call_tauri;
 use crate::components::presence::PresenceBadge;
 use crate::components::user_profile::{render_url_icon, MemberProfileExt};
 use crate::components::{CloseButton, FloatingTile};
-use crate::state::{AppState, ProfileStore};
+use crate::state::{AppState, ProfileSignal, ProfileStore};
 
 #[derive(Clone, PartialEq)]
 enum SettingsIcon {
@@ -275,9 +275,11 @@ fn render_profile_section() -> AnyView {
     let store_banner = store.clone();
     let store_icon = store.clone();
     let store_name = store.clone();
+    let store_fields = store.clone();
     let uid_banner = user_id.clone();
     let uid_icon = user_id.clone();
     let uid_name = user_id.clone();
+    let uid_fields = user_id.clone();
 
     // Banner geometry constants
     let banner_height = 108.0_f64;
@@ -489,6 +491,76 @@ fn render_profile_section() -> AnyView {
         }
     };
 
+    let displayname_ref: NodeRef<leptos::html::Input> = NodeRef::new();
+    let bannercolor_ref: NodeRef<leptos::html::Input> = NodeRef::new();
+    let namecolor_ref: NodeRef<leptos::html::Input> = NodeRef::new();
+
+    let displayname_val = RwSignal::new(String::new());
+    let bannercolor_val = RwSignal::new(String::new());
+    let namecolor_val = RwSignal::new(String::new());
+
+    Effect::new(move |_| {
+        let (dn, bc, nc) = match store_fields.get_profile_signal(selected_room.get(), &uid_fields) {
+            ProfileSignal::User(sig) => {
+                let p = sig.get();
+                (
+                    p.display_name.clone().unwrap_or_default(),
+                    p.banner_color().to_css_hex(),
+                    format!("{}", p.name_color().to_hsla()[0].round() as u32),
+                )
+            }
+            ProfileSignal::Member(sig) => {
+                let p = sig.get();
+                (
+                    p.profile.display_name.clone().unwrap_or_default(),
+                    p.banner_color().to_css_hex(),
+                    format!("{}", p.name_color().to_hsla()[0].round() as u32),
+                )
+            }
+        };
+        displayname_val.set(dn);
+        bannercolor_val.set(bc);
+        namecolor_val.set(nc);
+    });
+
+    let save_displayname = Action::new_local(move |(name, room_id): &(String, Option<String>)| {
+        let name = name.clone();
+        let room_id = room_id.clone();
+        async move {
+            call_tauri(
+                "set_display_name",
+                serde_wasm_bindgen::to_value(&json!({ "display_name": name, "room_id": room_id }))
+                    .unwrap(),
+            )
+            .await
+        }
+    });
+
+    let save_bannercolor = Action::new_local(move |(color, room_id): &(String, Option<String>)| {
+        let color = color.clone();
+        let room_id = room_id.clone();
+        async move {
+            call_tauri(
+                "set_banner_color",
+                serde_wasm_bindgen::to_value(&json!({ "color": color, "room_id": room_id }))
+                    .unwrap(),
+            )
+            .await
+        }
+    });
+
+    let save_namecolor = Action::new_local(move |(hue, room_id): &(String, Option<String>)| {
+        let hue: f64 = hue.parse().unwrap_or(0.0);
+        let room_id = room_id.clone();
+        async move {
+            call_tauri(
+                "set_name_color",
+                serde_wasm_bindgen::to_value(&json!({ "hue": hue, "room_id": room_id })).unwrap(),
+            )
+            .await
+        }
+    });
+
     view! {
         <div class="flex flex-col h-full">
             <div class="relative flex flex-row w-full gap-5 px-5 pt-5">
@@ -522,61 +594,157 @@ fn render_profile_section() -> AnyView {
             <div class="border-b border-(--tile-border-color) p-2 h-13 flex flex-row items-center gap-4">
                 {picker_or_info}
             </div>
-            <div class="w-56 shrink-0 border border-(--tile-border-color) flex flex-col m-5 rounded-(--ui-border-radius) overflow-hidden">
-                <div class="relative">
-                    <div
-                        class="w-full cursor-pointer group relative overflow-hidden"
-                        style=move || {
-                            format!(
-                                "height: {banner_height}px; background-color: {}; {banner_mask}",
-                                store_banner
-                                    .get_profile_signal(selected_room.get(), &uid_banner)
-                                    .banner_color(),
-                            )
-                        }
-                        on:click=move |_| {}
-                    >
-                        <div class="absolute inset-0 bg-(--overlay-bg-color) opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none text-bright">
-                            <Icon icon=PAINT_BRUSH size="24px" weight=IconWeight::Light />
+            <div class="flex flex-row gap-5 m-5 items-start">
+                <div class="w-56 shrink-0 border border-(--tile-border-color) flex flex-col rounded-(--ui-border-radius) overflow-hidden">
+                    <div class="relative">
+                        <div
+                            class="w-full cursor-pointer group relative overflow-hidden"
+                            style=move || {
+                                format!(
+                                    "height: {banner_height}px; background-color: {}; {banner_mask}",
+                                    store_banner
+                                        .get_profile_signal(selected_room.get(), &uid_banner)
+                                        .banner_color(),
+                                )
+                            }
+                            on:click=move |_| {
+                                if let Some(el) = bannercolor_ref.get() {
+                                    let _ = el.focus();
+                                }
+                            }
+                        >
+                            <div class="absolute inset-0 bg-(--overlay-bg-color) opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none text-bright">
+                                <Icon icon=PAINT_BRUSH size="24px" weight=IconWeight::Light />
+                            </div>
+                        </div>
+
+                        <div
+                            class="absolute group cursor-pointer"
+                            style=format!("top: {icon_top}px; left: {left_offset}px;")
+                            on:click=move |_| {
+                                if let Some(el) = namecolor_ref.get() {
+                                    let _ = el.focus();
+                                }
+                            }
+                        >
+                            <PresenceBadge
+                                presence=presence.clone()
+                                size=badge_size
+                                indicator_class="z-100"
+                            >
+                                {move || {
+                                    store_icon
+                                        .get_profile_signal(selected_room.get(), &uid_icon)
+                                        .icon(icon_size_str.clone())
+                                }}
+                            </PresenceBadge>
+                            <div
+                                class="absolute rounded-full bg-(--overlay-bg-color) opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none text-bright"
+                                style=format!(
+                                    "top: 0; left: 0; width: {icon_size}px; height: {icon_size}px;",
+                                )
+                            >
+                                <Icon icon=CAMERA size="20px" />
+                            </div>
                         </div>
                     </div>
 
-                    <div
-                        class="absolute group cursor-pointer"
-                        style=format!("top: {icon_top}px; left: {left_offset}px;")
-                        on:click=move |_| {}
-                    >
-                        <PresenceBadge
-                            presence=presence.clone()
-                            size=badge_size
-                            indicator_class="z-100"
-                        >
-                            {move || {
-                                store_icon
-                                    .get_profile_signal(selected_room.get(), &uid_icon)
-                                    .icon(icon_size_str.clone())
-                            }}
-                        </PresenceBadge>
-                        <div
-                            class="absolute rounded-full bg-(--overlay-bg-color) opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none text-bright"
-                            style=format!(
-                                "top: 0; left: 0; width: {icon_size}px; height: {icon_size}px;",
-                            )
-                        >
-                            <Icon icon=CAMERA size="20px" />
+                    <div class="px-4 pb-4" style=format!("padding-top: {icon_radius}px;")>
+                        <div class="flex flex-row">
+                            <div
+                                class="text-base font-bold text-bright cursor-pointer"
+                                on:click=move |_| {
+                                    if let Some(el) = displayname_ref.get() {
+                                        let _ = el.focus();
+                                    }
+                                }
+                            >
+                                {move || {
+                                    store_name
+                                        .get_profile_signal(selected_room.get(), &uid_name)
+                                        .name("16px".to_string())
+                                }}
+                            </div>
+                            <button class="ml-2 text-muted hover:text-normal" on:click=move |_| {
+                                if let Some(el) = namecolor_ref.get() {
+                                    let _ = el.focus();
+                                }
+                            }>
+                                <Icon icon=PAINT_BRUSH size="12px" weight=IconWeight::Thin />
+                            </button>
                         </div>
+                        <div class="text-xs text-muted truncate">{uid_display}</div>
                     </div>
                 </div>
 
-                <div class="px-4 pb-4" style=format!("padding-top: {icon_radius}px;")>
-                    <div class="text-base font-bold text-bright">
-                        {move || {
-                            store_name
-                                .get_profile_signal(selected_room.get(), &uid_name)
-                                .name("16px".to_string())
-                        }}
+                <div class="flex flex-col gap-4 flex-1 pt-1">
+                    <div class="flex flex-col gap-1">
+                        <label class="text-xs text-muted font-medium">"Displayname"</label>
+                        <div class="flex gap-2">
+                            <input
+                                node_ref=displayname_ref
+                                type="text"
+                                class="flex-1 min-w-0 px-2 py-1 bg-transparent border border-(--tile-border-color) rounded-(--ui-border-radius) text-sm text-normal outline-none focus:border-(--accent-color)"
+                                prop:value=move || displayname_val.get()
+                                on:input=move |ev| displayname_val.set(event_target_value(&ev))
+                            />
+                            <button
+                                class="shrink-0 px-3 py-1 text-sm bg-(--accent-color) text-white rounded-(--ui-border-radius) hover:brightness-110 cursor-pointer"
+                                on:click=move |_| {
+                                    save_displayname
+                                        .dispatch_local((displayname_val.get(), selected_room.get()));
+                                }
+                            >
+                                "Save"
+                            </button>
+                        </div>
                     </div>
-                    <div class="text-xs text-muted truncate">{uid_display}</div>
+
+                    <div class="flex flex-col gap-1">
+                        <label class="text-xs text-muted font-medium">"Bannercolor"</label>
+                        <div class="flex gap-2">
+                            <input
+                                node_ref=bannercolor_ref
+                                type="text"
+                                class="flex-1 min-w-0 px-2 py-1 bg-transparent border border-(--tile-border-color) rounded-(--ui-border-radius) text-sm text-normal outline-none focus:border-(--accent-color)"
+                                prop:value=move || bannercolor_val.get()
+                                on:input=move |ev| bannercolor_val.set(event_target_value(&ev))
+                            />
+                            <button
+                                class="shrink-0 px-3 py-1 text-sm bg-(--accent-color) text-white rounded-(--ui-border-radius) hover:brightness-110 cursor-pointer"
+                                on:click=move |_| {
+                                    save_bannercolor
+                                        .dispatch_local((bannercolor_val.get(), selected_room.get()));
+                                }
+                            >
+                                "Save"
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="flex flex-col gap-1">
+                        <label class="text-xs text-muted font-medium">"Namecolor"</label>
+                        <div class="flex gap-2">
+                            <input
+                                node_ref=namecolor_ref
+                                type="number"
+                                min="0"
+                                max="360"
+                                class="flex-1 min-w-0 px-2 py-1 bg-transparent border border-(--tile-border-color) rounded-(--ui-border-radius) text-sm text-normal outline-none focus:border-(--accent-color)"
+                                prop:value=move || namecolor_val.get()
+                                on:input=move |ev| namecolor_val.set(event_target_value(&ev))
+                            />
+                            <button
+                                class="shrink-0 px-3 py-1 text-sm bg-(--accent-color) text-white rounded-(--ui-border-radius) hover:brightness-110 cursor-pointer"
+                                on:click=move |_| {
+                                    save_namecolor
+                                        .dispatch_local((namecolor_val.get(), selected_room.get()));
+                                }
+                            >
+                                "Save"
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

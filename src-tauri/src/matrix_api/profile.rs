@@ -8,7 +8,7 @@ use matrix_sdk::{
     },
 };
 use shared::profile::{CustomProperties, UserProfile};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, command};
 
 use crate::TauriError;
 
@@ -146,3 +146,21 @@ pub async fn get_custom_fields(client: &Client, user_id: OwnedUserId) -> CustomP
         sonic_signature,
     }
 }
+
+#[command]
+pub async fn update_display_name(client: Client, new_name: String) -> Result<(), TauriError> {
+    client.account().set_display_name(Some(&new_name)).await?;
+    Ok(())
+}
+
+// #[command]
+// pub async fn update_avatar_url(client: Client, path: Option<String>) -> Result<(), TauriError> {
+//     let mxc_url = if let Some(path) = path {
+//         let upload_response = client.upload(path.as_ref(), None).await?;
+//         Some(upload_response.content_uri)
+//     } else {
+//         None
+//     };
+//     client.account().set_avatar_url(mxc_url.as_deref()).await?;
+//     Ok(())
+// }
