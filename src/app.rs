@@ -27,6 +27,8 @@ use crate::hooks::use_tauri_event;
 use crate::state::{AppState, ProfileStore};
 use crate::tauri_functions::{get_server_order, set_backend_room_id, set_focused_in_backend};
 
+use macros::matrix_settings;
+
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(js_namespace = ["window", "__TAURI__", "core"])]
@@ -372,4 +374,10 @@ fn HomePage() -> impl IntoView {
             <ProfileCardPortal />
         </div>
     }
+}
+
+#[matrix_settings]
+struct Settings {
+    #[setting("Scaling", false, default = 1.0)]
+    scaling: f64,
 }

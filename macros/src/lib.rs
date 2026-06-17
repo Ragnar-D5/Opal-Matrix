@@ -14,6 +14,7 @@ pub fn matrix_settings(_attr: TokenStream, item: TokenStream) -> TokenStream {
 fn convert_settings(mut item: ItemStruct) -> TokenStream {
     let struct_name = item.ident.clone();
     let mut default_field_initializers = vec![];
+    let mut clone_assertions = vec![];
 
     if let Fields::Named(ref mut fields) = item.fields {
         for field in &mut fields.named {
@@ -34,7 +35,6 @@ fn convert_settings(mut item: ItemStruct) -> TokenStream {
                                 lit: Lit::Str(lit_str),
                                 ..
                             })) => lit_str.value(),
-                            // _ => field_name.to_string(),
                             _ => panic!("Must be a string literal"),
                         };
 
@@ -67,6 +67,13 @@ fn convert_settings(mut item: ItemStruct) -> TokenStream {
             if let Some((human_readable, uses_cloud, default_expr)) = setting_meta {
                 let type_name_str = format!("com.opal.{}", field_name);
 
+                clone_assertions.push(quote! {
+                    const _: fn() = || {
+                        fn assert_clone<T: Clone>() {}
+                        assert_clone::<#original_type>();
+                    };
+                });
+
                 field.ty = syn::parse2(quote! { MatrixSettingField<#original_type> }).unwrap();
 
                 default_field_initializers.push(quote! {
@@ -89,27 +96,38 @@ fn convert_settings(mut item: ItemStruct) -> TokenStream {
 
     let expanded = quote! {
         #[derive(Debug)]
-        pub struct MatrixSettingField<T> {
+        pub struct MatrixSettingField<T> where T: Clone {
             pub val: T,
             pub type_name: &'static str,
             pub human_readable: &'static str,
             pub uses_cloud: bool,
         }
 
-        impl<T> std::ops::Deref for MatrixSettingField<T> {
+        impl<T> MatrixSettingField<T> where T: Clone {
+            pub fn get(&self) -> T {
+                self.val.clone()
+            }
+            pub fn set(&mut self, new: T) {
+                self.val = new;
+            }
+        }
+
+        impl<T> std::ops::Deref for MatrixSettingField<T> where T: Clone {
             type Target = T;
             fn deref(&self) -> &Self::Target {
                 &self.val
             }
         }
 
-        impl<T> std::ops::DerefMut for MatrixSettingField<T> {
+        impl<T> std::ops::DerefMut for MatrixSettingField<T> where T: Clone {
             fn deref_mut(&mut self) -> &mut Self::Target {
                 &mut self.val
             }
         }
 
         #item
+
+        #(#clone_assertions)*
 
         impl Default for #struct_name {
             fn default() -> Self {

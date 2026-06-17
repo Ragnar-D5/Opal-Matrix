@@ -8,6 +8,7 @@ members = [".", "macros", "shared", "src-tauri"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [dependencies]
+macros = { path = "./macros"}
 blurhash = "0.2.3"
 chrono = { version = "0.4.44", features = ["wasmbind"] }
 console_error_panic_hook = "0.1.7"
@@ -84,5 +85,4 @@ debug = false
 opt-level = "z"
 strip = true
 lto = true
-panic = "abort"
 codegen-units = 1

@@ -6529,6 +6529,7 @@ dependencies = [
  "leptos_icons",
  "linkify",
  "log",
+ "macros",
  "nucleo-matcher",
  "phosphor-leptos",
  "regex",
