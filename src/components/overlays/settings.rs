@@ -496,13 +496,15 @@ fn render_profile_section() -> AnyView {
     let bannercolor_val = RwSignal::new(String::new());
     let namecolor_val = RwSignal::new(String::new());
 
+    let strip_alpha = |hex: String| hex.chars().take(7).collect::<String>();
+
     Effect::new(move |_| {
         let (dn, bc, nc) = match store_fields.get_profile_signal(selected_room.get(), &uid_fields) {
             ProfileSignal::User(sig) => {
                 let p = sig.get();
                 (
                     p.display_name.clone().unwrap_or_default(),
-                    p.banner_color().to_css_hex(),
+                    strip_alpha(p.banner_color().to_css_hex()),
                     format!("{}", p.name_color().to_hsla()[0].round() as u32),
                 )
             }
@@ -510,7 +512,7 @@ fn render_profile_section() -> AnyView {
                 let p = sig.get();
                 (
                     p.profile.display_name.clone().unwrap_or_default(),
-                    p.banner_color().to_css_hex(),
+                    strip_alpha(p.banner_color().to_css_hex()),
                     format!("{}", p.name_color().to_hsla()[0].round() as u32),
                 )
             }
@@ -701,7 +703,18 @@ fn render_profile_section() -> AnyView {
 
                     <div class="flex flex-col gap-1">
                         <label class="text-xs text-muted font-medium">"Bannercolor"</label>
-                        <div class="flex gap-2">
+                        <div class="flex gap-2 items-center">
+                            <div
+                                class="relative shrink-0 w-5 h-5 rounded-full border border-(--tile-border-color) overflow-hidden cursor-pointer"
+                                style=move || format!("background-color: {};", bannercolor_val.get())
+                            >
+                                <input
+                                    type="color"
+                                    class="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                    prop:value=move || bannercolor_val.get()
+                                    on:input=move |ev| bannercolor_val.set(event_target_value(&ev))
+                                />
+                            </div>
                             <input
                                 node_ref=bannercolor_ref
                                 type="text"
