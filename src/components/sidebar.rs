@@ -777,9 +777,9 @@ pub fn Sidebar() -> impl IntoView {
                 </div>
             </FloatingTile>
 
-            <div class="flex flex-col gap-(--gap)">
+            <div class="flex flex-col gap-(--gap) w-70">
                 <FloatingTile class="h-(--header-height)">"Search stuff"</FloatingTile>
-                <FloatingTile class="w-65 flex-grow flex">
+                <FloatingTile class="flex-grow">
                     {move || {
                         let current_state = state.sidebar_state.get();
                         match state.active_server_id.get() {
