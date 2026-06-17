@@ -624,6 +624,10 @@ pub fn run() {
             matrix_api::account_data::get_server_order,
             matrix_api::account_data::set_server_order,
             matrix_api::previews::get_url_preview,
+            matrix_api::profile::save_displayname,
+            matrix_api::profile::save_namecolor,
+            matrix_api::profile::save_bannercolor,
+            matrix_api::profile::save_sonic_signature,
         ])
         .register_asynchronous_uri_scheme_protocol(
             "mxc",

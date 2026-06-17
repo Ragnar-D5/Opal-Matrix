@@ -4,11 +4,12 @@ use matrix_sdk::{
     Client,
     event_handler::Ctx,
     ruma::{
-       OwnedUserId, events::room::member::OriginalSyncRoomMemberEvent, profile::ProfileFieldName
+       OwnedUserId, events::room::member::OriginalSyncRoomMemberEvent, profile::{ProfileFieldName, ProfileFieldValue}
     },
 };
 use shared::profile::{CustomProperties, UserProfile};
-use tauri::{AppHandle, Emitter, command};
+use tauri::{AppHandle, Emitter, State, command};
+use tokio::sync::RwLock;
 
 use crate::TauriError;
 
@@ -148,8 +149,8 @@ pub async fn get_custom_fields(client: &Client, user_id: OwnedUserId) -> CustomP
 }
 
 #[command]
-pub async fn update_display_name(client: Client, new_name: String) -> Result<(), TauriError> {
-    client.account().set_display_name(Some(&new_name)).await?;
+pub async fn save_displayname(client: State<'_, RwLock<Client>>, name: String) -> Result<(), TauriError> {
+    client.read().await.account().set_display_name(Some(&name)).await?;
     Ok(())
 }
 
@@ -164,3 +165,45 @@ pub async fn update_display_name(client: Client, new_name: String) -> Result<(),
 //     client.account().set_avatar_url(mxc_url.as_deref()).await?;
 //     Ok(())
 // }
+
+#[command]
+pub async fn save_namecolor(client: State<'_, RwLock<Client>>, color: String) -> Result<(), TauriError> {
+    let value = serde_json::to_value(color)?;
+
+    let profile_field = ProfileFieldValue::new(name_color_field().as_str(), value)?;
+
+    client.read().await
+        .account()
+        .set_profile_field(profile_field)
+        .await?;
+
+    Ok(())
+}
+
+#[command]
+pub async fn save_bannercolor(client: State<'_, RwLock<Client>>, color: String) -> Result<(), TauriError> {
+    let value = serde_json::to_value(color)?;
+
+    let profile_field = ProfileFieldValue::new(banner_color_field().as_str(), value)?;
+
+    client.read().await
+        .account()
+        .set_profile_field(profile_field)
+        .await?;
+
+    Ok(())
+}
+
+#[command]
+pub async fn save_sonic_signature(client: State<'_, RwLock<Client>>, signature: String) -> Result<(), TauriError> {
+    let value = serde_json::to_value(signature)?;
+
+    let profile_field = ProfileFieldValue::new(sonic_signature_field().as_str(), value)?;
+
+    client.read().await
+        .account()
+        .set_profile_field(profile_field)
+        .await?;
+
+    Ok(())
+}

@@ -310,7 +310,7 @@ pub fn ImageLightbox() -> impl IntoView {
 
 #[component]
 fn LightboxHeader(
-    sender_id: Option<String>,
+    sender_id: String,
     timestamp: u64,
     filename: String,
     size: Option<u64>,
@@ -328,7 +328,7 @@ fn LightboxHeader(
     let store: ProfileStore = expect_context();
     let state: AppState = expect_context();
     let room_id = state.active_room_id().unwrap_or_default();
-    let profile_sig = store.get_member_profile(&room_id, &sender_id.unwrap_or_default());
+    let profile_sig = store.get_member_profile(&room_id, &sender_id);
     let name_sig = profile_sig.clone();
 
     let download_name = filename.clone();

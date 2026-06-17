@@ -8,7 +8,6 @@ use phosphor_leptos::{
     TRASH, WARNING_CIRCLE,
 };
 use shared::{
-    get_color,
     profile::MemberProfile,
     sidebar::RoomKind,
     timeline::{
@@ -30,7 +29,7 @@ use crate::{
         overlays::emoji_picker::{EmojiPickerState, pick_emoji},
         previews::render_link,
         text::{RichTextExt, richt_text_spans_to_html},
-        user_profile::{MemberProfileExt, render_profile_name},
+        user_profile::{MemberProfileExt},
     },
     state::{AppState, LighboxImage, ProfileStore},
     tauri_functions::{delete_message, toggle_reaction},
@@ -63,10 +62,10 @@ fn ReplyPreview(
     let store_room_id = active_room_id.clone();
     let profile = Memo::new(move |_| {
         if let Some(preview) = preview.get() {
-            match &preview.sender {
-                DetailState::Ready(sender) => Some(
+            match &preview.sender_id {
+                DetailState::Ready(id) => Some(
                     profile_store
-                        .get_member_profile(&store_room_id, &sender.id)
+                        .get_member_profile(&store_room_id, id)
                         .get(),
                 ),
                 DetailState::Error(e) => {
@@ -120,15 +119,12 @@ fn MessageHeader(
     scroll_to_item: Callback<String>,
     show_header: bool,
     sender_profile_sig: ArcRwSignal<MemberProfile>,
-    name: String,
-    color: Color,
     date: DateTime<Local>,
     current_highlight: Memo<Option<String>>,
     children: Children,
 ) -> impl IntoView {
     let has_reply = reply_info.is_some();
-    let room_id_for_card = active_room_id.clone();
-    let sender_id_for_card = sender_profile_sig.get_untracked().user_id().to_string();
+    let name_profile_sig = sender_profile_sig.clone();
 
     view! {
         <div class="flex gap-(--gap)">
@@ -168,23 +164,18 @@ fn MessageHeader(
                     scroll_to_item=scroll_to_item
                 />
 
-                {if show_header {
-                    let sender_id = sender_id_for_card.clone();
-                    view! {
-                        <div class="flex items-baseline gap-2">
-                            {render_profile_name(
-                                name,
-                                color,
-                                Some(sender_id),
-                                Some(room_id_for_card),
-                                "16px",
-                                true,
-                            )} <span class="text-muted text-xs">{format_date(date)}</span>
-                        </div>
+                {move || {
+                    if show_header {
+                        view! {
+                            <div class="flex items-baseline gap-2">
+                                {name_profile_sig.get().render_name_popup("16px")}
+                                <span class="text-muted text-xs">{format_date(date)}</span>
+                            </div>
+                        }
+                            .into_any()
+                    } else {
+                        ().into_any()
                     }
-                        .into_any()
-                } else {
-                    ().into_any()
                 }}
 
                 {children()}
@@ -221,7 +212,7 @@ fn render_message_content(
     content: MessageContent,
     store: ProfileStore,
     room_id: String,
-    sender_id: Option<String>,
+    sender_id: String,
     timestamp: u64,
 ) -> impl IntoView {
     let spans = content.body;
@@ -668,12 +659,12 @@ fn get_date_from_ts(ts: i64) -> DateTime<Local> {
 }
 
 fn render_system_message(
-    sender_id: Option<String>,
+    sender_id: String,
     content: SystemMessage,
     store: ProfileStore,
     room_id: String,
 ) -> impl IntoView {
-    let sender_id_str = sender_id.clone().unwrap_or_default();
+    let sender_id_str = sender_id.clone();
 
     let user_div = |user_id: &str| {
         let profile_sig = store.get_member_profile(&room_id, user_id);
@@ -1035,7 +1026,7 @@ fn MesssageButtons(
     flags: Memo<EventFlags>,
     room_id: String,
     event_id: Option<String>,
-    sender_id: Option<String>,
+    sender_id: String,
     item_sig: RwSignal<UiTimelineItem>,
     picker_open: RwSignal<bool>,
     show_delete_confirm: RwSignal<bool>,
@@ -1077,11 +1068,9 @@ fn MesssageButtons(
     let reply = move |_| {
         let input_info: RwSignal<Option<ChatInputInfo>> = expect_context();
         let input_ref: NodeRef<Div> = expect_context();
+        let sender_id = sender_id.clone();
 
         let Some(event_id) = reply_event_id.clone() else {
-            return;
-        };
-        let Some(sender_id) = sender_id.clone() else {
             return;
         };
 
@@ -1251,22 +1240,14 @@ fn render_timeline_event(
     let scroll_target = expect_context::<super::ScrollTarget>().0;
     let node_ref = NodeRef::<Div>::new();
 
-    let (show_highlight, date, sender_id, name, color, reply_info, event_id) = item_sig
+    let (show_highlight, date, sender_id, reply_info, event_id) = item_sig
         .with_untracked(|item| {
             if let UiTimelineItemKind::Event(event) = &item.kind {
-                let sender_id = event.get_sender_id();
-                let name = event
-                    .get_sender_name()
-                    .unwrap_or(sender_id.clone().unwrap_or("Unknown".to_string()));
+                let sender_id = event.sender_id.clone();
                 (
                     event.flags.is_highlighted,
                     get_date_from_ts(event.timestamp as i64),
                     sender_id,
-                    name,
-                    event
-                        .get_sender_id()
-                        .map(|v| get_color(&v))
-                        .unwrap_or(Color::from_hsla(0.0, 0.0, 0.7, 1.0)),
                     event.in_reply_to(),
                     event.event_id.clone(),
                 )
@@ -1312,7 +1293,7 @@ fn render_timeline_event(
             if let EventContent::MsgLike(msg) = &mut content {
                 msg.reactions.clear();
             }
-            Some((event.get_sender_id(), event.timestamp, content))
+            Some((event.sender_id.clone(), event.timestamp, content))
         })
     });
 
@@ -1390,7 +1371,7 @@ fn render_timeline_event(
     });
 
     let sender_profile_sig =
-        store.get_member_profile(&room_id, &sender_id.clone().unwrap_or_default());
+        store.get_member_profile(&room_id, &sender_id.clone());
 
     let reply_room_id = room_id.clone();
 
@@ -1455,8 +1436,6 @@ fn render_timeline_event(
                 scroll_to_item=scroll_to_event
                 show_header=show_header
                 sender_profile_sig=sender_profile_sig
-                name=name
-                color=color
                 date=date
                 current_highlight=current_highlight
             >

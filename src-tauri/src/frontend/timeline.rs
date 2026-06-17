@@ -32,10 +32,9 @@ use shared::{
     timeline::{
         AbstractProgress, Change, DetailState, EventContent, EventFlags, EventState,
         MediaUploadProgress, MessageContent, ProfileChange, ReactionInfo, ReplyInfo, ReplyPreview,
-        RichTextSpan, Sender, SystemMessage, TimelineEvent, UiBeaconInfo, UiCallIntent,
-        UiGuestAccess, UiHistoryVisibility, UiJoinRule, UiMediaSource, UiMembershipChange,
-        UiMessageType, UiPollKind, UiPollResult, UiTimelineDiff, UiTimelineItem,
-        UiTimelineItemKind,
+        RichTextSpan, SystemMessage, TimelineEvent, UiBeaconInfo, UiCallIntent, UiGuestAccess,
+        UiHistoryVisibility, UiJoinRule, UiMediaSource, UiMembershipChange, UiMessageType,
+        UiPollKind, UiPollResult, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind,
     },
 };
 use uuid::Uuid;
@@ -174,18 +173,14 @@ fn from_embedded_event_to_ui(value: &EmbeddedEvent) -> ReplyPreview {
         }
     };
 
-    let sender = match value.sender_profile.clone() {
-        TimelineDetails::Ready(profile) => DetailState::Ready(Sender {
-            id: value.sender.to_string(),
-            display_name: profile.display_name,
-            avatar_url: profile.avatar_url.map(|u| u.to_string()),
-        }),
+    let sender_id = match value.sender_profile.clone() {
+        TimelineDetails::Ready(profile) => DetailState::Ready(value.sender.to_string()),
         TimelineDetails::Error(e) => DetailState::Error(e.to_string()),
         TimelineDetails::Pending => DetailState::Pending,
         TimelineDetails::Unavailable => DetailState::Unavailable,
     };
 
-    ReplyPreview { sender, content }
+    ReplyPreview { sender_id, content }
 }
 
 fn in_reply_to_details_to_ui(
@@ -801,16 +796,7 @@ fn event_timeline_item_to_ui(
 
         event_id: item.event_id().map(|e| e.to_string()),
 
-        sender: match item.sender_profile().clone() {
-            TimelineDetails::Error(e) => DetailState::Error(e.to_string()),
-            TimelineDetails::Pending => DetailState::Pending,
-            TimelineDetails::Unavailable => DetailState::Unavailable,
-            TimelineDetails::Ready(profile) => DetailState::Ready(Sender {
-                id: sender_id.into(),
-                display_name: profile.display_name,
-                avatar_url: profile.avatar_url.map(|u| u.to_string()),
-            }),
-        },
+        sender_id: sender_id.to_string(),
 
         content: timeline_item_content_to_ui(
             item.content(),

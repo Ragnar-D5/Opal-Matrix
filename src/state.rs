@@ -56,7 +56,7 @@ pub struct AppState {
 #[derive(Debug, Clone, PartialEq)]
 pub struct LighboxImage {
     pub name: String,
-    pub sender_id: Option<String>,
+    pub sender_id: String,
     pub timestamp: u64,
     pub size: Option<u64>,
     pub source: UiMediaSource,

@@ -8,6 +8,10 @@ use phosphor_leptos::{
 use serde_json::json;
 use web_sys::{HtmlButtonElement, KeyboardEvent};
 
+use shared::get_color;
+
+use crate::tauri_functions::{save_banner_color, save_displayname, save_name_color};
+
 use crate::app::call_tauri;
 use crate::components::presence::PresenceBadge;
 use crate::components::user_profile::{render_url_icon, MemberProfileExt};
@@ -297,6 +301,7 @@ fn render_profile_section() -> AnyView {
     let icon_size_str = format!("{icon_size}px");
     let badge_size = (icon_size * 25.0 / 70.0) as f32;
     let uid_display = user_id.clone();
+    let uid_reset = user_id.clone();
 
     let in_room_selection = RwSignal::new(false);
 
@@ -361,7 +366,11 @@ fn render_profile_section() -> AnyView {
                                 type="text"
                                 class="flex-1 min-w-0 px-2 bg-transparent text-left text-sm text-normal outline-none"
                                 placeholder=move || {
-                                    if selected_room.get().is_some() { "" } else { "Select a room..." }
+                                    if selected_room.get().is_some() {
+                                        ""
+                                    } else {
+                                        "Select a room..."
+                                    }
                                 }
                                 prop:value=move || search_text.get()
                                 on:input=move |ev| {
@@ -423,10 +432,7 @@ fn render_profile_section() -> AnyView {
                                             .into_iter()
                                             .filter(move |room| {
                                                 search.is_empty()
-                                                    || room
-                                                        .get_name()
-                                                        .to_lowercase()
-                                                        .contains(&search)
+                                                    || room.get_name().to_lowercase().contains(&search)
                                                     || room.room_id.to_lowercase().contains(&search)
                                             })
                                             .collect::<Vec<_>>()
@@ -434,8 +440,8 @@ fn render_profile_section() -> AnyView {
                                     key=|room| room.room_id.clone()
                                     children=move |room| {
                                         let room_id = room.room_id.clone();
-                                        let is_selected =
-                                            Some(room_id.clone()) == selected_room.get();
+                                        let is_selected = Some(room_id.clone())
+                                            == selected_room.get();
                                         view! {
                                             <button
                                                 class="flex items-center w-full gap-2 px-3 py-2 text-left transition-colors hover:bg-(--overlay-bg-color)"
@@ -463,10 +469,13 @@ fn render_profile_section() -> AnyView {
                                 <Show when=move || {
                                     let search = search_text.get().to_lowercase();
                                     !search.is_empty()
-                                        && room_resource.get().into_iter().all(|room| {
-                                            !room.get_name().to_lowercase().contains(&search)
-                                                && !room.room_id.to_lowercase().contains(&search)
-                                        })
+                                        && room_resource
+                                            .get()
+                                            .into_iter()
+                                            .all(|room| {
+                                                !room.get_name().to_lowercase().contains(&search)
+                                                    && !room.room_id.to_lowercase().contains(&search)
+                                            })
                                 }>
                                     <span class="px-3 py-2 text-sm text-muted italic">
                                         "No rooms found"
@@ -494,7 +503,7 @@ fn render_profile_section() -> AnyView {
 
     let displayname_val = RwSignal::new(String::new());
     let bannercolor_val = RwSignal::new(String::new());
-    let namecolor_val = RwSignal::new(String::new());
+    let namecolor_val = RwSignal::new(0);
 
     let strip_alpha = |hex: String| hex.chars().take(7).collect::<String>();
 
@@ -505,7 +514,7 @@ fn render_profile_section() -> AnyView {
                 (
                     p.display_name.clone().unwrap_or_default(),
                     strip_alpha(p.banner_color().to_css_hex()),
-                    format!("{}", p.name_color().to_hsla()[0].round() as u32),
+                    p.name_color().to_hsla()[0] as u32,
                 )
             }
             ProfileSignal::Member(sig) => {
@@ -513,7 +522,7 @@ fn render_profile_section() -> AnyView {
                 (
                     p.profile.display_name.clone().unwrap_or_default(),
                     strip_alpha(p.banner_color().to_css_hex()),
-                    format!("{}", p.name_color().to_hsla()[0].round() as u32),
+                    p.name_color().to_hsla()[0] as u32,
                 )
             }
         };
@@ -522,43 +531,7 @@ fn render_profile_section() -> AnyView {
         namecolor_val.set(nc);
     });
 
-    let save_displayname = Action::new_local(move |(name, room_id): &(String, Option<String>)| {
-        let name = name.clone();
-        let room_id = room_id.clone();
-        async move {
-            call_tauri(
-                "set_display_name",
-                serde_wasm_bindgen::to_value(&json!({ "display_name": name, "room_id": room_id }))
-                    .unwrap(),
-            )
-            .await
-        }
-    });
-
-    let save_bannercolor = Action::new_local(move |(color, room_id): &(String, Option<String>)| {
-        let color = color.clone();
-        let room_id = room_id.clone();
-        async move {
-            call_tauri(
-                "set_banner_color",
-                serde_wasm_bindgen::to_value(&json!({ "color": color, "room_id": room_id }))
-                    .unwrap(),
-            )
-            .await
-        }
-    });
-
-    let save_namecolor = Action::new_local(move |(hue, room_id): &(String, Option<String>)| {
-        let hue: f64 = hue.parse().unwrap_or(0.0);
-        let room_id = room_id.clone();
-        async move {
-            call_tauri(
-                "set_name_color",
-                serde_wasm_bindgen::to_value(&json!({ "hue": hue, "room_id": room_id })).unwrap(),
-            )
-            .await
-        }
-    });
+    let fallback_color = Memo::new(move |_| get_color(&user_id));
 
     view! {
         <div class="flex flex-col h-full">
@@ -610,13 +583,13 @@ fn render_profile_section() -> AnyView {
                                 }
                             }
                         >
-                            <div class="absolute inset-0 bg-(--overlay-bg-color) opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none text-bright">
+                            <div class="absolute inset-0 bg-(--overlay-bg-color) opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none text-bright [will-change:opacity]">
                                 <Icon icon=PAINT_BRUSH size="24px" weight=IconWeight::Light />
                             </div>
                         </div>
 
                         <div
-                            class="absolute group cursor-pointer"
+                            class="absolute group cursor-pointer [transform:translateZ(0)]"
                             style=format!("top: {icon_top}px; left: {left_offset}px;")
                             on:click=move |_| {
                                 if let Some(el) = namecolor_ref.get() {
@@ -636,7 +609,7 @@ fn render_profile_section() -> AnyView {
                                 }}
                             </PresenceBadge>
                             <div
-                                class="absolute rounded-full bg-(--overlay-bg-color) opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none text-bright"
+                                class="absolute rounded-full bg-(--overlay-bg-color) opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none text-bright [will-change:opacity]"
                                 style=format!(
                                     "top: 0; left: 0; width: {icon_size}px; height: {icon_size}px;",
                                 )
@@ -658,20 +631,25 @@ fn render_profile_section() -> AnyView {
                             >
                                 <span
                                     class="font-bold"
-                                    style=move || format!(
-                                        "font-size: 16px; color: hsl({}deg, 90%, 70%);",
-                                        namecolor_val.get()
-                                    )
+                                    style=move || {
+                                        format!(
+                                            "font-size: 16px; color: hsl({}deg, 90%, 70%);",
+                                            namecolor_val.get(),
+                                        )
+                                    }
                                 >
                                     {move || displayname_val.get()}
                                 </span>
                             </div>
-                            <button class="ml-2 text-muted hover:text-normal" on:click=move |_| {
-                                if let Some(el) = namecolor_ref.get() {
-                                    let _ = el.focus();
+                            <button
+                                class="ml-2 text-muted hover:text-normal cursor-pointer"
+                                on:click=move |_| {
+                                    if let Some(el) = namecolor_ref.get() {
+                                        let _ = el.focus();
+                                    }
                                 }
-                            }>
-                                <Icon icon=PAINT_BRUSH size="12px" weight=IconWeight::Thin />
+                            >
+                                <Icon icon=PAINT_BRUSH size="18px" weight=IconWeight::Thin />
                             </button>
                         </div>
                         <div class="text-xs text-muted truncate">{uid_display}</div>
@@ -692,11 +670,32 @@ fn render_profile_section() -> AnyView {
                             <button
                                 class="shrink-0 px-3 py-1 text-sm bg-(--accent-color) text-white rounded-(--ui-border-radius) hover:brightness-110 cursor-pointer"
                                 on:click=move |_| {
-                                    save_displayname
-                                        .dispatch_local((displayname_val.get(), selected_room.get()));
+                                    if let Err(e) = save_displayname(&displayname_val.get()) {
+                                        log::error!("Failed to save displayname: {e}");
+                                    }
                                 }
                             >
                                 "Save"
+                            </button>
+                            <button
+                                class="shrink-0 px-3 py-1 text-sm border border-(--tile-border-color) text-muted rounded-(--ui-border-radius) hover:text-normal cursor-pointer"
+                                on:click=move |_| {
+                                    let localpart = uid_reset
+                                        .split(':')
+                                        .next()
+                                        .and_then(|s| s.strip_prefix('@'))
+                                        .unwrap_or(&uid_reset)
+                                        .to_string();
+                                    let name = localpart
+                                        .chars()
+                                        .next()
+                                        .map(|c| c.to_uppercase().collect::<String>())
+                                        .unwrap_or_default()
+                                        + &localpart.chars().skip(1).collect::<String>();
+                                    displayname_val.set(name);
+                                }
+                            >
+                                "Reset"
                             </button>
                         </div>
                     </div>
@@ -706,7 +705,9 @@ fn render_profile_section() -> AnyView {
                         <div class="flex gap-2 items-center">
                             <div
                                 class="relative shrink-0 w-5 h-5 rounded-full border border-(--tile-border-color) overflow-hidden cursor-pointer"
-                                style=move || format!("background-color: {};", bannercolor_val.get())
+                                style=move || {
+                                    format!("background-color: {};", bannercolor_val.get())
+                                }
                             >
                                 <input
                                     type="color"
@@ -725,70 +726,98 @@ fn render_profile_section() -> AnyView {
                             <button
                                 class="shrink-0 px-3 py-1 text-sm bg-(--accent-color) text-white rounded-(--ui-border-radius) hover:brightness-110 cursor-pointer"
                                 on:click=move |_| {
-                                    save_bannercolor
-                                        .dispatch_local((bannercolor_val.get(), selected_room.get()));
+                                    if let Err(e) = save_banner_color(&bannercolor_val.get()) {
+                                        log::error!("Failed to save banner color: {e}");
+                                    }
                                 }
                             >
                                 "Save"
+                            </button>
+                            <button
+                                class="shrink-0 px-3 py-1 text-sm border border-(--tile-border-color) text-muted rounded-(--ui-border-radius) hover:text-normal cursor-pointer"
+                                on:click=move |_| {
+                                    bannercolor_val.set(fallback_color.get().to_css_hsl());
+                                }
+                            >
+                                "Reset"
                             </button>
                         </div>
                     </div>
 
                     <div class="flex flex-col gap-1">
                         <label class="text-xs text-muted font-medium">"Namecolor"</label>
-                        <div class="flex gap-2">
+                        <div class="flex gap-2 items-center">
+                            <div
+                                node_ref=hue_bar_ref
+                                class="relative h-5 flex-1 rounded-full cursor-crosshair select-none touch-none"
+                                style="background: linear-gradient(to right in hsl increasing hue, hsl(0,90%,70%), hsl(359,90%,70%))"
+                                on:pointerdown=move |ev| {
+                                    ev.prevent_default();
+                                    if let Some(el) = hue_bar_ref.get() {
+                                        let _ = el.set_pointer_capture(ev.pointer_id());
+                                        let rect = el.get_bounding_client_rect();
+                                        let x = (ev.client_x() as f64 - rect.left())
+                                            .clamp(0.0, rect.width());
+                                        namecolor_val
+                                            .set((x / rect.width() * 360.0).round() as u32);
+                                    }
+                                }
+                                on:pointermove=move |ev| {
+                                    if ev.buttons() == 0 {
+                                        return;
+                                    }
+                                    if let Some(el) = hue_bar_ref.get() {
+                                        let rect = el.get_bounding_client_rect();
+                                        let x = (ev.client_x() as f64 - rect.left())
+                                            .clamp(0.0, rect.width());
+                                        namecolor_val
+                                            .set((x / rect.width() * 360.0).round() as u32);
+                                    }
+                                }
+                            >
+                                <div
+                                    class="absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full border-2 border-white pointer-events-none"
+                                    style=move || {
+                                        let hue: f64 = namecolor_val.get() as f64;
+                                        format!(
+                                            "left: clamp(0px, calc({}% - 8px), calc(100% - 16px)); background-color: hsl({}deg, 90%, 70%); box-shadow: 0 0 0 1.5px black, 0 2px 6px rgba(0,0,0,0.5);",
+                                            hue / 360.0 * 100.0,
+                                            hue as u32,
+                                        )
+                                    }
+                                />
+                            </div>
                             <input
                                 node_ref=namecolor_ref
                                 type="number"
                                 min="0"
                                 max="360"
-                                class="flex-1 min-w-0 px-2 py-1 bg-transparent border border-(--tile-border-color) rounded-(--ui-border-radius) text-sm text-normal outline-none focus:border-(--accent-color)"
+                                class="w-16 shrink-0 px-2 py-1 bg-transparent border border-(--tile-border-color) rounded-(--ui-border-radius) text-sm text-normal outline-none focus:border-(--accent-color)"
                                 prop:value=move || namecolor_val.get()
-                                on:input=move |ev| namecolor_val.set(event_target_value(&ev))
+                                on:input=move |ev| {
+                                    namecolor_val.set(event_target_value(&ev).parse().unwrap_or(0))
+                                }
                             />
                             <button
                                 class="shrink-0 px-3 py-1 text-sm bg-(--accent-color) text-white rounded-(--ui-border-radius) hover:brightness-110 cursor-pointer"
                                 on:click=move |_| {
-                                    save_namecolor
-                                        .dispatch_local((namecolor_val.get(), selected_room.get()));
+                                    if let Err(e) = save_name_color(
+                                        &format!("hsl({} 90% 70%)", namecolor_val.get()),
+                                    ) {
+                                        log::error!("Failed to save name color: {e}");
+                                    }
                                 }
                             >
                                 "Save"
                             </button>
-                        </div>
-                        <div
-                            node_ref=hue_bar_ref
-                            class="relative h-3 rounded-full cursor-crosshair select-none touch-none"
-                            style="background: linear-gradient(to right in hsl increasing hue, hsl(0,90%,70%), hsl(359 ,90%,70%))"
-                            on:pointerdown=move |ev| {
-                                ev.prevent_default();
-                                if let Some(el) = hue_bar_ref.get() {
-                                    let _ = el.set_pointer_capture(ev.pointer_id());
-                                    let rect = el.get_bounding_client_rect();
-                                    let x = (ev.client_x() as f64 - rect.left()).clamp(0.0, rect.width());
-                                    namecolor_val.set(format!("{}", (x / rect.width() * 360.0).round() as u32));
+                            <button
+                                class="shrink-0 px-3 py-1 text-sm border border-(--tile-border-color) text-muted rounded-(--ui-border-radius) hover:text-normal cursor-pointer"
+                                on:click=move |_| {
+                                    namecolor_val.set(fallback_color.get().to_hsla()[0] as u32);
                                 }
-                            }
-                            on:pointermove=move |ev| {
-                                if ev.buttons() == 0 { return; }
-                                if let Some(el) = hue_bar_ref.get() {
-                                    let rect = el.get_bounding_client_rect();
-                                    let x = (ev.client_x() as f64 - rect.left()).clamp(0.0, rect.width());
-                                    namecolor_val.set(format!("{}", (x / rect.width() * 360.0).round() as u32));
-                                }
-                            }
-                        >
-                            <div
-                                class="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full border-2 border-white pointer-events-none"
-                                style=move || {
-                                    let hue: f64 = namecolor_val.get().parse().unwrap_or(0.0);
-                                    format!(
-                                        "left: clamp(0px, calc({}% - 6px), calc(100% - 12px)); background-color: hsl({}deg, 90%, 70%); box-shadow: 0 0 0 1.5px black, 0 2px 6px rgba(0,0,0,0.5);",
-                                        hue / 360.0 * 100.0,
-                                        hue as u32,
-                                    )
-                                }
-                            />
+                            >
+                                "Reset"
+                            </button>
                         </div>
                     </div>
                 </div>
