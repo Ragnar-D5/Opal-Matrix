@@ -61,26 +61,7 @@ fn ReplyPreview(
     let profile_store = store.clone();
     let store_room_id = active_room_id.clone();
     let profile = Memo::new(move |_| {
-        if let Some(preview) = preview.get() {
-            match &preview.sender_id {
-                DetailState::Ready(id) => Some(
-                    profile_store
-                        .get_member_profile(&store_room_id, id)
-                        .get(),
-                ),
-                DetailState::Error(e) => {
-                    log::error!("Failed to load sender profile for reply preview: {e}");
-                    None
-                }
-                DetailState::Pending => None,
-                DetailState::Unavailable => {
-                    log::error!("Sender profile for reply preview is unavailable");
-                    None
-                }
-            }
-        } else {
-            None
-        }
+        preview.get().map(|p| profile_store.get_member_profile(&store_room_id, &p.sender_id).get())
     });
 
     let spans = Memo::new(move |_| {

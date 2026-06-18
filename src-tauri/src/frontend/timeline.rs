@@ -173,12 +173,7 @@ fn from_embedded_event_to_ui(value: &EmbeddedEvent) -> ReplyPreview {
         }
     };
 
-    let sender_id = match value.sender_profile.clone() {
-        TimelineDetails::Ready(profile) => DetailState::Ready(value.sender.to_string()),
-        TimelineDetails::Error(e) => DetailState::Error(e.to_string()),
-        TimelineDetails::Pending => DetailState::Pending,
-        TimelineDetails::Unavailable => DetailState::Unavailable,
-    };
+    let sender_id = value.sender.to_string();
 
     ReplyPreview { sender_id, content }
 }

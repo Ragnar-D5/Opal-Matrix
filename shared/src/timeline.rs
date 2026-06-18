@@ -260,7 +260,7 @@ pub enum UiMessageType {
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct ReplyPreview {
-    pub sender_id: DetailState<String>,
+    pub sender_id: String,
     pub content: Vec<RichTextSpan>,
 }
 
