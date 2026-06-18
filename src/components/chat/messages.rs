@@ -683,7 +683,7 @@ fn render_system_message(
             let before = if let Some(change) = &change {
                 match change {
                     UiMembershipChange::Joined => {
-                        view! { <Icon icon=ARROW_RIGHT color="var(--status-online)" weight=IconWeight::Bold size="15px" /> }.into_any()
+                        view! { <Icon icon=ARROW_RIGHT color="var(--online-color)" weight=IconWeight::Bold size="15px" /> }.into_any()
                     }
                     _ => ().into_any(),
                 }

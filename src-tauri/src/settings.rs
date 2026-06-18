@@ -4,10 +4,10 @@ use matrix_sdk::{
     ruma::{events::GlobalAccountDataEventType, serde::Raw},
     Client,
 };
-use serde_json::json;
+use serde_json::{json, Value};
 use tauri::{command, State};
 use tokio::sync::RwLock;
-use toml_edit::{Document, DocumentMut};
+use toml_edit::{value, Array, Document, DocumentMut, InlineTable, Item};
 
 use crate::TauriError;
 
@@ -31,6 +31,39 @@ async fn load_setting_from_file(
         .map(|s| s.to_string()))
 }
 
+fn json_to_toml_item(json_val: Value) -> Option<Item> {
+    match json_val {
+        Value::Null => None,
+        Value::Bool(b) => Some(value(b)),
+        Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                Some(value(i))
+            } else {
+                n.as_f64().map(value)
+            }
+        }
+        Value::String(s) => Some(value(s)),
+        Value::Array(arr) => {
+            let mut toml_arr = Array::new();
+            for v in arr {
+                if let Some(Item::Value(tv)) = json_to_toml_item(v) {
+                    toml_arr.push(tv);
+                }
+            }
+            Some(value(toml_arr))
+        }
+        Value::Object(obj) => {
+            let mut table = InlineTable::new();
+            for (k, v) in obj {
+                if let Some(Item::Value(tv)) = json_to_toml_item(v) {
+                    table.insert(&k, tv);
+                }
+            }
+            Some(value(table))
+        }
+    }
+}
+
 async fn save_setting_to_file(
     settings_file: &PathBuf,
     key: &str,
@@ -46,7 +79,13 @@ async fn save_setting_to_file(
 
     let mut doc = content.parse::<DocumentMut>()?;
 
-    doc[key] = toml_edit::value(value);
+    let json_value: Value = serde_json::from_str(value)?;
+
+    if let Some(toml_item) = json_to_toml_item(json_value) {
+        doc.insert(key, toml_item);
+    } else {
+        doc.remove(key);
+    }
 
     tokio::fs::write(settings_file, doc.to_string()).await?;
 
@@ -112,6 +151,13 @@ pub async fn set_setting(
 ) -> Result<(), TauriError> {
     let settings_file = settings_file.inner();
     let client: Client = client.read().await.clone();
+
+    if !settings_file.exists() {
+        if let Some(parent) = settings_file.parent() {
+            tokio::fs::create_dir_all(parent).await?;
+        }
+        tokio::fs::write(settings_file, "").await?;
+    }
 
     if to_cloud {
         save_setting_to_cloud(&client, &key, &value).await?;

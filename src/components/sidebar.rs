@@ -131,9 +131,9 @@ fn DmDiv(dm: RoomNode) -> impl IntoView {
                             weight=IconWeight::Fill
                             size="16px"
                             color=if user_in_call {
-                                "var(--status-online)"
+                                "var(--online-color)"
                             } else {
-                                "var(--status-offline)"
+                                "var(--offline-color)"
                             }
                         />
                     </div>
@@ -341,9 +341,9 @@ fn render_dm_preview(dm: RoomNode, members: Option<Vec<UserDevice>>) -> impl Int
                 Some(CutoutBadgeCorner {
                     fg_color: "white".to_string(),
                     bg_color: if user_in_call {
-                        "var(--status-online)".to_string()
+                        "var(--online-color)".to_string()
                     } else {
-                        "var(--status-offline)".to_string()
+                        "var(--offline-color)".to_string()
                     },
                     content: CutoutBadgeContent::Icon(SPEAKER_HIGH),
                 })
@@ -423,9 +423,9 @@ pub fn ServerIcon(server: impl RoomNodeExt) -> impl IntoView {
                 Some(CutoutBadgeCorner {
                     fg_color: "white".to_string(),
                     bg_color: if user_in_call {
-                        "var(--status-online)".to_string()
+                        "var(--online-color)".to_string()
                     } else {
-                        "var(--status-offline)".to_string()
+                        "var(--offline-color)".to_string()
                     },
                     content: CutoutBadgeContent::Icon(SPEAKER_HIGH),
                 })

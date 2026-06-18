@@ -454,7 +454,6 @@ pub fn run() {
             let settings_file_path = config_dir.join("settings.toml");
 
             app.manage(settings_file_path);
-
             let brand_colors_file_path = config_dir.join("brand_colors.json");
 
             let color_map: HashMap<String, String> = if brand_colors_file_path.exists() {
