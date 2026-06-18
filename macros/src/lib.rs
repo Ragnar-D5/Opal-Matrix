@@ -97,11 +97,9 @@ fn convert_settings(mut item: ItemStruct) -> TokenStream {
         .iter()
         .map(|(type_name, field_name)| {
             quote! {
-                #type_name => {
-                    match ::serde_json::from_str(&val) {
-                        Ok(parsed) => #field_name.set(parsed),
-                        Err(e) => ::log::warn!("Failed to deserialize field '{}': {:?}", stringify!(#field_name), e)
-                    }
+                #type_name => match ::serde_json::from_str(&val) {
+                    Ok(parsed) => #field_name.set(parsed),
+                    Err(e) => ::log::warn!("Failed to deserialize field '{}': {:?}", stringify!(#field_name), e)
                 }
             }
         });
