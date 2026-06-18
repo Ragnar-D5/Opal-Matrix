@@ -14,7 +14,6 @@ pub fn matrix_settings(_attr: TokenStream, item: TokenStream) -> TokenStream {
 fn convert_settings(mut item: ItemStruct) -> TokenStream {
     let struct_name = item.ident.clone();
     let mut default_field_initializers = vec![];
-    let mut clone_assertions = vec![];
 
     if let Fields::Named(ref mut fields) = item.fields {
         for field in &mut fields.named {
@@ -67,18 +66,11 @@ fn convert_settings(mut item: ItemStruct) -> TokenStream {
             if let Some((human_readable, uses_cloud, default_expr)) = setting_meta {
                 let type_name_str = format!("com.opal.{}", field_name);
 
-                clone_assertions.push(quote! {
-                    const _: fn() = || {
-                        fn assert_clone<T: Clone>() {}
-                        assert_clone::<#original_type>();
-                    };
-                });
-
                 field.ty = syn::parse2(quote! { MatrixSettingField<#original_type> }).unwrap();
 
                 default_field_initializers.push(quote! {
                     #field_name : MatrixSettingField {
-                        val: #default_expr,
+                        val: ::leptos::prelude::RwSignal::new(#default_expr),
                         type_name: #type_name_str,
                         human_readable: #human_readable,
                         uses_cloud: #uses_cloud
@@ -95,39 +87,21 @@ fn convert_settings(mut item: ItemStruct) -> TokenStream {
     }
 
     let expanded = quote! {
-        #[derive(Debug)]
-        pub struct MatrixSettingField<T> where T: Clone {
-            pub val: T,
+        #[derive(Debug, Clone, Copy)]
+        pub struct MatrixSettingField<T: 'static> {
+            pub val: ::leptos::prelude::RwSignal<T>,
             pub type_name: &'static str,
             pub human_readable: &'static str,
             pub uses_cloud: bool,
         }
 
-        impl<T> MatrixSettingField<T> where T: Clone {
-            pub fn get(&self) -> T {
-                self.val.clone()
-            }
-            pub fn set(&mut self, new: T) {
-                self.val = new;
-            }
-        }
-
-        impl<T> std::ops::Deref for MatrixSettingField<T> where T: Clone {
-            type Target = T;
-            fn deref(&self) -> &Self::Target {
-                &self.val
-            }
-        }
-
-        impl<T> std::ops::DerefMut for MatrixSettingField<T> where T: Clone {
-            fn deref_mut(&mut self) -> &mut Self::Target {
-                &mut self.val
+        impl<T: 'static> MatrixSettingField<T> {
+            pub fn signal(&self) -> ::leptos::prelude::RwSignal<T> {
+                self.val
             }
         }
 
         #item
-
-        #(#clone_assertions)*
 
         impl Default for #struct_name {
             fn default() -> Self {

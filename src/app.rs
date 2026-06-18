@@ -89,6 +89,9 @@ pub fn App() -> impl IntoView {
     let state = AppState::default();
     provide_context(state);
 
+    let settings = Settings::default();
+    let _sig = settings.scaling.signal();
+
     let store = ProfileStore::default();
     let store_for_profiles = store.clone();
     let store_for_presences = store.clone();
