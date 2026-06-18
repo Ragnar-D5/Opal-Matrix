@@ -14,11 +14,12 @@ pub fn matrix_settings(_attr: TokenStream, item: TokenStream) -> TokenStream {
 fn convert_settings(mut item: ItemStruct) -> TokenStream {
     let struct_name = item.ident.clone();
     let mut default_field_initializers = vec![];
+    let mut type_name_string_collector = vec![];
 
     if let Fields::Named(ref mut fields) = item.fields {
         for field in &mut fields.named {
             let original_type = field.ty.clone();
-            let field_name = field.ident.as_ref().unwrap();
+            let field_name = field.ident.as_ref().unwrap().clone();
 
             let mut setting_meta = None;
 
@@ -48,10 +49,11 @@ fn convert_settings(mut item: ItemStruct) -> TokenStream {
                         let mut default_expr = quote! { Default::default() };
                         if let Some(Expr::Assign(expr_assign)) = iter.next()
                             && let Expr::Path(ref expr_path) = *expr_assign.left
-                            && expr_path.path.is_ident("default") {
-                                let right = &expr_assign.right;
-                                default_expr = quote! { #right };
-                            }
+                            && expr_path.path.is_ident("default")
+                        {
+                            let right = &expr_assign.right;
+                            default_expr = quote! { #right };
+                        }
 
                         setting_meta = Some((human_readable, uses_cloud, default_expr));
                     }
@@ -74,6 +76,7 @@ fn convert_settings(mut item: ItemStruct) -> TokenStream {
                         uses_cloud: #uses_cloud
                     }
                 });
+                type_name_string_collector.push((type_name_str.clone(), field_name));
             } else {
                 default_field_initializers.push(quote! {
                     #field_name: Default::default()
@@ -83,6 +86,19 @@ fn convert_settings(mut item: ItemStruct) -> TokenStream {
     } else {
         panic!("Only applicable to structs with named fields")
     }
+
+    let match_arms = type_name_string_collector
+        .iter()
+        .map(|(type_name, field_name)| {
+            quote! {
+                #type_name => {
+                    match ::serde_json::from_str(&val) {
+                        Ok(parsed) => self.#field_name.val.set(parsed),
+                        Err(e) => ::log::warn!("Failed to deserialize field '{}': {:?}", stringify!(#field_name), e)
+                    }
+                }
+            }
+        });
 
     let expanded = quote! {
         #[derive(Debug, Clone, Copy)]
@@ -106,6 +122,21 @@ fn convert_settings(mut item: ItemStruct) -> TokenStream {
                 Self {
                     #(#default_field_initializers),*
                 }
+            }
+        }
+
+        impl #struct_name {
+            pub fn setup_backend_hook(&self) {
+                let sig: ReadSignal<Option<(String, String)>> = use_tauri_event("settings");
+
+                Effect::new(move |_| {
+                    if let Some((key, val)) = sig.get() {
+                        match key.as_str() {
+                            #(#match_arms,)*
+                            _ => {}
+                        }
+                    }
+                });
             }
         }
     };
