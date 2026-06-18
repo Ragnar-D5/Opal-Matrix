@@ -30,13 +30,6 @@ pub enum EventState {
     },
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
-pub struct Sender {
-    pub id: String,
-    pub display_name: Option<String>,
-    pub avatar_url: Option<String>,
-}
-
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
 pub struct EventFlags {
     pub is_editable: bool,
@@ -267,7 +260,7 @@ pub enum UiMessageType {
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct ReplyPreview {
-    pub sender: DetailState<Sender>,
+    pub sender_id: DetailState<String>,
     pub content: Vec<RichTextSpan>,
 }
 
@@ -512,30 +505,12 @@ pub enum DetailState<T> {
     Error(String),
 }
 
-impl DetailState<Sender> {
-    pub fn display_name(&self) -> String {
-        match self {
-            DetailState::Unavailable | DetailState::Pending | DetailState::Error(_) => {
-                "Unknown".to_string()
-            }
-            DetailState::Ready(sender) => sender.display_name.clone().unwrap_or(sender.id.clone()),
-        }
-    }
-
-    pub fn avatar_url(&self) -> Option<String> {
-        match self {
-            DetailState::Ready(sender) => sender.avatar_url.clone(),
-            _ => None,
-        }
-    }
-}
-
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct TimelineEvent {
     pub state: Option<EventState>,
     pub timestamp: u64,
     pub flags: EventFlags,
-    pub sender: DetailState<Sender>,
+    pub sender_id: String,
 
     pub event_id: Option<String>,
 
@@ -570,28 +545,8 @@ impl TimelineEvent {
         }
     }
 
-    pub fn get_sender_avatar_url(&self) -> Option<String> {
-        match &self.sender {
-            DetailState::Ready(sender) => sender.avatar_url.clone(),
-            _ => None,
-        }
-    }
-
-    /// Returns the sender's display name if available, otherwise their user ID. Returns None if the sender details are not ready.
-    pub fn get_sender_name(&self) -> Option<String> {
-        match &self.sender {
-            DetailState::Ready(sender) => {
-                Some(sender.display_name.clone().unwrap_or(sender.id.clone()))
-            }
-            _ => None,
-        }
-    }
-
-    pub fn get_sender_id(&self) -> Option<String> {
-        match &self.sender {
-            DetailState::Ready(sender) => Some(sender.id.clone()),
-            _ => None,
-        }
+    pub fn get_sender_avatar_url(&self) -> String {
+        format!("mxc://avatar/{}", self.sender_id)
     }
 
     pub fn calculate_flags(&mut self, is_own: bool) {

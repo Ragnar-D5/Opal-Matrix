@@ -671,8 +671,8 @@
   .w-56 {
     width: calc(var(--spacing) * 56);
   }
-  .w-65 {
-    width: calc(var(--spacing) * 65);
+  .w-70 {
+    width: calc(var(--spacing) * 70);
   }
   .w-100 {
     width: calc(var(--spacing) * 100);
@@ -773,6 +773,9 @@
   }
   .-rotate-90 {
     rotate: calc(90deg * -1);
+  }
+  .\[transform\:translateZ\(0\)\] {
+    transform: translateZ(0);
   }
   .transform {
     transform: var(--tw-rotate-x,) var(--tw-rotate-y,) var(--tw-rotate-z,) var(--tw-skew-x,) var(--tw-skew-y,);
@@ -1719,6 +1722,9 @@
   .ease-out {
     --tw-ease: var(--ease-out);
     transition-timing-function: var(--ease-out);
+  }
+  .\[will-change\:opacity\] {
+    will-change: opacity;
   }
   .outline-none {
     --tw-outline-style: none;

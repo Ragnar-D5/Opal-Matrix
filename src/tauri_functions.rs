@@ -1,4 +1,5 @@
 use klipy::{MediaItem, Page};
+use leptos::task::spawn_local;
 use serde_json::json;
 use shared::{
     account_data::ServerOrder,
@@ -236,4 +237,56 @@ pub async fn get_gifs(search_term: String, page: u32) -> Result<Page<MediaItem>,
 
     serde_json::from_str(&json_string)
         .map_err(|e| format!("Failed to parse JSON response: {:?}", e))
+}
+
+pub fn save_name_color(color: &str) -> Result<(), String> {
+    let args = serde_wasm_bindgen::to_value(&json!({ "color": color }))
+        .map_err(|e| format!("Failed to serialize request: {:?}", e))?;
+
+    spawn_local(async move {
+        if let Err(e) = call_tauri("save_namecolor", args).await {
+            log::error!("Tauri call failed: {:?}", e);
+        }
+    });
+
+    Ok(())
+}
+
+pub fn save_banner_color(color: &str) -> Result<(), String> {
+    let args = serde_wasm_bindgen::to_value(&json!({ "color": color }))
+        .map_err(|e| format!("Failed to serialize request: {:?}", e))?;
+
+    spawn_local(async move {
+        if let Err(e) = call_tauri("save_bannercolor", args).await {
+            log::error!("Tauri call failed: {:?}", e);
+        }
+    });
+
+    Ok(())
+}
+
+pub fn save_displayname(display_name: &str) -> Result<(), String> {
+    let args = serde_wasm_bindgen::to_value(&json!({ "name": display_name }))
+        .map_err(|e| format!("Failed to serialize request: {:?}", e))?;
+
+    spawn_local(async move {
+        if let Err(e) = call_tauri("save_displayname", args).await {
+            log::error!("Tauri call failed: {:?}", e);
+        }
+    });
+
+    Ok(())
+}
+
+pub fn save_avatar_image(image_data: Vec<u8>) -> Result<(), String> {
+    let args = serde_wasm_bindgen::to_value(&json!({ "image_data": image_data }))
+        .map_err(|e| format!("Failed to serialize request: {:?}", e))?;
+
+    spawn_local(async move {
+        if let Err(e) = call_tauri("save_avatar", args).await {
+            log::error!("Tauri call failed: {:?}", e);
+        }
+    });
+
+    Ok(())
 }

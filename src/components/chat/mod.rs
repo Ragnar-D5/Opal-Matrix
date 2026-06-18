@@ -36,7 +36,7 @@ use shared::{
     api::{FileMetadata, ScrollDirection, UiAttachmentSource},
     profile::{MemberProfile, PresenceInfo},
     sidebar::RoomKind,
-    timeline::{DetailState, EventContent, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind},
+    timeline::{EventContent, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind},
 };
 use uuid::Uuid;
 use wasm_bindgen::JsCast;
@@ -171,9 +171,8 @@ fn TimeLine() -> impl IntoView {
             if prev_was_divider {
                 show_header = true;
                 if let UiTimelineItemKind::Event(event) = &item.kind
-                    && let DetailState::Ready(sender) = &event.sender
                 {
-                    last_sender = Some(sender.id.to_string());
+                    last_sender = Some(event.sender_id.clone());
                     last_timestamp = Some(event.timestamp);
                 }
             } else if let UiTimelineItemKind::Event(event) = &item.kind {
@@ -181,9 +180,11 @@ fn TimeLine() -> impl IntoView {
                     && msg.in_reply_to.is_some()
                 {
                     show_header = true;
-                } else if let DetailState::Ready(sender) = &event.sender {
+                } else {
+                    let id = &event.sender_id;
+
                     if let Some(last_sender_id) = &last_sender
-                        && last_sender_id == &sender.id
+                        && last_sender_id == id
                         && let Some(last_ts) = last_timestamp
                     {
                         // If this message is within 5 minutes of the previous message, hide header
@@ -191,12 +192,8 @@ fn TimeLine() -> impl IntoView {
                             show_header = false;
                         }
                     }
-                    last_sender = Some(sender.id.to_string());
+                    last_sender = Some(id.clone());
                     last_timestamp = Some(event.timestamp);
-                } else {
-                    show_header = true;
-                    last_sender = None;
-                    last_timestamp = None;
                 }
             } else {
                 show_header = true;
