@@ -87,13 +87,19 @@ fn convert_settings(mut item: ItemStruct) -> TokenStream {
         panic!("Only applicable to structs with named fields")
     }
 
+    let signal_bindings = type_name_string_collector.iter().map(|(_, field_name)| {
+        quote! {
+            let #field_name = self.#field_name.val;
+        }
+    });
+
     let match_arms = type_name_string_collector
         .iter()
         .map(|(type_name, field_name)| {
             quote! {
                 #type_name => {
                     match ::serde_json::from_str(&val) {
-                        Ok(parsed) => self.#field_name.val.set(parsed),
+                        Ok(parsed) => #field_name.set(parsed),
                         Err(e) => ::log::warn!("Failed to deserialize field '{}': {:?}", stringify!(#field_name), e)
                     }
                 }
@@ -128,6 +134,8 @@ fn convert_settings(mut item: ItemStruct) -> TokenStream {
         impl #struct_name {
             pub fn setup_backend_hook(&self) {
                 let sig: ReadSignal<Option<(String, String)>> = use_tauri_event("settings");
+
+                #(#signal_bindings)*
 
                 Effect::new(move |_| {
                     if let Some((key, val)) = sig.get() {
