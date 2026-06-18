@@ -167,7 +167,7 @@ pub fn SettingsIcon(#[prop(into, optional)] class: String) -> impl IntoView {
                 >
                     <FloatingTile
                         on:click=move |e| e.stop_propagation()
-                        class="opacity-100 text-bright w-300 h-full max-h-[95vh] min-h-[50vh] flex flex-row overflow-hidden z-50 !bg-(--opaque-tile-bg-color)"
+                        class="opacity-100 text-bright max-w-300 w-[80vw] h-full max-h-[95vh] min-h-[50vh] flex flex-row overflow-hidden z-50 !bg-(--opaque-tile-bg-color)"
                     >
                         <div class="border-r border-(--tile-border-color) w-50 h-full flex flex-col gap-1">
                             <div
