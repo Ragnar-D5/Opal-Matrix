@@ -507,7 +507,7 @@ fn TypingUserIndicator() -> impl IntoView {
     };
 
     view! {
-        <div class="h-8 -mt-8 w-full overflow-hidden shrink-0 pointer-events-none text-bright">
+        <div class="h-8 -mt-8 w-full overflow-hidden shrink-0 pointer-events-none text-normal">
             <div
                 class="h-8 w-full flex flex-row items-center px-3 [text-shadow:0_0_8px_var(--ui-solid-bg),0_0_4px_var(--ui-solid-bg)] transition-[transform,opacity] duration-200 ease-out"
                 style=move || {
@@ -1201,14 +1201,14 @@ fn ChatInput() -> impl IntoView {
             {move || input_info_content()} {move || attachment_view()}
             <SelectionMenu menu=menu input_ref=input_ref />
             <div
-                class="text-(--bright-text-color) w-full min-h-13 border-1 border-(--tile-border-color) rounded-b-(--ui-border-radius) bg-[rgba(0, 0, 0, 0.6)] flex flex-row bg-(--ui-floating-bg) items-center gap-3 px-3 cursor-text"
+                class="text-normal w-full min-h-13 border-1 border-(--tile-border-color) rounded-b-(--ui-border-radius) bg-[rgba(0, 0, 0, 0.6)] flex flex-row bg-(--ui-floating-bg) items-center gap-3 px-3 cursor-text"
                 class=(
                     "rounded-t-(--ui-border-radius)",
                     move || input_info.get().is_none() && attachments.get().is_empty(),
                 )
             >
                 <button
-                    class="text-(--ui-base-color) hover:text-(--bright-text-color) rounded-(--ui-border-radius) hover:bg-(--ui-solid-hover-bg) p-1"
+                    class="text-(--ui-base-color) hover:text-normal rounded-(--ui-border-radius) hover:bg-(--ui-solid-hover-bg) p-1"
                     class=("cursor-not-allowed", move || is_editing.get())
                     class=("cursor-pointer", move || !is_editing.get())
                     on:click=move |_| {
@@ -1228,7 +1228,7 @@ fn ChatInput() -> impl IntoView {
                     <div
                         node_ref=input_ref
                         contenteditable="true"
-                        class="text-(--bright-text-color) outline-none w-full whitespace-pre-wrap break-words py-3 max-h-100 overflow-y-auto"
+                        class="text-normal outline-none w-full whitespace-pre-wrap break-words py-3 max-h-100 overflow-y-auto"
                         on:input=move |_| {
                             on_type();
                             handle_input(input_ref, is_empty, state, attachments)

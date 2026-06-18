@@ -46,14 +46,12 @@ fn convert_settings(mut item: ItemStruct) -> TokenStream {
                         };
 
                         let mut default_expr = quote! { Default::default() };
-                        if let Some(Expr::Assign(expr_assign)) = iter.next() {
-                            if let Expr::Path(ref expr_path) = *expr_assign.left {
-                                if expr_path.path.is_ident("default") {
-                                    let right = &expr_assign.right;
-                                    default_expr = quote! { #right };
-                                }
+                        if let Some(Expr::Assign(expr_assign)) = iter.next()
+                            && let Expr::Path(ref expr_path) = *expr_assign.left
+                            && expr_path.path.is_ident("default") {
+                                let right = &expr_assign.right;
+                                default_expr = quote! { #right };
                             }
-                        }
 
                         setting_meta = Some((human_readable, uses_cloud, default_expr));
                     }

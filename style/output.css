@@ -1491,9 +1491,6 @@
   .text-\(--accent-color\) {
     color: var(--accent-color);
   }
-  .text-\(--bright-text-color\) {
-    color: var(--bright-text-color);
-  }
   .text-\(--confirm-text-color\) {
     color: var(--confirm-text-color);
   }

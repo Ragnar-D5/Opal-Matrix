@@ -21,10 +21,11 @@ use log::info;
 use tauri::{App, AppHandle, Url, command};
 use tauri::{Manager, State};
 
-pub mod frontend;
-pub mod matrix_api;
-pub mod state;
+pub(crate) mod frontend;
+pub(crate) mod matrix_api;
+pub(crate) mod state;
 pub(crate) mod sync;
+pub(crate) mod settings;
 
 use tauri_plugin_http::reqwest::{self, Response};
 
@@ -450,6 +451,10 @@ pub fn run() {
 
             std::fs::create_dir_all(&config_dir)?;
 
+            let settings_file_path = config_dir.join("settings.toml");
+
+            app.manage(settings_file_path);
+
             let brand_colors_file_path = config_dir.join("brand_colors.json");
 
             let color_map: HashMap<String, String> = if brand_colors_file_path.exists() {
@@ -628,6 +633,9 @@ pub fn run() {
             matrix_api::profile::save_namecolor,
             matrix_api::profile::save_bannercolor,
             matrix_api::profile::save_sonic_signature,
+            // settings
+            settings::get_setting,
+            settings::set_setting,
         ])
         .register_asynchronous_uri_scheme_protocol(
             "mxc",

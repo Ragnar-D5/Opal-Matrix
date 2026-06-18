@@ -75,6 +75,7 @@ tracing-log = "0.2.0"
 url = "2.5.8"
 uuid = "1.23.1"
 version-compare = "0.2.1"
+toml_edit = "0.25.12"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
