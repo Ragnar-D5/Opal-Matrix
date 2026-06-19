@@ -7,7 +7,7 @@ use matrix_sdk::{
 use serde_json::{json, Value};
 use tauri::{command, State};
 use tokio::sync::RwLock;
-use toml_edit::{value, Array, Document, DocumentMut, InlineTable, Item};
+use toml_edit::{value, Array, DocumentMut, InlineTable, Item};
 
 use crate::TauriError;
 
@@ -23,12 +23,9 @@ async fn load_setting_from_file(
         },
     };
 
-    let doc = Document::parse(&content)?;
+    let config: Value = toml::from_str(&content)?;
 
-    Ok(doc
-        .get(key)
-        .and_then(|item| item.as_str())
-        .map(|s| s.to_string()))
+    Ok(config.get(key).map(|s| s.to_string()))
 }
 
 fn json_to_toml_item(json_val: Value) -> Option<Item> {
@@ -93,16 +90,26 @@ async fn save_setting_to_file(
 }
 
 async fn load_setting_from_cloud(client: &Client, key: &str) -> Result<Option<String>, TauriError> {
-    client
+    let event_opt = client
         .account()
         .account_data_raw(GlobalAccountDataEventType::from(key.to_string()))
-        .await
-        .map_err(|e| e.into())
-        .map(|event_opt| event_opt.map(|event| event.json().get().to_string()))
+        .await?;
+
+    if let Some(event) = event_opt {
+        let event_json: Value = serde_json::from_str(event.json().get())?;
+
+        if let Some(val) = event_json.get("content").and_then(|c| c.get("value")) {
+            return Ok(Some(val.to_string()));
+        }
+    }
+
+    Ok(None)
 }
 
 async fn save_setting_to_cloud(client: &Client, key: &str, value: &str) -> Result<(), TauriError> {
-    let content = Raw::from_json_string(serde_json::to_string(&json!({ "value": value }))?)?;
+    let parsed_value: Value = serde_json::from_str(value)?;
+
+    let content = Raw::from_json_string(serde_json::to_string(&json!({ "value": parsed_value }))?)?;
 
     client
         .account()
@@ -159,10 +166,10 @@ pub async fn set_setting(
         tokio::fs::write(settings_file, "").await?;
     }
 
+    save_setting_to_file(settings_file, &key, &value).await?;
+
     if to_cloud {
         save_setting_to_cloud(&client, &key, &value).await?;
-    } else {
-        save_setting_to_file(settings_file, &key, &value).await?;
     }
 
     Ok(())

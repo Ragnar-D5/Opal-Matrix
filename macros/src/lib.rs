@@ -1,5 +1,5 @@
 use proc_macro::TokenStream;
-use quote::quote;
+use quote::{format_ident, quote};
 use syn::punctuated::Punctuated;
 use syn::{Expr, ExprLit, Fields, ItemStruct, Lit, Token};
 
@@ -76,7 +76,7 @@ fn convert_settings(mut item: ItemStruct) -> TokenStream {
                         uses_cloud: #uses_cloud
                     }
                 });
-                type_name_string_collector.push((type_name_str.clone(), field_name));
+                type_name_string_collector.push((type_name_str.clone(), field_name, original_type, uses_cloud));
             } else {
                 default_field_initializers.push(quote! {
                     #field_name: Default::default()
@@ -87,7 +87,7 @@ fn convert_settings(mut item: ItemStruct) -> TokenStream {
         panic!("Only applicable to structs with named fields")
     }
 
-    let signal_bindings = type_name_string_collector.iter().map(|(_, field_name)| {
+    let signal_bindings = type_name_string_collector.iter().map(|(_, field_name, _, _)| {
         quote! {
             let #field_name = self.#field_name.val;
         }
@@ -95,11 +95,53 @@ fn convert_settings(mut item: ItemStruct) -> TokenStream {
 
     let match_arms = type_name_string_collector
         .iter()
-        .map(|(type_name, field_name)| {
+        .map(|(type_name, field_name, _, _)| {
             quote! {
                 #type_name => match ::serde_json::from_str(&val) {
                     Ok(parsed) => #field_name.set(parsed),
                     Err(e) => ::log::warn!("Failed to deserialize field '{}': {:?}", stringify!(#field_name), e)
+                }
+            }
+        });
+
+    let accessor_methods = type_name_string_collector
+        .iter()
+        .map(|(type_name, field_name, original_type, uses_cloud)| {
+            let get_fn = format_ident!("get_{}", field_name);
+            let set_fn = format_ident!("set_{}", field_name);
+            quote! {
+                pub fn #set_fn(&self, val: #original_type) {
+                    let serialized = match ::serde_json::to_string(&val) {
+                        Ok(s) => s,
+                        Err(e) => { ::log::error!("Failed to serialize {}: {:?}", stringify!(#field_name), e); return; }
+                    };
+                    self.#field_name.val.set(val);
+                    let args = ::serde_wasm_bindgen::to_value(
+                        &::serde_json::json!({ "key": #type_name, "value": serialized, "to_cloud": #uses_cloud })
+                    ).expect("Failed to serialize args");
+                    ::leptos::task::spawn_local(async move {
+                        if let Err(e) = call_tauri("set_setting", args).await {
+                            ::log::error!("Failed to save setting {}: {:?}", stringify!(#field_name), e);
+                        }
+                    });
+                }
+
+                pub async fn #get_fn(&self) -> Result<(), String> {
+                    let signal = self.#field_name.val;
+                    let args = ::serde_wasm_bindgen::to_value(
+                        &::serde_json::json!({ "key": #type_name, "from_cloud": #uses_cloud })
+                    ).map_err(|e| format!("Failed to serialize args: {:?}", e))?;
+                    let res = call_tauri("get_setting", args)
+                        .await
+                        .map_err(|e| format!("Tauri call failed: {:?}", e))?;
+                    let json_str: Option<String> = ::serde_wasm_bindgen::from_value(res)
+                        .map_err(|e| format!("Failed to deserialize response: {:?}", e))?;
+                    if let Some(s) = json_str {
+                        let val: #original_type = ::serde_json::from_str(&s)
+                            .map_err(|e| format!("Failed to parse value: {:?}", e))?;
+                        signal.set(val);
+                    }
+                    Ok(())
                 }
             }
         });
@@ -130,6 +172,8 @@ fn convert_settings(mut item: ItemStruct) -> TokenStream {
         }
 
         impl #struct_name {
+            #(#accessor_methods)*
+
             pub fn setup_backend_hook(&self) {
                 let sig: ReadSignal<Option<(String, String)>> = use_tauri_event("settings");
 
