@@ -387,9 +387,11 @@ fn HomePage() -> impl IntoView {
 }
 
 #[matrix_settings]
-struct Settings {
+pub struct Settings {
     #[setting("Scaling", false, default = 1.0)]
-    scaling: f64,
-    #[setting("Url Previews", true)]
-    show_url_previews: HashMap<String, bool>,
+    pub scaling: f64,
+    #[setting("Url Previews per room", true)]
+    pub url_previews: HashMap<String, bool>,
+    #[setting("Show url perviews default", true)]
+    pub url_previews_default: bool,
 }

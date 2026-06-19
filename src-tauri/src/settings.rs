@@ -2,7 +2,10 @@ use std::{io::ErrorKind, path::PathBuf};
 
 use matrix_sdk::{
     Client,
-    ruma::{events::GlobalAccountDataEventType, serde::Raw},
+    ruma::{
+        events::{AnyGlobalAccountDataEvent, GlobalAccountDataEventType},
+        serde::Raw,
+    },
 };
 use serde_json::{Value, json};
 use tauri::{State, command};
@@ -171,7 +174,7 @@ pub async fn set_setting(
     let settings_file = settings_file.inner();
     let client: Client = client.read().await.clone();
 
-    // save_setting_to_file(settings_file, &key, &value).await?;
+    save_setting_to_file(settings_file, &key, &value).await?;
 
     if to_cloud {
         save_setting_to_cloud(&client, &key, &value).await?;

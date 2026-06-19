@@ -20,7 +20,7 @@ use wasm_bindgen::JsCast;
 use web_sys::Element;
 
 use crate::{
-    app::format_date,
+    app::{Settings, format_date},
     components::{
         CloseButton, TextCircle, TextCircleProps,
         blurhash::Blurhash,
@@ -29,7 +29,7 @@ use crate::{
         overlays::emoji_picker::{EmojiPickerState, pick_emoji},
         previews::render_link,
         text::{RichTextExt, richt_text_spans_to_html},
-        user_profile::{MemberProfileExt},
+        user_profile::MemberProfileExt,
     },
     state::{AppState, LighboxImage, ProfileStore},
     tauri_functions::{delete_message, toggle_reaction},
@@ -61,7 +61,11 @@ fn ReplyPreview(
     let profile_store = store.clone();
     let store_room_id = active_room_id.clone();
     let profile = Memo::new(move |_| {
-        preview.get().map(|p| profile_store.get_member_profile(&store_room_id, &p.sender_id).get())
+        preview.get().map(|p| {
+            profile_store
+                .get_member_profile(&store_room_id, &p.sender_id)
+                .get()
+        })
     });
 
     let spans = Memo::new(move |_| {
@@ -196,6 +200,8 @@ fn render_message_content(
     sender_id: String,
     timestamp: u64,
 ) -> impl IntoView {
+    let settings: Settings = expect_context();
+
     let spans = content.body;
     const MAX_W: u64 = 400;
     const MAX_H: u64 = 300;
@@ -460,7 +466,8 @@ fn render_message_content(
                         .into_any()
                 } else {
                     ().into_any()
-                }} {spans.clone().into_iter().map(render_link).collect_view()}
+                }}
+                {move || if settings.url_previews_default.signal().get() {spans.clone().into_iter().map(render_link).collect_view().into_any()} else {().into_any()}}
             </div>
         }
             .into_any(),
@@ -1221,21 +1228,20 @@ fn render_timeline_event(
     let scroll_target = expect_context::<super::ScrollTarget>().0;
     let node_ref = NodeRef::<Div>::new();
 
-    let (show_highlight, date, sender_id, reply_info, event_id) = item_sig
-        .with_untracked(|item| {
-            if let UiTimelineItemKind::Event(event) = &item.kind {
-                let sender_id = event.sender_id.clone();
-                (
-                    event.flags.is_highlighted,
-                    get_date_from_ts(event.timestamp as i64),
-                    sender_id,
-                    event.in_reply_to(),
-                    event.event_id.clone(),
-                )
-            } else {
-                unreachable!("Must be an event")
-            }
-        });
+    let (show_highlight, date, sender_id, reply_info, event_id) = item_sig.with_untracked(|item| {
+        if let UiTimelineItemKind::Event(event) = &item.kind {
+            let sender_id = event.sender_id.clone();
+            (
+                event.flags.is_highlighted,
+                get_date_from_ts(event.timestamp as i64),
+                sender_id,
+                event.in_reply_to(),
+                event.event_id.clone(),
+            )
+        } else {
+            unreachable!("Must be an event")
+        }
+    });
 
     let this_event_id = event_id.clone();
     Effect::new(move |_| {
@@ -1334,10 +1340,10 @@ fn render_timeline_event(
     let current_highlight = Memo::new(move |_| {
         if let Some(important_id) = important_event_id.get()
             && let Some(event_id) = &color_event_id
-            && important_id == *event_id {
-                log::info!("Highlighting event {important_id}");
-                Some("white".to_string())
-
+            && important_id == *event_id
+        {
+            log::info!("Highlighting event {important_id}");
+            Some("white".to_string())
         } else if show_highlight {
             Some("var(--accent-color)".to_string())
         } else {
@@ -1351,8 +1357,7 @@ fn render_timeline_event(
         item.flags()
     });
 
-    let sender_profile_sig =
-        store.get_member_profile(&room_id, &sender_id.clone());
+    let sender_profile_sig = store.get_member_profile(&room_id, &sender_id.clone());
 
     let reply_room_id = room_id.clone();
 
