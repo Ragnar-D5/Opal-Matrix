@@ -531,7 +531,7 @@ pub fn run() {
                                     .get(key)
                                     .and_then(|v| serde_json::to_string(v).ok())
                                     .unwrap_or_else(|| "null".to_string());
-                                if let Err(e) = app_handle.emit("settings", (key.as_str(), json_str)) {
+                                if let Err(e) = app_handle.emit("settings_file_update", (key.as_str(), json_str)) {
                                     log::warn!("Failed to emit settings change for '{}': {:?}", key, e);
                                 }
                             }
@@ -726,6 +726,7 @@ pub fn run() {
             // settings
             settings::get_setting,
             settings::set_setting,
+            // settings::set_setting_cloud,
         ])
         .register_asynchronous_uri_scheme_protocol(
             "mxc",

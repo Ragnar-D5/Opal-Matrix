@@ -100,7 +100,40 @@ fn convert_settings(mut item: ItemStruct) -> TokenStream {
             }
         });
 
-    let match_arms = type_name_string_collector
+    // File event: update signal; for cloud fields also push the new value up.
+    let match_arms_file: Vec<_> = type_name_string_collector
+        .iter()
+        .map(|(type_name, field_name, _, uses_cloud)| {
+            let upload = if *uses_cloud {
+                quote! {
+                    let key_c = key.clone();
+                    let val_c = val.clone();
+                    ::leptos::task::spawn_local(async move {
+                        let args = ::serde_wasm_bindgen::to_value(
+                            &::serde_json::json!({ "key": key_c, "value": val_c })
+                        ).expect("Failed to serialize cloud-upload args");
+                        if let Err(e) = call_tauri("set_setting_cloud", args).await {
+                            ::log::error!("Failed to upload '{}' to cloud: {:?}", key_c, e);
+                        }
+                    });
+                }
+            } else {
+                quote! {}
+            };
+            quote! {
+                #type_name => {
+                    match ::serde_json::from_str(&val) {
+                        Ok(parsed) => #field_name.set(parsed),
+                        Err(e) => ::log::warn!("Failed to deserialize field '{}': {:?}", stringify!(#field_name), e)
+                    }
+                    #upload
+                }
+            }
+        })
+        .collect();
+
+    // Cloud event: just update the signal (value already came from the cloud).
+    let match_arms_cloud: Vec<_> = type_name_string_collector
         .iter()
         .map(|(type_name, field_name, _, _)| {
             quote! {
@@ -109,7 +142,8 @@ fn convert_settings(mut item: ItemStruct) -> TokenStream {
                     Err(e) => ::log::warn!("Failed to deserialize field '{}': {:?}", stringify!(#field_name), e)
                 }
             }
-        });
+        })
+        .collect();
 
     let get_all_calls = type_name_string_collector
         .iter()
@@ -210,14 +244,24 @@ fn convert_settings(mut item: ItemStruct) -> TokenStream {
             }
 
             pub fn setup_backend_hook(&self) {
-                let sig: ReadSignal<Option<(String, String)>> = use_tauri_event("settings");
+                let file_sig: ReadSignal<Option<(String, String)>> = use_tauri_event("settings_file_update");
+                let cloud_sig: ReadSignal<Option<(String, String)>> = use_tauri_event("settings_cloud_update");
 
                 #(#signal_bindings)*
 
                 Effect::new(move |_| {
-                    if let Some((key, val)) = sig.get() {
+                    if let Some((key, val)) = file_sig.get() {
                         match key.as_str() {
-                            #(#match_arms,)*
+                            #(#match_arms_file,)*
+                            _ => {}
+                        }
+                    }
+                });
+
+                Effect::new(move |_| {
+                    if let Some((key, val)) = cloud_sig.get() {
+                        match key.as_str() {
+                            #(#match_arms_cloud,)*
                             _ => {}
                         }
                     }

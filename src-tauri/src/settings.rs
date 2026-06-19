@@ -88,7 +88,7 @@ async fn load_setting_from_cloud(client: &Client, key: &str) -> Result<Option<St
     Ok(None)
 }
 
-async fn save_setting_to_cloud(client: &Client, key: &str, value: &str) -> Result<(), TauriError> {
+pub async fn save_setting_to_cloud(client: &Client, key: &str, value: &str) -> Result<(), TauriError> {
     let parsed_value: Value = serde_json::from_str(value)?;
 
     let content = Raw::from_json_string(serde_json::to_string(&json!({ "value": parsed_value }))?)?;
@@ -180,6 +180,12 @@ pub async fn set_setting(
     Ok(())
 }
 
+#[command(rename_all = "snake_case")]
+pub async fn set_setting_cloud(client: State<'_, RwLock<Client>>, key: String, value: String) -> Result<(), TauriError> {
+    let client: Client = client.read().await.clone();
+    save_setting_to_cloud(&client, &key, &value).await
+}
+
 pub fn document_to_json_map(doc: &DocumentMut) -> serde_json::Map<String, Value> {
     toml::from_str::<toml::Value>(&doc.to_string())
         .ok()
@@ -213,7 +219,7 @@ pub async fn handle_account_data_event(
         return;
     };
 
-    if let Err(e) = handle.emit("settings", (key, val.to_string())) {
+    if let Err(e) = handle.emit("settings_cloud_update", (key, val.to_string())) {
         log::warn!("Failed to emit settings event for '{}': {:?}", key, e);
     }
 }
