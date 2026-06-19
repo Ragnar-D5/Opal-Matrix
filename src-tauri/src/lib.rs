@@ -3,8 +3,8 @@
 use const_format::formatcp;
 use log::{error, trace};
 use matrix_sdk::authentication::matrix::MatrixSession;
-use matrix_sdk::ruma::{OwnedDeviceId, UserId};
 use matrix_sdk::encryption::{BackupDownloadStrategy, EncryptionSettings};
+use matrix_sdk::ruma::{OwnedDeviceId, UserId};
 use matrix_sdk::{AuthSession, Client as MatrixClient, SessionMeta, SessionTokens};
 use percent_encoding::percent_decode_str;
 use shared::api::RestoreResponse;
@@ -23,9 +23,9 @@ use tauri::{Manager, State};
 
 pub(crate) mod frontend;
 pub(crate) mod matrix_api;
+pub(crate) mod settings;
 pub(crate) mod state;
 pub(crate) mod sync;
-pub(crate) mod settings;
 
 use tauri_plugin_http::reqwest::{self, Response};
 
@@ -563,10 +563,7 @@ pub fn run() {
                     .build(),
             )?;
 
-            let state = Arc::new(AppState {
-                app_data_dir: data_dir,
-                ..Default::default()
-            });
+            let state = Arc::new(AppState::default());
 
             app.manage(state);
 

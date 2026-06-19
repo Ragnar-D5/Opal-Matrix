@@ -1,11 +1,11 @@
-use matrix_sdk::ruma::{events::room::MediaSource, OwnedRoomId};
-use matrix_sdk::ruma::{EventId, OwnedEventId};
 use matrix_sdk::Room;
+use matrix_sdk::ruma::{EventId, OwnedEventId};
+use matrix_sdk::ruma::{OwnedRoomId, events::room::MediaSource};
 use matrix_sdk_ui::timeline::{
     DateDividerMode, TimelineEventFocusThreadMode, TimelineFocus, TimelineReadReceiptTracking,
 };
-use matrix_sdk_ui::{timeline::TimelineBuilder, Timeline};
-use std::{collections::HashMap, path::PathBuf, sync::Arc};
+use matrix_sdk_ui::{Timeline, timeline::TimelineBuilder};
+use std::{collections::HashMap, sync::Arc};
 use tauri::async_runtime::{Mutex, RwLock};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
@@ -15,8 +15,6 @@ use crate::TauriError;
 
 #[derive(Default)]
 pub struct AppState {
-    pub app_data_dir: PathBuf,
-
     pub frontend_current_room_id: RwLock<Option<String>>,
     pub frontend_is_focused: RwLock<bool>,
 }
@@ -91,8 +89,14 @@ impl TimelineManager {
         let id = Uuid::new_v4();
         let timeline = Arc::new(timeline);
 
-        self.timelines.write().await.insert(index, (id, timeline.clone()));
-        self.timelines_by_id.write().await.insert(id, timeline.clone());
+        self.timelines
+            .write()
+            .await
+            .insert(index, (id, timeline.clone()));
+        self.timelines_by_id
+            .write()
+            .await
+            .insert(id, timeline.clone());
 
         Ok((id, timeline))
     }

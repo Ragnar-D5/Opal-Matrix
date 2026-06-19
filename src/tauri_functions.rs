@@ -278,15 +278,15 @@ pub fn save_displayname(display_name: &str) -> Result<(), String> {
     Ok(())
 }
 
-pub fn save_avatar_image(image_data: Vec<u8>) -> Result<(), String> {
-    let args = serde_wasm_bindgen::to_value(&json!({ "image_data": image_data }))
-        .map_err(|e| format!("Failed to serialize request: {:?}", e))?;
+// pub fn save_avatar_image(image_data: Vec<u8>) -> Result<(), String> {
+//     let args = serde_wasm_bindgen::to_value(&json!({ "image_data": image_data }))
+//         .map_err(|e| format!("Failed to serialize request: {:?}", e))?;
 
-    spawn_local(async move {
-        if let Err(e) = call_tauri("save_avatar", args).await {
-            log::error!("Tauri call failed: {:?}", e);
-        }
-    });
+//     spawn_local(async move {
+//         if let Err(e) = call_tauri("save_avatar", args).await {
+//             log::error!("Tauri call failed: {:?}", e);
+//         }
+//     });
 
-    Ok(())
-}
+//     Ok(())
+// }

@@ -1,13 +1,13 @@
 use std::{io::ErrorKind, path::PathBuf};
 
 use matrix_sdk::{
-    ruma::{events::GlobalAccountDataEventType, serde::Raw},
     Client,
+    ruma::{events::GlobalAccountDataEventType, serde::Raw},
 };
-use serde_json::{json, Value};
-use tauri::{command, State};
+use serde_json::{Value, json};
+use tauri::{State, command};
 use tokio::sync::RwLock;
-use toml_edit::{value, Array, DocumentMut, InlineTable, Item};
+use toml_edit::{Array, DocumentMut, InlineTable, Item, value};
 
 use crate::TauriError;
 
@@ -66,6 +66,10 @@ async fn save_setting_to_file(
     key: &str,
     value: &str,
 ) -> Result<(), TauriError> {
+    if let Some(parent) = settings_file.parent() {
+        tokio::fs::create_dir_all(parent).await?;
+    }
+
     let content = match tokio::fs::read_to_string(settings_file).await {
         Ok(content) => content,
         Err(e) => match e.kind() {
@@ -131,7 +135,15 @@ pub async fn get_setting(
 
     let setting = if from_cloud {
         match load_setting_from_cloud(&client, &key).await {
-            Ok(Some(value)) => Some(value),
+            Ok(Some(value)) => {
+                if let Err(e) = save_setting_to_file(settings_file, &key, &value).await {
+                    log::warn!(
+                        "Failed to save cloud setting to file: {:?}. Continuing with cloud value.",
+                        e
+                    );
+                };
+                Some(value)
+            }
             Ok(None) => load_setting_from_file(settings_file, &key).await?,
             Err(e) => {
                 log::warn!(
@@ -159,14 +171,7 @@ pub async fn set_setting(
     let settings_file = settings_file.inner();
     let client: Client = client.read().await.clone();
 
-    if !settings_file.exists() {
-        if let Some(parent) = settings_file.parent() {
-            tokio::fs::create_dir_all(parent).await?;
-        }
-        tokio::fs::write(settings_file, "").await?;
-    }
-
-    save_setting_to_file(settings_file, &key, &value).await?;
+    // save_setting_to_file(settings_file, &key, &value).await?;
 
     if to_cloud {
         save_setting_to_cloud(&client, &key, &value).await?;

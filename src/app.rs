@@ -90,7 +90,14 @@ pub fn App() -> impl IntoView {
     provide_context(state);
 
     let settings = Settings::default();
-    let _sig = settings.scaling.signal();
+    settings.setup_backend_hook();
+    spawn_local(async move {
+        if let Err(e) = settings.get_all().await {
+            log::error!("Failed to get settings from backend: {:?}", e);
+        };
+    });
+
+    provide_context(settings);
 
     let store = ProfileStore::default();
     let store_for_profiles = store.clone();
@@ -383,4 +390,6 @@ fn HomePage() -> impl IntoView {
 struct Settings {
     #[setting("Scaling", false, default = 1.0)]
     scaling: f64,
+    #[setting("Url Previews", true)]
+    show_url_previews: HashMap<String, bool>,
 }
