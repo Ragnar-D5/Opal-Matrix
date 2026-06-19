@@ -7,6 +7,7 @@ use tauri::{AppHandle, async_runtime::spawn};
 
 use crate::frontend::profiles::handle_typing_notice;
 use crate::matrix_api::matrixrtc::handle_call_member_change;
+use crate::settings::handle_account_data_event;
 use crate::{
     TauriError,
     frontend::{
@@ -126,6 +127,7 @@ pub async fn attach_callbacks(client: &MatrixClient, handle: &AppHandle) -> Resu
     client.add_event_handler(client_user_profile_event_handle);
     client.add_event_handler(handle_call_member_change);
     client.add_event_handler(handle_typing_notice);
+    client.add_event_handler(handle_account_data_event);
 
     Ok(())
 }

@@ -6,19 +6,22 @@ use matrix_sdk::authentication::matrix::MatrixSession;
 use matrix_sdk::encryption::{BackupDownloadStrategy, EncryptionSettings};
 use matrix_sdk::ruma::{OwnedDeviceId, UserId};
 use matrix_sdk::{AuthSession, Client as MatrixClient, SessionMeta, SessionTokens};
+use notify::Watcher;
 use percent_encoding::percent_decode_str;
 use shared::api::RestoreResponse;
 use shared::api::errors::LoginError;
+use toml_edit::{DocumentMut};
 use std::collections::HashMap;
 use std::fs::{read_to_string, write};
+use std::str::FromStr;
 use std::sync::Arc;
-use tauri::async_runtime::block_on;
-use tokio::sync::RwLock;
+use tauri::async_runtime::{block_on, spawn};
+use tokio::sync::{RwLock, mpsc};
 
 use bytes::Bytes;
 use chrono::Local;
 use log::info;
-use tauri::{App, AppHandle, Url, command};
+use tauri::{App, AppHandle, Emitter, Url, command};
 use tauri::{Manager, State};
 
 pub(crate) mod frontend;
@@ -430,6 +433,22 @@ fn detect_content_type(bytes: &[u8]) -> &'static str {
 
 pub struct BrandColorsMap(pub HashMap<String, String>);
 
+fn diff_settings(old: &DocumentMut, new: &DocumentMut) -> Vec<String> {
+    let mut changed = Vec::new();
+    for (key, new_val) in new.iter() {
+        match old.get(key) {
+            Some(old_val) if old_val.to_string() == new_val.to_string() => {}
+            _ => changed.push(key.to_string()),
+        }
+    }
+    for (key, _) in old.iter() {
+        if new.get(key).is_none() {
+            changed.push(key.to_string());
+        }
+    }
+    changed
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     rustls::crypto::ring::default_provider()
@@ -453,7 +472,82 @@ pub fn run() {
 
             let settings_file_path = config_dir.join("settings.toml");
 
+            let settings_doc = match read_to_string(&settings_file_path) {
+                Ok(content) => match DocumentMut::from_str(&content) {
+                    Ok(doc) => doc,
+                    Err(e) => {
+                        log::warn!("Failed to parse settings file, starting with empty settings: {:?}", e);
+                        DocumentMut::new()
+                    }
+                },
+                Err(e) => {
+                    log::warn!("Failed to read settings file, starting with empty settings: {:?}", e);
+                    DocumentMut::new()
+                },
+            };
+
+            let app_handle = app.handle().clone();
+            let watch_path = settings_file_path.clone();
+
+            spawn(async move {
+               let (tx, mut rx) = mpsc::channel::<()>(100);
+
+               let watch_path_for_filter = watch_path.clone();
+               let mut watcher = notify::recommended_watcher(move |res: Result<notify::Event, notify::Error>| {
+                   if let Ok(event) = res
+                       && !matches!(event.kind, notify::EventKind::Access(_))
+                       && event.paths.iter().any(|p| p == &watch_path_for_filter)
+                   {
+                       let _ = tx.blocking_send(());
+                   }
+               }).expect("Failed to initialize file watcher");
+
+               let watch_dir = watch_path.parent().expect("Settings file has no parent directory");
+               watcher.watch(watch_dir, notify::RecursiveMode::NonRecursive).expect("Failed to watch settings directory");
+
+               while rx.recv().await.is_some() {
+                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                    while rx.try_recv().is_ok() {}
+
+                    let Ok(new_content) = tokio::fs::read_to_string(&watch_path).await else {
+                        log::warn!("Failed to read settings file after change");
+                        continue;
+                    };
+
+                    let cashed_settings_sig = app_handle.state::<RwLock<DocumentMut>>().clone();
+                    let mut cached_settings = cashed_settings_sig.write().await;
+
+                    if new_content == cached_settings.to_string() {
+                        continue;
+                    }
+
+                    match DocumentMut::from_str(&new_content) {
+                        Ok(new_doc) => {
+                            let changed_keys = diff_settings(&cached_settings, &new_doc);
+                            *cached_settings = new_doc;
+                            let json_map = settings::document_to_json_map(&cached_settings);
+                            for key in &changed_keys {
+                                let json_str = json_map
+                                    .get(key)
+                                    .and_then(|v| serde_json::to_string(v).ok())
+                                    .unwrap_or_else(|| "null".to_string());
+                                if let Err(e) = app_handle.emit("settings", (key.as_str(), json_str)) {
+                                    log::warn!("Failed to emit settings change for '{}': {:?}", key, e);
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            log::warn!("Failed to parse settings file after change, keeping old settings: {:?}", e);
+                        }
+                    }
+               }
+
+               drop(watcher);
+            });
+
             app.manage(settings_file_path);
+            app.manage(RwLock::new(settings_doc));
+
             let brand_colors_file_path = config_dir.join("brand_colors.json");
 
             let color_map: HashMap<String, String> = if brand_colors_file_path.exists() {

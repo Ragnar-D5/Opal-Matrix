@@ -91,11 +91,6 @@ pub fn App() -> impl IntoView {
 
     let settings = Settings::default();
     settings.setup_backend_hook();
-    spawn_local(async move {
-        if let Err(e) = settings.get_all().await {
-            log::error!("Failed to get settings from backend: {:?}", e);
-        };
-    });
 
     provide_context(settings);
 
@@ -312,6 +307,10 @@ pub fn App() -> impl IntoView {
                 Err(err) => {
                     error!("Error fetching server order: {:?}", err);
                 }
+            };
+
+            if let Err(e) = settings.get_all().await {
+                log::error!("Failed to get settings from backend: {:?}", e);
             };
 
             state.data_initialized.set(true);

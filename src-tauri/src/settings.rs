@@ -1,35 +1,19 @@
-use std::{io::ErrorKind, path::PathBuf};
+use std::{path::PathBuf};
 
 use matrix_sdk::{
-    Client,
+    event_handler::Ctx,
     ruma::{
         events::{AnyGlobalAccountDataEvent, GlobalAccountDataEventType},
         serde::Raw,
     },
+    Client,
 };
-use serde_json::{Value, json};
-use tauri::{State, command};
+use serde_json::{json, Value};
+use tauri::{AppHandle, Emitter, State, command};
 use tokio::sync::RwLock;
-use toml_edit::{Array, DocumentMut, InlineTable, Item, value};
+use toml_edit::{value, Array, DocumentMut, InlineTable, Item};
 
-use crate::TauriError;
-
-async fn load_setting_from_file(
-    settings_file: &PathBuf,
-    key: &str,
-) -> Result<Option<String>, TauriError> {
-    let content = match tokio::fs::read_to_string(settings_file).await {
-        Ok(content) => content,
-        Err(e) => match e.kind() {
-            ErrorKind::NotFound => return Ok(None), // No settings file, treat as empty
-            _ => return Err(e.into()),
-        },
-    };
-
-    let config: Value = toml::from_str(&content)?;
-
-    Ok(config.get(key).map(|s| s.to_string()))
-}
+use crate::{TauriError};
 
 fn json_to_toml_item(json_val: Value) -> Option<Item> {
     match json_val {
@@ -66,6 +50,7 @@ fn json_to_toml_item(json_val: Value) -> Option<Item> {
 
 async fn save_setting_to_file(
     settings_file: &PathBuf,
+    cashed_settings: &mut DocumentMut,
     key: &str,
     value: &str,
 ) -> Result<(), TauriError> {
@@ -73,25 +58,15 @@ async fn save_setting_to_file(
         tokio::fs::create_dir_all(parent).await?;
     }
 
-    let content = match tokio::fs::read_to_string(settings_file).await {
-        Ok(content) => content,
-        Err(e) => match e.kind() {
-            ErrorKind::NotFound => String::new(), // No settings file, start with empty
-            _ => return Err(e.into()),
-        },
-    };
-
-    let mut doc = content.parse::<DocumentMut>()?;
-
     let json_value: Value = serde_json::from_str(value)?;
 
     if let Some(toml_item) = json_to_toml_item(json_value) {
-        doc.insert(key, toml_item);
+        cashed_settings.insert(key, toml_item);
     } else {
-        doc.remove(key);
+        cashed_settings.remove(key);
     }
 
-    tokio::fs::write(settings_file, doc.to_string()).await?;
+    tokio::fs::write(settings_file, cashed_settings.to_string()).await?;
 
     Ok(())
 }
@@ -129,6 +104,7 @@ async fn save_setting_to_cloud(client: &Client, key: &str, value: &str) -> Resul
 #[command(rename_all = "snake_case")]
 pub async fn get_setting(
     settings_file: State<'_, PathBuf>,
+    cashed_settings_sig: State<'_, RwLock<DocumentMut>>,
     client: State<'_, RwLock<Client>>,
     key: String,
     from_cloud: bool,
@@ -136,36 +112,54 @@ pub async fn get_setting(
     let settings_file = settings_file.inner();
     let client: Client = client.read().await.clone();
 
-    let setting = if from_cloud {
-        match load_setting_from_cloud(&client, &key).await {
-            Ok(Some(value)) => {
-                if let Err(e) = save_setting_to_file(settings_file, &key, &value).await {
+    // Acquire and release the read lock immediately so it is never held across an .await.
+    // Holding it across an .await and then requesting a write lock on the same RwLock deadlocks.
+    let local_val = {
+        let cashed_settings = cashed_settings_sig.inner().read().await;
+        cashed_settings.get(&key).map(|v| v.to_string())
+    };
+
+    if from_cloud {
+        let setting = match load_setting_from_cloud(&client, &key).await {
+            Ok(Some(value)) => Some(value),
+            Ok(None) => {
+                if let Some(ref s) = local_val
+                    && let Err(e) = save_setting_to_cloud(&client, &key, s).await
+                {
                     log::warn!(
-                        "Failed to save cloud setting to file: {:?}. Continuing with cloud value.",
+                        "Failed to save local setting to cloud: {:?}. Continuing with local value.",
                         e
                     );
-                };
-                Some(value)
+                }
+                local_val
             }
-            Ok(None) => load_setting_from_file(settings_file, &key).await?,
             Err(e) => {
                 log::warn!(
                     "Failed to load setting from cloud: {:?}. Falling back to file.",
                     e
                 );
-                load_setting_from_file(settings_file, &key).await?
+                local_val
             }
-        }
+        };
+        let mut cashed_settings_mut = cashed_settings_sig.inner().write().await;
+        if let Some(ref s) = setting
+            && let Err(e) = save_setting_to_file(settings_file, &mut cashed_settings_mut, &key, s).await
+        {
+            log::warn!(
+                "Failed to save cloud setting to file: {:?}. Continuing with cloud value.",
+                e
+            );
+        };
+        Ok(setting)
     } else {
-        load_setting_from_file(settings_file, &key).await?
-    };
-
-    Ok(setting)
+        Ok(local_val)
+    }
 }
 
 #[command(rename_all = "snake_case")]
 pub async fn set_setting(
     settings_file: State<'_, PathBuf>,
+    cashed_settings_sig: State<'_, RwLock<DocumentMut>>,
     client: State<'_, RwLock<Client>>,
     key: String,
     value: String,
@@ -174,11 +168,52 @@ pub async fn set_setting(
     let settings_file = settings_file.inner();
     let client: Client = client.read().await.clone();
 
-    save_setting_to_file(settings_file, &key, &value).await?;
+    {
+        let mut cashed_settings_mut = cashed_settings_sig.inner().write().await;
+        save_setting_to_file(settings_file, &mut cashed_settings_mut, &key, &value).await?;
+    } // release write lock before the network call
 
     if to_cloud {
         save_setting_to_cloud(&client, &key, &value).await?;
     }
 
     Ok(())
+}
+
+pub fn document_to_json_map(doc: &DocumentMut) -> serde_json::Map<String, Value> {
+    toml::from_str::<toml::Value>(&doc.to_string())
+        .ok()
+        .and_then(|v| serde_json::to_value(v).ok())
+        .and_then(|v| match v {
+            Value::Object(map) => Some(map),
+            _ => None,
+        })
+        .unwrap_or_default()
+}
+
+pub async fn handle_account_data_event(
+    event: Raw<AnyGlobalAccountDataEvent>,
+    handle: Ctx<AppHandle>,
+) {
+    let Ok(event_json): Result<Value, _> = serde_json::from_str(event.json().get()) else {
+        return;
+    };
+
+    log::debug!("Received account data event: {:?}", event_json);
+
+    let Some(key) = event_json.get("type").and_then(|t| t.as_str()) else {
+        return;
+    };
+
+    if !key.starts_with("com.opal") {
+        return;
+    }
+
+    let Some(val) = event_json.get("content").and_then(|c| c.get("value")) else {
+        return;
+    };
+
+    if let Err(e) = handle.emit("settings", (key, val.to_string())) {
+        log::warn!("Failed to emit settings event for '{}': {:?}", key, e);
+    }
 }

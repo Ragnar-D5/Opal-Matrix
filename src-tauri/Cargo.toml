@@ -77,6 +77,7 @@ uuid = "1.23.1"
 version-compare = "0.2.1"
 toml_edit = "0.25.12"
 toml = "1.1.2"
+notify = "8.2.0"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
