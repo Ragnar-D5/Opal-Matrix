@@ -1,22 +1,15 @@
-<<<<<<< Updated upstream
-=======
 use anyhow::Context;
 use cpal::traits::{DeviceTrait, StreamTrait};
->>>>>>> Stashed changes
-use matrix_sdk::Room;
+use matrix_sdk::ruma::{events::room::MediaSource, OwnedRoomId};
 use matrix_sdk::ruma::{EventId, OwnedEventId};
-use matrix_sdk::ruma::{OwnedRoomId, events::room::MediaSource};
+use matrix_sdk::Room;
 use matrix_sdk_ui::timeline::{
     DateDividerMode, TimelineEventFocusThreadMode, TimelineFocus, TimelineReadReceiptTracking,
 };
-use matrix_sdk_ui::{Timeline, timeline::TimelineBuilder};
-<<<<<<< Updated upstream
-use std::{collections::HashMap, sync::Arc};
-=======
+use matrix_sdk_ui::{timeline::TimelineBuilder, Timeline};
 use ringbuf::traits::{Consumer, Observer, Producer, Split};
 use ringbuf::{HeapCons, HeapProd, HeapRb};
-use std::{collections::HashMap, path::PathBuf, sync::Arc};
->>>>>>> Stashed changes
+use std::{collections::HashMap, sync::Arc};
 use tauri::async_runtime::{Mutex, RwLock};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;

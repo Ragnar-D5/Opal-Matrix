@@ -293,10 +293,7 @@ pub(crate) async fn join_matrixrtc_call(
                             {
 
                                 debug!("Subscribed to new audio track: {:?}", track);
-                                match register_new_track(handle.clone(), audio_track, sender.clone(), cancellationtoken_clone.clone()).await {
-                                    Err(e) => warn!("Could not register output of remote track: {e}"),
-                                    _ => {}
-                                }
+                                if let Err(e) = register_new_track(handle.clone(), audio_track, sender.clone(), cancellationtoken_clone.clone()).await { warn!("Could not register output of remote track: {e}") }
 
                             }
                         }
@@ -733,7 +730,7 @@ pub fn setup_mic_track(
         .default_input_config()
         .context("Failed to fetch default hardware microphone configuration")?;
 
-    let sample_rate = config.sample_rate() as u32;
+    let sample_rate = config.sample_rate();
     let channels = config.channels() as u32;
     let samples_per_10ms = (sample_rate / 100) as usize;
 
@@ -760,7 +757,7 @@ pub fn setup_mic_track(
             if frame_buffer.len() == samples_per_10ms {
                 let frame = AudioFrame {
                     data: frame_buffer.clone().into(),
-                    sample_rate: sample_rate,
+                    sample_rate,
                     num_channels: channels,
                     samples_per_channel: samples_per_10ms as u32,
                 };
