@@ -86,6 +86,9 @@ pub fn format_bytes(bytes: u64) -> String {
 
 #[component]
 pub fn App() -> impl IntoView {
+    spawn_local(async move {
+        let _ = call_tauri_no_args("get_devices").await;
+    });
     let state = AppState::default();
     provide_context(state);
 

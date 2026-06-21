@@ -2,18 +2,18 @@ use base64::Engine;
 use base64::engine::general_purpose;
 use livekit::e2ee::EncryptionType;
 use livekit::e2ee::key_provider::{KeyProvider, KeyProviderOptions};
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use matrix_sdk::deserialized_responses::ProcessedToDeviceEvent;
 use matrix_sdk::event_handler::Ctx;
 use matrix_sdk::ruma::api::client::rtc::RtcTransport;
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use cpal::traits::DeviceTrait;
 use futures::StreamExt;
-use livekit::track::{LocalAudioTrack, LocalTrack, RemoteTrack};
+use livekit::track::{LocalAudioTrack, LocalTrack, RemoteAudioTrack, RemoteTrack};
 use livekit::webrtc::audio_source::native::NativeAudioSource;
 use livekit::webrtc::audio_stream::native::NativeAudioStream;
 use livekit::webrtc::prelude::{AudioFrame, AudioSourceOptions};
@@ -30,19 +30,22 @@ use matrix_sdk::ruma::events::{
 };
 use matrix_sdk::ruma::serde::Raw;
 use matrix_sdk::{Client, ruma::RoomId};
-use ringbuf::HeapRb;
+use ringbuf::HeapCons;
 use ringbuf::traits::{Consumer, Observer, Producer, Split};
 use tauri::{AppHandle, Manager, State, command};
 use tauri_plugin_http::reqwest;
 use tokio::sync::RwLock;
 
-use crate::state::{CallAudioState, LiveKitRoomData, LiveKitRoomManager};
+use crate::state::{
+    AudioManager, AudioManagerContext, CallAudioState, LiveKitRoomData, LiveKitRoomManager,
+};
 use crate::{AsInfo, TauriError};
 
 #[command(rename_all = "snake_case")]
 pub(crate) async fn join_matrixrtc_call(
+    handle: AppHandle,
     matrix_client: State<'_, RwLock<Client>>,
-    audio_state: State<'_, CallAudioState>,
+    audio_manager: State<'_, AudioManager>,
     livekit_room_manager: State<'_, LiveKitRoomManager>,
     room_id: String,
 ) -> Result<serde_json::Value, TauriError> {
@@ -170,146 +173,8 @@ pub(crate) async fn join_matrixrtc_call(
 
     room.send(notification_event).await?;
 
-    let host = cpal::default_host();
-    let out_device = host
-        .default_output_device()
-        .ok_or("No default output device found")?;
-
-    let out_config = out_device
-        .default_output_config()
-        .map_err(|e| format!("No output config: {}", e))?;
-
-    let sample_rate = out_config.sample_rate(); // should be 48 000
-    let channels = out_config.channels() as u32;
-
-    log::debug!("CPAL output: {} Hz, {} ch", sample_rate, channels);
-
-    let ring = HeapRb::<f32>::new(sample_rate as usize * channels as usize * 4);
-    let (producer, mut consumer) = ring.split();
-    let shared_producer = Arc::new(Mutex::new(producer));
-
-    // ~50 ms prebuffer (sample_rate * channels / 20) before starting playback.
-    let prebuffer_threshold = (sample_rate * channels / 50) as usize;
-    let mut is_buffering = true;
-
-    let output_stream = out_device
-        .build_output_stream(
-            &out_config.into(),
-            move |data: &mut [f32], _| {
-                if is_buffering {
-                    if consumer.occupied_len() >= prebuffer_threshold {
-                        is_buffering = false;
-                    } else {
-                        data.fill(0.0);
-                        return;
-                    }
-                }
-                for sample in data.iter_mut() {
-                    match consumer.try_pop() {
-                        Some(s) => *sample = s * 0.85,
-                        None => {
-                            *sample = 0.0;
-                            is_buffering = true;
-                        }
-                    }
-                }
-            },
-            |err| log::error!("Speaker stream error: {err}"),
-            None,
-        )
-        .map_err(|e| format!("Failed to build output stream: {}", e))?;
-
-    output_stream
-        .play()
-        .map_err(|e| format!("Failed to start output stream: {}", e))?;
-
-    *audio_state.output_stream.lock().await = Some(output_stream);
-
-    let in_device = host.default_input_device().ok_or("No input device found")?;
-    let in_config = in_device.default_input_config()?;
-
-    let in_sample_rate = in_config.sample_rate(); // Extracts the u32 sample rate
-    let in_channels = in_config.channels() as u32;
-
-    log::debug!("CPAL input: {} Hz, {} ch", in_sample_rate, in_channels);
-
-    // 1. Match the WebRTC audio source parameters identically to the hardware configuration
-    let native_audio_source = NativeAudioSource::new(
-        AudioSourceOptions::default(),
-        in_sample_rate,
-        in_channels,
-        10,
-    );
-    let local_audio_track = LocalAudioTrack::create_audio_track(
-        "mic",
-        livekit::RtcAudioSource::Native(native_audio_source.clone()),
-    );
-
-    // 2. Compute the precise sample count for WebRTC's strict 10ms constraint
-    let samples_per_10ms = ((in_sample_rate * in_channels) / 100) as usize;
-
-    // 3. Create a lock-free ring buffer to bridge the CPAL thread to Tokio land
-    let input_ring = HeapRb::<i16>::new(samples_per_10ms * 8);
-    let (mut input_producer, mut input_consumer) = input_ring.split();
-
-    let input_stream = in_device
-        .build_input_stream(
-            &in_config.into(),
-            move |data: &[f32], _| {
-                for &sample in data {
-                    let s = (sample * i16::MAX as f32) as i16;
-                    // Lock-free, non-blocking push ensures zero dropouts in CPAL
-                    let _ = input_producer.try_push(s);
-                }
-            },
-            |err| log::error!("Mic stream error: {}", err),
-            None,
-        )
-        .map_err(|e| format!("Failed to build mic stream: {}", e))?;
-
-    input_stream
-        .play()
-        .map_err(|e| format!("Failed to play mic: {}", e))?;
-
-    // Keep input stream alive in your shared state
-    *audio_state.input_stream.lock().await = Some(input_stream);
-
-    // 4. Spawn a dedicated async worker task to read frames and await WebRTC transmission
-    let native_source_clone = native_audio_source.clone();
-    tokio::spawn(async move {
-        let mut frame_buffer = Vec::with_capacity(samples_per_10ms);
-        loop {
-            // Fill our accumulator up to a perfect 10ms chunk boundary
-            while frame_buffer.len() < samples_per_10ms {
-                if let Some(s) = input_consumer.try_pop() {
-                    frame_buffer.push(s);
-                } else {
-                    break;
-                }
-            }
-
-            // Once we have an exact 10ms block, dispatch it to WebRTC
-            if frame_buffer.len() == samples_per_10ms {
-                let frame = AudioFrame {
-                    data: frame_buffer.clone().into(),
-                    sample_rate: in_sample_rate,
-                    num_channels: in_channels,
-                    samples_per_channel: in_sample_rate / 100,
-                };
-                frame_buffer.clear();
-
-                // Safely await here without threatening the high-priority audio pipeline
-                if let Err(e) = native_source_clone.capture_frame(&frame).await {
-                    log::error!("Failed to capture audio frame: {:?}", e);
-                }
-            } else {
-                // Back off momentarily if the ring buffer is running dry to avoid pegging the CPU
-                tokio::time::sleep(Duration::from_millis(2)).await;
-            }
-        }
-    });
-
-    // --- LiveKit connection ---
+    // LiveKit connection
+    let cancellationtoken = CancellationToken::new();
     let mut room_options = livekit::RoomOptions::default();
     room_options.encryption = e2ee_options;
 
@@ -345,25 +210,11 @@ pub(crate) async fn join_matrixrtc_call(
 
     livekit_room.e2ee_manager().set_enabled(true);
 
-    // publish mic track
-    livekit_room
-        .local_participant()
-        .publish_track(
-            LocalTrack::Audio(local_audio_track),
-            livekit::options::TrackPublishOptions {
-                source: livekit::track::TrackSource::Microphone,
-                ..Default::default()
-            },
-        )
-        .await
-        .map_err(|e| format!("Failed to publish mic: {}", e))?;
-
     // persist the room in room_manager
-    let cancellationtoken = CancellationToken::new();
     let cancellationtoken_clone = cancellationtoken.clone();
     let call_data = LiveKitRoomData {
         livekit_room,
-        cancellation_token: cancellationtoken,
+        cancellation_token: cancellationtoken_clone,
         key_index: 0,
         call_id,
     };
@@ -372,8 +223,57 @@ pub(crate) async fn join_matrixrtc_call(
         .await
         .insert(room_id.clone(), call_data);
 
+    // audio setup
+    let mut audio_context = audio_manager.lock().await;
+
+    if let Err(e) = audio_context.try_setup_output_stream().await {
+        warn!("Could not set up output stream: {e}")
+    } else {
+        debug!("Set up cpal output stream")
+    };
+    if let Err(e) = audio_context.try_setup_input_stream().await {
+        warn!("Could not set up input stream: {e}")
+    } else {
+        debug!("Set up input stream")
+    };
+
+    let cancellationtoken_clone = cancellationtoken.clone();
+    let microphone_track = setup_mic_track(&mut audio_context, cancellationtoken_clone);
+
+    // publish Microphone track
+    if let Ok(track) = microphone_track {
+        let mut manager = livekit_room_manager.lock().await;
+        let call_data = manager.get_mut(&room_id.clone()).unwrap(); // we inserted this before
+        call_data
+            .livekit_room
+            .local_participant()
+            .publish_track(
+                LocalTrack::Audio(track),
+                livekit::options::TrackPublishOptions {
+                    source: livekit::track::TrackSource::Microphone,
+                    ..Default::default()
+                },
+            )
+            .await
+            .map_err(|e| format!("Failed to publish mic: {}", e))?;
+        debug!("Published microphone track");
+    } else {
+        warn!(
+            "Could not set up microphone track: {}",
+            microphone_track.unwrap_err()
+        )
+    }
+
+    let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
+
+    // spawn main audio mixer mixing together the various audio tracks
+    if let Some(producer) = audio_context.output_producer.take() {
+        spawn_audio_mixer(producer, receiver, cancellationtoken.clone());
+    }
+
     // handle events
     let room_id_clone = room_id.clone();
+    let cancellationtoken_clone = cancellationtoken.clone();
     tokio::spawn(async move {
         loop {
             tokio::select! {
@@ -391,30 +291,13 @@ pub(crate) async fn join_matrixrtc_call(
                             } else if let RoomEvent::TrackSubscribed { track, .. } = ev
                                 && let RemoteTrack::Audio(ref audio_track) = track
                             {
+
                                 debug!("Subscribed to new audio track: {:?}", track);
-                                let rtc_track = audio_track.rtc_track();
+                                match register_new_track(handle.clone(), audio_track, sender.clone(), cancellationtoken_clone.clone()).await {
+                                    Err(e) => warn!("Could not register output of remote track: {e}"),
+                                    _ => {}
+                                }
 
-                                let mut audio_stream = NativeAudioStream::new(rtc_track, sample_rate as i32, channels as i32);
-                                log::debug!("NativeAudioStream configured: {} Hz, {} ch", sample_rate, channels);
-
-                                let prod_clone = shared_producer.clone();
-
-                                tokio::spawn(async move {
-                                    while let Some(frame) = audio_stream.next().await {
-                                        let Ok(mut prod) = prod_clone.lock() else { continue; };
-                                        if frame.num_channels == 1 && channels == 2 {
-                                            for &s in frame.data.as_ref() {
-                                                let f = s as f32 / 32_768.0;
-                                                let _ = prod.try_push(f);
-                                                let _ = prod.try_push(f);
-                                            }
-                                        } else {
-                                            for &s in frame.data.as_ref() {
-                                                let _ = prod.try_push(s as f32 / 32_768.0);
-                                            }
-                                        }
-                                    }
-                                });
                             }
                         }
                         None => {
@@ -434,7 +317,6 @@ pub async fn handle_call_member_change(
     event_room: matrix_sdk::Room,
     handle: Ctx<AppHandle>,
 ) {
-    debug!("\n\n\n\n\n{:?}", ev.content);
     if let CallMemberEventContent::LegacyContent(_) = ev.content {
         return;
     }
@@ -829,4 +711,188 @@ impl Default for CallSessionInfo {
             scope: "m.room".to_string(),
         }
     }
+}
+
+use anyhow::Context;
+
+pub fn setup_mic_track(
+    context: &mut AudioManagerContext,
+    cancel: tokio_util::sync::CancellationToken,
+) -> Result<LocalAudioTrack, anyhow::Error> {
+    let input_device = context
+        .input_device
+        .as_ref()
+        .context("No input device set")?;
+
+    let mut input_consumer = context
+        .input_consumer
+        .take()
+        .context("No input consumer set up")?;
+
+    let config = input_device
+        .default_input_config()
+        .context("Failed to fetch default hardware microphone configuration")?;
+
+    let sample_rate = config.sample_rate() as u32;
+    let channels = config.channels() as u32;
+    let samples_per_10ms = (sample_rate / 100) as usize;
+
+    let native_audio_source =
+        NativeAudioSource::new(AudioSourceOptions::default(), sample_rate, channels, 10);
+    let microphone_track = LocalAudioTrack::create_audio_track(
+        "Microphone",
+        livekit::RtcAudioSource::Native(native_audio_source.clone()),
+    );
+
+    let native_source_clone = native_audio_source.clone();
+
+    tokio::spawn(async move {
+        let mut frame_buffer = Vec::with_capacity(samples_per_10ms);
+        loop {
+            while frame_buffer.len() < samples_per_10ms {
+                if let Some(s) = input_consumer.try_pop() {
+                    frame_buffer.push(s);
+                } else {
+                    break;
+                }
+            }
+
+            if frame_buffer.len() == samples_per_10ms {
+                let frame = AudioFrame {
+                    data: frame_buffer.clone().into(),
+                    sample_rate: sample_rate,
+                    num_channels: channels,
+                    samples_per_channel: samples_per_10ms as u32,
+                };
+                frame_buffer.clear();
+
+                tokio::select! {
+                    _ = cancel.cancelled() => {
+                        log::info!("Microphone track worker stopped");
+                        break;
+                    }
+                    capture_result = native_source_clone.capture_frame(&frame) => {
+                        if let Err(e) = capture_result {
+                            log::error!("Failed to capture audio frame: {:?}", e);
+                        }
+                    }
+                }
+            } else {
+                tokio::select! {
+                    _ = cancel.cancelled() => {
+                        log::info!("Microphone track worker stopped");
+                        break;
+                    }
+                    _ = tokio::time::sleep(Duration::from_millis(2)) => {
+                    }
+                }
+            }
+        }
+    });
+
+    Ok(microphone_track)
+}
+
+pub fn spawn_audio_mixer(
+    mut master_producer: ringbuf::HeapProd<f32>,
+    mut new_track_receiver: UnboundedReceiver<ringbuf::HeapCons<f32>>,
+    cancel_token: CancellationToken,
+) {
+    tokio::spawn(async move {
+        let mut active_tracks: Vec<ringbuf::HeapCons<f32>> = Vec::new();
+
+        loop {
+            // 1. Drain incoming new track registrations
+            while let Ok(new_consumer) = new_track_receiver.try_recv() {
+                active_tracks.push(new_consumer);
+            }
+
+            // 2. Perform the mixing mathematics
+            let spaces_available = master_producer.vacant_len();
+            for _ in 0..spaces_available {
+                let mut mixed_sample = 0.0;
+                let mut active_speakers = 0;
+
+                active_tracks.retain_mut(|consumer| {
+                    if let Some(sample) = consumer.try_pop() {
+                        mixed_sample += sample;
+                        active_speakers += 1;
+                        true
+                    } else {
+                        true
+                    }
+                });
+
+                if active_speakers > 0 {
+                    let final_sample = mixed_sample.clamp(-1.0, 1.0);
+                    let _ = master_producer.try_push(final_sample);
+                } else {
+                    let _ = master_producer.try_push(0.0);
+                }
+            }
+
+            // 3. Race the 2ms sleep against the cancellation token
+            tokio::select! {
+                _ = cancel_token.cancelled() => {
+                    log::info!("Central Audio Mixer task received cancellation. Shutting down loop.");
+                    break; // Breaks out of the loop, safely dropping active_tracks and master_producer
+                }
+                _ = tokio::time::sleep(Duration::from_millis(2)) => {
+                    // Sleep finished normally, continue to next mixing cycle
+                }
+            }
+        }
+    });
+}
+
+async fn register_new_track(
+    handle: AppHandle,
+    audio_track: &RemoteAudioTrack,
+    sender: UnboundedSender<HeapCons<f32>>,
+    cancel: CancellationToken,
+) -> Result<(), anyhow::Error> {
+    let manager = handle.state::<AudioManager>();
+    let context = manager.lock().await;
+    let output_device = context
+        .output_device
+        .as_ref()
+        .context("No output device set")?;
+    let config = output_device.default_output_config()?;
+    let sample_rate = config.sample_rate();
+    let channels = config.channels() as u32;
+    let rtc_track = audio_track.rtc_track();
+    let mut audio_stream = NativeAudioStream::new(rtc_track, sample_rate as i32, channels as i32);
+
+    let track_ring = ringbuf::HeapRb::<f32>::new(((sample_rate * channels) / 50) as usize);
+    let (mut track_producer, track_consumer) = track_ring.split();
+
+    // Pass the consumer end to the mixer
+    let _ = sender.send(track_consumer);
+
+    tokio::spawn(async move {
+        loop {
+            tokio::select! {
+                _ = cancel.cancelled() => {
+                    log::info!("Participant download task aborted via call cancellation.");
+                    break;
+                }
+                maybe_frame = audio_stream.next() => {
+                    match maybe_frame {
+                        Some(frame) => {
+                            // Convert and push into track ring buffer
+                            for &s in frame.data.as_ref() {
+                                let f = s as f32 / 32_768.0;
+                                let _ = track_producer.try_push(f);
+                            }
+                        }
+                        None => {
+                            log::info!("Participant audio stream ended by remote host.");
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    });
+    Ok(())
 }

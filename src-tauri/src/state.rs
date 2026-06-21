@@ -1,3 +1,8 @@
+<<<<<<< Updated upstream
+=======
+use anyhow::Context;
+use cpal::traits::{DeviceTrait, StreamTrait};
+>>>>>>> Stashed changes
 use matrix_sdk::Room;
 use matrix_sdk::ruma::{EventId, OwnedEventId};
 use matrix_sdk::ruma::{OwnedRoomId, events::room::MediaSource};
@@ -5,7 +10,13 @@ use matrix_sdk_ui::timeline::{
     DateDividerMode, TimelineEventFocusThreadMode, TimelineFocus, TimelineReadReceiptTracking,
 };
 use matrix_sdk_ui::{Timeline, timeline::TimelineBuilder};
+<<<<<<< Updated upstream
 use std::{collections::HashMap, sync::Arc};
+=======
+use ringbuf::traits::{Consumer, Observer, Producer, Split};
+use ringbuf::{HeapCons, HeapProd, HeapRb};
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
+>>>>>>> Stashed changes
 use tauri::async_runtime::{Mutex, RwLock};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
@@ -175,5 +186,129 @@ impl LiveKitRoomData {
     pub fn close_event_stream(&self) -> tokio_util::sync::WaitForCancellationFuture<'_> {
         self.cancellation_token.cancel();
         self.cancellation_token.cancelled()
+    }
+}
+
+pub type AudioManager = Mutex<AudioManagerContext>;
+
+// Might need to add the configs for the devices, till then it's just default
+pub struct AudioManagerContext {
+    pub host: cpal::Host,
+
+    pub input_device: Option<cpal::Device>,
+    pub input_stream: Option<cpal::Stream>,
+    pub input_consumer: Option<HeapCons<i16>>,
+
+    pub output_device: Option<cpal::Device>,
+    pub output_stream: Option<cpal::Stream>,
+    pub output_producer: Option<HeapProd<f32>>,
+}
+
+impl AudioManagerContext {
+    pub fn new() -> Self {
+        use cpal::traits::HostTrait;
+        let host = cpal::default_host();
+        let input_device = host.default_input_device();
+        let output_device = host.default_output_device();
+        Self {
+            host,
+            input_device,
+            input_stream: None,
+            input_consumer: None,
+            output_device,
+            output_stream: None,
+            output_producer: None,
+        }
+    }
+
+    pub async fn try_setup_output_stream(&mut self) -> Result<(), anyhow::Error> {
+        let device = self
+            .output_device
+            .as_ref()
+            .context("No output device set")?;
+        let config = device.default_output_config().context("No output config")?;
+
+        let sample_rate = config.sample_rate(); // should be 48 000
+        let channels = config.channels() as u32;
+
+        log::debug!("CPAL output: {} Hz, {} ch", sample_rate, channels);
+
+        let ring = HeapRb::<f32>::new(sample_rate as usize * channels as usize * 4);
+        let (producer, mut consumer) = ring.split();
+
+        // ~50 ms prebuffer
+        let prebuffer_threshold = (sample_rate * channels / 50) as usize;
+        let mut is_buffering = true;
+
+        let output_stream = device
+            .build_output_stream(
+                &config.into(),
+                move |data: &mut [f32], _| {
+                    if is_buffering {
+                        if consumer.occupied_len() >= prebuffer_threshold {
+                            is_buffering = false;
+                        } else {
+                            data.fill(0.0);
+                            return;
+                        }
+                    }
+                    for sample in data.iter_mut() {
+                        match consumer.try_pop() {
+                            Some(s) => *sample = s * 0.85,
+                            None => {
+                                *sample = 0.0;
+                                is_buffering = true;
+                            }
+                        }
+                    }
+                },
+                |err| log::error!("Speaker stream error: {err}"),
+                None,
+            )
+            .context("Failed to build output stream")?;
+
+        output_stream
+            .play()
+            .context("Failed to start output stream")?;
+
+        self.output_stream = Some(output_stream);
+        self.output_producer = Some(producer);
+        Ok(())
+    }
+
+    pub async fn try_setup_input_stream(&mut self) -> Result<(), anyhow::Error> {
+        let device = self.input_device.as_ref().context("No input device set")?;
+        let config = device.default_input_config()?;
+
+        let sample_rate = config.sample_rate(); // Extracts the u32 sample rate
+        let channels = config.channels() as u32;
+
+        log::debug!("CPAL input: {} Hz, {} ch", sample_rate, channels);
+
+        let samples_per_10ms = ((sample_rate * channels) / 100) as usize;
+
+        let input_ring = HeapRb::<i16>::new(samples_per_10ms * 8);
+        let (mut input_producer, input_consumer) = input_ring.split();
+
+        let input_stream = device
+            .build_input_stream(
+                &config.into(),
+                move |data: &[f32], _| {
+                    for &sample in data {
+                        let s = (sample * i16::MAX as f32) as i16;
+                        // Lock-free, non-blocking push ensures zero dropouts in CPAL
+                        let _ = input_producer.try_push(s);
+                    }
+                },
+                |err| log::error!("Mic stream error: {}", err),
+                None,
+            )
+            .context("Failed to build mic stream")?;
+
+        input_stream.play().context("Failed to play mic")?;
+
+        self.input_stream = Some(input_stream);
+        self.input_consumer = Some(input_consumer);
+        Ok(())
     }
 }

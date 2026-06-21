@@ -45,7 +45,8 @@ use crate::matrix_api::media::{
     get_user_avatar,
 };
 use crate::state::{
-    AppState, CallAudioState, LiveKitRoomManager, MediaManager, TaskManager, TimelineManager,
+    AppState, AudioManager, AudioManagerContext, CallAudioState, LiveKitRoomManager, MediaManager,
+    TaskManager, TimelineManager,
 };
 use crate::sync::attach_callbacks;
 
@@ -676,6 +677,7 @@ pub fn run() {
             app.manage(CallAudioState::default());
             app.manage(MediaManager::default());
             app.manage(LiveKitRoomManager::default());
+            app.manage(AudioManager::new(AudioManagerContext::new()));
 
             #[cfg(not(target_os = "android"))]
             let main_window = app
