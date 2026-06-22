@@ -1,53 +1,23 @@
 use crate::{TauriError, state::AudioManager};
-use cpal::{
-    Device, DeviceId,
-    traits::{DeviceTrait, HostTrait},
-};
+use cpal::DeviceId;
 use tauri::{State, command};
-
-// #[command]
-pub async fn get_output_devices(
-    manager: State<'_, AudioManager>,
-) -> Result<Vec<Device>, TauriError> {
-    let context = manager.lock().await;
-    let devices = context.host.devices()?;
-    Ok(devices.filter(|d| d.supports_output()).collect())
-}
 
 #[command]
 pub async fn set_output_device(
     id: DeviceId,
     manager: State<'_, AudioManager>,
 ) -> Result<(), TauriError> {
-    let mut context = manager.lock().await;
+    manager.inner().refresh_devices()?;
 
-    let devices = context.host.devices()?;
-    let mut found_device = None;
+    let output_devices = manager.output_devices.lock().await;
+    let Some(device) = output_devices.get(&id) else {
+        log::warn!("No device with id {id} found");
+        return Ok(());
+    };
 
-    for device in devices {
-        if device.id()? == id {
-            found_device = Some(device);
-            break;
-        }
-    }
-
-    let device = found_device.ok_or(format!("No device found with id '{}'", id))?;
-    if !device.supports_output() {
-        Err("Device does not support output")?
-    }
-
-    context.output_device = Some(device);
+    manager.try_setup_output_stream_for_device(device)?;
 
     Ok(())
-}
-
-// #[command]
-pub async fn get_input_devices(
-    manager: State<'_, AudioManager>,
-) -> Result<Vec<Device>, TauriError> {
-    let context = manager.lock().await;
-    let devices = context.host.devices()?;
-    Ok(devices.filter(|d| d.supports_input()).collect())
 }
 
 #[command]
@@ -55,24 +25,15 @@ pub async fn set_input_device(
     id: DeviceId,
     manager: State<'_, AudioManager>,
 ) -> Result<(), TauriError> {
-    let mut context = manager.lock().await;
+    manager.inner().refresh_devices();
 
-    let devices = context.host.devices()?;
-    let mut found_device = None;
+    let input_devices = manager.input_devices.lock().await;
+    let Some(device) = input_devices.get(&id) else {
+        log::warn!("No device with id {id} found");
+        return Ok(());
+    };
 
-    for device in devices {
-        if device.id()? == id {
-            found_device = Some(device);
-            break;
-        }
-    }
-
-    let device = found_device.ok_or(format!("No device found with id '{}'", id))?;
-    if !device.supports_input() {
-        Err("Device does not support input")?
-    }
-
-    context.input_device = Some(device);
+    manager.try_setup_input_stream_for_device(device)?;
 
     Ok(())
 }

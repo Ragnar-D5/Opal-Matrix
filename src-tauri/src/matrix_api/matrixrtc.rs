@@ -36,9 +36,7 @@ use tauri::{AppHandle, Manager, State, command};
 use tauri_plugin_http::reqwest;
 use tokio::sync::RwLock;
 
-use crate::state::{
-    AudioManager, AudioManagerContext, CallAudioState, LiveKitRoomData, LiveKitRoomManager,
-};
+use crate::state::{AudioManager, CallAudioState, LiveKitRoomData, LiveKitRoomManager};
 use crate::{AsInfo, TauriError};
 
 #[command(rename_all = "snake_case")]
@@ -224,8 +222,6 @@ pub(crate) async fn join_matrixrtc_call(
         .insert(room_id.clone(), call_data);
 
     // audio setup
-    let mut audio_context = audio_manager.lock().await;
-
     if let Err(e) = audio_context.try_setup_output_stream().await {
         warn!("Could not set up output stream: {e}")
     } else {
@@ -713,7 +709,7 @@ impl Default for CallSessionInfo {
 use anyhow::Context;
 
 pub fn setup_mic_track(
-    context: &mut AudioManagerContext,
+    context: &mut AudioManager,
     cancel: tokio_util::sync::CancellationToken,
 ) -> Result<LocalAudioTrack, anyhow::Error> {
     let input_device = context

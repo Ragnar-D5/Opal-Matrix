@@ -1,16 +1,18 @@
 use anyhow::Context;
 use cpal::traits::{DeviceTrait, StreamTrait};
-use matrix_sdk::ruma::{events::room::MediaSource, OwnedRoomId};
-use matrix_sdk::ruma::{EventId, OwnedEventId};
+use cpal::{Device, DeviceId, Stream};
 use matrix_sdk::Room;
+use matrix_sdk::ruma::{EventId, OwnedEventId};
+use matrix_sdk::ruma::{OwnedRoomId, events::room::MediaSource};
 use matrix_sdk_ui::timeline::{
     DateDividerMode, TimelineEventFocusThreadMode, TimelineFocus, TimelineReadReceiptTracking,
 };
-use matrix_sdk_ui::{timeline::TimelineBuilder, Timeline};
-use ringbuf::traits::{Consumer, Observer, Producer, Split};
-use ringbuf::{HeapCons, HeapProd, HeapRb};
+use matrix_sdk_ui::{Timeline, timeline::TimelineBuilder};
+use ringbuf::traits::{Consumer, Observer, Split};
+use ringbuf::{HeapProd, HeapRb};
 use std::{collections::HashMap, sync::Arc};
 use tauri::async_runtime::{Mutex, RwLock};
+use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
@@ -144,12 +146,6 @@ impl TaskManager {
     }
 }
 
-#[derive(Default)]
-pub struct CallAudioState {
-    pub input_stream: Mutex<Option<cpal::Stream>>,
-    pub output_stream: Mutex<Option<cpal::Stream>>,
-}
-
 #[derive(Clone)]
 pub struct MediaManager {
     pub sources: Arc<RwLock<HashMap<Uuid, MediaSource>>>,
@@ -182,43 +178,124 @@ impl LiveKitRoomData {
     }
 }
 
-pub type AudioManager = Mutex<AudioManagerContext>;
-
-// Might need to add the configs for the devices, till then it's just default
-pub struct AudioManagerContext {
+pub struct AudioManager {
     pub host: cpal::Host,
 
-    pub input_device: Option<cpal::Device>,
-    pub input_stream: Option<cpal::Stream>,
-    pub input_consumer: Option<HeapCons<i16>>,
+    pub input_devices: Mutex<HashMap<DeviceId, cpal::Device>>,
+    pub output_devices: Mutex<HashMap<DeviceId, cpal::Device>>,
 
-    pub output_device: Option<cpal::Device>,
-    pub output_stream: Option<cpal::Stream>,
-    pub output_producer: Option<HeapProd<f32>>,
+    pub input_device: Mutex<Option<Device>>,
+    pub output_device: Mutex<Option<Device>>,
+
+    input_stream: Mutex<Option<Stream>>,
+    output_stream: Mutex<Option<Stream>>,
+
+    input_sender: UnboundedSender<f32>,
+    pub output_producer: Mutex<Option<HeapProd<f32>>>,
+
+    pub livekit_room: Mutex<Option<LiveKitRoom>>,
 }
 
-impl AudioManagerContext {
-    pub fn new() -> Self {
-        use cpal::traits::HostTrait;
-        let host = cpal::default_host();
-        let input_device = host.default_input_device();
-        let output_device = host.default_output_device();
-        Self {
-            host,
-            input_device,
-            input_stream: None,
-            input_consumer: None,
-            output_device,
-            output_stream: None,
-            output_producer: None,
+fn get_devices(host: &cpal::Host) -> (HashMap<DeviceId, Device>, HashMap<DeviceId, Device>) {
+    let input_devices = match host.input_devices() {
+        Ok(devices) => devices
+            .into_iter()
+            .filter_map(|d| {
+                let id = d.id().ok()?;
+                Some((id, d))
+            })
+            .collect(),
+        Err(e) => {
+            log::warn!("No input devices found: {e}");
+            HashMap::new()
         }
+    };
+
+    let output_devices = match host.output_devices() {
+        Ok(devices) => devices
+            .into_iter()
+            .filter_map(|d| {
+                let id = d.id().ok()?;
+                Some((id, d))
+            })
+            .collect(),
+        Err(e) => {
+            log::warn!("No output devices found: {e}");
+            HashMap::new()
+        }
+    };
+
+    (input_devices, output_devices)
+}
+
+use cpal::traits::HostTrait;
+impl AudioManager {
+    pub fn refresh_devices(&self) -> Result<(), TauriError> {
+        let (input_devices, output_devices) = get_devices(&self.host);
+
+        let input_id = self
+            .input_device
+            .blocking_lock()
+            .clone()
+            .map(|d| d.id().ok())
+            .flatten();
+        if let Some(id) = input_id {
+            if !input_devices.contains_key(&id) {
+                if let Some(id) = self.host.default_input_device() {
+                    self.try_setup_input_stream_for_device(&id)?;
+                } else {
+                    *self.input_device.blocking_lock() = None;
+                    *self.input_stream.blocking_lock() = None;
+                };
+            }
+        }
+
+        let output_id = self
+            .output_device
+            .blocking_lock()
+            .clone()
+            .map(|d| d.id().ok())
+            .flatten();
+        if let Some(id) = output_id {
+            if !output_devices.contains_key(&id) {
+                if let Some(id) = self.host.default_output_device() {
+                    self.try_setup_input_stream_for_device(&id)?;
+                } else {
+                    *self.output_device.blocking_lock() = None;
+                    *self.output_stream.blocking_lock() = None;
+                    *self.output_producer.blocking_lock() = None;
+                }
+            }
+        }
+        Ok(())
     }
 
-    pub async fn try_setup_output_stream(&mut self) -> Result<(), anyhow::Error> {
-        let device = self
-            .output_device
-            .as_ref()
-            .context("No output device set")?;
+    pub fn new() -> Self {
+        let host = cpal::default_host();
+
+        let (input_sender, input_receiver) = mpsc::unbounded_channel();
+        let new = Self {
+            host,
+            input_sender,
+
+            input_devices: Mutex::new(HashMap::new()),
+            output_devices: Mutex::new(HashMap::new()),
+
+            input_stream: Mutex::new(None),
+
+            output_stream: Mutex::new(None),
+            output_producer: Mutex::new(None),
+
+            input_device: Mutex::new(None),
+            output_device: Mutex::new(None),
+        };
+        new.setup_global_input_handler(input_receiver);
+        new
+    }
+
+    pub fn try_setup_output_stream_for_device(&self, device: &Device) -> Result<(), TauriError> {
+        *self.input_device.blocking_lock() = Some(device.clone());
+
         let config = device.default_output_config().context("No output config")?;
 
         let sample_rate = config.sample_rate(); // should be 48 000
@@ -233,75 +310,61 @@ impl AudioManagerContext {
         let prebuffer_threshold = (sample_rate * channels / 50) as usize;
         let mut is_buffering = true;
 
-        let output_stream = device
-            .build_output_stream(
-                &config.into(),
-                move |data: &mut [f32], _| {
-                    if is_buffering {
-                        if consumer.occupied_len() >= prebuffer_threshold {
-                            is_buffering = false;
-                        } else {
-                            data.fill(0.0);
-                            return;
+        let output_stream = device.build_output_stream(
+            &config.into(),
+            move |data: &mut [f32], _| {
+                if is_buffering {
+                    if consumer.occupied_len() >= prebuffer_threshold {
+                        is_buffering = false;
+                    } else {
+                        data.fill(0.0);
+                        return;
+                    }
+                }
+                for sample in data.iter_mut() {
+                    match consumer.try_pop() {
+                        Some(s) => *sample = s * 0.85,
+                        None => {
+                            *sample = 0.0;
+                            is_buffering = true;
                         }
                     }
-                    for sample in data.iter_mut() {
-                        match consumer.try_pop() {
-                            Some(s) => *sample = s * 0.85,
-                            None => {
-                                *sample = 0.0;
-                                is_buffering = true;
-                            }
-                        }
-                    }
-                },
-                |err| log::error!("Speaker stream error: {err}"),
-                None,
-            )
-            .context("Failed to build output stream")?;
+                }
+            },
+            |err| log::error!("Speaker stream error: {err}"),
+            None,
+        )?;
 
-        output_stream
-            .play()
-            .context("Failed to start output stream")?;
+        output_stream.play()?;
 
-        self.output_stream = Some(output_stream);
-        self.output_producer = Some(producer);
+        *self.output_stream.blocking_lock() = Some(output_stream);
+        *self.output_producer.blocking_lock() = Some(producer);
         Ok(())
     }
 
-    pub async fn try_setup_input_stream(&mut self) -> Result<(), anyhow::Error> {
-        let device = self.input_device.as_ref().context("No input device set")?;
-        let config = device.default_input_config()?;
+    pub fn try_setup_input_stream_for_device(&self, device: &Device) -> Result<(), TauriError> {
+        let input_sender = self.input_sender.clone();
+        let input_stream = device.build_input_stream(
+            &config.into(),
+            move |data: &[f32], _| {
+                for sample in data {
+                    input_sender.send(*sample);
+                }
+            },
+            |err| log::error!("Mic stream error: {}", err),
+            None,
+        )?;
 
-        let sample_rate = config.sample_rate(); // Extracts the u32 sample rate
-        let channels = config.channels() as u32;
+        input_stream.play()?;
 
-        log::debug!("CPAL input: {} Hz, {} ch", sample_rate, channels);
+        *self.input_stream.blocking_lock() = Some(input_stream);
+        Ok(())
+    }
 
-        let samples_per_10ms = ((sample_rate * channels) / 100) as usize;
-
-        let input_ring = HeapRb::<i16>::new(samples_per_10ms * 8);
-        let (mut input_producer, input_consumer) = input_ring.split();
-
-        let input_stream = device
-            .build_input_stream(
-                &config.into(),
-                move |data: &[f32], _| {
-                    for &sample in data {
-                        let s = (sample * i16::MAX as f32) as i16;
-                        // Lock-free, non-blocking push ensures zero dropouts in CPAL
-                        let _ = input_producer.try_push(s);
-                    }
-                },
-                |err| log::error!("Mic stream error: {}", err),
-                None,
-            )
-            .context("Failed to build mic stream")?;
-
-        input_stream.play().context("Failed to play mic")?;
-
-        self.input_stream = Some(input_stream);
-        self.input_consumer = Some(input_consumer);
+    pub fn setup_global_input_handler(
+        &self,
+        input_data_receiver: UnboundedReceiver<f32>,
+    ) -> Result<(), TauriError> {
         Ok(())
     }
 }
