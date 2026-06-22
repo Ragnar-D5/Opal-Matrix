@@ -1,6 +1,6 @@
-use crate::{TauriError, state::AudioManager};
+use crate::{state::AudioManager, TauriError};
 use cpal::DeviceId;
-use tauri::{State, command};
+use tauri::{command, State};
 
 #[command]
 pub async fn set_output_device(
@@ -9,7 +9,7 @@ pub async fn set_output_device(
 ) -> Result<(), TauriError> {
     manager.inner().refresh_devices()?;
 
-    let output_devices = manager.output_devices.lock().await;
+    let output_devices = manager.output_devices.lock()?;
     let Some(device) = output_devices.get(&id) else {
         log::warn!("No device with id {id} found");
         return Ok(());
@@ -25,9 +25,9 @@ pub async fn set_input_device(
     id: DeviceId,
     manager: State<'_, AudioManager>,
 ) -> Result<(), TauriError> {
-    manager.inner().refresh_devices();
+    manager.inner().refresh_devices()?;
 
-    let input_devices = manager.input_devices.lock().await;
+    let input_devices = manager.input_devices.lock()?;
     let Some(device) = input_devices.get(&id) else {
         log::warn!("No device with id {id} found");
         return Ok(());

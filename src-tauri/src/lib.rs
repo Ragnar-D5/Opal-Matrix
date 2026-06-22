@@ -727,7 +727,9 @@ pub fn run() {
             // settings
             settings::get_setting,
             settings::set_setting,
-            // settings::set_setting_cloud,
+            settings::set_setting_cloud,
+            // frontend::audio::set_output_device,
+            // frontend::audio::set_input_device,
         ])
         .register_asynchronous_uri_scheme_protocol(
             "mxc",

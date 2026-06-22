@@ -11,12 +11,10 @@ use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
-use cpal::traits::DeviceTrait;
+use cpal::traits::{DeviceTrait, HostTrait};
 use futures::StreamExt;
 use livekit::track::{LocalAudioTrack, LocalTrack, RemoteAudioTrack, RemoteTrack};
-use livekit::webrtc::audio_source::native::NativeAudioSource;
 use livekit::webrtc::audio_stream::native::NativeAudioStream;
-use livekit::webrtc::prelude::{AudioFrame, AudioSourceOptions};
 use livekit::{E2eeOptions, RoomEvent};
 use matrix_sdk::ruma::MilliSecondsSinceUnixEpoch;
 use matrix_sdk::ruma::events::call::member::{
@@ -36,7 +34,7 @@ use tauri::{AppHandle, Manager, State, command};
 use tauri_plugin_http::reqwest;
 use tokio::sync::RwLock;
 
-use crate::state::{AudioManager, CallAudioState, LiveKitRoomData, LiveKitRoomManager};
+use crate::state::{AudioManager, LiveKitRoomData, LiveKitRoomManager};
 use crate::{AsInfo, TauriError};
 
 #[command(rename_all = "snake_case")]
@@ -182,7 +180,7 @@ pub(crate) async fn join_matrixrtc_call(
         livekit::Room::connect(service_url, jwt, room_options).await?;
     log::info!("Connected to LiveKit room: {:?}", livekit_room);
 
-    // set and send out encryption key after joining but before publishig a track
+    // set and send out encryption key after joining but before publishing a track
     if room.encryption_state().is_encrypted() {
         debug!("Room is encrypted. Generating encryption key");
         let mut raw_key = [0u8; 16];
@@ -222,24 +220,32 @@ pub(crate) async fn join_matrixrtc_call(
         .insert(room_id.clone(), call_data);
 
     // audio setup
-    if let Err(e) = audio_context.try_setup_output_stream().await {
-        warn!("Could not set up output stream: {e}")
+    if let Some(device) = audio_manager.host.default_output_device() {
+        if let Err(e) = audio_manager.try_setup_output_stream_for_device(&device) {
+            warn!("Could not set up output stream: {:?}", e);
+        } else {
+            debug!("Set up cpal output stream");
+        }
     } else {
-        debug!("Set up cpal output stream")
-    };
-    if let Err(e) = audio_context.try_setup_input_stream().await {
-        warn!("Could not set up input stream: {e}")
+        warn!("No default output device found");
+    }
+
+    if let Some(device) = audio_manager.host.default_input_device() {
+        if let Err(e) = audio_manager.try_setup_input_stream_for_device(&device) {
+            warn!("Could not set up input stream: {:?}", e);
+        } else {
+            debug!("Set up input stream");
+        }
     } else {
-        debug!("Set up input stream")
-    };
+        warn!("No default input device found");
+    }
 
-    let cancellationtoken_clone = cancellationtoken.clone();
-    let microphone_track = setup_mic_track(&mut audio_context, cancellationtoken_clone);
+    let microphone_track = setup_mic_track(&audio_manager);
 
-    // publish Microphone track
+    // publish microphone track
     if let Ok(track) = microphone_track {
         let mut manager = livekit_room_manager.lock().await;
-        let call_data = manager.get_mut(&room_id.clone()).unwrap(); // we inserted this before
+        let call_data = manager.get_mut(&room_id.clone()).unwrap();
         call_data
             .livekit_room
             .local_participant()
@@ -263,7 +269,7 @@ pub(crate) async fn join_matrixrtc_call(
     let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
 
     // spawn main audio mixer mixing together the various audio tracks
-    if let Some(producer) = audio_context.output_producer.take() {
+    if let Some(producer) = audio_manager.output_producer.lock().unwrap().take() {
         spawn_audio_mixer(producer, receiver, cancellationtoken.clone());
     }
 
@@ -274,11 +280,10 @@ pub(crate) async fn join_matrixrtc_call(
         loop {
             tokio::select! {
                 _ = cancellationtoken_clone.cancelled() => {
-                    log::info!("Background room LiveKite event receiver stopped for room: {}", room_id_clone);
+                    log::info!("Background room LiveKit event receiver stopped for room: {}", room_id_clone);
                     break;
                 }
 
-                // Triggered when a new room event arrives
                 maybe_ev = event_receiver.recv() => {
                     match maybe_ev {
                         Some(ev) => {
@@ -287,10 +292,10 @@ pub(crate) async fn join_matrixrtc_call(
                             } else if let RoomEvent::TrackSubscribed { track, .. } = ev
                                 && let RemoteTrack::Audio(ref audio_track) = track
                             {
-
                                 debug!("Subscribed to new audio track: {:?}", track);
-                                if let Err(e) = register_new_track(handle.clone(), audio_track, sender.clone(), cancellationtoken_clone.clone()).await { warn!("Could not register output of remote track: {e}") }
-
+                                if let Err(e) = register_new_track(handle.clone(), audio_track, sender.clone(), cancellationtoken_clone.clone()).await {
+                                    warn!("Could not register output of remote track: {e}")
+                                }
                             }
                         }
                         None => {
@@ -370,7 +375,7 @@ pub async fn handle_call_member_change(
                     frame_cryptor.set_key_index(new_key_index);
                     debug!("Updated local FrameCryptor key index for track {track}");
                 });
-            debug!("Updated local call encryption key, now at indey {new_key_index}");
+            debug!("Updated local call encryption key, now at index {new_key_index}");
         }
 
         let client = client_state.read().await;
@@ -394,7 +399,6 @@ pub async fn handle_call_member_change(
 #[command(rename_all = "snake_case")]
 pub(crate) async fn leave_matrixrtc_call(
     matrix_client: State<'_, RwLock<Client>>,
-    audio_state: State<'_, CallAudioState>,
     livekit_room_manager: State<'_, LiveKitRoomManager>,
     room_id: String,
 ) -> Result<(), TauriError> {
@@ -407,15 +411,12 @@ pub(crate) async fn leave_matrixrtc_call(
     room_data.livekit_room.close().await?;
     data_guard.remove(&room_id);
 
-    *audio_state.input_stream.lock().await = None;
-    *audio_state.output_stream.lock().await = None;
-
     let client = matrix_client.write().await;
     let room = client
         .get_room(&RoomId::parse(room_id.clone())?)
         .ok_or("Room not found or not joined")?;
 
-    let call_content = CallMemberEventContent::new_empty(None); // use this to specify leave reason like disconnects
+    let call_content = CallMemberEventContent::new_empty(None);
 
     let _response = room
         .send_state_event_for_key(
@@ -708,83 +709,16 @@ impl Default for CallSessionInfo {
 
 use anyhow::Context;
 
-// pub fn setup_mic_track(
-//     context: &mut AudioManager,
-//     cancel: tokio_util::sync::CancellationToken,
-// ) -> Result<LocalAudioTrack, anyhow::Error> {
-//     let input_device = context
-//         .input_device
-//         .as_ref()
-//         .context("No input device set")?;
+pub fn setup_mic_track(audio_manager: &AudioManager) -> Result<LocalAudioTrack, anyhow::Error> {
+    let source = audio_manager.native_audio_source.lock().unwrap().clone();
 
-//     let mut input_consumer = context
-//         .input_consumer
-//         .take()
-//         .context("No input consumer set up")?;
+    let track = LocalAudioTrack::create_audio_track(
+        "Microphone",
+        livekit::RtcAudioSource::Native(source),
+    );
 
-//     let config = input_device
-//         .default_input_config()
-//         .context("Failed to fetch default hardware microphone configuration")?;
-
-//     let sample_rate = config.sample_rate();
-//     let channels = config.channels() as u32;
-//     let samples_per_10ms = (sample_rate / 100) as usize;
-
-//     let native_audio_source =
-//         NativeAudioSource::new(AudioSourceOptions::default(), sample_rate, channels, 10);
-//     let microphone_track = LocalAudioTrack::create_audio_track(
-//         "Microphone",
-//         livekit::RtcAudioSource::Native(native_audio_source.clone()),
-//     );
-
-//     let native_source_clone = native_audio_source.clone();
-
-//     tokio::spawn(async move {
-//         let mut frame_buffer = Vec::with_capacity(samples_per_10ms);
-//         loop {
-//             while frame_buffer.len() < samples_per_10ms {
-//                 if let Some(s) = input_consumer.try_pop() {
-//                     frame_buffer.push(s);
-//                 } else {
-//                     break;
-//                 }
-//             }
-
-//             if frame_buffer.len() == samples_per_10ms {
-//                 let frame = AudioFrame {
-//                     data: frame_buffer.clone().into(),
-//                     sample_rate,
-//                     num_channels: channels,
-//                     samples_per_channel: samples_per_10ms as u32,
-//                 };
-//                 frame_buffer.clear();
-
-//                 tokio::select! {
-//                     _ = cancel.cancelled() => {
-//                         log::info!("Microphone track worker stopped");
-//                         break;
-//                     }
-//                     capture_result = native_source_clone.capture_frame(&frame) => {
-//                         if let Err(e) = capture_result {
-//                             log::error!("Failed to capture audio frame: {:?}", e);
-//                         }
-//                     }
-//                 }
-//             } else {
-//                 tokio::select! {
-//                     _ = cancel.cancelled() => {
-//                         log::info!("Microphone track worker stopped");
-//                         break;
-//                     }
-//                     _ = tokio::time::sleep(Duration::from_millis(2)) => {
-//                     }
-//                 }
-//             }
-//         }
-//     });
-
-//     Ok(microphone_track)
-// }
+    Ok(track)
+}
 
 pub fn spawn_audio_mixer(
     mut master_producer: ringbuf::HeapProd<f32>,
@@ -828,11 +762,9 @@ pub fn spawn_audio_mixer(
             tokio::select! {
                 _ = cancel_token.cancelled() => {
                     log::info!("Central Audio Mixer task received cancellation. Shutting down loop.");
-                    break; // Breaks out of the loop, safely dropping active_tracks and master_producer
+                    break;
                 }
-                _ = tokio::time::sleep(Duration::from_millis(2)) => {
-                    // Sleep finished normally, continue to next mixing cycle
-                }
+                _ = tokio::time::sleep(Duration::from_millis(2)) => {}
             }
         }
     });
@@ -844,11 +776,12 @@ async fn register_new_track(
     sender: UnboundedSender<HeapCons<f32>>,
     cancel: CancellationToken,
 ) -> Result<(), anyhow::Error> {
-    let manager = handle.state::<AudioManager>();
-    let context = manager.lock().await;
-    let output_device = context
+    let audio_manager = handle.state::<AudioManager>();
+    let output_device = audio_manager
         .output_device
-        .as_ref()
+        .lock()
+        .unwrap()
+        .clone()
         .context("No output device set")?;
     let config = output_device.default_output_config()?;
     let sample_rate = config.sample_rate();
@@ -872,7 +805,6 @@ async fn register_new_track(
                 maybe_frame = audio_stream.next() => {
                     match maybe_frame {
                         Some(frame) => {
-                            // Convert and push into track ring buffer
                             for &s in frame.data.as_ref() {
                                 let f = s as f32 / 32_768.0;
                                 let _ = track_producer.try_push(f);

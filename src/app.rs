@@ -1,5 +1,6 @@
 use crate::components::authentication::Authentication;
 use crate::components::loading::Loading;
+use crate::components::overlays::settings;
 use crate::components::previews::ImageLightbox;
 use crate::components::shader::BackgroundShader;
 use chrono::{DateTime, Local};
@@ -394,6 +395,8 @@ pub struct Settings {
     pub scaling: f64,
     #[setting("Url Previews per room", true)]
     pub url_previews: HashMap<String, bool>,
-    #[setting("Show url perviews default", true)]
+    #[setting("Show url perviews default", false)]
     pub url_previews_default: bool,
+    #[setting("Show image border", false, default = true)]
+    pub show_image_border: bool,
 }

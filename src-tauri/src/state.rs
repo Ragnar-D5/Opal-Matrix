@@ -12,7 +12,10 @@ use matrix_sdk_ui::timeline::{
 use matrix_sdk_ui::{timeline::TimelineBuilder, Timeline};
 use ringbuf::traits::{Consumer, Observer, Split};
 use ringbuf::{HeapProd, HeapRb};
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex as SyncMutex},
+};
 use tauri::async_runtime::{Mutex, RwLock};
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 use tokio::task::JoinHandle;
@@ -163,39 +166,41 @@ impl Default for MediaManager {
 
 use livekit::Room as LiveKitRoom;
 
-pub type LiveKitRoomManager = Arc<Mutex<HashMap<String, LiveKitRoomData>>>; // we can make this more efficient later, but since you probably only interact with one call at a time, this should suffice for now
+pub type LiveKitRoomManager = Arc<Mutex<HashMap<String, LiveKitRoomData>>>;
 
 pub struct LiveKitRoomData {
     pub livekit_room: LiveKitRoom,
     pub cancellation_token: CancellationToken,
     pub key_index: i32,
-    pub call_id: Uuid, // why the hell do we need this? This has no usage
+    pub call_id: Uuid,
 }
 
 impl LiveKitRoomData {
-    /// the returned future will finish, when the event stream is closed
     pub fn close_event_stream(&self) -> tokio_util::sync::WaitForCancellationFuture<'_> {
         self.cancellation_token.cancel();
         self.cancellation_token.cancelled()
     }
 }
 
+// SyncMutex (std::sync::Mutex) is used for AudioManager fields because they are accessed
+// from both std threads and tokio threads. tokio's Mutex::blocking_lock() panics when
+// called from inside a tokio worker thread.
 pub struct AudioManager {
     pub host: cpal::Host,
 
-    pub input_devices: Mutex<HashMap<DeviceId, cpal::Device>>,
-    pub output_devices: Mutex<HashMap<DeviceId, cpal::Device>>,
+    pub input_devices: SyncMutex<HashMap<DeviceId, cpal::Device>>,
+    pub output_devices: SyncMutex<HashMap<DeviceId, cpal::Device>>,
 
-    pub input_device: Mutex<Option<Device>>,
-    pub output_device: Mutex<Option<Device>>,
+    pub input_device: SyncMutex<Option<Device>>,
+    pub output_device: SyncMutex<Option<Device>>,
 
-    input_stream: Mutex<Option<Stream>>,
-    output_stream: Mutex<Option<Stream>>,
+    input_stream: SyncMutex<Option<Stream>>,
+    output_stream: SyncMutex<Option<Stream>>,
 
     input_sender: UnboundedSender<Option<(UnboundedReceiver<f32>, SupportedStreamConfig)>>,
-    pub output_producer: Mutex<Option<HeapProd<f32>>>,
+    pub output_producer: SyncMutex<Option<HeapProd<f32>>>,
 
-    pub native_audio_source: Arc<Mutex<Option<NativeAudioSource>>>,
+    pub native_audio_source: Arc<SyncMutex<NativeAudioSource>>,
 }
 
 fn get_devices(host: &cpal::Host) -> (HashMap<DeviceId, Device>, HashMap<DeviceId, Device>) {
@@ -237,35 +242,35 @@ impl AudioManager {
 
         let input_id = self
             .input_device
-            .blocking_lock()
+            .lock()
+            .unwrap()
             .clone()
-            .map(|d| d.id().ok())
-            .flatten();
+            .and_then(|d| d.id().ok());
         if let Some(id) = input_id {
             if !input_devices.contains_key(&id) {
-                if let Some(id) = self.host.default_input_device() {
-                    self.try_setup_input_stream_for_device(&id)?;
+                if let Some(device) = self.host.default_input_device() {
+                    self.try_setup_input_stream_for_device(&device)?;
                 } else {
-                    *self.input_device.blocking_lock() = None;
-                    *self.input_stream.blocking_lock() = None;
-                };
+                    *self.input_device.lock().unwrap() = None;
+                    *self.input_stream.lock().unwrap() = None;
+                }
             }
         }
 
         let output_id = self
             .output_device
-            .blocking_lock()
+            .lock()
+            .unwrap()
             .clone()
-            .map(|d| d.id().ok())
-            .flatten();
+            .and_then(|d| d.id().ok());
         if let Some(id) = output_id {
             if !output_devices.contains_key(&id) {
-                if let Some(id) = self.host.default_output_device() {
-                    self.try_setup_input_stream_for_device(&id)?;
+                if let Some(device) = self.host.default_output_device() {
+                    self.try_setup_output_stream_for_device(&device)?;
                 } else {
-                    *self.output_device.blocking_lock() = None;
-                    *self.output_stream.blocking_lock() = None;
-                    *self.output_producer.blocking_lock() = None;
+                    *self.output_device.lock().unwrap() = None;
+                    *self.output_stream.lock().unwrap() = None;
+                    *self.output_producer.lock().unwrap() = None;
                 }
             }
         }
@@ -280,29 +285,33 @@ impl AudioManager {
             host,
             input_sender,
 
-            input_devices: Mutex::new(HashMap::new()),
-            output_devices: Mutex::new(HashMap::new()),
+            input_devices: SyncMutex::new(HashMap::new()),
+            output_devices: SyncMutex::new(HashMap::new()),
 
-            input_stream: Mutex::new(None),
+            input_stream: SyncMutex::new(None),
+            output_stream: SyncMutex::new(None),
+            output_producer: SyncMutex::new(None),
 
-            output_stream: Mutex::new(None),
-            output_producer: Mutex::new(None),
+            input_device: SyncMutex::new(None),
+            output_device: SyncMutex::new(None),
 
-            input_device: Mutex::new(None),
-            output_device: Mutex::new(None),
-
-            native_audio_source: Arc::new(Mutex::new(None)),
+            native_audio_source: Arc::new(SyncMutex::new(NativeAudioSource::new(
+                AudioSourceOptions::default(),
+                48_000,
+                2,
+                10,
+            ))),
         };
         new.setup_global_input_handler(input_receiver);
         new
     }
 
     pub fn try_setup_output_stream_for_device(&self, device: &Device) -> Result<(), TauriError> {
-        *self.input_device.blocking_lock() = Some(device.clone());
+        *self.output_device.lock().unwrap() = Some(device.clone());
 
         let config = device.default_output_config().context("No output config")?;
 
-        let sample_rate = config.sample_rate(); // should be 48 000
+        let sample_rate = config.sample_rate();
         let channels = config.channels() as u32;
 
         log::debug!("CPAL output: {} Hz, {} ch", sample_rate, channels);
@@ -341,12 +350,14 @@ impl AudioManager {
 
         output_stream.play()?;
 
-        *self.output_stream.blocking_lock() = Some(output_stream);
-        *self.output_producer.blocking_lock() = Some(producer);
+        *self.output_stream.lock().unwrap() = Some(output_stream);
+        *self.output_producer.lock().unwrap() = Some(producer);
         Ok(())
     }
 
     pub fn try_setup_input_stream_for_device(&self, device: &Device) -> Result<(), TauriError> {
+        *self.input_device.lock().unwrap() = Some(device.clone());
+
         let (rx, tx) = mpsc::unbounded_channel();
 
         let config = device.default_input_config()?;
@@ -355,7 +366,7 @@ impl AudioManager {
             &config.clone().into(),
             move |data: &[f32], _| {
                 for sample in data {
-                    rx.send(*sample);
+                    let _ = rx.send(*sample);
                 }
             },
             |err| log::error!("Mic stream error: {}", err),
@@ -365,7 +376,7 @@ impl AudioManager {
         input_stream.play()?;
 
         self.input_sender.send(Some((tx, config.clone())))?;
-        *self.input_stream.blocking_lock() = Some(input_stream);
+        *self.input_stream.lock().unwrap() = Some(input_stream);
         Ok(())
     }
 
@@ -377,45 +388,51 @@ impl AudioManager {
     ) {
         let native_audio_source = self.native_audio_source.clone();
 
-        std::thread::spawn(async move || loop {
-            let Some(next) = input_data_receiver.blocking_recv() else {
-                return;
-            };
-            let Some((mut data_receiver, config)) = next else {
-                return;
-            };
+        std::thread::spawn(move || {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("Failed to build audio handler runtime");
 
-            let sample_rate = config.sample_rate();
-            let channels = config.channels() as u32;
-            let samples_per_10ms = (sample_rate / 100) as usize;
-
-            *native_audio_source.blocking_lock() = Some(NativeAudioSource::new(
-                AudioSourceOptions::default(),
-                sample_rate,
-                channels,
-                10,
-            ));
-
-            let mut frame_buffer = Vec::with_capacity(samples_per_10ms);
             loop {
-                while frame_buffer.len() < samples_per_10ms {
-                    if let Some(s) = data_receiver.blocking_recv() {
-                        frame_buffer.push(s as i16);
-                    } else {
+                let Some(next) = input_data_receiver.blocking_recv() else {
+                    return;
+                };
+                let Some((mut data_receiver, config)) = next else {
+                    return;
+                };
+
+                let sample_rate = config.sample_rate();
+                let channels = config.channels() as u32;
+                let samples_per_10ms = (sample_rate / 100) as usize;
+
+                *native_audio_source.lock().unwrap() =
+                    NativeAudioSource::new(AudioSourceOptions::default(), sample_rate, channels, 10);
+
+                let mut frame_buffer = Vec::with_capacity(samples_per_10ms);
+                loop {
+                    while frame_buffer.len() < samples_per_10ms {
+                        if let Some(s) = data_receiver.blocking_recv() {
+                            frame_buffer.push(s as i16);
+                        } else {
+                            break;
+                        }
+                    }
+
+                    if frame_buffer.len() < samples_per_10ms {
+                        frame_buffer.clear();
                         break;
                     }
-                }
 
-                let frame = AudioFrame {
-                    data: frame_buffer.clone().into(),
-                    sample_rate,
-                    num_channels: channels,
-                    samples_per_channel: samples_per_10ms as u32,
-                };
-                frame_buffer.clear();
+                    let frame = AudioFrame {
+                        data: frame_buffer.drain(..).collect::<Vec<_>>().into(),
+                        sample_rate,
+                        num_channels: channels,
+                        samples_per_channel: samples_per_10ms as u32,
+                    };
 
-                if let Some(source) = native_audio_source.blocking_lock().as_ref() {
-                    if let Err(e) = source.capture_frame(&frame).await {
+                    let source = native_audio_source.lock().unwrap().clone();
+                    if let Err(e) = rt.block_on(source.capture_frame(&frame)) {
                         log::error!("Failed to push audio frame: {e}");
                     }
                 }

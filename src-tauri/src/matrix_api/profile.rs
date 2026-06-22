@@ -198,6 +198,7 @@ pub async fn save_namecolor(
     client: State<'_, RwLock<Client>>,
     color: String,
 ) -> Result<(), TauriError> {
+    log::debug!("Saving name color: '{}'", color);
     let value = serde_json::to_value(color)?;
 
     let profile_field = ProfileFieldValue::new(name_color_field().as_str(), value)?;
@@ -217,6 +218,7 @@ pub async fn save_bannercolor(
     client: State<'_, RwLock<Client>>,
     color: String,
 ) -> Result<(), TauriError> {
+    log::debug!("Saving banner color: '{}'", color);
     let value = serde_json::to_value(color)?;
 
     let profile_field = ProfileFieldValue::new(banner_color_field().as_str(), value)?;
