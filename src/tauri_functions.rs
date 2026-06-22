@@ -265,8 +265,8 @@ pub fn save_banner_color(color: &str) -> Result<(), String> {
     Ok(())
 }
 
-pub fn save_displayname(display_name: &str) -> Result<(), String> {
-    let args = serde_wasm_bindgen::to_value(&json!({ "name": display_name }))
+pub fn save_displayname(display_name: &str, room_id: Option<String>) -> Result<(), String> {
+    let args = serde_wasm_bindgen::to_value(&json!({ "name": display_name, "room_id": room_id }))
         .map_err(|e| format!("Failed to serialize request: {:?}", e))?;
 
     spawn_local(async move {
