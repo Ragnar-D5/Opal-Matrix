@@ -1,13 +1,15 @@
 use anyhow::Context;
 use cpal::traits::{DeviceTrait, StreamTrait};
-use cpal::{Device, DeviceId, Stream};
-use matrix_sdk::Room;
+use cpal::{Device, DeviceId, Stream, SupportedStreamConfig};
+use livekit::webrtc::audio_source::native::NativeAudioSource;
+use livekit::webrtc::prelude::{AudioFrame, AudioSourceOptions};
+use matrix_sdk::ruma::{events::room::MediaSource, OwnedRoomId};
 use matrix_sdk::ruma::{EventId, OwnedEventId};
-use matrix_sdk::ruma::{OwnedRoomId, events::room::MediaSource};
+use matrix_sdk::Room;
 use matrix_sdk_ui::timeline::{
     DateDividerMode, TimelineEventFocusThreadMode, TimelineFocus, TimelineReadReceiptTracking,
 };
-use matrix_sdk_ui::{Timeline, timeline::TimelineBuilder};
+use matrix_sdk_ui::{timeline::TimelineBuilder, Timeline};
 use ringbuf::traits::{Consumer, Observer, Split};
 use ringbuf::{HeapProd, HeapRb};
 use std::{collections::HashMap, sync::Arc};
@@ -190,10 +192,10 @@ pub struct AudioManager {
     input_stream: Mutex<Option<Stream>>,
     output_stream: Mutex<Option<Stream>>,
 
-    input_sender: UnboundedSender<f32>,
+    input_sender: UnboundedSender<Option<(UnboundedReceiver<f32>, SupportedStreamConfig)>>,
     pub output_producer: Mutex<Option<HeapProd<f32>>>,
 
-    pub livekit_room: Mutex<Option<LiveKitRoom>>,
+    pub native_audio_source: Arc<Mutex<Option<NativeAudioSource>>>,
 }
 
 fn get_devices(host: &cpal::Host) -> (HashMap<DeviceId, Device>, HashMap<DeviceId, Device>) {
@@ -288,6 +290,8 @@ impl AudioManager {
 
             input_device: Mutex::new(None),
             output_device: Mutex::new(None),
+
+            native_audio_source: Arc::new(Mutex::new(None)),
         };
         new.setup_global_input_handler(input_receiver);
         new
@@ -343,12 +347,15 @@ impl AudioManager {
     }
 
     pub fn try_setup_input_stream_for_device(&self, device: &Device) -> Result<(), TauriError> {
-        let input_sender = self.input_sender.clone();
+        let (rx, tx) = mpsc::unbounded_channel();
+
+        let config = device.default_input_config()?;
+
         let input_stream = device.build_input_stream(
-            &config.into(),
+            &config.clone().into(),
             move |data: &[f32], _| {
                 for sample in data {
-                    input_sender.send(*sample);
+                    rx.send(*sample);
                 }
             },
             |err| log::error!("Mic stream error: {}", err),
@@ -357,14 +364,62 @@ impl AudioManager {
 
         input_stream.play()?;
 
+        self.input_sender.send(Some((tx, config.clone())))?;
         *self.input_stream.blocking_lock() = Some(input_stream);
         Ok(())
     }
 
     pub fn setup_global_input_handler(
         &self,
-        input_data_receiver: UnboundedReceiver<f32>,
-    ) -> Result<(), TauriError> {
-        Ok(())
+        mut input_data_receiver: UnboundedReceiver<
+            Option<(UnboundedReceiver<f32>, SupportedStreamConfig)>,
+        >,
+    ) {
+        let native_audio_source = self.native_audio_source.clone();
+
+        std::thread::spawn(async move || loop {
+            let Some(next) = input_data_receiver.blocking_recv() else {
+                return;
+            };
+            let Some((mut data_receiver, config)) = next else {
+                return;
+            };
+
+            let sample_rate = config.sample_rate();
+            let channels = config.channels() as u32;
+            let samples_per_10ms = (sample_rate / 100) as usize;
+
+            *native_audio_source.blocking_lock() = Some(NativeAudioSource::new(
+                AudioSourceOptions::default(),
+                sample_rate,
+                channels,
+                10,
+            ));
+
+            let mut frame_buffer = Vec::with_capacity(samples_per_10ms);
+            loop {
+                while frame_buffer.len() < samples_per_10ms {
+                    if let Some(s) = data_receiver.blocking_recv() {
+                        frame_buffer.push(s as i16);
+                    } else {
+                        break;
+                    }
+                }
+
+                let frame = AudioFrame {
+                    data: frame_buffer.clone().into(),
+                    sample_rate,
+                    num_channels: channels,
+                    samples_per_channel: samples_per_10ms as u32,
+                };
+                frame_buffer.clear();
+
+                if let Some(source) = native_audio_source.blocking_lock().as_ref() {
+                    if let Err(e) = source.capture_frame(&frame).await {
+                        log::error!("Failed to push audio frame: {e}");
+                    }
+                }
+            }
+        });
     }
 }

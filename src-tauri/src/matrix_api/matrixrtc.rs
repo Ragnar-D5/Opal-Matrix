@@ -708,83 +708,83 @@ impl Default for CallSessionInfo {
 
 use anyhow::Context;
 
-pub fn setup_mic_track(
-    context: &mut AudioManager,
-    cancel: tokio_util::sync::CancellationToken,
-) -> Result<LocalAudioTrack, anyhow::Error> {
-    let input_device = context
-        .input_device
-        .as_ref()
-        .context("No input device set")?;
+// pub fn setup_mic_track(
+//     context: &mut AudioManager,
+//     cancel: tokio_util::sync::CancellationToken,
+// ) -> Result<LocalAudioTrack, anyhow::Error> {
+//     let input_device = context
+//         .input_device
+//         .as_ref()
+//         .context("No input device set")?;
 
-    let mut input_consumer = context
-        .input_consumer
-        .take()
-        .context("No input consumer set up")?;
+//     let mut input_consumer = context
+//         .input_consumer
+//         .take()
+//         .context("No input consumer set up")?;
 
-    let config = input_device
-        .default_input_config()
-        .context("Failed to fetch default hardware microphone configuration")?;
+//     let config = input_device
+//         .default_input_config()
+//         .context("Failed to fetch default hardware microphone configuration")?;
 
-    let sample_rate = config.sample_rate();
-    let channels = config.channels() as u32;
-    let samples_per_10ms = (sample_rate / 100) as usize;
+//     let sample_rate = config.sample_rate();
+//     let channels = config.channels() as u32;
+//     let samples_per_10ms = (sample_rate / 100) as usize;
 
-    let native_audio_source =
-        NativeAudioSource::new(AudioSourceOptions::default(), sample_rate, channels, 10);
-    let microphone_track = LocalAudioTrack::create_audio_track(
-        "Microphone",
-        livekit::RtcAudioSource::Native(native_audio_source.clone()),
-    );
+//     let native_audio_source =
+//         NativeAudioSource::new(AudioSourceOptions::default(), sample_rate, channels, 10);
+//     let microphone_track = LocalAudioTrack::create_audio_track(
+//         "Microphone",
+//         livekit::RtcAudioSource::Native(native_audio_source.clone()),
+//     );
 
-    let native_source_clone = native_audio_source.clone();
+//     let native_source_clone = native_audio_source.clone();
 
-    tokio::spawn(async move {
-        let mut frame_buffer = Vec::with_capacity(samples_per_10ms);
-        loop {
-            while frame_buffer.len() < samples_per_10ms {
-                if let Some(s) = input_consumer.try_pop() {
-                    frame_buffer.push(s);
-                } else {
-                    break;
-                }
-            }
+//     tokio::spawn(async move {
+//         let mut frame_buffer = Vec::with_capacity(samples_per_10ms);
+//         loop {
+//             while frame_buffer.len() < samples_per_10ms {
+//                 if let Some(s) = input_consumer.try_pop() {
+//                     frame_buffer.push(s);
+//                 } else {
+//                     break;
+//                 }
+//             }
 
-            if frame_buffer.len() == samples_per_10ms {
-                let frame = AudioFrame {
-                    data: frame_buffer.clone().into(),
-                    sample_rate,
-                    num_channels: channels,
-                    samples_per_channel: samples_per_10ms as u32,
-                };
-                frame_buffer.clear();
+//             if frame_buffer.len() == samples_per_10ms {
+//                 let frame = AudioFrame {
+//                     data: frame_buffer.clone().into(),
+//                     sample_rate,
+//                     num_channels: channels,
+//                     samples_per_channel: samples_per_10ms as u32,
+//                 };
+//                 frame_buffer.clear();
 
-                tokio::select! {
-                    _ = cancel.cancelled() => {
-                        log::info!("Microphone track worker stopped");
-                        break;
-                    }
-                    capture_result = native_source_clone.capture_frame(&frame) => {
-                        if let Err(e) = capture_result {
-                            log::error!("Failed to capture audio frame: {:?}", e);
-                        }
-                    }
-                }
-            } else {
-                tokio::select! {
-                    _ = cancel.cancelled() => {
-                        log::info!("Microphone track worker stopped");
-                        break;
-                    }
-                    _ = tokio::time::sleep(Duration::from_millis(2)) => {
-                    }
-                }
-            }
-        }
-    });
+//                 tokio::select! {
+//                     _ = cancel.cancelled() => {
+//                         log::info!("Microphone track worker stopped");
+//                         break;
+//                     }
+//                     capture_result = native_source_clone.capture_frame(&frame) => {
+//                         if let Err(e) = capture_result {
+//                             log::error!("Failed to capture audio frame: {:?}", e);
+//                         }
+//                     }
+//                 }
+//             } else {
+//                 tokio::select! {
+//                     _ = cancel.cancelled() => {
+//                         log::info!("Microphone track worker stopped");
+//                         break;
+//                     }
+//                     _ = tokio::time::sleep(Duration::from_millis(2)) => {
+//                     }
+//                 }
+//             }
+//         }
+//     });
 
-    Ok(microphone_track)
-}
+//     Ok(microphone_track)
+// }
 
 pub fn spawn_audio_mixer(
     mut master_producer: ringbuf::HeapProd<f32>,
