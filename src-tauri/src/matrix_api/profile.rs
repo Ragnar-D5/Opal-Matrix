@@ -4,7 +4,9 @@ use matrix_sdk::{
     Client,
     event_handler::Ctx,
     ruma::{
-       OwnedUserId, events::room::member::OriginalSyncRoomMemberEvent, profile::{ProfileFieldName, ProfileFieldValue}
+        OwnedUserId,
+        events::room::member::OriginalSyncRoomMemberEvent,
+        profile::{ProfileFieldName, ProfileFieldValue},
     },
 };
 use shared::profile::{CustomProperties, UserProfile};
@@ -149,8 +151,33 @@ pub async fn get_custom_fields(client: &Client, user_id: OwnedUserId) -> CustomP
 }
 
 #[command]
-pub async fn save_displayname(client: State<'_, RwLock<Client>>, name: String) -> Result<(), TauriError> {
-    client.read().await.account().set_display_name(Some(&name)).await?;
+pub async fn save_displayname(
+    client: State<'_, RwLock<Client>>,
+    name: String,
+    room_id: Option<String>,
+) -> Result<(), TauriError> {
+    log::debug!("Saving display name: '{}' for room_id: {:?}", name, room_id);
+    if let Some(room_id) = room_id {
+        let room_id = matrix_sdk::ruma::RoomId::parse(room_id)?;
+
+        let room = client
+            .read()
+            .await
+            .get_room(&room_id)
+            .ok_or("Not in room")?;
+        room.set_own_member_display_name(Some(name)).await?;
+        return Ok(());
+    } else {
+        client
+            .read()
+            .await
+            .account()
+            .set_display_name(Some(&name))
+            .await?;
+    }
+
+    println!("Hosts: {:?}", cpal::platform::ALL_HOSTS);
+
     Ok(())
 }
 
@@ -167,12 +194,17 @@ pub async fn save_displayname(client: State<'_, RwLock<Client>>, name: String) -
 // }
 
 #[command]
-pub async fn save_namecolor(client: State<'_, RwLock<Client>>, color: String) -> Result<(), TauriError> {
+pub async fn save_namecolor(
+    client: State<'_, RwLock<Client>>,
+    color: String,
+) -> Result<(), TauriError> {
     let value = serde_json::to_value(color)?;
 
     let profile_field = ProfileFieldValue::new(name_color_field().as_str(), value)?;
 
-    client.read().await
+    client
+        .read()
+        .await
         .account()
         .set_profile_field(profile_field)
         .await?;
@@ -181,12 +213,17 @@ pub async fn save_namecolor(client: State<'_, RwLock<Client>>, color: String) ->
 }
 
 #[command]
-pub async fn save_bannercolor(client: State<'_, RwLock<Client>>, color: String) -> Result<(), TauriError> {
+pub async fn save_bannercolor(
+    client: State<'_, RwLock<Client>>,
+    color: String,
+) -> Result<(), TauriError> {
     let value = serde_json::to_value(color)?;
 
     let profile_field = ProfileFieldValue::new(banner_color_field().as_str(), value)?;
 
-    client.read().await
+    client
+        .read()
+        .await
         .account()
         .set_profile_field(profile_field)
         .await?;
@@ -195,12 +232,17 @@ pub async fn save_bannercolor(client: State<'_, RwLock<Client>>, color: String) 
 }
 
 #[command]
-pub async fn save_sonic_signature(client: State<'_, RwLock<Client>>, signature: String) -> Result<(), TauriError> {
+pub async fn save_sonic_signature(
+    client: State<'_, RwLock<Client>>,
+    signature: String,
+) -> Result<(), TauriError> {
     let value = serde_json::to_value(signature)?;
 
     let profile_field = ProfileFieldValue::new(sonic_signature_field().as_str(), value)?;
 
-    client.read().await
+    client
+        .read()
+        .await
         .account()
         .set_profile_field(profile_field)
         .await?;

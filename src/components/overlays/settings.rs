@@ -3,7 +3,7 @@ use leptos::portal::Portal;
 use leptos::prelude::*;
 use leptos_icons::Icon as LIcon;
 use phosphor_leptos::{
-    Icon, IconWeight, IconWeightData, CAMERA, CARET_DOWN, PAINT_BRUSH, PENCIL_SIMPLE,
+    CAMERA, CARET_DOWN, Icon, IconWeight, IconWeightData, PAINT_BRUSH, PENCIL_SIMPLE,
 };
 use serde_json::json;
 use web_sys::{HtmlButtonElement, KeyboardEvent};
@@ -14,7 +14,7 @@ use crate::tauri_functions::{save_banner_color, save_displayname, save_name_colo
 
 use crate::app::call_tauri;
 use crate::components::presence::PresenceBadge;
-use crate::components::user_profile::{render_url_icon, MemberProfileExt};
+use crate::components::user_profile::{MemberProfileExt, render_url_icon};
 use crate::components::{CloseButton, FloatingTile};
 use crate::state::{AppState, ProfileSignal, ProfileStore};
 
@@ -670,7 +670,7 @@ fn render_profile_section() -> AnyView {
                             <button
                                 class="shrink-0 px-3 py-1 text-sm bg-(--accent-color) text-white rounded-(--ui-border-radius) hover:brightness-110 cursor-pointer"
                                 on:click=move |_| {
-                                    if let Err(e) = save_displayname(&displayname_val.get()) {
+                                    if let Err(e) = save_displayname(&displayname_val.get_untracked(), selected_room.get_untracked()) {
                                         log::error!("Failed to save displayname: {e}");
                                     }
                                 }
