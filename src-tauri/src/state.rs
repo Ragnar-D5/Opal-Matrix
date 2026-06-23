@@ -1,4 +1,4 @@
-use cpal::{Device, DeviceId, Stream, SupportedStreamConfig, traits::{DeviceTrait, HostTrait, StreamTrait}};
+use cpal::{Device, DeviceId, SampleFormat, Stream, SupportedStreamConfig, traits::{DeviceTrait, HostTrait, StreamTrait}};
 use livekit::webrtc::{audio_source::native::NativeAudioSource, prelude::{AudioFrame, AudioSourceOptions}};
 use matrix_sdk::{Room, ruma::{EventId, OwnedEventId, OwnedRoomId, events::room::MediaSource}};
 use matrix_sdk_ui::{Timeline, timeline::{
@@ -433,31 +433,41 @@ impl AudioManager {
 
         *self.input_device.lock().unwrap() = Some(device.clone());
 
-        let (rx, tx) = mpsc::unbounded_channel();
+        let (tx, rx) = mpsc::unbounded_channel();
 
         let config = device.default_input_config()?;
+        let stream_config = config.config();
 
-        let input_stream = device.build_input_stream(
-            &config.clone().into(),
-            move |data: &[f32], _| {
-                for sample in data {
-                    let _ = rx.send(*sample);
-                }
-            },
-            |err| {
-                // get_htstamp returning 0 is a benign ALSA/PipeWire timing quirk
-                if err.to_string().contains("get_htstamp") {
-                    log::debug!("Mic stream: {}", err);
-                } else {
-                    log::error!("Mic stream error: {}", err);
-                }
-            },
-            None,
-        )?;
+        let err_callback = |err: cpal::StreamError| {
+            if err.to_string().contains("get_htstamp") {
+                log::debug!("Mic stream timing quirk: {}", err);
+            } else {
+                log::error!("Mic stream error: {}", err);
+            }
+        };
+
+        let input_stream = match config.sample_format() {
+            SampleFormat::F32 => device.build_input_stream(
+                &stream_config,
+                move |data: &[f32], _| for &sample in data { let _ = tx.send(sample); },
+                err_callback, None
+            )?,
+            SampleFormat::I16 => device.build_input_stream(
+                &stream_config,
+                move |data: &[i16], _| for &sample in data { let _ = tx.send(sample as f32 / i16::MAX as f32); },
+                err_callback, None
+            )?,
+            SampleFormat::U16 => device.build_input_stream(
+                &stream_config,
+                move |data: &[u16], _| for &sample in data { let _ = tx.send((sample as f32 - 32768.0) / 32768.0); },
+                err_callback, None
+            )?,
+            _ => return Err(TauriError::from("Unsupported sample format")),
+        };
 
         input_stream.play()?;
 
-        self.input_sender.send(Some((tx, config.clone())))?;
+        self.input_sender.send(Some((rx, config.clone())))?;
         *self.input_stream.lock().unwrap() = Some(input_stream);
         Ok(())
     }
@@ -486,7 +496,8 @@ impl AudioManager {
 
                 let sample_rate = config.sample_rate();
                 let channels = config.channels() as u32;
-                let samples_per_10ms = (sample_rate / 100) as usize;
+                let samples_per_channel = (sample_rate / 100) as usize;
+                let total_samples = samples_per_channel * channels as usize;
 
                 *native_audio_source.lock().unwrap() = NativeAudioSource::new(
                     AudioSourceOptions::default(),
@@ -495,18 +506,18 @@ impl AudioManager {
                     10,
                 );
 
-                let mut frame_buffer = Vec::with_capacity(samples_per_10ms);
+                let mut frame_buffer = Vec::with_capacity(total_samples);
                 loop {
-                    while frame_buffer.len() < samples_per_10ms {
+                    while frame_buffer.len() < total_samples {
                         if let Some(s) = data_receiver.blocking_recv() {
-                            frame_buffer.push(s as i16);
+                            let scaled = (s * i16::MAX as f32).clamp(i16::MIN as f32, i16::MAX as f32);
+                            frame_buffer.push(scaled as i16);
                         } else {
                             break;
                         }
                     }
 
-                    if frame_buffer.len() < samples_per_10ms {
-                        frame_buffer.clear();
+                    if frame_buffer.len() < total_samples {
                         break;
                     }
 
@@ -514,7 +525,7 @@ impl AudioManager {
                         data: std::mem::take(&mut frame_buffer).into(),
                         sample_rate,
                         num_channels: channels,
-                        samples_per_channel: samples_per_10ms as u32,
+                        samples_per_channel: samples_per_channel as u32,
                     };
 
                     let source = native_audio_source.lock().unwrap().clone();
