@@ -270,7 +270,10 @@ pub(crate) async fn join_matrixrtc_call(
 
     // spawn main audio mixer mixing together the various audio tracks
     if let Some(producer) = audio_manager.output_producer.lock().unwrap().take() {
+        log::debug!("Spawning audio mixer");
         spawn_audio_mixer(producer, receiver, cancellationtoken.clone());
+    } else {
+        log::error!("output_producer is None — mixer not spawned, remote audio will be silent");
     }
 
     // handle events
@@ -710,6 +713,10 @@ impl Default for CallSessionInfo {
 use anyhow::Context;
 
 pub fn setup_mic_track(audio_manager: &AudioManager) -> Result<LocalAudioTrack, anyhow::Error> {
+    // Cloning the source here — if setup_global_input_handler hasn't run yet,
+    // this will be the default source (48000/2) and the handler will later replace
+    // it with a new object, breaking the link to this track.
+    log::debug!("setup_mic_track: cloning NativeAudioSource to create track (handler may not have replaced it yet)");
     let source = audio_manager.native_audio_source.lock().unwrap().clone();
 
     let track = LocalAudioTrack::create_audio_track(
@@ -717,6 +724,7 @@ pub fn setup_mic_track(audio_manager: &AudioManager) -> Result<LocalAudioTrack, 
         livekit::RtcAudioSource::Native(source),
     );
 
+    log::debug!("setup_mic_track: track created");
     Ok(track)
 }
 
@@ -793,9 +801,13 @@ async fn register_new_track(
     let (mut track_producer, track_consumer) = track_ring.split();
 
     // Pass the consumer end to the mixer
-    let _ = sender.send(track_consumer);
+    match sender.send(track_consumer) {
+        Ok(_) => log::debug!("register_new_track: sent consumer to mixer"),
+        Err(_) => log::error!("register_new_track: mixer receiver dropped — mixer was not spawned or already shut down"),
+    }
 
     tokio::spawn(async move {
+        let mut frame_count = 0u64;
         loop {
             tokio::select! {
                 _ = cancel.cancelled() => {
@@ -805,6 +817,10 @@ async fn register_new_track(
                 maybe_frame = audio_stream.next() => {
                     match maybe_frame {
                         Some(frame) => {
+                            if frame_count == 0 {
+                                log::debug!("register_new_track: first audio frame received ({}Hz, {} samples)", frame.sample_rate, frame.data.len());
+                            }
+                            frame_count += 1;
                             for &s in frame.data.as_ref() {
                                 let f = s as f32 / 32_768.0;
                                 let _ = track_producer.try_push(f);

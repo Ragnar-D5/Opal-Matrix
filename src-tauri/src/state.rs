@@ -429,6 +429,7 @@ impl AudioManager {
 
     pub fn try_setup_input_stream_for_device(&self, device: &Device) -> Result<(), TauriError> {
         let old_stream = self.input_stream.lock().unwrap().take();
+        let is_first_setup = old_stream.is_none();
         drop(old_stream);
 
         *self.input_device.lock().unwrap() = Some(device.clone());
@@ -437,6 +438,29 @@ impl AudioManager {
 
         let config = device.default_input_config()?;
         let stream_config = config.config();
+
+        if is_first_setup {
+            // First setup: create the NativeAudioSource with the real device config.
+            // On device switches we keep the existing source so any published LiveKit
+            // track (which holds a clone of it) stays connected.
+            *self.native_audio_source.lock().unwrap() = NativeAudioSource::new(
+                AudioSourceOptions::default(),
+                config.sample_rate(),
+                config.channels() as u32,
+                10,
+            );
+            log::debug!(
+                "NativeAudioSource created: {}Hz {}ch",
+                config.sample_rate(),
+                config.channels()
+            );
+        } else {
+            log::debug!(
+                "Device switch: reusing existing NativeAudioSource ({}Hz {}ch)",
+                config.sample_rate(),
+                config.channels()
+            );
+        }
 
         let err_callback = |err: cpal::StreamError| {
             if err.to_string().contains("get_htstamp") {
@@ -467,6 +491,11 @@ impl AudioManager {
 
         input_stream.play()?;
 
+        log::debug!(
+            "Input stream playing; sending config ({}Hz, {}ch) to handler",
+            config.sample_rate(),
+            config.channels()
+        );
         self.input_sender.send(Some((rx, config.clone())))?;
         *self.input_stream.lock().unwrap() = Some(input_stream);
         Ok(())
@@ -499,12 +528,11 @@ impl AudioManager {
                 let samples_per_channel = (sample_rate / 100) as usize;
                 let total_samples = samples_per_channel * channels as usize;
 
-                *native_audio_source.lock().unwrap() = NativeAudioSource::new(
-                    AudioSourceOptions::default(),
-                    sample_rate,
-                    channels,
-                    10,
-                );
+                // NativeAudioSource was already set with the correct config in
+                // try_setup_input_stream_for_device — clone it once here so
+                // capture_frame uses the same underlying source as the track.
+                let source = native_audio_source.lock().unwrap().clone();
+                log::debug!("Handler using NativeAudioSource for {}Hz {}ch stream", sample_rate, channels);
 
                 let mut frame_buffer = Vec::with_capacity(total_samples);
                 loop {
@@ -528,7 +556,6 @@ impl AudioManager {
                         samples_per_channel: samples_per_channel as u32,
                     };
 
-                    let source = native_audio_source.lock().unwrap().clone();
                     if let Err(e) = rt.block_on(source.capture_frame(&frame)) {
                         log::error!("Failed to push audio frame: {e}");
                     }
