@@ -3,7 +3,7 @@ use leptos::task::spawn_local;
 use serde_json::json;
 use shared::{
     account_data::ServerOrder,
-    api::{FileMetadata, GetTimelineResult, LinkPreviewResponse, ScrollDirection},
+    api::{AudioDevice, FileMetadata, GetTimelineResult, LinkPreviewResponse, ScrollDirection},
     commands::Command,
     profile::UserProfile,
     timeline::UiMediaSource,
@@ -314,3 +314,37 @@ pub fn save_displayname(display_name: &str, room_id: Option<String>) -> Result<(
 
 //     Ok(())
 // }
+
+pub fn get_audio_devices() {
+    spawn_local(async move {
+        if let Err(e) = call_tauri_no_args("get_audio_devices").await {
+            log::error!("Tauri call failed: {:?}", e);
+        }
+    });
+}
+
+pub fn set_output_device(id: String) -> Result<(), String> {
+    let args = serde_wasm_bindgen::to_value(&json!({ "id": id }))
+        .map_err(|e| format!("Failed to serialize request: {:?}", e))?;
+
+    spawn_local(async move {
+        if let Err(e) = call_tauri("set_output_device", args).await {
+            log::error!("Tauri call failed: {:?}", e);
+        }
+    });
+
+    Ok(())
+}
+
+pub fn set_input_device(id: String) -> Result<(), String> {
+    let args = serde_wasm_bindgen::to_value(&json!({ "id": id }))
+        .map_err(|e| format!("Failed to serialize request: {:?}", e))?;
+
+    spawn_local(async move {
+        if let Err(e) = call_tauri("set_input_device", args).await {
+            log::error!("Tauri call failed: {:?}", e);
+        }
+    });
+
+    Ok(())
+}

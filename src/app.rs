@@ -3,7 +3,7 @@ use crate::components::loading::Loading;
 use crate::components::previews::ImageLightbox;
 use crate::components::shader::BackgroundShader;
 use chrono::{DateTime, Local};
-use shared::api::RestoreResponse;
+use shared::api::{AudioDeviceInfos, RestoreResponse};
 use shared::sidebar::{NotificationCounts, SidebarState, UserDevice};
 use std::collections::HashMap;
 
@@ -22,6 +22,7 @@ use crate::components::{
     overlays::gif_picker::{GifPickerPortal, GifPickerState},
     overlays::profile_card::{ProfileCardPortal, ProfileCardState},
     sidebar::Sidebar,
+    SystemButtons,
 };
 use crate::hooks::use_tauri_event;
 use crate::state::{AppState, ProfileStore};
@@ -216,6 +217,15 @@ pub fn App() -> impl IntoView {
         }
     });
 
+    let audio_device_update: ReadSignal<Option<AudioDeviceInfos>> =
+        use_tauri_event("audio_device_update");
+
+    Effect::new(move |_| {
+        if let Some(update) = audio_device_update.get() {
+            state.audio_devices.set(update);
+        }
+    });
+
     let sidebar_update_event: ReadSignal<Option<SidebarState>> = use_tauri_event("sidebar_update");
 
     Effect::new(move |_| {
@@ -378,6 +388,9 @@ fn HomePage() -> impl IntoView {
             style=root_css_vars
         >
             <div data-tauri-drag-region class="absolute top-0 left-0 right-0 h-3 z-50"></div>
+            <div class="absolute top-[var(--gap)] right-[var(--gap)] z-9999 flex items-center h-(--header-height) px-(--system-button-padding)">
+                <SystemButtons />
+            </div>
             <Sidebar />
             <Chat />
             <ImageLightbox />

@@ -1,28 +1,20 @@
-use anyhow::Context;
-use cpal::traits::{DeviceTrait, StreamTrait};
-use cpal::{Device, DeviceId, Stream, SupportedStreamConfig};
-use livekit::webrtc::audio_source::native::NativeAudioSource;
-use livekit::webrtc::prelude::{AudioFrame, AudioSourceOptions};
-use matrix_sdk::ruma::{events::room::MediaSource, OwnedRoomId};
-use matrix_sdk::ruma::{EventId, OwnedEventId};
-use matrix_sdk::Room;
-use matrix_sdk_ui::timeline::{
-    DateDividerMode, TimelineEventFocusThreadMode, TimelineFocus, TimelineReadReceiptTracking,
-};
-use matrix_sdk_ui::{timeline::TimelineBuilder, Timeline};
-use ringbuf::traits::{Consumer, Observer, Split};
-use ringbuf::{HeapProd, HeapRb};
+use cpal::{Device, DeviceId, Stream, SupportedStreamConfig, traits::{DeviceTrait, HostTrait, StreamTrait}};
+use livekit::webrtc::{audio_source::native::NativeAudioSource, prelude::{AudioFrame, AudioSourceOptions}};
+use matrix_sdk::{Room, ruma::{EventId, OwnedEventId, OwnedRoomId, events::room::MediaSource}};
+use matrix_sdk_ui::{Timeline, timeline::{
+    DateDividerMode, TimelineBuilder, TimelineEventFocusThreadMode, TimelineFocus, TimelineReadReceiptTracking
+}};
+use ringbuf::{HeapProd, HeapRb, traits::{Consumer, Observer, Split}};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::{Arc, Mutex as SyncMutex},
 };
-use tauri::async_runtime::{Mutex, RwLock};
-use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
-use tokio::task::JoinHandle;
+use tauri::{AppHandle, async_runtime::{Mutex, RwLock}};
+use tokio::{sync::mpsc::{self, UnboundedReceiver, UnboundedSender}, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
-use crate::TauriError;
+use crate::{TauriError, frontend::audio::emit_devices_update};
 
 #[derive(Default)]
 pub struct AppState {
@@ -182,17 +174,14 @@ impl LiveKitRoomData {
     }
 }
 
-// SyncMutex (std::sync::Mutex) is used for AudioManager fields because they are accessed
-// from both std threads and tokio threads. tokio's Mutex::blocking_lock() panics when
-// called from inside a tokio worker thread.
 pub struct AudioManager {
-    pub host: cpal::Host,
+    pub host: Arc<cpal::Host>,
 
-    pub input_devices: SyncMutex<HashMap<DeviceId, cpal::Device>>,
-    pub output_devices: SyncMutex<HashMap<DeviceId, cpal::Device>>,
+    pub input_devices: Arc<SyncMutex<HashMap<DeviceId, cpal::Device>>>,
+    pub output_devices: Arc<SyncMutex<HashMap<DeviceId, cpal::Device>>>,
 
-    pub input_device: SyncMutex<Option<Device>>,
-    pub output_device: SyncMutex<Option<Device>>,
+    pub input_device: Arc<SyncMutex<Option<Device>>>,
+    pub output_device: Arc<SyncMutex<Option<Device>>>,
 
     input_stream: SyncMutex<Option<Stream>>,
     output_stream: SyncMutex<Option<Stream>>,
@@ -235,10 +224,12 @@ fn get_devices(host: &cpal::Host) -> (HashMap<DeviceId, Device>, HashMap<DeviceI
     (input_devices, output_devices)
 }
 
-use cpal::traits::HostTrait;
 impl AudioManager {
-    pub fn refresh_devices(&self) -> Result<(), TauriError> {
+    pub fn refresh_devices(&self, handle: AppHandle) -> Result<(), TauriError> {
         let (input_devices, output_devices) = get_devices(&self.host);
+
+        *self.input_devices.lock().unwrap() = input_devices.clone();
+        *self.output_devices.lock().unwrap() = output_devices.clone();
 
         let input_id = self
             .input_device
@@ -246,8 +237,14 @@ impl AudioManager {
             .unwrap()
             .clone()
             .and_then(|d| d.id().ok());
-        if let Some(id) = input_id {
-            if !input_devices.contains_key(&id) {
+
+        let active_input_id = match input_id {
+            Some(id) => Some(id),
+            None => self.host.default_input_device().and_then(|d| d.id().ok()),
+        };
+
+        if let Some(id) = &active_input_id
+            && !input_devices.contains_key(id) {
                 if let Some(device) = self.host.default_input_device() {
                     self.try_setup_input_stream_for_device(&device)?;
                 } else {
@@ -255,7 +252,6 @@ impl AudioManager {
                     *self.input_stream.lock().unwrap() = None;
                 }
             }
-        }
 
         let output_id = self
             .output_device
@@ -263,8 +259,14 @@ impl AudioManager {
             .unwrap()
             .clone()
             .and_then(|d| d.id().ok());
-        if let Some(id) = output_id {
-            if !output_devices.contains_key(&id) {
+
+        let active_output_id = match output_id {
+            Some(id) => Some(id),
+            None => self.host.default_output_device().and_then(|d| d.id().ok()),
+        };
+
+        if let Some(id) = &active_output_id
+            && !output_devices.contains_key(id) {
                 if let Some(device) = self.host.default_output_device() {
                     self.try_setup_output_stream_for_device(&device)?;
                 } else {
@@ -273,27 +275,93 @@ impl AudioManager {
                     *self.output_producer.lock().unwrap() = None;
                 }
             }
-        }
+
+        let default_input_id = self
+            .host
+            .default_input_device()
+            .and_then(|d| d.id().ok())
+            .map(|id| id.to_string());
+
+        let default_output_id = self
+            .host
+            .default_output_device()
+            .and_then(|d| d.id().ok())
+            .map(|id| id.to_string());
+
+        emit_devices_update(input_devices, output_devices, default_input_id, default_output_id, active_input_id.map(|i| i.to_string()), active_output_id.map(|i| i.to_string()), handle);
+
         Ok(())
     }
 
-    pub fn new() -> Self {
-        let host = cpal::default_host();
+    pub fn setup_device_refresh_loop(&self, handle: AppHandle) {
+        let host = self.host.clone();
+        let input_devices = self.input_devices.clone();
+        let output_devices = self.output_devices.clone();
+        let active_input = self.input_device.clone();
+        let active_output = self.output_device.clone();
+
+        std::thread::spawn(move || {
+            let mut prev_input_ids: HashSet<DeviceId> = HashSet::new();
+            let mut prev_output_ids: HashSet<DeviceId> = HashSet::new();
+            let mut prev_active_input: Option<DeviceId> = None;
+            let mut prev_active_output: Option<DeviceId> = None;
+
+            loop {
+                let (new_input_devices, new_output_devices) = get_devices(&host);
+
+                let new_input_ids: HashSet<DeviceId> = new_input_devices.keys().cloned().collect();
+                let new_output_ids: HashSet<DeviceId> = new_output_devices.keys().cloned().collect();
+                let new_active_input = active_input.lock().unwrap().as_ref().and_then(|d| d.id().ok());
+                let new_active_output = active_output.lock().unwrap().as_ref().and_then(|d| d.id().ok());
+
+                if new_input_ids != prev_input_ids
+                    || new_output_ids != prev_output_ids
+                    || new_active_input != prev_active_input
+                    || new_active_output != prev_active_output
+                {
+                    *input_devices.lock().unwrap() = new_input_devices.clone();
+                    *output_devices.lock().unwrap() = new_output_devices.clone();
+
+                    log::debug!("Audio devices changed");
+
+                    emit_devices_update(
+                        new_input_devices,
+                        new_output_devices,
+                        host.default_input_device().and_then(|d| d.id().ok()).map(|id| id.to_string()),
+                        host.default_output_device().and_then(|d| d.id().ok()).map(|id| id.to_string()),
+                        new_active_input.as_ref().map(|id| id.to_string()),
+                        new_active_output.as_ref().map(|id| id.to_string()),
+                        handle.clone(),
+                    );
+
+                    prev_input_ids = new_input_ids;
+                    prev_output_ids = new_output_ids;
+                    prev_active_input = new_active_input;
+                    prev_active_output = new_active_output;
+                }
+
+                std::thread::sleep(std::time::Duration::from_secs(1));
+            }
+        });
+    }
+
+    pub fn new(handle: AppHandle) -> Self {
+        let host = Arc::new(cpal::default_host());
 
         let (input_sender, input_receiver) = mpsc::unbounded_channel();
         let new = Self {
             host,
             input_sender,
 
-            input_devices: SyncMutex::new(HashMap::new()),
-            output_devices: SyncMutex::new(HashMap::new()),
+            input_devices: Arc::new(SyncMutex::new(HashMap::new())),
+            output_devices: Arc::new(SyncMutex::new(HashMap::new())),
 
             input_stream: SyncMutex::new(None),
             output_stream: SyncMutex::new(None),
             output_producer: SyncMutex::new(None),
 
-            input_device: SyncMutex::new(None),
-            output_device: SyncMutex::new(None),
+            input_device: Arc::new(SyncMutex::new(None)),
+            output_device: Arc::new(SyncMutex::new(None)),
 
             native_audio_source: Arc::new(SyncMutex::new(NativeAudioSource::new(
                 AudioSourceOptions::default(),
@@ -303,13 +371,17 @@ impl AudioManager {
             ))),
         };
         new.setup_global_input_handler(input_receiver);
+        new.setup_device_refresh_loop(handle);
         new
     }
 
     pub fn try_setup_output_stream_for_device(&self, device: &Device) -> Result<(), TauriError> {
+        let old_stream = self.output_stream.lock().unwrap().take();
+        drop(old_stream);
+
         *self.output_device.lock().unwrap() = Some(device.clone());
 
-        let config = device.default_output_config().context("No output config")?;
+        let config = device.default_output_config()?;
 
         let sample_rate = config.sample_rate();
         let channels = config.channels() as u32;
@@ -356,6 +428,9 @@ impl AudioManager {
     }
 
     pub fn try_setup_input_stream_for_device(&self, device: &Device) -> Result<(), TauriError> {
+        let old_stream = self.input_stream.lock().unwrap().take();
+        drop(old_stream);
+
         *self.input_device.lock().unwrap() = Some(device.clone());
 
         let (rx, tx) = mpsc::unbounded_channel();
@@ -369,7 +444,14 @@ impl AudioManager {
                     let _ = rx.send(*sample);
                 }
             },
-            |err| log::error!("Mic stream error: {}", err),
+            |err| {
+                // get_htstamp returning 0 is a benign ALSA/PipeWire timing quirk
+                if err.to_string().contains("get_htstamp") {
+                    log::debug!("Mic stream: {}", err);
+                } else {
+                    log::error!("Mic stream error: {}", err);
+                }
+            },
             None,
         )?;
 
@@ -406,8 +488,12 @@ impl AudioManager {
                 let channels = config.channels() as u32;
                 let samples_per_10ms = (sample_rate / 100) as usize;
 
-                *native_audio_source.lock().unwrap() =
-                    NativeAudioSource::new(AudioSourceOptions::default(), sample_rate, channels, 10);
+                *native_audio_source.lock().unwrap() = NativeAudioSource::new(
+                    AudioSourceOptions::default(),
+                    sample_rate,
+                    channels,
+                    10,
+                );
 
                 let mut frame_buffer = Vec::with_capacity(samples_per_10ms);
                 loop {
@@ -425,7 +511,7 @@ impl AudioManager {
                     }
 
                     let frame = AudioFrame {
-                        data: frame_buffer.drain(..).collect::<Vec<_>>().into(),
+                        data: std::mem::take(&mut frame_buffer).into(),
                         sample_rate,
                         num_channels: channels,
                         samples_per_channel: samples_per_10ms as u32,

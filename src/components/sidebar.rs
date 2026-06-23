@@ -669,7 +669,7 @@ pub fn Sidebar() -> impl IntoView {
     });
 
     view! {
-        <div class="flex h-full gap-[var(--gap)] select-none">
+        <div class="flex h-full gap-[var(--gap)] select-none z-10">
             // Empty image used for drag ghost to avoid default semi-transparent preview
             <img
                 id="drag-ghost"
@@ -831,7 +831,7 @@ pub fn Sidebar() -> impl IntoView {
                 </FloatingTile>
 
                 // Small card with current room profile
-                <FloatingTile class="h-(--header-height) w-full">
+                <FloatingTile class="h-(--header-height) w-full" style="overflow: visible;">
                     <ProfileCard />
                 </FloatingTile>
             </div>

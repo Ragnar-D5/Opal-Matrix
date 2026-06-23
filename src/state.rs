@@ -4,10 +4,7 @@ use leptos::task::spawn_local;
 use log::error;
 use serde_json::json;
 use shared::{
-    account_data::{Breadcrumbs, ServerOrder},
-    profile::{CustomProperties, MemberProfile, PresenceInfo, RoomProfile, SonicSignature, UserProfile},
-    sidebar::{NotificationCounts, RoomKind, RoomNode, SidebarState, UserDevice},
-    timeline::UiMediaSource,
+    account_data::{Breadcrumbs, ServerOrder}, api::AudioDeviceInfos, profile::{CustomProperties, MemberProfile, PresenceInfo, RoomProfile, SonicSignature, UserProfile}, sidebar::{NotificationCounts, RoomKind, RoomNode, SidebarState, UserDevice}, timeline::UiMediaSource
 };
 
 use crate::{
@@ -51,6 +48,8 @@ pub struct AppState {
     pub call_members: RwSignal<HashMap<String, ArcRwSignal<Vec<UserDevice>>>>,
 
     pub typing_users: RwSignal<HashMap<String, ArcRwSignal<Vec<String>>>>,
+
+    pub audio_devices: RwSignal<AudioDeviceInfos>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

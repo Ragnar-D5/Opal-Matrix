@@ -11,7 +11,7 @@ use percent_encoding::percent_decode_str;
 use shared::api::RestoreResponse;
 use shared::api::errors::LoginError;
 use toml_edit::{DocumentMut};
-use std::collections::HashMap;
+use std::collections::{HashMap};
 use std::fs::{read_to_string, write};
 use std::str::FromStr;
 use std::sync::Arc;
@@ -708,7 +708,7 @@ pub fn run() {
             app.manage(TaskManager::default());
             app.manage(MediaManager::default());
             app.manage(LiveKitRoomManager::default());
-            app.manage(AudioManager::new());
+            app.manage(AudioManager::new(app.handle().clone()));
 
             #[cfg(not(target_os = "android"))]
             let main_window = app
@@ -763,8 +763,9 @@ pub fn run() {
             settings::get_setting,
             settings::set_setting,
             settings::set_setting_cloud,
-            // frontend::audio::set_output_device,
-            // frontend::audio::set_input_device,
+            frontend::audio::set_output_device,
+            frontend::audio::set_input_device,
+            frontend::audio::get_audio_devices,
         ])
         .register_asynchronous_uri_scheme_protocol(
             "mxc",

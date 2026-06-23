@@ -196,6 +196,7 @@ pub async fn save_displayname(
 #[command]
 pub async fn save_namecolor(
     client: State<'_, RwLock<Client>>,
+    handle: AppHandle,
     color: String,
 ) -> Result<(), TauriError> {
     log::debug!("Saving name color: '{}'", color);
@@ -203,12 +204,9 @@ pub async fn save_namecolor(
 
     let profile_field = ProfileFieldValue::new(name_color_field().as_str(), value)?;
 
-    client
-        .read()
-        .await
-        .account()
-        .set_profile_field(profile_field)
-        .await?;
+    let client = client.read().await;
+    client.account().set_profile_field(profile_field).await?;
+    send_user_to_frontend(&handle, &client).await?;
 
     Ok(())
 }
@@ -216,6 +214,7 @@ pub async fn save_namecolor(
 #[command]
 pub async fn save_bannercolor(
     client: State<'_, RwLock<Client>>,
+    handle: AppHandle,
     color: String,
 ) -> Result<(), TauriError> {
     log::debug!("Saving banner color: '{}'", color);
@@ -223,12 +222,9 @@ pub async fn save_bannercolor(
 
     let profile_field = ProfileFieldValue::new(banner_color_field().as_str(), value)?;
 
-    client
-        .read()
-        .await
-        .account()
-        .set_profile_field(profile_field)
-        .await?;
+    let client = client.read().await;
+    client.account().set_profile_field(profile_field).await?;
+    send_user_to_frontend(&handle, &client).await?;
 
     Ok(())
 }
@@ -236,18 +232,16 @@ pub async fn save_bannercolor(
 #[command]
 pub async fn save_sonic_signature(
     client: State<'_, RwLock<Client>>,
+    handle: AppHandle,
     signature: String,
 ) -> Result<(), TauriError> {
     let value = serde_json::to_value(signature)?;
 
     let profile_field = ProfileFieldValue::new(sonic_signature_field().as_str(), value)?;
 
-    client
-        .read()
-        .await
-        .account()
-        .set_profile_field(profile_field)
-        .await?;
+    let client = client.read().await;
+    client.account().set_profile_field(profile_field).await?;
+    send_user_to_frontend(&handle, &client).await?;
 
     Ok(())
 }

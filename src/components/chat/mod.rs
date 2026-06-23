@@ -3,7 +3,7 @@ use std::time::Duration;
 use crate::{
     app::{call_tauri, convertFileSrc, format_bytes},
     components::{
-        FloatingTile, SystemButtons, TypingIndicator, chat::{calls::CallView, messages::render_timeline_item}, input::{
+        FloatingTile, TypingIndicator, chat::{calls::CallView, messages::render_timeline_item}, input::{
             get_active_filter, get_caret_position, handle_input, handle_keydown,
             insert_text_at_caret,
             menu::{MenuCompletionMatches, MenuType, SelectionMenu},
@@ -621,94 +621,93 @@ fn ChatHeader(header: Memo<RoomHeader>, chat_sidebar_open: RwSignal<bool>) -> im
                     RoomHeader::Space(name) => view! { <span>{name.clone()}</span> }.into_any(),
                 }}
             </div>
-            <div class="self-center h-full">
-                <button
-                    class="transition-opacity h-full mr-1"
-                    class=("text-(--ui-hover-color)", move || info_hovered.get())
-                    class=("text-(--ui-base-color)", move || !info_hovered.get())
-                    on:click=move |_| chat_sidebar_open.update(|v| *v = !*v)
-                    on:mouseenter=move |_| info_hovered.set(true)
-                    on:mouseleave=move |_| info_hovered.set(false)
-                >
-                    <div class="h-full justify-center items-center flex cursor-pointer">
-                        {move || {
-                            let icon = toggle_icon();
-                            view! {
-                                <Icon
-                                    icon=icon
-                                    size="80%"
-                                    color="currentColor"
-                                    weight=move || {
-                                        if chat_sidebar_open.get() {
-                                            IconWeight::Fill
-                                        } else {
-                                            IconWeight::Light
+            <div class="flex items-center h-full pr-[90px]">
+                <div class="self-center h-full">
+                    <button
+                        class="transition-opacity h-full mr-1"
+                        class=("text-(--ui-hover-color)", move || info_hovered.get())
+                        class=("text-(--ui-base-color)", move || !info_hovered.get())
+                        on:click=move |_| chat_sidebar_open.update(|v| *v = !*v)
+                        on:mouseenter=move |_| info_hovered.set(true)
+                        on:mouseleave=move |_| info_hovered.set(false)
+                    >
+                        <div class="h-full justify-center items-center flex cursor-pointer">
+                            {move || {
+                                let icon = toggle_icon();
+                                view! {
+                                    <Icon
+                                        icon=icon
+                                        size="80%"
+                                        color="currentColor"
+                                        weight=move || {
+                                            if chat_sidebar_open.get() {
+                                                IconWeight::Fill
+                                            } else {
+                                                IconWeight::Light
+                                            }
                                         }
-                                    }
-                                />
-                            }
-                        }}
-                    </div>
-                </button>
-            </div>
-            <div class="self-center h-full">
-                <button
-                    class="transition-opacity h-full mr-1"
-                    class=("text-(--ui-hover-color)", move || info_hovered.get())
-                    class=("text-(--ui-base-color)", move || !info_hovered.get())
-                    on:click=move |_| {
-                        let value = serde_wasm_bindgen::to_value(
-                            &serde_json::json!({"room_id": &state.active_room_id().unwrap()}),
-                        );
-                        spawn_local(async move {
-                            log::debug!(
-                                "{:?}", call_tauri("join_matrixrtc_call", value.unwrap()).await
+                                    />
+                                }
+                            }}
+                        </div>
+                    </button>
+                </div>
+                <div class="self-center h-full">
+                    <button
+                        class="transition-opacity h-full mr-1"
+                        class=("text-(--ui-hover-color)", move || info_hovered.get())
+                        class=("text-(--ui-base-color)", move || !info_hovered.get())
+                        on:click=move |_| {
+                            let value = serde_wasm_bindgen::to_value(
+                                &serde_json::json!({"room_id": &state.active_room_id().unwrap()}),
                             );
-                        })
-                    }
-                    on:mouseenter=move |_| info_hovered.set(true)
-                    on:mouseleave=move |_| info_hovered.set(false)
-                >
-                    <div class="h-full justify-center items-center flex cursor-pointer">
-                        <Icon
-                            icon=PHONE
-                            size="80%"
-                            color="currentColor"
-                            weight=IconWeight::Duotone
-                        />
-                    </div>
-                </button>
-            </div>
-            <div class="self-center h-full">
-                <button
-                    class="transition-opacity h-full mr-1"
-                    class=("text-(--ui-hover-color)", move || info_hovered.get())
-                    class=("text-(--ui-base-color)", move || !info_hovered.get())
-                    on:click=move |_| {
-                        let value = serde_wasm_bindgen::to_value(
-                            &serde_json::json!({"room_id": &state.active_room_id().unwrap()}),
-                        );
-                        spawn_local(async move {
-                            log::debug!(
-                                "{:?}", call_tauri("leave_matrixrtc_call", value.unwrap()).await
+                            spawn_local(async move {
+                                log::debug!(
+                                    "{:?}", call_tauri("join_matrixrtc_call", value.unwrap()).await
+                                );
+                            })
+                        }
+                        on:mouseenter=move |_| info_hovered.set(true)
+                        on:mouseleave=move |_| info_hovered.set(false)
+                    >
+                        <div class="h-full justify-center items-center flex cursor-pointer">
+                            <Icon
+                                icon=PHONE
+                                size="80%"
+                                color="currentColor"
+                                weight=IconWeight::Duotone
+                            />
+                        </div>
+                    </button>
+                </div>
+                <div class="self-center h-full">
+                    <button
+                        class="transition-opacity h-full mr-1"
+                        class=("text-(--ui-hover-color)", move || info_hovered.get())
+                        class=("text-(--ui-base-color)", move || !info_hovered.get())
+                        on:click=move |_| {
+                            let value = serde_wasm_bindgen::to_value(
+                                &serde_json::json!({"room_id": &state.active_room_id().unwrap()}),
                             );
-                        })
-                    }
-                    on:mouseenter=move |_| info_hovered.set(true)
-                    on:mouseleave=move |_| info_hovered.set(false)
-                >
-                    <div class="h-full justify-center items-center flex cursor-pointer">
-                        <Icon
-                            icon=PHONE_DISCONNECT
-                            size="80%"
-                            color="currentColor"
-                            weight=IconWeight::Duotone
-                        />
-                    </div>
-                </button>
-            </div>
-            <div class="border-l border-(--tile-border-color) h-full self-center flex items-center justify-center p-(--system-button-padding)">
-                <SystemButtons />
+                            spawn_local(async move {
+                                log::debug!(
+                                    "{:?}", call_tauri("leave_matrixrtc_call", value.unwrap()).await
+                                );
+                            })
+                        }
+                        on:mouseenter=move |_| info_hovered.set(true)
+                        on:mouseleave=move |_| info_hovered.set(false)
+                    >
+                        <div class="h-full justify-center items-center flex cursor-pointer">
+                            <Icon
+                                icon=PHONE_DISCONNECT
+                                size="80%"
+                                color="currentColor"
+                                weight=IconWeight::Duotone
+                            />
+                        </div>
+                    </button>
+                </div>
             </div>
         </FloatingTile>
     }

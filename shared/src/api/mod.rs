@@ -104,3 +104,21 @@ pub struct GetTimelineResult {
     pub timeline_id: String,
     pub messages: Vec<crate::timeline::UiTimelineItem>,
 }
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct AudioDevice {
+    pub id: String,
+    pub name: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct AudioDeviceInfos {
+    pub output_devices: Vec<AudioDevice>,
+    pub input_devices: Vec<AudioDevice>,
+
+    pub default_output_device_id: Option<String>,
+    pub default_input_device_id: Option<String>,
+
+    pub active_output_devive_id: Option<String>,
+    pub active_input_device_id: Option<String>,
+}

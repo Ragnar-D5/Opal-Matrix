@@ -1,12 +1,13 @@
 use csscolorparser::Color;
 use leptos::prelude::*;
+use overlays::mute_menu_popup::MuteMenuPopup;
 use phosphor_leptos::{Icon, IconWeight, CARET_DOWN, HEADPHONES, MICROPHONE, X};
 use shared::ColorExt;
 use web_sys::MouseEvent;
 
 pub use overlays::settings::SettingsIcon;
 
-use crate::tauri_functions::{close_window, minimize_window, toggle_fullscreen};
+use crate::tauri_functions::{close_window, get_audio_devices, minimize_window, toggle_fullscreen};
 
 pub(crate) mod authentication;
 pub(crate) mod blurhash;
@@ -131,16 +132,20 @@ where
 
 #[component]
 pub fn MuteMenu(#[prop(into, optional)] class: String) -> impl IntoView {
-    // None = neither hovered, Some(true) = mic hovered, Some(false) = caret hovered
     let hovered: RwSignal<Option<bool>> = RwSignal::new(None);
+    let open: RwSignal<bool> = RwSignal::new(false);
 
     view! {
         <div
-            class=format!("flex flex-row gap-[1px] h-full {class} py-[9px] cursor-pointer")
+            class=format!("relative flex flex-row gap-[1px] h-full {class} py-[9px] cursor-pointer")
             on:mouseleave=move |_| hovered.set(None)
         >
+            {move || {
+                if open.get() { view! { <MuteMenuPopup /> }.into_any() } else { ().into_any() }
+            }}
+
             <button
-                class="text-muted hover:text-bright cursor-pointer hover:text-bright rounded-l-(--ui-border-radius) h-full aspect-square flex items-center justify-center"
+                class="text-muted hover:text-bright cursor-pointer rounded-l-(--ui-border-radius) h-full aspect-square flex items-center justify-center"
                 class=("bg-(--color-item-selected)", move || hovered.get() == Some(true))
                 class=("bg-(--color-item-hover)", move || hovered.get() == Some(false))
                 on:mouseenter=move |_| hovered.set(Some(true))
@@ -148,10 +153,16 @@ pub fn MuteMenu(#[prop(into, optional)] class: String) -> impl IntoView {
                 <Icon icon=MICROPHONE size="18px" weight=IconWeight::Fill />
             </button>
             <button
-                class="text-muted hover:text-bright cursor-pointer hover:text-bright rounded-r-(--ui-border-radius) h-full"
+                class="text-muted hover:text-bright cursor-pointer rounded-r-(--ui-border-radius) h-full"
                 class=("bg-(--color-item-selected)", move || hovered.get() == Some(false))
                 class=("bg-(--color-item-hover)", move || hovered.get() == Some(true))
                 on:mouseenter=move |_| hovered.set(Some(false))
+                on:click=move |_| {
+                    open.update(|o| *o = !*o);
+                    if open.get_untracked() {
+                        get_audio_devices();
+                    }
+                }
             >
                 <Icon icon=CARET_DOWN size="12px" />
             </button>
@@ -204,7 +215,7 @@ pub fn SystemButtons() -> impl IntoView {
     ];
 
     view! {
-        <div class="flex flex-row gap-3">
+        <div class="flex flex-row gap-3 z-9999">
             {btns
                 .into_iter()
                 .map(|(color, callback)| {
@@ -212,7 +223,7 @@ pub fn SystemButtons() -> impl IntoView {
 
                     view! {
                         <button
-                            class="h-3.5 w-3.5 rounded-full hover:brightness-[60%] transition-transform duration-75"
+                            class="h-3.5 w-3.5 rounded-full hover:brightness-[60%] transition-transform duration-75 z-9999"
                             style=format!("background-color: {color};")
                             on:click=move |_| callback.run(())
                             class=("scale-75", move || btn_pressed.get())
