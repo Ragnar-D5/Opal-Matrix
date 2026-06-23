@@ -1,6 +1,5 @@
 use crate::components::authentication::Authentication;
 use crate::components::loading::Loading;
-use crate::components::overlays::settings;
 use crate::components::previews::ImageLightbox;
 use crate::components::shader::BackgroundShader;
 use chrono::{DateTime, Local};

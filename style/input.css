@@ -40,9 +40,13 @@
     --confirm-text-color: #ffffff;
 
     --online-color: #23a55a;
-    --idle-color: #e5c100;
-    --busy-color: #e53e3e;
+    --idle-color: #c9ab56;
+    --busy-color: #da7d9b;
     --offline-color: #6a6a6a;
+    --system-button-size: 7px;
+    --system-button-padding: calc(
+        var(--header-height) / 2 - var(--system-button-size) / 2
+    );
 
     --overlay-bg-color: rgba(0, 0, 0, 0.5);
 }

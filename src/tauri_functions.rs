@@ -252,6 +252,30 @@ pub fn save_name_color(color: &str) -> Result<(), String> {
     Ok(())
 }
 
+pub fn close_window() {
+    spawn_local(async move {
+        if let Err(e) = call_tauri_no_args("close_window").await {
+            log::error!("Failed to close window: {:?}", e);
+        }
+    });
+}
+
+pub fn minimize_window() {
+    spawn_local(async move {
+        if let Err(e) = call_tauri_no_args("minimize_window").await {
+            log::error!("Failed to minimize window: {:?}", e);
+        }
+    });
+}
+
+pub fn toggle_fullscreen() {
+    spawn_local(async move {
+        if let Err(e) = call_tauri_no_args("toggle_fullscreen").await {
+            log::error!("Failed to toggle fullscreen: {:?}", e);
+        }
+    });
+}
+
 pub fn save_banner_color(color: &str) -> Result<(), String> {
     let args = serde_wasm_bindgen::to_value(&json!({ "color": color }))
         .map_err(|e| format!("Failed to serialize request: {:?}", e))?;

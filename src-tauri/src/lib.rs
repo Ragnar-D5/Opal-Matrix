@@ -354,6 +354,38 @@ async fn login(
 }
 
 #[command]
+async fn close_window(app_handle: AppHandle) -> Result<(), TauriError> {
+    app_handle
+        .get_webview_window("main")
+        .ok_or("Window not found")?
+        .close()?;
+    Ok(())
+}
+
+#[command]
+async fn minimize_window(app_handle: AppHandle) -> Result<(), TauriError> {
+    app_handle
+        .get_webview_window("main")
+        .ok_or("Window not found")?
+        .minimize()?;
+    Ok(())
+}
+
+#[command]
+async fn toggle_fullscreen(app_handle: AppHandle) -> Result<(), TauriError> {
+    let window = app_handle
+        .get_webview_window("main")
+        .ok_or("Window not found")?;
+    if window.is_fullscreen()? || window.is_maximized()? {
+        window.set_fullscreen(false)?;
+        window.unmaximize()?;
+    } else {
+        window.set_fullscreen(true)?;
+    }
+    Ok(())
+}
+
+#[command]
 async fn fetch_raw_html(url: String) -> Result<String, TauriError> {
     let res = reqwest::get(url).await?;
 
@@ -692,6 +724,9 @@ pub fn run() {
             login,
             fetch_raw_html,
             try_restore,
+            close_window,
+            minimize_window,
+            toggle_fullscreen,
             backend_log,
             set_room_id,
             set_frontend_focused,

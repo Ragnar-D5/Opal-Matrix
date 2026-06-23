@@ -6,6 +6,8 @@ use web_sys::MouseEvent;
 
 pub use overlays::settings::SettingsIcon;
 
+use crate::tauri_functions::{close_window, minimize_window, toggle_fullscreen};
+
 pub(crate) mod authentication;
 pub(crate) mod blurhash;
 pub(crate) mod chat;
@@ -183,6 +185,44 @@ pub fn DeafenMenu(#[prop(into, optional)] class: String) -> impl IntoView {
             >
                 <Icon icon=CARET_DOWN size="12px" />
             </button>
+        </div>
+    }
+}
+
+#[component]
+pub fn SystemButtons() -> impl IntoView {
+    let btns: Vec<(&str, Callback<()>)> = vec![
+        (
+            "var(--idle-color)",
+            Callback::new(move |_| minimize_window()),
+        ),
+        (
+            "var(--online-color)",
+            Callback::new(move |_| toggle_fullscreen()),
+        ),
+        ("var(--busy-color)", Callback::new(move |_| close_window())),
+    ];
+
+    view! {
+        <div class="flex flex-row gap-3">
+            {btns
+                .into_iter()
+                .map(|(color, callback)| {
+                    let btn_pressed = RwSignal::new(false);
+
+                    view! {
+                        <button
+                            class="h-3.5 w-3.5 rounded-full hover:brightness-[60%] transition-transform duration-75"
+                            style=format!("background-color: {color};")
+                            on:click=move |_| callback.run(())
+                            class=("scale-75", move || btn_pressed.get())
+                            on:mousedown=move |_| btn_pressed.set(true)
+                            on:mouseup=move |_| btn_pressed.set(false)
+                            on:mouseleave=move |_| btn_pressed.set(false)
+                        />
+                    }
+                })
+                .collect_view()}
         </div>
     }
 }

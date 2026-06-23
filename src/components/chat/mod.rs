@@ -3,19 +3,14 @@ use std::time::Duration;
 use crate::{
     app::{call_tauri, convertFileSrc, format_bytes},
     components::{
-        FloatingTile, TypingIndicator,
-        chat::{calls::CallView, messages::render_timeline_item},
-        input::{
+        FloatingTile, SystemButtons, TypingIndicator, chat::{calls::CallView, messages::render_timeline_item}, input::{
             get_active_filter, get_caret_position, handle_input, handle_keydown,
             insert_text_at_caret,
             menu::{MenuCompletionMatches, MenuType, SelectionMenu},
-        },
-        overlays::{
+        }, overlays::{
             emoji_picker::{EmojiPickerState, pick_emoji},
             gif_picker::{GifPickerState, pick_gif},
-        },
-        presence::PresenceBadge,
-        user_profile::{MemberProfileExt, render_user_profile_card},
+        }, presence::PresenceBadge, user_profile::{MemberProfileExt, render_user_profile_card}
     },
     hooks::use_tauri_event,
     state::{AppState, ProfileStore, RoomHeader},
@@ -711,6 +706,9 @@ fn ChatHeader(header: Memo<RoomHeader>, chat_sidebar_open: RwSignal<bool>) -> im
                         />
                     </div>
                 </button>
+            </div>
+            <div class="border-l border-(--tile-border-color) h-full self-center flex items-center justify-center p-(--system-button-padding)">
+                <SystemButtons />
             </div>
         </FloatingTile>
     }
