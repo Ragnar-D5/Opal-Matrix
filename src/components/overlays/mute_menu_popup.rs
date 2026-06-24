@@ -1,12 +1,24 @@
-use leptos::prelude::*;
+use leptos::{ev, html::Button, prelude::*};
+use leptos_use::use_event_listener;
 use phosphor_leptos::{Icon, IconWeight, CARET_RIGHT, GEAR, MICROPHONE};
+use wasm_bindgen::JsCast;
 
 use crate::{state::AppState, tauri_functions::set_input_device};
 
 #[component]
-pub fn MuteMenuPopup() -> impl IntoView {
+pub fn MuteMenuPopup(on_close: Callback<()>) -> impl IntoView {
     let devices_open = RwSignal::new(false);
     let app_state: AppState = expect_context();
+    let popup_ref = NodeRef::<Button>::new();
+
+    let _ = use_event_listener(document(), ev::click, move |e| {
+        let Some(popup) = popup_ref.get() else { return };
+        let Some(target) = e.target() else { return };
+        let Some(target_node) = target.dyn_ref::<web_sys::Node>() else { return };
+        if !popup.contains(Some(target_node)) {
+            on_close.run(());
+        }
+    });
 
     let devices = move || {
         let devices = app_state.audio_devices.get();
@@ -69,6 +81,7 @@ pub fn MuteMenuPopup() -> impl IntoView {
 
     view! {
         <button
+            node_ref=popup_ref
             class="absolute bottom-full left-0 flex flex-row items-start mb-[calc(var(--gap)+1px)] z-50 gap-(--gap)"
             on:mouseleave=move |_| {
                 devices_open.set(false);

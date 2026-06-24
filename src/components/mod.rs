@@ -141,7 +141,7 @@ pub fn MuteMenu(#[prop(into, optional)] class: String) -> impl IntoView {
             on:mouseleave=move |_| hovered.set(None)
         >
             {move || {
-                if open.get() { view! { <MuteMenuPopup /> }.into_any() } else { ().into_any() }
+                if open.get() { view! { <MuteMenuPopup on_close=Callback::new(move |_| open.set(false)) /> }.into_any() } else { ().into_any() }
             }}
 
             <button
@@ -157,7 +157,8 @@ pub fn MuteMenu(#[prop(into, optional)] class: String) -> impl IntoView {
                 class=("bg-(--color-item-selected)", move || hovered.get() == Some(false))
                 class=("bg-(--color-item-hover)", move || hovered.get() == Some(true))
                 on:mouseenter=move |_| hovered.set(Some(false))
-                on:click=move |_| {
+                on:click=move |e| {
+                    e.stop_propagation();
                     open.update(|o| *o = !*o);
                     if open.get_untracked() {
                         get_audio_devices();
