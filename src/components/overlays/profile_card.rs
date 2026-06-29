@@ -1,5 +1,4 @@
 use leptos::{portal::Portal, prelude::*};
-use shared::synth::signature_audio_src;
 use web_sys::{Element, KeyboardEvent};
 
 use crate::{components::presence::PresenceBadge, state::ProfileStore};
@@ -100,11 +99,11 @@ pub fn ProfileCardPortal() -> impl IntoView {
         let cx = left_offset + icon_radius;
         let cy = banner_height;
         let banner_mask = format!(
-                "-webkit-mask-image: radial-gradient(circle at {cx}px {cy}px, transparent {cutout_radius}px, black {smooth_cutout_radius}px); \
+            "-webkit-mask-image: radial-gradient(circle at {cx}px {cy}px, transparent {cutout_radius}px, black {smooth_cutout_radius}px); \
                 mask-image: radial-gradient(circle at {cx}px {cy}px, transparent {cutout_radius}px, black {smooth_cutout_radius}px); \
                 -webkit-mask-composite: destination-out; \
                 mask-composite: exclude;",
-            );
+        );
 
         let signal = store.with_value(|s| s.get_profile_signal(state.room_id.get(), &user_id));
 
@@ -112,7 +111,7 @@ pub fn ProfileCardPortal() -> impl IntoView {
         let banner_color = move || banner_sig.banner_color();
 
         let sonic_sig = signal.clone();
-        let sonic_signature = move || sonic_sig.sonic_signature();
+        let audio = move || sonic_sig.audio();
 
         let icon_sig = signal.clone();
         let profile_icon = move || icon_sig.clone().icon(format!("{icon_size}px"));
@@ -122,10 +121,7 @@ pub fn ProfileCardPortal() -> impl IntoView {
 
         view! {
             <audio
-                src=move || signature_audio_src(
-                    &sonic_signature(),
-                    shared::synth::SignatureEvent::Joined,
-                )
+                src=move || audio().joined
                 autoplay=true
             />
             <div class="relative flex flex-col w-full">

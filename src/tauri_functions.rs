@@ -3,7 +3,7 @@ use leptos::task::spawn_local;
 use serde_json::json;
 use shared::{
     account_data::ServerOrder,
-    api::{AudioDevice, FileMetadata, GetTimelineResult, LinkPreviewResponse, ScrollDirection},
+    api::{FileMetadata, GetTimelineResult, LinkPreviewResponse, ScrollDirection},
     commands::Command,
     profile::UserProfile,
     timeline::UiMediaSource,

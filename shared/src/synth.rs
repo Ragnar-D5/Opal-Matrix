@@ -1,9 +1,121 @@
-use base64::{engine::general_purpose::STANDARD, Engine as _};
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde::{Deserialize, Serialize};
-
-use crate::profile::{Instrument, SonicSignature};
+use sha2::{Digest, Sha256};
 
 const BASE_MIDI: i32 = 57; // A3 — the octave the `root` (0..12) sits in
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Scale {
+    #[default]
+    MajorPentatonic,
+    MinorPentatonic,
+    Dorian,
+    Mixolydian,
+    Lydian,
+    NaturalMinor,
+}
+
+impl Scale {
+    pub fn intervals(&self) -> &'static [u8] {
+        match self {
+            Scale::MajorPentatonic => &[0, 2, 4, 7, 9],
+            Scale::MinorPentatonic => &[0, 3, 5, 7, 10],
+            Scale::Dorian => &[0, 2, 3, 5, 7, 9, 10],
+            Scale::Mixolydian => &[0, 2, 4, 5, 7, 9, 10],
+            Scale::Lydian => &[0, 2, 4, 6, 7, 9, 11],
+            Scale::NaturalMinor => &[0, 2, 3, 5, 7, 8, 10],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Rhythm {
+    #[default]
+    Even,
+    Tresillo,
+    Gallop,
+    Dotted,
+    LongShort,
+    Syncopated,
+    Cascade,
+}
+
+impl Rhythm {
+    pub fn pattern(&self) -> &'static [u8] {
+        match self {
+            Rhythm::Even => &[2, 2, 2, 2],
+            Rhythm::Tresillo => &[3, 3, 2],
+            Rhythm::Gallop => &[1, 1, 2, 2, 2],
+            Rhythm::Dotted => &[3, 1, 3, 1],
+            Rhythm::LongShort => &[4, 2, 2],
+            Rhythm::Syncopated => &[2, 3, 3],
+            Rhythm::Cascade => &[1, 1, 1, 1, 4],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum Instrument {
+    #[default]
+    Synth,
+    Pluck,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct SonicSignature {
+    pub root: u8,
+    pub scale: Scale,
+    pub progression: Vec<i8>,
+    pub rhythm: Rhythm,
+    pub instrument: Instrument,
+}
+
+const SCALES: [Scale; 6] = [
+    Scale::MajorPentatonic,
+    Scale::MinorPentatonic,
+    Scale::Dorian,
+    Scale::Mixolydian,
+    Scale::Lydian,
+    Scale::NaturalMinor,
+];
+const RHYTHMS: [Rhythm; 7] = [
+    Rhythm::Even,
+    Rhythm::Tresillo,
+    Rhythm::Gallop,
+    Rhythm::Dotted,
+    Rhythm::LongShort,
+    Rhythm::Syncopated,
+    Rhythm::Cascade,
+];
+const PROGS: [&[i8]; 7] = [
+    &[0, 4],
+    &[0, 5],
+    &[5, 0],
+    &[0, 3],
+    &[3, 4],
+    &[0, 4, 5],
+    &[0, 5, 3],
+];
+
+impl SonicSignature {
+    pub fn from_user_id(s: &str) -> Self {
+        let hash = Sha256::digest(s.as_bytes());
+
+        Self {
+            scale: SCALES[hash[0] as usize % SCALES.len()],
+            root: hash[1] % 12,
+            progression: PROGS[hash[2] as usize % PROGS.len()].to_vec(),
+            rhythm: RHYTHMS[hash[6] as usize % RHYTHMS.len()],
+            instrument: if hash[7] & 1 == 0 {
+                Instrument::Synth
+            } else {
+                Instrument::Pluck
+            },
+        }
+    }
+}
 
 /// What the signature is being played *for*. Identity comes from the signature;
 /// expression (speed, bass, direction, length) comes from the event.
@@ -13,6 +125,8 @@ pub enum SignatureEvent {
     Left,
     Muted,
     Unmuted,
+    Deafened,
+    Undeafened,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -70,6 +184,24 @@ impl SignatureEvent {
                 octave_shift: 0,
                 arpeggio: false,
                 gain: 0.6,
+                max_notes: Some(2),
+            },
+            SignatureEvent::Deafened => Performance {
+                tempo: 140.0,
+                bass: BassMode::None,
+                ascending: false,
+                octave_shift: -12,
+                arpeggio: false,
+                gain: 0.5,
+                max_notes: Some(2),
+            },
+            SignatureEvent::Undeafened => Performance {
+                tempo: 140.0,
+                bass: BassMode::None,
+                ascending: true,
+                octave_shift: 0,
+                arpeggio: false,
+                gain: 0.5,
                 max_notes: Some(2),
             },
         }
@@ -423,4 +555,40 @@ fn encode_wav_stereo(left: &[f32], right: &[f32]) -> Vec<u8> {
         }
     }
     buf
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ProfileAudio {
+    pub joined: String,
+    pub left: String,
+    pub muted: String,
+    pub unmuted: String,
+    pub deafened: String,
+    pub undeafened: String,
+}
+
+impl ProfileAudio {
+    pub fn new(sig: SonicSignature) -> Self {
+        Self {
+            joined: signature_audio_src(&sig, SignatureEvent::Joined),
+            left: signature_audio_src(&sig, SignatureEvent::Left),
+            muted: signature_audio_src(&sig, SignatureEvent::Muted),
+            unmuted: signature_audio_src(&sig, SignatureEvent::Unmuted),
+            deafened: signature_audio_src(&sig, SignatureEvent::Deafened),
+            undeafened: signature_audio_src(&sig, SignatureEvent::Undeafened),
+        }
+    }
+}
+
+impl Default for ProfileAudio {
+    fn default() -> Self {
+        Self {
+            joined: String::new(),
+            left: String::new(),
+            muted: String::new(),
+            unmuted: String::new(),
+            deafened: String::new(),
+            undeafened: String::new(),
+        }
+    }
 }

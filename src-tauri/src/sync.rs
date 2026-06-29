@@ -1,6 +1,7 @@
 use matrix_sdk::{
     Client as MatrixClient, SessionChange, config::SyncSettings, ruma::presence::PresenceState,
 };
+use shared::synth::ProfileAudio;
 use std::pin::pin;
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, async_runtime::spawn};
@@ -25,7 +26,11 @@ use crate::{
 };
 use futures_util::StreamExt;
 
-pub async fn attach_callbacks(client: &MatrixClient, handle: &AppHandle) -> Result<(), TauriError> {
+pub async fn attach_callbacks(
+    client: &MatrixClient,
+    handle: &AppHandle,
+    default_audio: &ProfileAudio,
+) -> Result<(), TauriError> {
     let mut session_subscriber = client.subscribe_to_session_changes();
     let client_clone = client.clone();
 
@@ -63,13 +68,21 @@ pub async fn attach_callbacks(client: &MatrixClient, handle: &AppHandle) -> Resu
     let rooms = client.rooms();
 
     send_sidebar(&rooms, handle, &own_id).await?;
-    send_user_to_frontend(handle, client).await?;
+    send_user_to_frontend(handle, client, default_audio).await?;
 
     let members_client = client.clone();
     let members_handle = handle.clone();
     let members_rooms = rooms.clone();
+    let audio_clone = default_audio.clone();
     spawn(async move {
-        if let Err(e) = send_all_members(&members_client, &members_handle, &members_rooms).await {
+        if let Err(e) = send_all_members(
+            &members_client,
+            &members_handle,
+            &members_rooms,
+            &audio_clone,
+        )
+        .await
+        {
             log::error!("Failed to send all members: {:?}", e);
         }
     });
@@ -119,6 +132,7 @@ pub async fn attach_callbacks(client: &MatrixClient, handle: &AppHandle) -> Resu
     });
 
     client.add_event_handler_context(handle.clone());
+    client.add_event_handler_context(default_audio.clone());
 
     let debounce = Arc::new(Mutex::new(ProfileDebounce::default()));
     client.add_event_handler_context(debounce);

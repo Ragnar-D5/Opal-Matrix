@@ -10,13 +10,14 @@ use notify::Watcher;
 use percent_encoding::percent_decode_str;
 use shared::api::RestoreResponse;
 use shared::api::errors::LoginError;
-use toml_edit::{DocumentMut};
-use std::collections::{HashMap};
+use shared::synth::ProfileAudio;
+use std::collections::HashMap;
 use std::fs::{read_to_string, write};
 use std::str::FromStr;
 use std::sync::Arc;
 use tauri::async_runtime::{block_on, spawn};
 use tokio::sync::{RwLock, mpsc};
+use toml_edit::DocumentMut;
 
 use bytes::Bytes;
 use chrono::Local;
@@ -45,8 +46,7 @@ use crate::matrix_api::media::{
     get_user_avatar,
 };
 use crate::state::{
-    AppState, AudioManager, LiveKitRoomManager, MediaManager,
-    TaskManager, TimelineManager,
+    AppState, AudioManager, LiveKitRoomManager, MediaManager, TaskManager, TimelineManager,
 };
 use crate::sync::attach_callbacks;
 
@@ -179,6 +179,7 @@ where
 async fn try_restore(
     app_handle: AppHandle,
     matrix_client: State<'_, RwLock<MatrixClient>>,
+    default_audio: State<'_, ProfileAudio>,
 ) -> Result<RestoreResponse, TauriError> {
     let session_result = tokio::task::spawn_blocking(keyring::get_last_active_session)
         .await
@@ -218,7 +219,7 @@ async fn try_restore(
     });
     new_client.restore_session(session).await?;
 
-    attach_callbacks(&new_client, &app_handle).await?;
+    attach_callbacks(&new_client, &app_handle, default_audio.inner()).await?;
 
     let user_id = new_client.user_id().unwrap().to_string();
 
@@ -234,6 +235,7 @@ async fn login(
     recovery_key: String,
     app_handle: AppHandle,
     matrix_client: State<'_, RwLock<MatrixClient>>,
+    default_audio: State<'_, ProfileAudio>,
     handle: AppHandle,
 ) -> Result<String, LoginError> {
     info!("Logging in new");
@@ -325,10 +327,12 @@ async fn login(
         })?;
     log::debug!("Device verified, starting sync loop");
 
-    attach_callbacks(&new_client, &handle).await.map_err(|e| {
-        error!("Failed to start sync loop: {:?}", e);
-        LoginError::BackendError
-    })?;
+    attach_callbacks(&new_client, &handle, default_audio.inner())
+        .await
+        .map_err(|e| {
+            error!("Failed to start sync loop: {:?}", e);
+            LoginError::BackendError
+        })?;
     log::debug!("Sync loop started");
 
     let user_id = new_client.user_id().unwrap().to_string();
@@ -709,6 +713,7 @@ pub fn run() {
             app.manage(MediaManager::default());
             app.manage(LiveKitRoomManager::default());
             app.manage(AudioManager::new(app.handle().clone()));
+            app.manage(ProfileAudio::default());
 
             #[cfg(not(target_os = "android"))]
             let main_window = app

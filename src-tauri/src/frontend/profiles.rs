@@ -2,25 +2,33 @@ use std::collections::HashMap;
 
 use futures::future::join_all;
 use matrix_sdk::{
+    Client, Room, RoomMemberships,
     event_handler::Ctx,
     ruma::{
+        OwnedUserId, UserId,
         events::{room::member::OriginalSyncRoomMemberEvent, typing::SyncTypingEvent},
         profile::ProfileFieldName,
-        OwnedUserId, UserId,
     },
-    Client, Room, RoomMemberships,
 };
-use shared::profile::{CustomProperties, MemberProfile, UserProfile};
-use tauri::{command, AppHandle, Emitter};
+use shared::{
+    profile::{CustomProperties, MemberProfile, UserProfile},
+    synth::ProfileAudio,
+};
+use tauri::{AppHandle, Emitter, State, async_runtime::spawn_blocking, command};
+use tokio::sync::RwLock;
 
-use crate::{matrix_api::profile::get_custom_fields, MatrixClientState, TauriError};
+use crate::{TauriError, matrix_api::profile::get_custom_fields};
 
 pub async fn on_member_update(
     event: OriginalSyncRoomMemberEvent,
     room: Room,
     app_handle: Ctx<AppHandle>,
+    default_audio: Ctx<ProfileAudio>,
 ) {
     let content = event.content;
+
+    let (custom_properties, sonic_signature) =
+        get_custom_fields(&room.client(), event.state_key.clone(), &default_audio).await;
 
     let profile = MemberProfile {
         room_id: room.room_id().to_string(),
@@ -29,13 +37,26 @@ pub async fn on_member_update(
             display_name: content.displayname,
             has_avatar: content.avatar_url.is_some(),
 
-            custom_properties: get_custom_fields(&room.client(), event.state_key.clone()).await,
+            custom_properties,
         },
     };
 
     let payload = HashMap::from([(room.room_id().to_string(), vec![profile.clone()])]);
-    send_member_update(&app_handle, payload).unwrap_or_else(|e| {
+    if let Err(e) = send_member_update(&app_handle, payload) {
         log::error!("Failed to send member update: {:?}", e);
+    };
+
+    let handle = app_handle.clone();
+    let mut profile = profile.clone();
+
+    spawn_blocking(move || {
+        let audio = ProfileAudio::new(sonic_signature);
+
+        profile.profile.custom_properties.audio = audio;
+        let payload = HashMap::from([(room.room_id().to_string(), vec![profile])]);
+        if let Err(e) = send_member_update(&handle, payload) {
+            log::error!("Failed to send member update with audio: {:?}", e);
+        }
     });
 }
 
@@ -43,6 +64,7 @@ pub async fn send_all_members(
     client: &Client,
     handle: &AppHandle,
     rooms: &[Room],
+    default_audio: &ProfileAudio,
 ) -> Result<(), TauriError> {
     let mut payload: HashMap<String, Vec<MemberProfile>> = HashMap::new();
     // user_id -> list of (room_id, has_avatar, display_name) across all rooms
@@ -72,7 +94,10 @@ pub async fn send_all_members(
                         user_id: user_id.to_string(),
                         display_name,
                         has_avatar,
-                        custom_properties: CustomProperties::from_user_id(user_id.as_str()),
+                        custom_properties: CustomProperties::from_user_id(
+                            user_id.as_str(),
+                            default_audio.clone(),
+                        ),
                     },
                 }
             })
@@ -91,7 +116,7 @@ pub async fn send_all_members(
         .map(|user_id| {
             let client = client.clone();
             async move {
-                let props = get_custom_fields(&client, user_id.clone()).await;
+                let props = get_custom_fields(&client, user_id.clone(), &default_audio).await;
                 (user_id, props)
             }
         })
@@ -100,8 +125,8 @@ pub async fn send_all_members(
     let results = join_all(futs).await;
 
     let mut update_payload: HashMap<String, Vec<MemberProfile>> = HashMap::new();
-    for (user_id, custom_properties) in results {
-        for (room_id, has_avatar, display_name) in &user_memberships[&user_id] {
+    for (user_id, (custom_properties, _)) in &results {
+        for (room_id, has_avatar, display_name) in &user_memberships[user_id] {
             update_payload
                 .entry(room_id.clone())
                 .or_default()
@@ -112,6 +137,30 @@ pub async fn send_all_members(
                         display_name: display_name.clone(),
                         has_avatar: *has_avatar,
                         custom_properties: custom_properties.clone(),
+                    },
+                });
+        }
+    }
+
+    send_member_update(handle, update_payload.clone())?;
+
+    update_payload.clear();
+    for (user_id, (custom_properties, sonic_signature)) in results {
+        let audio = ProfileAudio::new(sonic_signature);
+        for (room_id, has_avatar, display_name) in &user_memberships[&user_id] {
+            update_payload
+                .entry(room_id.clone())
+                .or_default()
+                .push(MemberProfile {
+                    room_id: room_id.clone(),
+                    profile: UserProfile {
+                        user_id: user_id.to_string(),
+                        display_name: display_name.clone(),
+                        has_avatar: *has_avatar,
+                        custom_properties: CustomProperties {
+                            audio: audio.clone(),
+                            ..custom_properties.clone()
+                        },
                     },
                 });
         }
@@ -136,7 +185,9 @@ pub fn send_member_update(
 #[command(rename_all = "snake_case")]
 pub async fn get_user_profile(
     user_id: String,
-    client: MatrixClientState<'_>,
+    client: State<'_, RwLock<Client>>,
+    default_audio: State<'_, ProfileAudio>,
+    handle: AppHandle,
 ) -> Result<UserProfile, TauriError> {
     let client = client.read().await;
 
@@ -154,13 +205,32 @@ pub async fn get_user_profile(
         .await?
         .is_some();
 
-    Ok(UserProfile {
+    let (custom_properties, sonic_signature) =
+        get_custom_fields(&client, user_id.clone(), &default_audio).await;
+
+    let profile = UserProfile {
         user_id: user_id.to_string(),
         display_name,
         has_avatar,
+        custom_properties,
+    };
 
-        custom_properties: get_custom_fields(&client, user_id.clone()).await,
-    })
+    {
+        let handle = handle.clone();
+        let mut profile = profile.clone();
+
+        spawn_blocking(move || {
+            let audio = ProfileAudio::new(sonic_signature);
+
+            profile.custom_properties.audio = audio;
+
+            if let Err(e) = handle.emit("user_profile", profile.clone()) {
+                log::error!("Failed to send user profile update with audio: {:?}", e);
+            }
+        });
+    }
+
+    Ok(profile)
 }
 
 pub async fn handle_typing_notice(event: SyncTypingEvent, room: Room, handle: Ctx<AppHandle>) {

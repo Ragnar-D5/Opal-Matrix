@@ -4,12 +4,17 @@ use leptos::task::spawn_local;
 use log::error;
 use serde_json::json;
 use shared::{
-    account_data::{Breadcrumbs, ServerOrder}, api::AudioDeviceInfos, profile::{CustomProperties, MemberProfile, PresenceInfo, RoomProfile, SonicSignature, UserProfile}, sidebar::{NotificationCounts, RoomKind, RoomNode, SidebarState, UserDevice}, timeline::UiMediaSource
+    account_data::{Breadcrumbs, ServerOrder},
+    api::AudioDeviceInfos,
+    profile::{CustomProperties, MemberProfile, PresenceInfo, RoomProfile, UserProfile},
+    sidebar::{NotificationCounts, RoomKind, RoomNode, SidebarState, UserDevice},
+    synth::ProfileAudio,
+    timeline::UiMediaSource,
 };
 
 use crate::{
     app::{CurrentWindow, call_tauri},
-    components::{chat::Attachment, user_profile::{MemberProfileExt, room_as_profile}},
+    components::{chat::Attachment, user_profile::MemberProfileExt},
     tauri_functions::get_user_profile,
 };
 use leptos::prelude::*;
@@ -467,7 +472,12 @@ impl AppState {
         let sidebar_state = self.sidebar_state.get();
 
         let server_rooms: Vec<RoomNode> = sidebar_state.server_rooms.values().cloned().collect();
-        [server_rooms, sidebar_state.dms, sidebar_state.orphaned_rooms].concat()
+        [
+            server_rooms,
+            sidebar_state.dms,
+            sidebar_state.orphaned_rooms,
+        ]
+        .concat()
     }
 
     pub fn get_room(&self, room_id: &str) -> Option<RoomNode> {
@@ -505,24 +515,28 @@ pub struct ProfileStore {
     pub presences: RwSignal<HashMap<String, ArcRwSignal<PresenceInfo>>>,
 
     pub user_profiles: ArcRwSignal<HashMap<String, ArcRwSignal<UserProfile>>>,
+    default_profile_audio: ProfileAudio,
 }
 
 impl ProfileStore {
-    pub fn get_member_profile(&self, room_id: &str, user_id: &str) -> ArcRwSignal<MemberProfile> {
-        if room_id.is_empty() {
-            return ArcRwSignal::new(MemberProfile {
-                room_id: room_id.to_string(),
-                profile: UserProfile {
-                    user_id: user_id.to_string(),
-                    display_name: None,
-                    has_avatar: false,
-                    custom_properties: CustomProperties::default(),
-                },
-            });
+    pub fn room_as_profile(&self, room_id: &str) -> MemberProfile {
+        MemberProfile {
+            room_id: room_id.to_string(),
+            profile: UserProfile {
+                user_id: room_id.to_string(),
+                display_name: Some("room".to_string()),
+                has_avatar: false,
+                custom_properties: CustomProperties::from_user_id(
+                    room_id,
+                    self.default_profile_audio.clone(),
+                ),
+            },
         }
+    }
 
+    pub fn get_member_profile(&self, room_id: &str, user_id: &str) -> ArcRwSignal<MemberProfile> {
         if room_id == user_id {
-            return ArcRwSignal::new(room_as_profile(room_id));
+            return ArcRwSignal::new(self.room_as_profile(room_id));
         }
 
         let existing_signal = self.members.with_untracked(|rooms| {
@@ -542,7 +556,10 @@ impl ProfileStore {
                 user_id: user_id.to_string(),
                 display_name: None,
                 has_avatar: false,
-                custom_properties: CustomProperties::default(),
+                custom_properties: CustomProperties::from_user_id(
+                    user_id,
+                    self.default_profile_audio.clone(),
+                ),
             },
         });
 
@@ -585,7 +602,10 @@ impl ProfileStore {
             user_id: user_id.to_string(),
             display_name: None,
             has_avatar: false,
-            custom_properties: CustomProperties::default(),
+            custom_properties: CustomProperties::from_user_id(
+                user_id,
+                self.default_profile_audio.clone(),
+            ),
         });
 
         self.user_profiles.update(|profiles| {
@@ -643,10 +663,10 @@ impl ProfileSignal {
         }
     }
 
-    pub fn sonic_signature(&self) -> SonicSignature {
+    pub fn audio(&self) -> ProfileAudio {
         match self {
-            ProfileSignal::User(sig) => sig.get().get_sonic_signature(),
-            ProfileSignal::Member(sig) => sig.get().get_sonic_signature(),
+            ProfileSignal::User(sig) => sig.get().get_audio(),
+            ProfileSignal::Member(sig) => sig.get().get_audio(),
         }
     }
 

@@ -1,7 +1,7 @@
 use csscolorparser::Color;
 use leptos::prelude::*;
 use shared::{
-    profile::{CustomProperties, MemberProfile, RoomProfile, UserProfile},
+    profile::{MemberProfile, RoomProfile, UserProfile},
     timeline::{RichTextSpan, RoomIdFormat},
     unknown_color,
 };
@@ -345,19 +345,6 @@ impl MemberProfileExt for Option<UserProfile> {
 
     fn render_name_no_popup<T: AsRef<str>>(self, font_size_str: T) -> impl IntoView {
         self.render_name(font_size_str, false)
-    }
-}
-
-pub fn room_as_profile<T: ToString>(room_id: T) -> MemberProfile {
-    MemberProfile {
-        room_id: room_id.to_string(),
-        profile: UserProfile {
-            user_id: room_id.to_string(),
-            display_name: Some("room".to_string()),
-            has_avatar: false,
-
-            custom_properties: CustomProperties::default(),
-        },
     }
 }
 
