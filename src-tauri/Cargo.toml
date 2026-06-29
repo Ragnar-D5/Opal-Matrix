@@ -96,3 +96,6 @@ apple-native-keyring-store = { version = "1.0", features = ["keychain"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-native-keyring-store = "1.0"
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-updater = "2"
