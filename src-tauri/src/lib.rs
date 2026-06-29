@@ -11,6 +11,7 @@ use percent_encoding::percent_decode_str;
 use shared::api::RestoreResponse;
 use shared::api::errors::LoginError;
 use shared::synth::ProfileAudio;
+use tauri_plugin_updater::UpdaterExt;
 use std::collections::HashMap;
 use std::fs::{read_to_string, write};
 use std::str::FromStr;
@@ -505,6 +506,22 @@ pub fn run() {
             let config_dir = app.path().app_config_dir().map_err(|e| {
                 std::io::Error::other(format!("Failed to resolve app config dir: {e}"))
             })?;
+
+            let clone = app.handle().clone();
+            spawn(async move {
+                if let Some(update) = clone.updater().map_err(|e| {
+                    TauriError::from(format!("Failed to get updates: {e}"))
+                })?.check().await.map_err(|e| {
+                    TauriError::from(format!("Failed to check for updates: {e}"))
+                })? {
+                    log::info!("Update available: {:?}, {:?}, {:?}, {:?}", update.body, update.current_version, update.current_version, update.download_url);
+                } else {
+                    log::info!("No update available");
+                }
+
+                let result: Result<(), TauriError> = Ok(());
+                result
+            });
 
             std::fs::create_dir_all(&config_dir)?;
 
