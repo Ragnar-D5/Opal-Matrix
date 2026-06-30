@@ -1,13 +1,15 @@
 use csscolorparser::Color;
 use leptos::prelude::*;
-use overlays::mute_menu_popup::MuteMenuPopup;
-use phosphor_leptos::{Icon, IconWeight, CARET_DOWN, HEADPHONES, MICROPHONE, X};
+use phosphor_leptos::{Icon, IconWeight, CARET_DOWN, CARET_UP, HEADPHONES, MICROPHONE, X};
 use shared::ColorExt;
 use web_sys::MouseEvent;
 
 pub use overlays::settings::SettingsIcon;
 
-use crate::tauri_functions::{close_window, get_audio_devices, minimize_window, toggle_fullscreen};
+use crate::{
+    components::overlays::audi_menu::audio_device_popup,
+    tauri_functions::{close_window, get_audio_devices, minimize_window, toggle_fullscreen},
+};
 
 pub(crate) mod authentication;
 pub(crate) mod blurhash;
@@ -130,10 +132,20 @@ where
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum AudioMenu {
+    Mute,
+    Deafen,
+}
+
 #[component]
-pub fn MuteMenu(#[prop(into, optional)] class: String) -> impl IntoView {
+pub fn MuteMenu(
+    #[prop(into, optional)] class: String,
+    open: RwSignal<Option<AudioMenu>>,
+) -> impl IntoView {
+    // None = neither hovered, Some(true) = mic hovered, Some(false) = caret hovered
     let hovered: RwSignal<Option<bool>> = RwSignal::new(None);
-    let open: RwSignal<bool> = RwSignal::new(false);
+    let is_open = move || open.get() == Some(AudioMenu::Mute);
 
     view! {
         <div
@@ -141,7 +153,11 @@ pub fn MuteMenu(#[prop(into, optional)] class: String) -> impl IntoView {
             on:mouseleave=move |_| hovered.set(None)
         >
             {move || {
-                if open.get() { view! { <MuteMenuPopup on_close=Callback::new(move |_| open.set(false)) /> }.into_any() } else { ().into_any() }
+                if is_open() {
+                    audio_device_popup(Callback::new(move |_| open.set(None)), true)
+                } else {
+                    ().into_any()
+                }
             }}
 
             <button
@@ -159,28 +175,45 @@ pub fn MuteMenu(#[prop(into, optional)] class: String) -> impl IntoView {
                 on:mouseenter=move |_| hovered.set(Some(false))
                 on:click=move |e| {
                     e.stop_propagation();
-                    open.update(|o| *o = !*o);
-                    if open.get_untracked() {
+                    let now_open = !is_open();
+                    open.set(if now_open { Some(AudioMenu::Mute) } else { None });
+                    if now_open {
                         get_audio_devices();
                     }
                 }
             >
-                <Icon icon=CARET_DOWN size="12px" />
+                {move || {
+                    view! {
+                        <Icon icon=if is_open() { CARET_UP } else { CARET_DOWN } size="12px" />
+                    }
+                }}
             </button>
         </div>
     }
 }
 
 #[component]
-pub fn DeafenMenu(#[prop(into, optional)] class: String) -> impl IntoView {
+pub fn DeafenMenu(
+    #[prop(into, optional)] class: String,
+    open: RwSignal<Option<AudioMenu>>,
+) -> impl IntoView {
     // None = neither hovered, Some(true) = mic hovered, Some(false) = caret hovered
     let hovered: RwSignal<Option<bool>> = RwSignal::new(None);
+    let is_open = move || open.get() == Some(AudioMenu::Deafen);
 
     view! {
         <div
-            class=format!("flex flex-row gap-[1px] h-full {class} py-[9px] cursor-pointer")
+            class=format!("relative flex flex-row gap-[1px] h-full {class} py-[9px] cursor-pointer")
             on:mouseleave=move |_| hovered.set(None)
         >
+            {move || {
+                if is_open() {
+                    audio_device_popup(Callback::new(move |_| open.set(None)), false)
+                } else {
+                    ().into_any()
+                }
+            }}
+
             <button
                 class="text-muted hover:text-bright cursor-pointer hover:text-bright rounded-l-(--ui-border-radius) h-full aspect-square flex items-center justify-center"
                 class=("bg-(--color-item-selected)", move || hovered.get() == Some(true))
@@ -194,8 +227,20 @@ pub fn DeafenMenu(#[prop(into, optional)] class: String) -> impl IntoView {
                 class=("bg-(--color-item-selected)", move || hovered.get() == Some(false))
                 class=("bg-(--color-item-hover)", move || hovered.get() == Some(true))
                 on:mouseenter=move |_| hovered.set(Some(false))
+                on:click=move |e| {
+                    e.stop_propagation();
+                    let now_open = !is_open();
+                    open.set(if now_open { Some(AudioMenu::Deafen) } else { None });
+                    if now_open {
+                        get_audio_devices();
+                    }
+                }
             >
-                <Icon icon=CARET_DOWN size="12px" />
+                {move || {
+                    view! {
+                        <Icon icon=if is_open() { CARET_UP } else { CARET_DOWN } size="12px" />
+                    }
+                }}
             </button>
         </div>
     }

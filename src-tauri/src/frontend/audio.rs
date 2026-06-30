@@ -112,7 +112,7 @@ pub fn emit_devices_update(
         default_output_device_id,
 
         active_input_device_id: active_input_id,
-        active_output_devive_id: active_output_id,
+        active_output_device_id: active_output_id,
     };
 
     send_event(&handle, &payload);

@@ -120,6 +120,22 @@ pub struct AudioDeviceInfos {
     pub default_output_device_id: Option<String>,
     pub default_input_device_id: Option<String>,
 
-    pub active_output_devive_id: Option<String>,
+    pub active_output_device_id: Option<String>,
     pub active_input_device_id: Option<String>,
+}
+
+impl AudioDeviceInfos {
+    pub fn get_active_device(&self, input: bool) -> Option<AudioDevice> {
+        if input {
+            self.active_input_device_id
+                .as_ref()
+                .and_then(|id| self.input_devices.iter().find(|d| &d.id == id))
+                .cloned()
+        } else {
+            self.active_output_device_id
+                .as_ref()
+                .and_then(|id| self.output_devices.iter().find(|d| &d.id == id))
+                .cloned()
+        }
+    }
 }

@@ -5,7 +5,7 @@ use crate::{
     components::{
         presence::PresenceBadge,
         user_profile::{render_url_icon, MemberProfileExt},
-        DeafenMenu, FloatingTile, MuteMenu, SettingsIcon,
+        AudioMenu, DeafenMenu, FloatingTile, MuteMenu, SettingsIcon,
     },
     state::{AppState, ProfileStore},
 };
@@ -845,6 +845,7 @@ pub fn ProfileCard() -> impl IntoView {
     let store: ProfileStore = expect_context();
 
     let current_profile: RwSignal<Option<MemberProfile>> = RwSignal::new(None);
+    let open_audio_menu: RwSignal<Option<AudioMenu>> = RwSignal::new(None);
 
     let profile_store = store.clone();
     Effect::new(move |_| {
@@ -883,8 +884,8 @@ pub fn ProfileCard() -> impl IntoView {
     view! {
         <div class="flex items-center justify-start w-full h-full px-2 gap-2">
             {current_room_profile} <div class="ml-auto flex items-center h-full gap-2">
-                <MuteMenu />
-                <DeafenMenu />
+                <MuteMenu open=open_audio_menu />
+                <DeafenMenu open=open_audio_menu />
                 <SettingsIcon />
             </div>
         </div>
