@@ -1,0 +1,83 @@
+name: 'publish'
+
+on:
+  push:
+    branches:
+      - release
+  workflow_dispatch:
+
+jobs:
+  publish-tauri:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: 'ubuntu-22.04'
+            args: ''
+          - platform: 'windows-latest'
+            args: ''
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+     # 1. Install Linux System Dependencies (Added libasound2-dev for ALSA support)
+      - name: Install Dependencies (Ubuntu only)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libasound2-dev
+          
+      # 2. Install Rust WITH the WebAssembly target
+      - name: Install Rust Stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: 'wasm32-unknown-unknown'
+
+      # 3. Install Trunk
+      - name: Install Trunk
+        uses: jetli/trunk-action@v0.5.1
+        with:
+          version: 'latest'
+
+      # 4A. Official Tailwind Installation for Linux
+      # Moves it directly into /usr/local/bin which is pre-mapped on Linux runners
+      - name: Install Tailwind CLI (Ubuntu)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          curl -sLO https://github.com/tailwindlabs/tailwindcss/releases/latest/download/tailwindcss-linux-x64
+          chmod +x tailwindcss-linux-x64
+          sudo mv tailwindcss-linux-x64 /usr/local/bin/tailwindcss
+      # 4B. Official Tailwind Installation for Windows
+      # Pulls the .exe, sets up a clean directory, and appends to GITHUB_PATH using modern syntax
+      - name: Install Tailwind CLI (Windows)
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://github.com/tailwindlabs/tailwindcss/releases/latest/download/tailwindcss-windows-x64.exe" -OutFile "tailwindcss.exe"
+          New-Item -ItemType Directory -Force -Path "C:\tailwind"
+          Move-Item -Path "tailwindcss.exe" -Destination "C:\tailwind\tailwindcss.exe"
+          echo "C:\tailwind" | Out-File -Append -FilePath $env:GITHUB_PATH -Encoding utf8
+      # 5. Install cargo-binstall & Tauri CLI
+      - name: Install cargo-binstall
+        uses: taiki-e/install-action@cargo-binstall
+
+      - name: Install Tauri CLI (Precompiled)
+        run: cargo binstall -y tauri-cli
+        
+      # 6. Run the Tauri Action
+      - uses: tauri-apps/tauri-action@v0.6.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Force static CRT linkage ONLY on Windows to match the webrtc prebuilt
+          RUSTFLAGS: ${{ matrix.platform == 'windows-latest' && '-C target-feature=+crt-static' || '' }}
+        with:
+          tagName: app-v__VERSION__
+          releaseName: 'App v__VERSION__'
+          releaseBody: 'See the assets to download this version and install.'
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}
+          tauriScript: cargo tauri
