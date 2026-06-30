@@ -66,8 +66,17 @@ jobs:
 
       - name: Install Tauri CLI (Precompiled)
         run: cargo binstall -y tauri-cli
-        
-      # 6. Run the Tauri Action
+
+      # 6. Collapse TOML 1.1 multiline inline tables in Cargo.toml manifests.
+      # Cargo itself (and toml_edit, which this helper uses) is fine with
+      # them, but tauri-action's bundled TOML parser only supports TOML 1.0
+      # and errors on newlines inside `{ ... }`. This only rewrites the
+      # checkout for this CI run, the repo keeps the multiline style.
+      - name: Normalize Cargo.toml for tauri-action
+        shell: bash
+        run: cargo run --manifest-path .github/tools/collapse-toml/Cargo.toml --quiet -- Cargo.toml shared/Cargo.toml macros/Cargo.toml src-tauri/Cargo.toml
+
+      # 7. Run the Tauri Action
       - uses: tauri-apps/tauri-action@v0.6.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
