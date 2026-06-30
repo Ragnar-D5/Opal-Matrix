@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    opal_matrix_backend::run::run();
+    opal_matrix_backend::run();
 }

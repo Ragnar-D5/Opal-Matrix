@@ -20,9 +20,9 @@ use log::info;
 use tauri::{command, AppHandle, Emitter, Url};
 use tauri::{Manager, State};
 
+pub mod builder;
 pub(crate) mod frontend;
 pub(crate) mod matrix_api;
-pub mod run;
 pub(crate) mod settings;
 pub(crate) mod state;
 pub(crate) mod sync;
@@ -33,7 +33,8 @@ pub const APP_NAME: &str = "opal-matrix";
 
 use tauri_plugin_notification::{NotificationExt, PermissionState};
 
-use crate::matrix_api::keyring::{self, StoredSession};
+use crate::builder::{add_invoke_handler, register_mxc_uri, setup_builder};
+use crate::matrix_api::keyring::{self, init_keyring, StoredSession};
 use crate::state::{AppState, TimelineManager};
 use crate::sync::attach_callbacks;
 
@@ -477,4 +478,31 @@ fn diff_settings(old: &DocumentMut, new: &DocumentMut) -> Vec<String> {
         }
     }
     changed
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("Failed to install rustls crypto provider");
+
+    init_keyring();
+
+    let mut builder = tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_cli::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_http::init());
+
+    builder = setup_builder(builder);
+    builder = add_invoke_handler(builder);
+    builder = register_mxc_uri(builder);
+
+    builder
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+
+    info!("Initialized");
 }
