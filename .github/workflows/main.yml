@@ -80,8 +80,13 @@ jobs:
       - uses: tauri-apps/tauri-action@v0.6.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Force static CRT linkage ONLY on Windows to match the webrtc prebuilt
-          RUSTFLAGS: ${{ matrix.platform == 'windows-latest' && '-C target-feature=+crt-static' || '' }}
+          # Force static CRT linkage ONLY on the native Windows target, to
+          # match the webrtc prebuilt. Scoped via CARGO_TARGET_<triple>_RUSTFLAGS
+          # instead of a blanket RUSTFLAGS env var, since a blanket RUSTFLAGS
+          # would also apply to the wasm32-unknown-unknown frontend build and
+          # override the target-specific flags in .cargo/config.toml (a plain
+          # RUSTFLAGS outranks target.*.rustflags regardless of how it's set).
+          CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS: ${{ matrix.platform == 'windows-latest' && '-C target-feature=+crt-static' || '' }}
         with:
           tagName: app-v__VERSION__
           releaseName: 'App v__VERSION__'
