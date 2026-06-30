@@ -1,4 +1,4 @@
-use base64::{Engine as _, engine::general_purpose::STANDARD};
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -557,7 +557,7 @@ fn encode_wav_stereo(left: &[f32], right: &[f32]) -> Vec<u8> {
     buf
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct ProfileAudio {
     pub joined: String,
     pub left: String,
@@ -576,19 +576,6 @@ impl ProfileAudio {
             unmuted: signature_audio_src(&sig, SignatureEvent::Unmuted),
             deafened: signature_audio_src(&sig, SignatureEvent::Deafened),
             undeafened: signature_audio_src(&sig, SignatureEvent::Undeafened),
-        }
-    }
-}
-
-impl Default for ProfileAudio {
-    fn default() -> Self {
-        Self {
-            joined: String::new(),
-            left: String::new(),
-            muted: String::new(),
-            unmuted: String::new(),
-            deafened: String::new(),
-            undeafened: String::new(),
         }
     }
 }

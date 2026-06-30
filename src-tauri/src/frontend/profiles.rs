@@ -2,22 +2,22 @@ use std::collections::HashMap;
 
 use futures::future::join_all;
 use matrix_sdk::{
-    Client, Room, RoomMemberships,
     event_handler::Ctx,
     ruma::{
-        OwnedUserId, UserId,
         events::{room::member::OriginalSyncRoomMemberEvent, typing::SyncTypingEvent},
         profile::ProfileFieldName,
+        OwnedUserId, UserId,
     },
+    Client, Room, RoomMemberships,
 };
 use shared::{
     profile::{CustomProperties, MemberProfile, UserProfile},
     synth::ProfileAudio,
 };
-use tauri::{AppHandle, Emitter, State, async_runtime::spawn_blocking, command};
+use tauri::{async_runtime::spawn_blocking, command, AppHandle, Emitter, State};
 use tokio::sync::RwLock;
 
-use crate::{TauriError, matrix_api::profile::get_custom_fields};
+use crate::{matrix_api::profile::get_custom_fields, TauriError};
 
 pub async fn on_member_update(
     event: OriginalSyncRoomMemberEvent,
@@ -116,7 +116,7 @@ pub async fn send_all_members(
         .map(|user_id| {
             let client = client.clone();
             async move {
-                let props = get_custom_fields(&client, user_id.clone(), &default_audio).await;
+                let props = get_custom_fields(&client, user_id.clone(), default_audio).await;
                 (user_id, props)
             }
         })
