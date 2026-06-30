@@ -9062,9 +9062,11 @@ name = "shared"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "const_format",
  "csscolorparser",
  "ego-tree",
  "linkify",
+ "macros",
  "scraper 0.27.0",
  "serde",
  "sha2 0.11.0",

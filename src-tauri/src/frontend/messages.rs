@@ -9,7 +9,7 @@ use tauri_plugin_http::reqwest;
 use tokio_util::sync::CancellationToken;
 
 use ego_tree::NodeRef;
-use log::{error, warn};
+use log::{warn};
 use matrix_sdk::ruma::{
     OwnedEventId, OwnedUserId, RoomId,
     events::{
@@ -18,15 +18,13 @@ use matrix_sdk::ruma::{
     },
 };
 use scraper::{Html, Node};
-use shared::{api::{FileMetadata, GetTimelineResult, ScrollDirection, UiAttachmentSource}, timeline::{UiTimelineDiff, coalesce_diffs}};
-use tauri::{AppHandle, Emitter, State, command};
+use shared::{api::{FileMetadata, GetTimelineResult, ScrollDirection, UiAttachmentSource}, timeline::{coalesce_diffs}};
+use tauri::{AppHandle, State, command};
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use crate::{
-    TauriError,
-    frontend::timeline::{timeline_diff_to_ui, timeline_item_to_ui},
-    state::{MediaManager, TaskManager, TimelineManager},
+    TauriError, frontend::timeline::{timeline_diff_to_ui, timeline_item_to_ui}, send_event, state::{MediaManager, TaskManager, TimelineManager}
 };
 
 #[command(rename_all = "snake_case")]
@@ -382,7 +380,7 @@ pub async fn get_timeline(
                             media_for_stream.sources.write().await.extend(new_sources);
                         }
 
-                        send_timeline_diffs(handle.clone(), diffs);
+                        send_event(&handle, &diffs);
 
                         for event_id in unknown_reply_event_ids {
                             log::debug!("Fetching unknown reply event {}", event_id);
@@ -422,13 +420,6 @@ pub async fn get_timeline(
         } => {
             result
         }
-    }
-}
-
-fn send_timeline_diffs(handle: AppHandle, diffs: Vec<UiTimelineDiff>) {
-    log::debug!("Emitting timeline update with {} diffs", diffs.len());
-    if let Err(e) = handle.emit("timeline_update", diffs) {
-        error!("Failed to emit timeline update: {:?}", e);
     }
 }
 

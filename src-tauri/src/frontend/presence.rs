@@ -2,7 +2,9 @@ use std::collections::HashMap;
 
 use matrix_sdk::ruma::{events::presence::PresenceEvent, presence::PresenceState, serde::Raw};
 use shared::profile::{PresenceInfo, PresenceStatus};
-use tauri::{AppHandle, Emitter};
+use tauri::AppHandle;
+
+use crate::send_event;
 
 fn presence_to_ui(state: PresenceState) -> PresenceStatus {
     match state {
@@ -33,16 +35,6 @@ pub fn handle_presences(presence_events: &Vec<Raw<PresenceEvent>>, app_handle: &
     }
 
     if !presence_batch.is_empty() {
-        send_presence_update(app_handle.clone(), &presence_batch).unwrap_or_else(|e| {
-            log::error!("Failed to send presence update: {:?}", e);
-        });
+        send_event(app_handle, &presence_batch);
     }
-}
-
-pub fn send_presence_update(
-    handle: AppHandle,
-    payload: &HashMap<String, PresenceInfo>,
-) -> Result<(), tauri::Error> {
-    log::debug!("Sending presence update for {} rooms", payload.len());
-    handle.emit("presence_update", payload)
 }

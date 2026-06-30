@@ -1,9 +1,9 @@
 use std::{collections::HashMap, str::FromStr};
 
-use crate::{state::AudioManager, TauriError};
+use crate::{send_event, state::AudioManager, TauriError};
 use cpal::{traits::DeviceTrait, Device, DeviceId};
 use shared::api::{AudioDevice, AudioDeviceInfos};
-use tauri::{command, AppHandle, Emitter, State};
+use tauri::{command, AppHandle, State};
 
 fn is_relevant_device(driver: &str) -> bool {
     driver == "default" || (driver.starts_with("plughw:") && driver.contains(",DEV=0"))
@@ -115,10 +115,5 @@ pub fn emit_devices_update(
         active_output_devive_id: active_output_id,
     };
 
-    log::debug!(
-        "Emitting audio_device_update event with payload: {:?}",
-        payload
-    );
-
-    handle.emit("audio_device_update", payload).unwrap();
+    send_event(&handle, &payload);
 }

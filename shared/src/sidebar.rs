@@ -1,11 +1,12 @@
 use std::collections::{HashMap, HashSet};
 
 use csscolorparser::Color;
+use macros::TauriEvent;
 use serde::{Deserialize, Serialize};
 
 use crate::{account_data::ServerOrder, profile::RoomProfile};
 
-#[derive(Debug, Serialize, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Serialize, Clone, Deserialize, PartialEq, TauriEvent)]
 pub struct UserDevice {
     pub user_id: String,
     pub device_id: String,
@@ -82,7 +83,7 @@ impl RoomNode {
     }
 }
 
-#[derive(Debug, Serialize, Clone, Default, Deserialize, PartialEq)]
+#[derive(Debug, Serialize, Clone, Default, Deserialize, PartialEq, TauriEvent)]
 pub struct SidebarState {
     pub dms: Vec<RoomNode>,
     pub top_level_servers: Vec<String>,
@@ -130,7 +131,7 @@ impl SidebarState {
     }
 }
 
-#[derive(Debug, Serialize, Clone, Deserialize, PartialEq, Default)]
+#[derive(Debug, Serialize, Clone, Deserialize, PartialEq, Default, TauriEvent)]
 pub struct NotificationCounts {
     pub highlight_count: u64,
     pub notification_count: u64,

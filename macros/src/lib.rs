@@ -1,7 +1,23 @@
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::punctuated::Punctuated;
-use syn::{Expr, ExprLit, Fields, ItemStruct, Lit, Token};
+use syn::{DeriveInput, Expr, ExprLit, Fields, ItemStruct, Lit, Token};
+
+#[proc_macro_derive(TauriEvent)]
+pub fn derive_tauri_event(input: TokenStream) -> TokenStream {
+    let input = syn::parse_macro_input!(input as DeriveInput);
+    let ident = &input.ident;
+    let name = ident.to_string();
+
+    quote! {
+        impl crate::api::events::TauriEvent for #ident {
+            fn name() -> String {
+                #name.to_string()
+            }
+        }
+    }
+    .into()
+}
 
 #[proc_macro_attribute]
 pub fn matrix_settings(_attr: TokenStream, item: TokenStream) -> TokenStream {
@@ -244,8 +260,8 @@ fn convert_settings(mut item: ItemStruct) -> TokenStream {
             }
 
             pub fn setup_backend_hook(&self) {
-                let file_sig: ReadSignal<Option<(String, String)>> = use_tauri_event("settings_file_update");
-                let cloud_sig: ReadSignal<Option<(String, String)>> = use_tauri_event("settings_cloud_update");
+                let file_sig: ReadSignal<Option<(String, String)>> = use_tauri_event_named("settings_file_update");
+                let cloud_sig: ReadSignal<Option<(String, String)>> = use_tauri_event_named("settings_cloud_update");
 
                 #(#signal_bindings)*
 

@@ -3,8 +3,11 @@ use crate::components::loading::Loading;
 use crate::components::previews::ImageLightbox;
 use crate::components::shader::BackgroundShader;
 use chrono::{DateTime, Local};
+use shared::api::events::{
+    CallMemberUpdate, NotificationUpdate, PresenceUpdate, ProfileUpdates, TypingUpdate,
+};
 use shared::api::{AudioDeviceInfos, RestoreResponse};
-use shared::sidebar::{NotificationCounts, SidebarState, UserDevice};
+use shared::sidebar::SidebarState;
 use std::collections::HashMap;
 
 use log::error;
@@ -12,7 +15,6 @@ use log::error;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use shared::account_data::{Breadcrumbs, ServerOrder};
-use shared::profile::{MemberProfile, PresenceInfo};
 use wasm_bindgen::prelude::*;
 use web_sys::HtmlImageElement;
 
@@ -24,7 +26,7 @@ use crate::components::{
     sidebar::Sidebar,
     SystemButtons,
 };
-use crate::hooks::use_tauri_event;
+use crate::hooks::{setup_update_effect, use_tauri_event, use_tauri_event_named};
 use crate::state::{AppState, ProfileStore};
 use crate::tauri_functions::{get_server_order, set_backend_room_id, set_focused_in_backend};
 
@@ -107,6 +109,16 @@ pub fn App() -> impl IntoView {
     let last_window = RwSignal::new(state.current_window.get_untracked());
 
     Effect::new(move |_| {
+        let room_id = state.active_room_id();
+
+        spawn_local(async move {
+            if let Err(e) = set_backend_room_id(room_id).await {
+                error!("Error setting backend room id: {:?}", e);
+            };
+        });
+    });
+
+    Effect::new(move |_| {
         let current = state.current_window.get();
         let previous = last_window.get_untracked();
 
@@ -119,25 +131,10 @@ pub fn App() -> impl IntoView {
         }
     });
 
-    let profile_updates: ReadSignal<Option<HashMap<String, Vec<MemberProfile>>>> =
-        use_tauri_event("member_update");
+    let profile_updates: ReadSignal<Option<ProfileUpdates>> = use_tauri_event();
 
-    Effect::new(move |_| {
-        let room_id = state.active_room_id();
-
-        spawn_local(async move {
-            if let Err(e) = set_backend_room_id(room_id).await {
-                error!("Error setting backend room id: {:?}", e);
-            };
-        });
-    });
-
-    Effect::new(move |_| {
-        let Some(update) = profile_updates.get() else {
-            return;
-        };
-
-        for (room_id, profiles) in update {
+    setup_update_effect(profile_updates, move |updates| {
+        for (room_id, profiles) in updates {
             for profile in profiles {
                 store_for_profiles
                     .get_member_profile(&room_id, &profile.profile.user_id)
@@ -176,57 +173,43 @@ pub fn App() -> impl IntoView {
         });
     });
 
-    let presence_update: ReadSignal<Option<HashMap<String, PresenceInfo>>> =
-        use_tauri_event("presence_update");
+    let presence_update: ReadSignal<Option<PresenceUpdate>> = use_tauri_event();
 
-    Effect::new(move |_| {
-        if let Some(updates) = presence_update.get() {
-            for (user_id, presence) in updates.iter() {
-                store_for_presences
-                    .get_presence(user_id)
-                    .set(presence.clone());
-            }
+    setup_update_effect(presence_update, move |updates| {
+        for (user_id, presence) in updates.iter() {
+            store_for_presences
+                .get_presence(user_id)
+                .set(presence.clone());
         }
     });
 
-    let notification_counts_update: ReadSignal<Option<HashMap<String, NotificationCounts>>> =
-        use_tauri_event("notification_counts_update");
+    let notification_counts_update: ReadSignal<Option<NotificationUpdate>> = use_tauri_event();
 
-    Effect::new(move |_| {
-        if let Some(updates) = notification_counts_update.get() {
-            state
-                .notification_counts
-                .update(|counts| counts.extend(updates));
-        }
+    setup_update_effect(notification_counts_update, move |new| {
+        state
+            .notification_counts
+            .update(|counts| counts.extend(new));
     });
 
-    let call_member_update: ReadSignal<Option<HashMap<String, Vec<UserDevice>>>> =
-        use_tauri_event("call_member_update");
+    let call_member_update: ReadSignal<Option<CallMemberUpdate>> = use_tauri_event();
 
-    Effect::new(move |_| {
-        if let Some(update) = call_member_update.get() {
-            state.update_call_members(update);
-        }
+    setup_update_effect(call_member_update, move |new| {
+        state.update_call_members(new);
     });
 
-    let typing_update: ReadSignal<Option<(String, Vec<String>)>> = use_tauri_event("typing_update");
+    let typing_update: ReadSignal<Option<TypingUpdate>> = use_tauri_event();
 
-    Effect::new(move |_| {
-        if let Some((room_id, user_ids)) = typing_update.get() {
-            state.update_typing_users(&room_id, user_ids);
-        }
+    setup_update_effect(typing_update, move |update| {
+        state.update_typing_users(&update.room_id, update.user_ids);
     });
 
-    let audio_device_update: ReadSignal<Option<AudioDeviceInfos>> =
-        use_tauri_event("audio_device_update");
+    let audio_device_update: ReadSignal<Option<AudioDeviceInfos>> = use_tauri_event();
 
-    Effect::new(move |_| {
-        if let Some(update) = audio_device_update.get() {
-            state.audio_devices.set(update);
-        }
+    setup_update_effect(audio_device_update, move |update| {
+        state.audio_devices.set(update);
     });
 
-    let sidebar_update_event: ReadSignal<Option<SidebarState>> = use_tauri_event("sidebar_update");
+    let sidebar_update_event: ReadSignal<Option<SidebarState>> = use_tauri_event();
 
     Effect::new(move |_| {
         if let Some(mut new_state) = sidebar_update_event.get() {

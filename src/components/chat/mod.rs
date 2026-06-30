@@ -12,7 +12,7 @@ use crate::{
             gif_picker::{GifPickerState, pick_gif},
         }, presence::PresenceBadge, user_profile::{MemberProfileExt, render_user_profile_card}
     },
-    hooks::use_tauri_event,
+    hooks::{setup_update_effect, use_tauri_event},
     state::{AppState, ProfileStore, RoomHeader},
     tauri_functions::{get_timeline, indicate_typing, pick_files, scroll_timeline},
 };
@@ -48,18 +48,13 @@ pub(crate) mod messages;
 fn TimeLine() -> impl IntoView {
     let state: AppState = expect_context();
 
-    let messages_update_event: ReadSignal<Option<Vec<UiTimelineDiff>>> =
-        use_tauri_event("timeline_update");
+    let messages_update_event: ReadSignal<Option<Vec<UiTimelineDiff>>> = use_tauri_event();
 
     let messages: RwSignal<Vec<RwSignal<UiTimelineItem>>> = RwSignal::new(Vec::new());
 
     let owner = Owner::current().expect("TimeLine must have an owner");
 
-    Effect::new(move |_| {
-        let Some(diffs) = messages_update_event.get() else {
-            return;
-        };
-
+    setup_update_effect(messages_update_event, move |diffs| {
         owner.with(|| {
             for diff in diffs {
                 match diff {
@@ -502,7 +497,7 @@ fn TypingUserIndicator() -> impl IntoView {
     };
 
     view! {
-        <div class="h-8 -mt-8 w-full overflow-hidden shrink-0 pointer-events-none text-normal">
+        <div class="pl-(--gap) h-8 -mt-8 w-full overflow-hidden shrink-0 pointer-events-none text-normal">
             <div
                 class="h-8 w-full flex flex-row items-center px-3 [text-shadow:0_0_8px_var(--ui-solid-bg),0_0_4px_var(--ui-solid-bg)] transition-[transform,opacity] duration-200 ease-out"
                 style=move || {

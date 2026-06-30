@@ -1,6 +1,7 @@
 use async_recursion::async_recursion;
 use matrix_sdk::deserialized_responses::SyncOrStrippedState;
 use matrix_sdk::ruma::MilliSecondsSinceUnixEpoch;
+use shared::api::events::CallMemberUpdate;
 use shared::get_color;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
@@ -15,9 +16,8 @@ use matrix_sdk::ruma::events::{AnySyncStateEvent, AnySyncTimelineEvent, Original
 use matrix_sdk::sync::RoomUpdates;
 use shared::sidebar::{NotificationCounts, RoomKind, RoomNode, SidebarState, UserDevice};
 use tauri::AppHandle;
-use tauri::Emitter;
 
-use crate::TauriError;
+use crate::{TauriError, send_event};
 
 async fn node_from_room(room: &Room, kind: RoomKind) -> RoomNode {
     let info = room.clone_info();
@@ -226,7 +226,7 @@ pub async fn send_sidebar(
         sidebar_state.orphaned_rooms.len(),
         sidebar_state.dms.len(),
     );
-    handle.emit("sidebar_update", sidebar_state)?;
+    send_event(handle, &sidebar_state);
 
     Ok(())
 }
@@ -362,16 +362,14 @@ pub async fn handle_room_updates(
 
     if should_notification_update(room_updates) {
         let counts = get_notification_counts(client).await;
-        if let Err(e) = send_notification_counts_update(handle, counts) {
-            log::error!("Failed to emit notification counts: {:?}", e);
-        }
+        send_event(handle, &counts);
     }
 
-    if let Some(call_member_updates) = extract_call_member_updates(room_updates, client).await
-        && let Err(e) = send_call_member_updates(handle, call_member_updates)
-    {
-        log::error!("Failed to emit call member updates: {:?}", e);
-    }
+    let Some(call_member_updates) = extract_call_member_updates(room_updates, client).await else {
+        return;
+    };
+
+    send_event(handle, &call_member_updates);
 }
 
 pub async fn get_notification_counts(client: &Client) -> HashMap<String, NotificationCounts> {
@@ -398,7 +396,7 @@ pub async fn get_notification_counts(client: &Client) -> HashMap<String, Notific
 pub async fn extract_call_member_updates(
     room_updates: &RoomUpdates,
     client: &Client,
-) -> Option<HashMap<String, Vec<UserDevice>>> {
+) -> Option<CallMemberUpdate> {
     let mut updates = HashMap::new();
 
     for (room_id, update) in &room_updates.joined {
@@ -492,20 +490,4 @@ pub async fn extract_call_memberships(rooms: &[Room]) -> Option<HashMap<String, 
     }
 
     (!memberships.is_empty()).then_some(memberships)
-}
-
-pub fn send_notification_counts_update(
-    handle: &AppHandle,
-    counts: HashMap<String, NotificationCounts>,
-) -> Result<(), TauriError> {
-    handle.emit("notification_counts_update", counts)?;
-    Ok(())
-}
-
-pub fn send_call_member_updates(
-    handle: &AppHandle,
-    update: HashMap<String, Vec<UserDevice>>,
-) -> Result<(), TauriError> {
-    handle.emit("call_member_update", update)?;
-    Ok(())
 }

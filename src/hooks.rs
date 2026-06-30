@@ -2,6 +2,7 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use send_wrapper::SendWrapper;
 use serde::de::DeserializeOwned;
+use shared::api::events::TauriEvent;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 
@@ -13,9 +14,9 @@ extern "C" {
     async fn listen(event: &str, handler: &js_sys::Function) -> JsValue;
 }
 
-pub fn use_tauri_event<T>(event_name: &str) -> ReadSignal<Option<T>>
+pub fn use_tauri_event_named<T>(event_name: &str) -> ReadSignal<Option<T>>
 where
-    T: DeserializeOwned + Clone + Send + Sync + 'static,
+    T: DeserializeOwned + Clone + Send + Sync + 'static + PartialEq,
 {
     let (payload_signal, set_payload_signal) = signal(None::<T>);
     let event_name_owned = event_name.to_string();
@@ -26,6 +27,9 @@ where
 
         let future = SendWrapper::new(async move {
             let closure = Closure::wrap(Box::new(move |js_val: JsValue| {
+                let previous = payload_signal.get_untracked();
+                let previous_ref = previous.as_ref();
+
                 let payload_js = match js_sys::Reflect::get(&js_val, &JsValue::from_str("payload"))
                 {
                     Ok(v) => v,
@@ -44,7 +48,11 @@ where
                 };
 
                 match serde_json::from_str::<T>(&js_string) {
-                    Ok(payload) => set_payload_signal.set(Some(payload)),
+                    Ok(payload) => {
+                        if Some(&payload) != previous_ref {
+                            set_payload_signal.set(Some(payload));
+                        }
+                    }
                     Err(e) => {
                         error!(
                             "Failed to deserialize Tauri event payload: {}; {:?}",
@@ -77,4 +85,22 @@ where
     });
 
     payload_signal
+}
+
+pub fn use_tauri_event<T>() -> ReadSignal<Option<T>>
+where
+    T: TauriEvent + DeserializeOwned + Clone + Send + Sync + 'static,
+{
+    use_tauri_event_named::<T>(&T::name())
+}
+
+pub fn setup_update_effect<T>(signal: ReadSignal<Option<T>>, closure: impl Fn(T) + 'static)
+where
+    T: TauriEvent + DeserializeOwned + Clone + Send + Sync + 'static,
+{
+    Effect::new(move |_| {
+        if let Some(payload) = signal.get() {
+            closure(payload);
+        }
+    });
 }

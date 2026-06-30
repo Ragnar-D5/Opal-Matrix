@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use macros::TauriEvent;
 use serde::{Deserialize, Deserializer, Serialize};
 
 fn deserialize_u32_or_string<'de, D: Deserializer<'de>>(d: D) -> Result<Option<u32>, D::Error> {
@@ -18,7 +19,7 @@ fn deserialize_u32_or_string<'de, D: Deserializer<'de>>(d: D) -> Result<Option<u
 }
 
 pub mod errors;
-pub mod signals;
+pub mod events;
 
 #[derive(Serialize, Deserialize)]
 pub enum RestoreResponse {
@@ -105,13 +106,13 @@ pub struct GetTimelineResult {
     pub messages: Vec<crate::timeline::UiTimelineItem>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct AudioDevice {
     pub id: String,
     pub name: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, TauriEvent)]
 pub struct AudioDeviceInfos {
     pub output_devices: Vec<AudioDevice>,
     pub input_devices: Vec<AudioDevice>,

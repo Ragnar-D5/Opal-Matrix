@@ -11,13 +11,14 @@ use matrix_sdk::{
     Client, Room, RoomMemberships,
 };
 use shared::{
+    api::events::TypingUpdate,
     profile::{CustomProperties, MemberProfile, UserProfile},
     synth::ProfileAudio,
 };
-use tauri::{async_runtime::spawn_blocking, command, AppHandle, Emitter, State};
+use tauri::{async_runtime::spawn_blocking, command, AppHandle, State};
 use tokio::sync::RwLock;
 
-use crate::{matrix_api::profile::get_custom_fields, TauriError};
+use crate::{matrix_api::profile::get_custom_fields, send_event, TauriError};
 
 pub async fn on_member_update(
     event: OriginalSyncRoomMemberEvent,
@@ -42,9 +43,7 @@ pub async fn on_member_update(
     };
 
     let payload = HashMap::from([(room.room_id().to_string(), vec![profile.clone()])]);
-    if let Err(e) = send_member_update(&app_handle, payload) {
-        log::error!("Failed to send member update: {:?}", e);
-    };
+    send_event(&app_handle, &payload);
 
     let handle = app_handle.clone();
     let mut profile = profile.clone();
@@ -54,9 +53,7 @@ pub async fn on_member_update(
 
         profile.profile.custom_properties.audio = audio;
         let payload = HashMap::from([(room.room_id().to_string(), vec![profile])]);
-        if let Err(e) = send_member_update(&handle, payload) {
-            log::error!("Failed to send member update with audio: {:?}", e);
-        }
+        send_event(&handle, &payload);
     });
 }
 
@@ -106,10 +103,8 @@ pub async fn send_all_members(
         payload.insert(room_id, profiles);
     }
 
-    // Emit immediately with derived properties so the UI renders right away
-    send_member_update(handle, payload)?;
+    send_event(handle, &payload);
 
-    // Fetch custom fields for each unique user in parallel (one fetch per user, not per membership)
     let futs: Vec<_> = user_memberships
         .keys()
         .cloned()
@@ -142,7 +137,7 @@ pub async fn send_all_members(
         }
     }
 
-    send_member_update(handle, update_payload.clone())?;
+    send_event(handle, &update_payload);
 
     update_payload.clear();
     for (user_id, (custom_properties, sonic_signature)) in results {
@@ -166,18 +161,7 @@ pub async fn send_all_members(
         }
     }
 
-    send_member_update(handle, update_payload)?;
-
-    Ok(())
-}
-
-pub fn send_member_update(
-    handle: &AppHandle,
-    payload: HashMap<String, Vec<MemberProfile>>,
-) -> Result<(), TauriError> {
-    log::debug!("Updating {} members", payload.len());
-
-    handle.emit("member_update", payload)?;
+    send_event(handle, &update_payload);
 
     Ok(())
 }
@@ -224,9 +208,7 @@ pub async fn get_user_profile(
 
             profile.custom_properties.audio = audio;
 
-            if let Err(e) = handle.emit("user_profile", profile.clone()) {
-                log::error!("Failed to send user profile update with audio: {:?}", e);
-            }
+            send_event(&handle, &profile);
         });
     }
 
@@ -242,7 +224,11 @@ pub async fn handle_typing_notice(event: SyncTypingEvent, room: Room, handle: Ct
         .map(|v| v.to_string())
         .collect();
 
-    if let Err(e) = handle.emit("typing_update", (room_id, user_ids)) {
-        log::error!("Failed to send typing update: {:?}", e);
-    }
+    send_event(
+        &handle,
+        &TypingUpdate {
+            room_id: room_id.clone(),
+            user_ids: user_ids.clone(),
+        },
+    );
 }

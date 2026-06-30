@@ -1,4 +1,5 @@
 use csscolorparser::Color;
+use macros::TauriEvent;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -28,7 +29,7 @@ impl std::fmt::Display for PresenceStatus {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default, TauriEvent)]
 pub struct PresenceInfo {
     pub status: PresenceStatus,
     pub status_msg: Option<String>,
@@ -63,7 +64,7 @@ impl PresenceInfo {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TauriEvent)]
 pub struct UserProfile {
     pub user_id: String,
     pub display_name: Option<String>,
@@ -97,7 +98,7 @@ impl UserProfile {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TauriEvent)]
 pub struct MemberProfile {
     pub room_id: String,
     pub profile: UserProfile,

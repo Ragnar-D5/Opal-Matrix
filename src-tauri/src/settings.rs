@@ -9,11 +9,12 @@ use matrix_sdk::{
     Client,
 };
 use serde_json::{json, Value};
-use tauri::{AppHandle, Emitter, State, command};
+use shared::api::events::SettingsUpdate;
+use tauri::{AppHandle, State, command};
 use tokio::sync::RwLock;
 use toml_edit::{value, Array, DocumentMut, InlineTable, Item};
 
-use crate::{TauriError};
+use crate::{TauriError, send_event};
 
 fn json_to_toml_item(json_val: Value) -> Option<Item> {
     match json_val {
@@ -219,7 +220,9 @@ pub async fn handle_account_data_event(
         return;
     };
 
-    if let Err(e) = handle.emit("settings_cloud_update", (key, val.to_string())) {
-        log::warn!("Failed to emit settings event for '{}': {:?}", key, e);
-    }
+    send_event(&handle, &SettingsUpdate {
+        key: key.to_string(),
+        value: val.to_string(),
+        cloud: true,
+    });
 }

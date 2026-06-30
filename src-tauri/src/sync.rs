@@ -1,28 +1,27 @@
 use matrix_sdk::{
-    Client as MatrixClient, SessionChange, config::SyncSettings, ruma::presence::PresenceState,
+    config::SyncSettings, ruma::presence::PresenceState, Client as MatrixClient, SessionChange,
 };
 use shared::synth::ProfileAudio;
 use std::pin::pin;
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, async_runtime::spawn};
+use tauri::{async_runtime::spawn, AppHandle};
 
 use crate::frontend::profiles::handle_typing_notice;
 use crate::matrix_api::matrixrtc::handle_call_member_change;
+use crate::send_event;
 use crate::settings::handle_account_data_event;
 use crate::{
-    TauriError,
     frontend::{
         presence::handle_presences,
         profiles::{on_member_update, send_all_members},
-        sidebar::{
-            extract_call_memberships, handle_room_updates, send_call_member_updates, send_sidebar,
-        },
+        sidebar::{extract_call_memberships, handle_room_updates, send_sidebar},
     },
     matrix_api::{
-        keyring::{StoredSession, save_session},
+        keyring::{save_session, StoredSession},
         matrixrtc::{cleanup_ghost_calls, handle_to_device_messages},
-        profile::{ProfileDebounce, client_user_profile_event_handle, send_user_to_frontend},
+        profile::{client_user_profile_event_handle, send_user_to_frontend, ProfileDebounce},
     },
+    TauriError,
 };
 use futures_util::StreamExt;
 
@@ -87,10 +86,8 @@ pub async fn attach_callbacks(
         }
     });
 
-    if let Some(data) = extract_call_memberships(&rooms).await
-        && let Err(e) = send_call_member_updates(handle, data)
-    {
-        log::error!("Failed to send call member updates: {:?}", e);
+    if let Some(data) = extract_call_memberships(&rooms).await {
+        send_event(handle, &data);
     }
 
     let client_sync_clone = client.clone();

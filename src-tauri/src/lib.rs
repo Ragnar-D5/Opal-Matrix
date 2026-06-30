@@ -10,6 +10,7 @@ use notify::Watcher;
 use percent_encoding::percent_decode_str;
 use shared::api::RestoreResponse;
 use shared::api::errors::LoginError;
+use shared::api::events::{SettingsUpdate, TauriEvent};
 use shared::synth::ProfileAudio;
 use tauri_plugin_updater::UpdaterExt;
 use std::collections::HashMap;
@@ -103,6 +104,12 @@ fn _send_notification(handle: &AppHandle, title: String, body: String) -> Result
     notification
         .show()
         .map_err(|e| format!("Failed to show notification: {}", e).into())
+}
+
+pub fn send_event<T: TauriEvent>(app_handle: &AppHandle, payload: &T) {
+    if let Err(e) = app_handle.emit(T::name().as_str(), payload) {
+        error!("Failed to emit event {}: {:?}", T::name(), e);
+    }
 }
 
 #[derive(serde::Serialize)]
@@ -586,10 +593,13 @@ pub fn run() {
                                     .get(key)
                                     .and_then(|v| serde_json::to_string(v).ok())
                                     .unwrap_or_else(|| "null".to_string());
-                                if let Err(e) = app_handle.emit("settings_file_update", (key.as_str(), json_str)) {
-                                    log::warn!("Failed to emit settings change for '{}': {:?}", key, e);
-                                }
-                            }
+
+                                send_event(&app_handle, &SettingsUpdate {
+                                    key: key.clone(),
+                                    value: json_str.clone(),
+                                    cloud: false,
+                                });
+                            };
                         }
                         Err(e) => {
                             log::warn!("Failed to parse settings file after change, keeping old settings: {:?}", e);

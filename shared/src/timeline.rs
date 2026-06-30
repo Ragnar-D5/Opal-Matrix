@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use macros::TauriEvent;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -671,7 +672,7 @@ impl UiTimelineItem {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, TauriEvent)]
 #[serde(tag = "type", content = "data")]
 pub enum UiTimelineDiff {
     Append { values: Vec<UiTimelineItem> },
