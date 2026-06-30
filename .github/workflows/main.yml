@@ -1,95 +1,93 @@
-name: 'publish'
+name: "publish"
 
 on:
-  push:
-    branches:
-      - release
-  workflow_dispatch:
+    push:
+        branches:
+            - release
+    workflow_dispatch:
 
 jobs:
-  publish-tauri:
-    permissions:
-      contents: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: 'ubuntu-22.04'
-            args: ''
-          - platform: 'windows-latest'
-            args: ''
+    publish-tauri:
+        permissions:
+            contents: write
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                    - platform: "ubuntu-22.04"
+                      args: ""
+                    - platform: "windows-latest"
+                      args: ""
 
-    runs-on: ${{ matrix.platform }}
-    steps:
-      - uses: actions/checkout@v4
+        runs-on: ${{ matrix.platform }}
+        steps:
+            - uses: actions/checkout@v4
 
-     # 1. Install Linux System Dependencies (Added libasound2-dev for ALSA support)
-      - name: Install Dependencies (Ubuntu only)
-        if: matrix.platform == 'ubuntu-22.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libasound2-dev
-          
-      # 2. Install Rust WITH the WebAssembly target
-      - name: Install Rust Stable
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: 'wasm32-unknown-unknown'
+            # 1. Install Linux System Dependencies (Added libasound2-dev for ALSA support)
+            - name: Install Dependencies (Ubuntu only)
+              if: matrix.platform == 'ubuntu-22.04'
+              run: |
+                  sudo apt-get update
+                  sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libasound2-dev
 
-      # 3. Install Trunk
-      - name: Install Trunk
-        uses: jetli/trunk-action@v0.5.1
-        with:
-          version: 'latest'
+            # 2. Install Rust WITH the WebAssembly target
+            - name: Install Rust Stable
+              uses: dtolnay/rust-toolchain@stable
+              with:
+                  targets: "wasm32-unknown-unknown"
 
-      # 4A. Official Tailwind Installation for Linux
-      # Moves it directly into /usr/local/bin which is pre-mapped on Linux runners
-      - name: Install Tailwind CLI (Ubuntu)
-        if: matrix.platform == 'ubuntu-22.04'
-        run: |
-          curl -sLO https://github.com/tailwindlabs/tailwindcss/releases/latest/download/tailwindcss-linux-x64
-          chmod +x tailwindcss-linux-x64
-          sudo mv tailwindcss-linux-x64 /usr/local/bin/tailwindcss
-      # 4B. Official Tailwind Installation for Windows
-      # Pulls the .exe, sets up a clean directory, and appends to GITHUB_PATH using modern syntax
-      - name: Install Tailwind CLI (Windows)
-        if: matrix.platform == 'windows-latest'
-        shell: pwsh
-        run: |
-          Invoke-WebRequest -Uri "https://github.com/tailwindlabs/tailwindcss/releases/latest/download/tailwindcss-windows-x64.exe" -OutFile "tailwindcss.exe"
-          New-Item -ItemType Directory -Force -Path "C:\tailwind"
-          Move-Item -Path "tailwindcss.exe" -Destination "C:\tailwind\tailwindcss.exe"
-          echo "C:\tailwind" | Out-File -Append -FilePath $env:GITHUB_PATH -Encoding utf8
-      # 5. Install cargo-binstall & Tauri CLI
-      - name: Install cargo-binstall
-        uses: taiki-e/install-action@cargo-binstall
+            # 3. Install Trunk
+            - name: Install Trunk
+              uses: jetli/trunk-action@v0.5.1
+              with:
+                  version: "latest"
 
-      - name: Install Tauri CLI (Precompiled)
-        run: cargo binstall -y tauri-cli
+            # 4A. Official Tailwind Installation for Linux
+            # Moves it directly into /usr/local/bin which is pre-mapped on Linux runners
+            - name: Install Tailwind CLI (Ubuntu)
+              if: matrix.platform == 'ubuntu-22.04'
+              run: |
+                  curl -sLO https://github.com/tailwindlabs/tailwindcss/releases/latest/download/tailwindcss-linux-x64
+                  chmod +x tailwindcss-linux-x64
+                  sudo mv tailwindcss-linux-x64 /usr/local/bin/tailwindcss
+            # 4B. Official Tailwind Installation for Windows
+            # Pulls the .exe, sets up a clean directory, and appends to GITHUB_PATH using modern syntax
+            - name: Install Tailwind CLI (Windows)
+              if: matrix.platform == 'windows-latest'
+              shell: pwsh
+              run: |
+                  Invoke-WebRequest -Uri "https://github.com/tailwindlabs/tailwindcss/releases/latest/download/tailwindcss-windows-x64.exe" -OutFile "tailwindcss.exe"
+                  New-Item -ItemType Directory -Force -Path "C:\tailwind"
+                  Move-Item -Path "tailwindcss.exe" -Destination "C:\tailwind\tailwindcss.exe"
+                  echo "C:\tailwind" | Out-File -Append -FilePath $env:GITHUB_PATH -Encoding utf8
+            # 5. Install cargo-binstall & Tauri CLI
+            - name: Install cargo-binstall
+              uses: taiki-e/install-action@cargo-binstall
 
-      # 6. Collapse TOML 1.1 multiline inline tables in Cargo.toml manifests.
-      # Cargo itself (and toml_edit, which this helper uses) is fine with
-      # them, but tauri-action's bundled TOML parser only supports TOML 1.0
-      # and errors on newlines inside `{ ... }`. This only rewrites the
-      # checkout for this CI run, the repo keeps the multiline style.
-      - name: Normalize Cargo.toml for tauri-action
-        shell: bash
-        run: cargo run --manifest-path .github/tools/collapse-toml/Cargo.toml --quiet -- Cargo.toml shared/Cargo.toml macros/Cargo.toml src-tauri/Cargo.toml
+            - name: Install Tauri CLI (Precompiled)
+              run: cargo binstall -y tauri-cli
 
-      # 7. Run the Tauri Action
-      - uses: tauri-apps/tauri-action@v0.6.2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Force static CRT linkage ONLY on the native Windows target, to
-          # match the webrtc prebuilt. Scoped via CARGO_TARGET_<triple>_RUSTFLAGS
-          # instead of a blanket RUSTFLAGS env var so it can't also apply to
-          # the wasm32-unknown-unknown frontend build in the same job.
-          CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS: ${{ matrix.platform == 'windows-latest' && '-C target-feature=+crt-static' || '' }}
-        with:
-          tagName: app-v__VERSION__
-          releaseName: 'App v__VERSION__'
-          releaseBody: 'See the assets to download this version and install.'
-          releaseDraft: true
-          prerelease: false
-          args: ${{ matrix.args }}
-          tauriScript: cargo tauri
+            # 6. Collapse TOML 1.1 multiline inline tables in Cargo.toml manifests.
+            # Cargo itself (and toml_edit, which this helper uses) is fine with
+            # them, but tauri-action's bundled TOML parser only supports TOML 1.0
+            # and errors on newlines inside `{ ... }`. This only rewrites the
+            # checkout for this CI run, the repo keeps the multiline style.
+            - name: Normalize Cargo.toml for tauri-action
+              shell: bash
+              run: cargo run --manifest-path .github/tools/collapse-toml/Cargo.toml --quiet -- Cargo.toml shared/Cargo.toml macros/Cargo.toml src-tauri/Cargo.toml
+
+            # 7. Run the Tauri Action
+            - uses: tauri-apps/tauri-action@v0.6.2
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+                  TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+                  CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS: ${{ matrix.platform == 'windows-latest' && '-C target-feature=+crt-static' || '' }}
+              with:
+                  tagName: app-v__VERSION__
+                  releaseName: "App v__VERSION__"
+                  releaseBody: "See the assets to download this version and install."
+                  releaseDraft: true
+                  prerelease: false
+                  args: ${{ matrix.args }}
+                  tauriScript: cargo tauri
