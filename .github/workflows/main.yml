@@ -9,7 +9,7 @@ on:
 jobs:
     publish-tauri:
         permissions:
-            contents: write
+            contents: read
         strategy:
             fail-fast: false
             matrix:
@@ -77,9 +77,12 @@ jobs:
               run: cargo run --manifest-path .github/tools/collapse-toml/Cargo.toml --quiet -- Cargo.toml shared/Cargo.toml macros/Cargo.toml src-tauri/Cargo.toml
 
             # 7. Run the Tauri Action
+            # Publishes straight to the origin Codeberg repo (this workflow only
+            # runs from the GitHub mirror) using tauri-action's experimental Gitea
+            # support, so releaseUploadUrl/latest.json point at Codeberg assets.
             - uses: tauri-apps/tauri-action@v0.6.2
               env:
-                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  GITHUB_TOKEN: ${{ secrets.CODEBERG_TOKEN }}
                   TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
                   TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
                   CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS: ${{ matrix.platform == 'windows-latest' && '-C target-feature=+crt-static' || '' }}
@@ -91,3 +94,7 @@ jobs:
                   prerelease: false
                   args: ${{ matrix.args }}
                   tauriScript: cargo tauri
+                  owner: aosiuejhf
+                  repo: opal-matrix
+                  githubBaseUrl: https://codeberg.org/api/v1
+                  isGitea: true
