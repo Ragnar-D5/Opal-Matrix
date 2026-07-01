@@ -659,7 +659,7 @@ fn render_system_message(
         let name_sig = profile_sig.clone();
 
         view! {
-            <div class="flex items-center gap-1 pr-1">
+            <div class="inline-flex items-center gap-1 pr-1 align-middle">
                 {move || profile_sig.get().render_icon("20px")}
                 {move || name_sig.get().render_name_popup("16px")}
             </div>
@@ -671,7 +671,12 @@ fn render_system_message(
             let before = if let Some(change) = &change {
                 match change {
                     UiMembershipChange::Joined => {
-                        view! { <Icon icon=ARROW_RIGHT color="var(--online-color)" weight=IconWeight::Bold size="15px" /> }.into_any()
+                        view! {
+                            <span class="inline-flex align-middle">
+                                <Icon icon=ARROW_RIGHT color="var(--online-color)" weight=IconWeight::Bold size="15px" />
+                            </span>
+                        }
+                            .into_any()
                     }
                     _ => ().into_any(),
                 }
@@ -703,38 +708,38 @@ fn render_system_message(
             };
 
             view! {
-                <div class="flex flex-row gap-1 items-center">
+                <div>
                     {before} {user_div(&user_id)} <span>{text}</span>
                 </div>
             }
             .into_any()
         }
         SystemMessage::CallInvite => view! {
-            <div class="flex flex-row gap-1">
+            <div>
                 {user_div(&sender_id_str)} <span>"started a call"</span>
             </div>
         }
         .into_any(),
         SystemMessage::CallMember => view! {
-            <div class="flex flex-row gap-1">
+            <div>
                 {user_div(&sender_id_str)} <span>"joined a call"</span>
             </div>
         }
         .into_any(),
         SystemMessage::PolicyRuleRoom => view! {
-            <div class="flex flex-row gap-1">
+            <div>
                 {user_div(&sender_id_str)} <span>"changed the room's policy"</span>
             </div>
         }
         .into_any(),
         SystemMessage::PolicyRuleServer => view! {
-            <div class="flex flex-row gap-1">
+            <div>
                 {user_div(&sender_id_str)} <span>"changed the server's policy"</span>
             </div>
         }
         .into_any(),
         SystemMessage::PolicyRuleUser => view! {
-            <div class="flex flex-row gap-1">
+            <div>
                 {user_div(&sender_id_str)} <span>"changed their policy"</span>
             </div>
         }
@@ -742,17 +747,17 @@ fn render_system_message(
         SystemMessage::ProfileChange(change) => {
             let text = change.display_string();
 
-            view! { <div class="flex flex-row gap-1">{user_div(&change.user_id)} <span>{text}</span></div> }
+            view! { <div>{user_div(&change.user_id)} <span>{text}</span></div> }
             .into_any()
         }
         SystemMessage::Redacted => view! {
-            <div class="flex flex-row gap-1">
+            <div>
                 {user_div(&sender_id_str)} <span>"had a message redacted"</span>
             </div>
         }
         .into_any(),
         SystemMessage::RoomAvatar { .. } => view! {
-            <div class="flex flex-row gap-1">
+            <div>
                 {user_div(&sender_id_str)} <span>"changed the room avatar"</span>
             </div>
         }
@@ -767,7 +772,7 @@ fn render_system_message(
                 }
             );
 
-            view! { <div class="flex flex-row gap-1">{user_div(&sender_id_str)} <span>{text}</span></div> }
+            view! { <div>{user_div(&sender_id_str)} <span>{text}</span></div> }
         .into_any()
         }
         SystemMessage::RoomCreate {
@@ -786,7 +791,7 @@ fn render_system_message(
             };
 
             view! {
-                <div class="flex flex-row gap-1">
+                <div>
                     {user_div(&sender_id_str)}
                     <span>{format!("created {type_string}{additional}")}</span>
                 </div>
@@ -794,60 +799,60 @@ fn render_system_message(
             .into_any()
         }
         SystemMessage::RoomEncryption { algorithm } => view! {
-            <div class="flex flex-row gap-1">
+            <div>
                 {user_div(&sender_id_str)}
                 <span>{format!("enabled encryption with {algorithm}")}</span>
             </div>
         }
         .into_any(),
         SystemMessage::RoomGuestAccess { guest_access } => view! {
-            <div class="flex flex-row gap-1">
+            <div>
                 {user_div(&sender_id_str)}
                 <span>{format!("changed guest access to: {guest_access}")}</span>
             </div>
         }
         .into_any(),
         SystemMessage::RoomHistoryVisibility { visibility } => view! {
-            <div class="flex flex-row gap-1">
+            <div>
                 {user_div(&sender_id_str)}
                 <span>{format!("changed history visibility to: {visibility}")}</span>
             </div>
         }
         .into_any(),
         SystemMessage::RoomJoinRules { join_rule } => view! {
-            <div class="flex flex-row gap-1">
+            <div>
                 {user_div(&sender_id_str)}
                 <span>{format!("changed join rules to: {join_rule}")}</span>
             </div>
         }
         .into_any(),
         SystemMessage::RoomName { name } => view! {
-            <div class="flex flex-row gap-1">
+            <div>
                 {user_div(&sender_id_str)}
                 <span>{format!("changed the room name to: {name}")}</span>
             </div>
         }
         .into_any(),
         SystemMessage::RoomPinnedEvents { .. } => view! {
-            <div class="flex flex-row gap-1">
+            <div>
                 {user_div(&sender_id_str)} <span>"changed pinned events"</span>
             </div>
         }
         .into_any(),
         SystemMessage::RoomPowerLevels => view! {
-            <div class="flex flex-row gap-1">
+            <div>
                 {user_div(&sender_id_str)} <span>"changed the room power levels"</span>
             </div>
         }
         .into_any(),
         SystemMessage::RoomServerAcl => view! {
-            <div class="flex flex-row gap-1">
+            <div>
                 {user_div(&sender_id_str)} <span>"changed the room server ACL"</span>
             </div>
         }
         .into_any(),
         SystemMessage::RoomThirdPartyInvite { display_name } => view! {
-            <div class="flex flex-row gap-1">
+            <div>
                 {user_div(&sender_id_str)}
                 <span>{format!("invited {display_name} to the room")}</span>
             </div>
@@ -868,7 +873,7 @@ fn render_system_message(
         }
         .into_any(),
         SystemMessage::RoomTopic { topic } => view! {
-            <div class="flex flex-row gap-1">
+            <div>
                 {user_div(&sender_id_str)}
                 <span>{format!("changed the room topic to: {topic}")}</span>
             </div>
@@ -893,7 +898,7 @@ fn render_system_message(
                 let name_sig = profile_sig.clone();
 
                 view! {
-                    <div class="flex items-center gap-1 pr-1">
+                    <div class="inline-flex items-center gap-1 pr-1 align-middle">
                         {move || profile_sig.get().render_icon("20px")}
                         {move || name_sig.get().render_name_popup("16px")}
                     </div>
@@ -908,7 +913,7 @@ fn render_system_message(
             };
 
             view! {
-                <div class="flex flex-column gap-1.5">
+                <div>
                     {user_div(&sender_id_str)}
                     <span>
                         {format!(
@@ -944,7 +949,7 @@ fn render_system_message(
             };
 
             view! {
-                <div class="flex flex-row gap-1">
+                <div>
                     {user_div(&sender_id_str)}
                     <span>
                         {format!(
@@ -968,7 +973,7 @@ fn render_system_message(
             };
 
             view! {
-                <div class="flex flex-row gap-1">
+                <div>
                     {user_div(&sender_id_str)}
                     <span>
                         {format!(
@@ -980,25 +985,25 @@ fn render_system_message(
             .into_any()
         }
         SystemMessage::Unknown => view! {
-            <div class="flex flex-row gap-1">
+            <div>
                 {user_div(&sender_id_str)} <span>"performed an unknown system action"</span>
             </div>
         }
         .into_any(),
         SystemMessage::BeaconInfo => view! {
-            <div class="flex flex-row gap-1">
+            <div>
                 {user_div(&sender_id_str)} <span>"shared a live location"</span>
             </div>
         }
         .into_any(),
         SystemMessage::MemberHints => view! {
-            <div class="flex flex-row gap-1">
+            <div>
                 {user_div(&sender_id_str)} <span>"updated their member hints"</span>
             </div>
         }
         .into_any(),
         SystemMessage::RoomImagePack => view! {
-            <div class="flex flex-row gap-1">
+            <div>
                 {user_div(&sender_id_str)} <span>"updated the room's image pack"</span>
             </div>
         }
