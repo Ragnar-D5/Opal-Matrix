@@ -139,27 +139,36 @@ pub async fn send_all_members(
 
     send_event(handle, &update_payload);
 
-    update_payload.clear();
-    for (user_id, (custom_properties, sonic_signature)) in results {
-        let audio = ProfileAudio::new(sonic_signature);
-        for (room_id, has_avatar, display_name) in &user_memberships[&user_id] {
-            update_payload
-                .entry(room_id.clone())
-                .or_default()
-                .push(MemberProfile {
-                    room_id: room_id.clone(),
-                    profile: UserProfile {
-                        user_id: user_id.to_string(),
-                        display_name: display_name.clone(),
-                        has_avatar: *has_avatar,
-                        custom_properties: CustomProperties {
-                            audio: audio.clone(),
-                            ..custom_properties.clone()
+    // Render everyone's audio on a single background thread instead of the
+    // async runtime (keeps it off the tokio workers) and instead of one
+    // spawn_blocking per member (spawning a burst of OS threads is itself
+    // slow), then deliver it as a single batch.
+    let update_payload = spawn_blocking(move || {
+        let mut update_payload: HashMap<String, Vec<MemberProfile>> = HashMap::new();
+        for (user_id, (custom_properties, sonic_signature)) in results {
+            let custom_properties = CustomProperties {
+                audio: ProfileAudio::new(sonic_signature),
+                ..custom_properties
+            };
+            for (room_id, has_avatar, display_name) in &user_memberships[&user_id] {
+                update_payload
+                    .entry(room_id.clone())
+                    .or_default()
+                    .push(MemberProfile {
+                        room_id: room_id.clone(),
+                        profile: UserProfile {
+                            user_id: user_id.to_string(),
+                            display_name: display_name.clone(),
+                            has_avatar: *has_avatar,
+                            custom_properties: custom_properties.clone(),
                         },
-                    },
-                });
+                    });
+            }
         }
-    }
+        update_payload
+    })
+    .await
+    .expect("audio render task panicked");
 
     send_event(handle, &update_payload);
 
