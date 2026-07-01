@@ -122,8 +122,8 @@ fn convert_settings(mut item: ItemStruct) -> TokenStream {
         .map(|(type_name, field_name, _, uses_cloud)| {
             let upload = if *uses_cloud {
                 quote! {
-                    let key_c = key.clone();
-                    let val_c = val.clone();
+                    let key_c = new.key.clone();
+                    let val_c = new.value.clone();
                     ::leptos::task::spawn_local(async move {
                         let args = ::serde_wasm_bindgen::to_value(
                             &::serde_json::json!({ "key": key_c, "value": val_c })
@@ -138,7 +138,7 @@ fn convert_settings(mut item: ItemStruct) -> TokenStream {
             };
             quote! {
                 #type_name => {
-                    match ::serde_json::from_str(&val) {
+                    match ::serde_json::from_str(&new.value) {
                         Ok(parsed) => #field_name.set(parsed),
                         Err(e) => ::log::warn!("Failed to deserialize field '{}': {:?}", stringify!(#field_name), e)
                     }
@@ -153,7 +153,7 @@ fn convert_settings(mut item: ItemStruct) -> TokenStream {
         .iter()
         .map(|(type_name, field_name, _, _)| {
             quote! {
-                #type_name => match ::serde_json::from_str(&val) {
+                #type_name => match ::serde_json::from_str(&new.value) {
                     Ok(parsed) => #field_name.set(parsed),
                     Err(e) => ::log::warn!("Failed to deserialize field '{}': {:?}", stringify!(#field_name), e)
                 }
@@ -260,23 +260,17 @@ fn convert_settings(mut item: ItemStruct) -> TokenStream {
             }
 
             pub fn setup_backend_hook(&self) {
-                let file_sig: ReadSignal<Option<(String, String)>> = use_tauri_event_named("settings_file_update");
-                let cloud_sig: ReadSignal<Option<(String, String)>> = use_tauri_event_named("settings_cloud_update");
-
+                let update_sig: ReadSignal<Option<::shared::api::events::SettingsUpdate>> = use_tauri_event();
                 #(#signal_bindings)*
 
-                Effect::new(move |_| {
-                    if let Some((key, val)) = file_sig.get() {
-                        match key.as_str() {
-                            #(#match_arms_file,)*
-                            _ => {}
-                        }
+                setup_update_effect(update_sig, move |new| {
+                    match new.key.as_str() {
+                        #(#match_arms_file,)*
+                        _ => {}
                     }
-                });
 
-                Effect::new(move |_| {
-                    if let Some((key, val)) = cloud_sig.get() {
-                        match key.as_str() {
+                    if new.cloud {
+                        match new.key.as_str() {
                             #(#match_arms_cloud,)*
                             _ => {}
                         }
