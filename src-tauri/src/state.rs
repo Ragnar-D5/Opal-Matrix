@@ -5,6 +5,7 @@ use matrix_sdk_ui::{Timeline, timeline::{
     DateDividerMode, TimelineBuilder, TimelineEventFocusThreadMode, TimelineFocus, TimelineReadReceiptTracking
 }};
 use ringbuf::{HeapProd, HeapRb, traits::{Consumer, Observer, Split}};
+use tauri_plugin_updater::Update;
 use std::{
     collections::{HashMap, HashSet},
     sync::{Arc, Mutex as SyncMutex},
@@ -20,6 +21,7 @@ use crate::{TauriError, frontend::audio::emit_devices_update};
 pub struct AppState {
     pub frontend_current_room_id: RwLock<Option<String>>,
     pub frontend_is_focused: RwLock<bool>,
+    pub update: RwLock<Option<Update>>,
 }
 
 type TimelineKey = (OwnedRoomId, Option<OwnedEventId>);

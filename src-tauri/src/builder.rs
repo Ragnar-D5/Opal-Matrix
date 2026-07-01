@@ -1,7 +1,7 @@
 use matrix_sdk::Client;
 use notify::Watcher;
 use percent_encoding::percent_decode_str;
-use shared::api::events::{SettingsUpdate};
+use shared::api::events::{NotificationEvent, SettingsUpdate};
 use shared::synth::ProfileAudio;
 use std::collections::HashMap;
 use std::fs::{read_to_string, write};
@@ -306,21 +306,30 @@ pub fn setup_builder(builder: Builder<Wry>) -> Builder<Wry> {
             std::io::Error::other(format!("Failed to resolve app config dir: {e}"))
         })?;
 
+        let state = Arc::new(AppState::default());
+
         let clone = app.handle().clone();
+        let update_state = state.clone();
         spawn(async move {
-            if let Some(update) = clone.updater().map_err(|e| {
-                TauriError::from(format!("Failed to get updates: {e}"))
-            })?.check().await.map_err(|e| {
-                TauriError::from(format!("Failed to check for updates: {e}"))
-            })? {
+            let Ok(updater) = clone.updater() else {
+                log::error!("Failed to get updater");
+                return;
+            };
+            let Ok(maybe_update) = updater.check().await else {
+                log::error!("Failed to check for updates");
+                return;
+            };
+            if let Some(update) = maybe_update {
                 log::info!("Update available: {:?}, {:?}, {:?}, {:?}", update.body, update.current_version, update.current_version, update.download_url);
+
+                send_event(&clone, &NotificationEvent::UpdateAvailable);
+
+                *update_state.update.write().await = Some(update.clone());
             } else {
                 log::info!("No update available");
             }
-
-            let result: Result<(), TauriError> = Ok(());
-            result
         });
+        app.manage(state);
 
         std::fs::create_dir_all(&config_dir)?;
 
@@ -467,10 +476,6 @@ pub fn setup_builder(builder: Builder<Wry>) -> Builder<Wry> {
         add_logging_plugin(app, log_dir, log_level, livekit_log_level, keyring_log_level).map_err(|e| {
             std::io::Error::other(format!("Failed to initialize logging plugin: {:?}", e))
         })?;
-
-        let state = Arc::new(AppState::default());
-
-        app.manage(state);
 
         let client = block_on(async {
             Client::builder()

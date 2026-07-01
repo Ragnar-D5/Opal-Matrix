@@ -57,3 +57,20 @@ pub struct SettingsUpdate {
     pub value: String,
     pub cloud: bool,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum NotificationLevel {
+    Info,
+    Warning,
+    Error,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TauriEvent)]
+pub enum NotificationEvent {
+    UpdateAvailable,
+    GenericNotification {
+        title: String,
+        message: String,
+        level: NotificationLevel,
+    },
+}
