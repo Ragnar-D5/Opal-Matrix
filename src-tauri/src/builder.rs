@@ -369,43 +369,44 @@ pub fn setup_builder(builder: Builder<Wry>) -> Builder<Wry> {
         watcher.watch(watch_dir, notify::RecursiveMode::NonRecursive).expect("Failed to watch settings directory");
 
         while rx.recv().await.is_some() {
-                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-                while rx.try_recv().is_ok() {}
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            while rx.try_recv().is_ok() {}
 
-                let Ok(new_content) = tokio::fs::read_to_string(&watch_path).await else {
-                    log::warn!("Failed to read settings file after change");
-                    continue;
-                };
+            let Ok(new_content) = tokio::fs::read_to_string(&watch_path).await else {
+                log::warn!("Failed to read settings file after change");
+                continue;
+            };
 
-                let cashed_settings_sig = app_handle.state::<RwLock<DocumentMut>>().clone();
-                let mut cached_settings = cashed_settings_sig.write().await;
+            let cashed_settings_sig = app_handle.state::<RwLock<DocumentMut>>().clone();
+            let mut cached_settings = cashed_settings_sig.write().await;
 
-                if new_content == cached_settings.to_string() {
-                    continue;
+            if new_content == cached_settings.to_string() {
+                continue;
+            }
+
+            match DocumentMut::from_str(&new_content) {
+                Ok(new_doc) => {
+                    let changed_keys = diff_settings(&cached_settings, &new_doc);
+                    *cached_settings = new_doc;
+                    let json_map = super::settings::document_to_json_map(&cached_settings);
+                    for key in &changed_keys {
+                        let json_str = json_map
+                            .get(key)
+                            .and_then(|v| serde_json::to_string(v).ok())
+                            .unwrap_or_else(|| "null".to_string());
+
+                        log::info!("Settings file changed");
+                        send_event(&app_handle, &SettingsUpdate {
+                            key: key.clone(),
+                            value: json_str.clone(),
+                            cloud: false,
+                        });
+                    };
                 }
-
-                match DocumentMut::from_str(&new_content) {
-                    Ok(new_doc) => {
-                        let changed_keys = diff_settings(&cached_settings, &new_doc);
-                        *cached_settings = new_doc;
-                        let json_map = super::settings::document_to_json_map(&cached_settings);
-                        for key in &changed_keys {
-                            let json_str = json_map
-                                .get(key)
-                                .and_then(|v| serde_json::to_string(v).ok())
-                                .unwrap_or_else(|| "null".to_string());
-
-                            send_event(&app_handle, &SettingsUpdate {
-                                key: key.clone(),
-                                value: json_str.clone(),
-                                cloud: false,
-                            });
-                        };
-                    }
-                    Err(e) => {
-                        log::warn!("Failed to parse settings file after change, keeping old settings: {:?}", e);
-                    }
+                Err(e) => {
+                    log::warn!("Failed to parse settings file after change, keeping old settings: {:?}", e);
                 }
+            }
         }
 
         drop(watcher);

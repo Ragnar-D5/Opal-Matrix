@@ -19,14 +19,14 @@ use wasm_bindgen::prelude::*;
 use web_sys::HtmlImageElement;
 
 use crate::components::{
+    SystemButtons,
     chat::Chat,
     overlays::emoji_picker::{EmojiPickerPortal, EmojiPickerState},
     overlays::gif_picker::{GifPickerPortal, GifPickerState},
     overlays::profile_card::{ProfileCardPortal, ProfileCardState},
     sidebar::Sidebar,
-    SystemButtons,
 };
-use crate::hooks::{setup_update_effect, use_tauri_event, use_tauri_event_named};
+use crate::hooks::{setup_update_effect, use_tauri_event};
 use crate::state::{AppState, ProfileStore};
 use crate::tauri_functions::{get_server_order, set_backend_room_id, set_focused_in_backend};
 

@@ -10,6 +10,8 @@ jobs:
     publish-tauri:
         permissions:
             contents: write
+        outputs:
+            appVersion: ${{ steps.tauri.outputs.appVersion }}
         strategy:
             fail-fast: false
             matrix:
@@ -77,7 +79,17 @@ jobs:
               run: cargo run --manifest-path .github/tools/collapse-toml/Cargo.toml --quiet -- Cargo.toml shared/Cargo.toml macros/Cargo.toml src-tauri/Cargo.toml
 
             # 7. Run the Tauri Action
-            - uses: tauri-apps/tauri-action@v0.6.2
+            # Builds and drafts the release on the GitHub mirror (where this
+            # workflow runs). tauri-action can't upload assets straight to
+            # Codeberg: its Gitea compatibility mode only covers release
+            # create/list calls, while Octokit's uploadReleaseAsset endpoint is
+            # hardcoded to https://uploads.github.com regardless of
+            # githubBaseUrl (see tauri-apps/tauri-action#1272, never fixed and
+            # later dropped entirely in v1). The mirror-to-codeberg job below
+            # copies the finished draft over to Codeberg with plain REST calls
+            # and removes it from the mirror afterwards.
+            - id: tauri
+              uses: tauri-apps/tauri-action@v0.6.2
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
                   TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -91,3 +103,78 @@ jobs:
                   prerelease: false
                   args: ${{ matrix.args }}
                   tauriScript: cargo tauri
+
+    mirror-to-codeberg:
+        needs: publish-tauri
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write
+        env:
+            GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            CODEBERG_TOKEN: ${{ secrets.CODEBERG_TOKEN }}
+            VERSION: ${{ needs.publish-tauri.outputs.appVersion }}
+        steps:
+            - name: Copy release assets from the GitHub mirror to Codeberg
+              shell: bash
+              run: |
+                  set -euo pipefail
+
+                  TAG="app-v${VERSION}"
+                  CB_OWNER="aosiuejhf"
+                  CB_REPO="opal-matrix"
+                  CB_API="https://codeberg.org/api/v1/repos/${CB_OWNER}/${CB_REPO}"
+
+                  api() {
+                      local method="$1" path="$2"
+                      shift 2
+                      curl -sS -w '\n%{http_code}' -X "$method" \
+                          -H "Authorization: token ${CODEBERG_TOKEN}" \
+                          "$@" "${CB_API}${path}"
+                  }
+
+                  mkdir -p assets
+                  gh release download "$TAG" --dir assets --clobber
+
+                  # Point the updater manifest at the Codeberg copies of the assets.
+                  sed -i "s#https://github.com/${GITHUB_REPOSITORY}/releases/download/#https://codeberg.org/${CB_OWNER}/${CB_REPO}/releases/download/#g" assets/latest.json
+
+                  echo "Looking for an existing draft release with tag ${TAG} on Codeberg..."
+                  resp=$(api GET "/releases?draft=true&limit=50")
+                  code=$(tail -n1 <<<"$resp")
+                  body=$(sed '$d' <<<"$resp")
+                  if [ "$code" != "200" ]; then echo "$body"; exit 1; fi
+                  RELEASE_ID=$(jq -r --arg TAG "$TAG" '.[] | select(.tag_name==$TAG) | .id' <<<"$body" | head -n1)
+
+                  if [ -z "${RELEASE_ID:-}" ]; then
+                      echo "None found, creating a new draft release..."
+                      payload=$(jq -n --arg tag "$TAG" --arg name "App v${VERSION}" \
+                          '{tag_name:$tag,name:$name,body:"See the assets to download this version and install.",draft:true,prerelease:false}')
+                      resp=$(api POST "/releases" -H "Content-Type: application/json" -d "$payload")
+                      code=$(tail -n1 <<<"$resp")
+                      body=$(sed '$d' <<<"$resp")
+                      if [ "$code" != "201" ]; then echo "$body"; exit 1; fi
+                      RELEASE_ID=$(jq -r '.id' <<<"$body")
+                  fi
+                  echo "Codeberg release id: ${RELEASE_ID}"
+
+                  resp=$(api GET "/releases/${RELEASE_ID}/assets")
+                  code=$(tail -n1 <<<"$resp")
+                  existing_assets=$(sed '$d' <<<"$resp")
+                  if [ "$code" != "200" ]; then echo "$existing_assets"; exit 1; fi
+
+                  for f in assets/*; do
+                      name=$(basename "$f")
+                      existing_id=$(jq -r --arg N "$name" '.[] | select(.name==$N) | .id' <<<"$existing_assets")
+                      if [ -n "$existing_id" ]; then
+                          echo "Replacing existing asset ${name}..."
+                          curl -sS -f -X DELETE -H "Authorization: token ${CODEBERG_TOKEN}" \
+                              "${CB_API}/releases/${RELEASE_ID}/assets/${existing_id}"
+                      fi
+                      echo "Uploading ${name}..."
+                      curl -sS -f -X POST -H "Authorization: token ${CODEBERG_TOKEN}" \
+                          -F "attachment=@${f};filename=${name}" \
+                          "${CB_API}/releases/${RELEASE_ID}/assets?name=${name}"
+                  done
+
+                  echo "Cleaning up the temporary draft on the GitHub mirror..."
+                  gh release delete "$TAG" --yes --cleanup-tag
