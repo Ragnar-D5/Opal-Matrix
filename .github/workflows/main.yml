@@ -114,6 +114,7 @@ jobs:
             CODEBERG_TOKEN: ${{ secrets.CODEBERG_TOKEN }}
             VERSION: ${{ needs.publish-tauri.outputs.appVersion }}
         steps:
+            - uses: actions/checkout@v4
             - name: Copy release assets from the GitHub mirror to Codeberg
               shell: bash
               run: |
