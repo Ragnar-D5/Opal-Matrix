@@ -1,327 +1,153 @@
-use async_recursion::async_recursion;
-use matrix_sdk::deserialized_responses::SyncOrStrippedState;
-use matrix_sdk::ruma::MilliSecondsSinceUnixEpoch;
+use matrix_sdk::deserialized_responses::{SyncOrStrippedState};
+use matrix_sdk::ruma::events::direct::DirectEventContent;
+use matrix_sdk::ruma::events::space::child::{SpaceChildEventContent};
+use matrix_sdk::ruma::serde::Raw;
+use matrix_sdk::ruma::{OwnedRoomId, OwnedUserId};
 use shared::api::events::CallMemberUpdate;
 use shared::get_color;
-use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 
-use futures::{StreamExt, stream};
-use matrix_sdk::{Client, Room, RoomMemberships};
+use futures::{StreamExt, TryFutureExt, };
+use matrix_sdk::{Client, Room, RoomState, };
 
 use matrix_sdk::room::ParentSpace;
 use matrix_sdk::ruma::events::call::member::CallMemberEventContent;
-use matrix_sdk::ruma::events::space::child::SpaceChildEventContent;
-use matrix_sdk::ruma::events::{AnySyncStateEvent, AnySyncTimelineEvent, OriginalSyncStateEvent};
+use matrix_sdk::ruma::events::{AnyGlobalAccountDataEvent, AnySyncStateEvent, AnySyncTimelineEvent, OriginalSyncStateEvent};
 use matrix_sdk::sync::RoomUpdates;
-use shared::sidebar::{NotificationCounts, RoomKind, RoomNode, SidebarState, UserDevice};
+use shared::sidebar::{DmRoomNode, NotificationCounts, RoomMapUpdate, RoomNode, RoomNodeInfo, ServerList, ServerRoomNode, SpaceRoomNode, TextChannelRoomNode, UserDevice, VoiceChannelRoomNode};
 use tauri::AppHandle;
 
 use crate::{TauriError, send_event};
 
-async fn node_from_room(room: &Room, kind: RoomKind) -> RoomNode {
-    let info = room.clone_info();
-    let name = room.display_name().await.ok().map(|n| n.to_string());
-    let room_id = info.room_id().to_string();
+async fn get_child_room_ids(room: &Room) -> Result<Vec<OwnedRoomId>, TauriError> {
+    let child_events = room
+        .get_state_events_static::<SpaceChildEventContent>()
+        .await?;
 
-    let has_avatar = match &kind {
-        RoomKind::Dm { other_user_id } => room
-            .members(RoomMemberships::JOIN)
-            .await
-            .ok()
-            .and_then(|members| {
-                members
-                    .iter()
-                    .find(|m| m.user_id().as_str() == other_user_id)
-                    .map(|m| m.avatar_url().is_some())
-            })
-            .unwrap_or(false),
-        _ => room.avatar_url().is_some(),
-    };
+    let child_room_ids = child_events
+        .into_iter()
+        .filter_map(|raw| {
+            let ev = raw.deserialize().ok()?;
+            let child = ev.as_sync()?.as_original()?;
+            if child.content.via.is_empty() {
+                return None;
+            }
+            Some(child.state_key.clone())
+        })
+        .collect();
 
-    RoomNode {
-        room_id: room_id.clone(),
-        name,
-        topic: room.topic(),
-
-        color: get_color(&room_id),
-
-        has_avatar,
-        canonical_alias: room.canonical_alias().map(|v| v.to_string()),
-        aliases: info.alt_aliases().iter().map(|v| v.to_string()).collect(),
-        kind,
-    }
+    Ok(child_room_ids)
 }
 
-pub async fn send_sidebar(
-    all_rooms: &[Room],
-    handle: &AppHandle,
-    own_id: &str,
-) -> Result<(), TauriError> {
-    let mut channels = HashMap::new();
+async fn get_all_child_room_ids(room: &Room) -> Result<Vec<OwnedRoomId>, TauriError> {
+    let mut all_children = Vec::new();
+    let mut queue = vec![room.room_id().to_owned()];
 
-    for room in all_rooms {
-        room.sync_up().await;
-    }
-
-    let mut dms: Vec<Room> = stream::iter(all_rooms.iter().cloned())
-        .filter_map(|room| async move {
-            let res = room.compute_is_dm().await;
-            if res.unwrap_or(false) {
-                Some(room)
-            } else {
-                None
-            }
-        })
-        .collect()
-        .await;
-
-    dms.sort_by(|a, b| {
-        let a_ts = a
-            .latest_event_timestamp()
-            .unwrap_or(MilliSecondsSinceUnixEpoch(0u32.into()));
-        let b_ts = b
-            .latest_event_timestamp()
-            .unwrap_or(MilliSecondsSinceUnixEpoch(0u32.into()));
-        b_ts.cmp(&a_ts)
-    });
-
-    let dm_room_ids: std::collections::HashSet<String> =
-        dms.iter().map(|r| r.room_id().to_string()).collect();
-
-    let dms = stream::iter(dms)
-        .filter_map(|room| async move {
-            let other_user_ids = room.joined_user_ids().await.ok()?;
-            let other_user_id = other_user_ids.into_iter().find(|id| id != own_id)?;
-
-            Some(
-                node_from_room(
-                    &room,
-                    RoomKind::Dm {
-                        other_user_id: other_user_id.to_string(),
-                    },
-                )
-                .await,
-            )
-        })
-        .collect()
-        .await;
-
-    for room in all_rooms {
-        channels.insert(room.room_id().to_string(), room);
-    }
-
-    let mut children_to_parents: HashMap<&String, Vec<Room>> = HashMap::new();
-    for (id, room) in &channels {
-        let stream = room.parent_spaces().await?;
-        let results: Vec<Result<ParentSpace, _>> = stream.collect().await;
-
-        let result: Result<Vec<ParentSpace>, _> = results.into_iter().collect();
-
-        let mut actual_parents = Vec::new();
-        for parent in result.unwrap_or_default() {
-            if let ParentSpace::Reciprocal(room) = parent {
-                actual_parents.push(room);
-            }
-        }
-
-        children_to_parents.insert(id, actual_parents);
-    }
-
-    let mut parent_to_children: HashMap<String, Vec<String>> = HashMap::new();
-    let mut all_children: HashSet<String> = HashSet::new();
-
-    for (child_id, parents) in &children_to_parents {
-        for parent in parents {
-            let parent_id = parent.room_id().to_string();
-
-            parent_to_children
-                .entry(parent_id)
-                .or_default()
-                .push((*child_id).clone());
-
-            all_children.insert((*child_id).clone());
-        }
-    }
-
-    let mut ordered_parent_to_children: HashMap<String, Vec<(String, Option<String>)>> =
-        HashMap::new();
-
-    for (parent_id, child_ids) in &parent_to_children {
-        if let Some(parent_room) = channels.get(parent_id) {
-            let child_events = parent_room
-                .get_state_events_static::<SpaceChildEventContent>()
-                .await
-                .unwrap_or_default();
-
-            let order_map: HashMap<String, Option<String>> = child_events
-                .iter()
-                .filter_map(|raw| raw.deserialize().ok())
-                .filter_map(|ev| {
-                    ev.as_stripped().map(|or| {
-                        (
-                            ev.state_key().to_string(),
-                            or.content.order.clone().clone().map(|o| o.to_string()),
-                        )
-                    })
-                })
-                .collect();
-
-            let mut children_with_order: Vec<(String, Option<String>)> = child_ids
-                .iter()
-                .map(|id| (id.clone(), order_map.get(id).cloned().flatten()))
-                .collect();
-
-            children_with_order.sort_by(|(id_a, ord_a), (id_b, ord_b)| match (ord_a, ord_b) {
-                (Some(a), Some(b)) => a.cmp(b),
-                (Some(_), None) => Ordering::Less,
-                (None, Some(_)) => Ordering::Greater,
-                (None, None) => id_a.cmp(id_b),
-            });
-
-            ordered_parent_to_children.insert(parent_id.clone(), children_with_order);
-        }
-    }
-
-    let mut server_rooms: HashMap<String, RoomNode> = HashMap::new();
-    let mut top_level_servers = Vec::new();
-
-    for room_id in channels.keys() {
-        if channels[room_id].is_space()
-            && !all_children.contains(room_id)
-            && let Some(node) = build_async_node(
-                room_id,
-                &channels,
-                &ordered_parent_to_children,
-                &mut server_rooms,
-            )
-            .await
-        {
-            top_level_servers.push(node.room_id.clone());
-            server_rooms.insert(node.room_id.clone(), node);
-        }
-    }
-
-    let mut orphaned_rooms = Vec::new();
-    for (room_id, room) in &channels {
-        if !server_rooms.contains_key(room_id)
-            && !room.is_space()
-            && !all_children.contains(room_id)
-            && !dm_room_ids.contains(room_id)
-        {
-            orphaned_rooms.push(node_from_room(room, RoomKind::TextChannel).await);
-        }
-    }
-
-    let sidebar_state = SidebarState {
-        dms,
-        top_level_servers,
-        orphaned_rooms,
-        server_rooms,
-    };
-
-    log::debug!(
-        "Emitting sidebar update with {} top-level servers, {} orphaned rooms and {} DMs",
-        sidebar_state.top_level_servers.len(),
-        sidebar_state.orphaned_rooms.len(),
-        sidebar_state.dms.len(),
-    );
-    send_event(handle, &sidebar_state);
-
-    Ok(())
-}
-
-#[async_recursion]
-async fn build_async_node(
-    room_id: &str,
-    channels: &HashMap<String, &Room>,
-    parent_to_children: &HashMap<String, Vec<(String, Option<String>)>>,
-    server_rooms: &mut HashMap<String, RoomNode>,
-) -> Option<RoomNode> {
-    let room = channels.get(room_id)?;
-
-    let room_kind = if room.is_space() {
-        let mut children_ids = Vec::new();
-        let mut all_children_ids = HashSet::new();
-
-        if let Some(child_ids) = parent_to_children.get(room_id) {
-            for (child_id, _) in child_ids {
-                if let Some(child_node) =
-                    build_async_node(child_id, channels, parent_to_children, server_rooms).await
-                {
-                    if let RoomKind::Space { all_children, .. } = &child_node.kind {
-                        all_children_ids.extend(all_children.clone());
-                    }
-                    all_children_ids.insert(child_node.room_id.clone());
-                    children_ids.push(child_node.room_id.clone());
-                    server_rooms.insert(child_node.room_id.clone(), child_node);
+    while let Some(current_room_id) = queue.pop() {
+        if let Some(current_room) = room.client().get_room(&current_room_id) {
+            let child_ids = get_child_room_ids(&current_room).await?;
+            for child_id in child_ids {
+                if !all_children.contains(&child_id) {
+                    all_children.push(child_id.clone());
+                    queue.push(child_id);
                 }
             }
         }
+    }
 
-        RoomKind::Space {
-            all_children: all_children_ids,
-            children: children_ids,
-        }
-    } else if room.is_call() {
-        RoomKind::VoiceChannel
-    } else {
-        RoomKind::TextChannel
+    Ok(all_children)
+}
+
+pub async fn construct_dm_node(room: &Room, other_user_id: OwnedUserId, mut info: RoomNodeInfo) -> Option<DmRoomNode> {
+    let profile = room.get_member(&other_user_id).await.map_err(|e| log::error!("Failed to get member for user {} in room {}: {e}", other_user_id, room.room_id())).ok()??;
+
+    info.name = profile.display_name().map(|n| n.to_string());
+    info.has_avatar = profile.avatar_url().is_some();
+
+    Some(DmRoomNode {
+        info,
+        other_user_id: other_user_id.to_string()
+    })
+}
+
+pub async fn convert_room_to_node(room: &Room, dm_map: &Option<DirectEventContent>) -> Option<RoomNode> {
+    let info = room.clone_info();
+
+    let name = info.name().map(|n| n.to_string());
+    let has_avatar = info.avatar_url().is_some();
+    let canonical_alias = info.canonical_alias().map(|a| a.to_string());
+    let aliases = info.alt_aliases().iter().map(|a| a.to_string()).collect();
+    let room_id = room.room_id().to_string();
+    let topic = info.topic().map(|t| t.to_string());
+    let color = get_color(&room_id);
+
+    let info = RoomNodeInfo {
+        name,
+        has_avatar,
+        canonical_alias,
+        aliases,
+        room_id: room_id.clone(),
+        topic,
+        color,
     };
 
-    Some(node_from_room(room, room_kind).await)
-}
+    if room.compute_is_dm().map_err(|e| log::error!("Failed to compite if room is dm for room {}: {e}", &room_id)).await.ok()? {
+        if let Some(dm_map) = dm_map {
+        for (user_id, rooms) in dm_map.iter() {
+            if rooms.contains(&room.room_id().to_owned()) {
+                let user_id = user_id.clone().into_user_id()?;
 
-fn is_structural_state_event(event: &AnySyncStateEvent, own_user_id: &str) -> bool {
-    match event {
-        AnySyncStateEvent::RoomMember(ev) => ev.state_key().as_str() == own_user_id,
-        AnySyncStateEvent::RoomName(_)
-        | AnySyncStateEvent::RoomTopic(_)
-        | AnySyncStateEvent::RoomAvatar(_)
-        | AnySyncStateEvent::SpaceChild(_) => true,
-        _ => false,
-    }
-}
+                return construct_dm_node(room, user_id, info).await.map(RoomNode::Dm);
+            }
+        }
+        return None
+        } else {
+            let other_user_id = room.joined_user_ids().await.map_err(|e| log::error!("Failed to get joined user ids for room {}: {e}", &room_id)).ok()?.iter().find(|id| *id != room.own_user_id()).map(|id| id.to_owned())?;
 
-fn should_sidebar_update(room_updates: &RoomUpdates, own_user_id: &str) -> bool {
-    use matrix_sdk::ruma::events::AnySyncTimelineEvent;
-    use matrix_sdk::sync::State;
+            return construct_dm_node(room, other_user_id, info).await.map(RoomNode::Dm);
+        }
 
-    if !room_updates.left.is_empty() || !room_updates.invited.is_empty() {
-        return true;
     }
 
-    for update in room_updates.joined.values() {
-        let state_block = match &update.state {
-            State::Before(events) | State::After(events) => events,
+    if room.is_space() {
+        let children = get_child_room_ids(room).await.unwrap_or_default().iter().map(|id| id.to_string()).collect();
+
+        let is_top_level = match room.parent_spaces().await {
+            Ok(stream) => {
+                stream.filter_map(|res| futures::future::ready(res.ok()))
+                            .filter(|p| futures::future::ready(matches!(p, ParentSpace::Reciprocal(_))))
+                            .next()
+                            .await
+                            .is_none()
+            }
+            Err(_) => true,
         };
 
-        for raw in state_block {
-            if let Ok(event) = raw.deserialize()
-                && is_structural_state_event(&event, own_user_id)
-            {
-                return true;
-            }
-        }
+        return if is_top_level {
+            let all_children = get_all_child_room_ids(room).await.unwrap_or_default().iter().map(|id| id.to_string()).collect();
 
-        for timeline_event in &update.timeline.events {
-            if let Ok(AnySyncTimelineEvent::State(event)) = timeline_event.raw().deserialize()
-                && is_structural_state_event(&event, own_user_id)
-            {
-                return true;
-            }
-        }
-
-        for raw in &update.account_data {
-            if let Ok(Some(event_type)) = raw.get_field::<String>("type")
-                && event_type == "m.direct"
-            {
-                return true;
-            }
+            Some(RoomNode::Server(ServerRoomNode {
+                info,
+                children,
+                all_children,
+            }))
+        } else {
+            Some(RoomNode::Space(SpaceRoomNode {
+                info,
+                children,
+            }))
         }
     }
 
-    false
+    if room.is_call() {
+        return Some(RoomNode::VoiceChannel(VoiceChannelRoomNode {
+            info
+        }));
+    }
+
+    Some(RoomNode::TextChannel(TextChannelRoomNode {
+        info,
+    }))
 }
 
 fn should_notification_update(room_updates: &RoomUpdates) -> bool {
@@ -351,25 +177,104 @@ pub async fn handle_room_updates(
     room_updates: &RoomUpdates,
     client: &Client,
     handle: &AppHandle,
-    own_id: &str,
+    known_room_map: &mut HashMap<OwnedRoomId, RoomNode>,
+    dm_map: &Option<DirectEventContent>,
+    prev_seen_servers: &mut HashSet<OwnedRoomId>,
 ) {
-    if should_sidebar_update(room_updates, own_id) {
-        log::debug!("Refreshing sidebar");
-        if let Err(e) = send_sidebar(&client.joined_rooms(), handle, own_id).await {
-            log::error!("Failed to send sidebar update: {:?}", e);
-        }
-    }
-
     if should_notification_update(room_updates) {
         let counts = get_notification_counts(client).await;
         send_event(handle, &counts);
     }
 
-    let Some(call_member_updates) = extract_call_member_updates(room_updates, client).await else {
-        return;
+    if let Some(call_member_updates) = extract_call_member_updates(room_updates, client).await {
+        send_event(handle, &call_member_updates);
     };
 
-    send_event(handle, &call_member_updates);
+    let mut updates = Vec::new();
+
+    let mut visited: HashSet<OwnedRoomId> = HashSet::new();
+    let mut queue: Vec<OwnedRoomId> =
+        room_updates.joined.keys().chain(room_updates.left.keys()).cloned().collect();
+
+    let mut servers_chaned = false;
+
+    while let Some(room_id) = queue.pop() {
+        if !visited.insert(room_id.clone()) {
+            continue;
+        }
+        let Some(room) = client.get_room(&room_id) else { continue };
+
+        if matches!(room.state(), RoomState::Left | RoomState::Banned) {
+            if known_room_map.remove(&room_id).is_some() {
+                updates.push(RoomMapUpdate::Remove { key: room_id.to_string() });
+            }
+
+            servers_chaned = prev_seen_servers.remove(&room_id);
+
+            continue;
+        }
+
+        let is_new = !known_room_map.contains_key(&room_id);
+        let Some(node) = convert_room_to_node(&room, dm_map).await else {
+            continue;
+        };
+
+        if is_new && matches!(node, RoomNode::Server(_)) {
+            prev_seen_servers.insert(room_id.clone());
+            let servers: Vec<String> = prev_seen_servers.iter().map(|id| id.to_string()).collect();
+            send_event(handle, &ServerList(servers));
+        }
+
+        if known_room_map.get(&room_id) != Some(&node) {
+            updates.push(RoomMapUpdate::Insert { key: room_id.to_string(), value: node.clone() });
+            servers_chaned = known_room_map.insert(room_id.clone(), node).is_none();
+        }
+
+        if is_new && let Ok(stream) = room.parent_spaces().await {
+            for res in stream.collect::<Vec<_>>().await {
+                if let Ok(ParentSpace::Reciprocal(parent)) = res {
+                    queue.push(parent.room_id().to_owned());
+                }
+            }
+        }
+    }
+
+    if servers_chaned {
+        let servers: Vec<String> = prev_seen_servers.iter().map(|id| id.to_string()).collect();
+        send_event(handle, &ServerList(servers));
+    }
+
+    if !updates.is_empty() {
+        send_event(handle, &updates);
+    }
+}
+
+pub fn compute_dm_order(client: &Client, dm_map: &Option<DirectEventContent>) -> Vec<String> {
+    let Some(dm_map) = dm_map else { return Vec::new() };
+    let mut dms: Vec<_> = dm_map.keys().filter_map(|id| {
+        let id = id.as_user_id()?;
+        let room = client.get_dm_room(id)?;
+        (room.state() == RoomState::Joined).then(|| (room.room_id().to_owned(), room.latest_event_timestamp()))
+    }).collect();
+    dms.sort_by(|(id1, ts1), (id2, ts2)| ts2.cmp(ts1).then_with(|| id1.cmp(id2)));
+    dms.into_iter().map(|(id, _)| id.to_string()).collect()
+}
+
+pub fn handle_account_data(client: &Client ,account_data: &Vec<Raw<AnyGlobalAccountDataEvent>>, dm_map: &mut Option<DirectEventContent>, prev_dm_ids: &mut Vec<String>) -> Option<Vec<String>> {
+    for raw in account_data {
+        let Ok(AnyGlobalAccountDataEvent::Direct(ev)) = raw.deserialize() else {
+            continue;
+        };
+        *dm_map = Some(ev.content);
+
+        let new_dm_ids = compute_dm_order(client, dm_map);
+
+        if new_dm_ids != *prev_dm_ids {
+            *prev_dm_ids = new_dm_ids.clone();
+            return Some(new_dm_ids);
+        }
+    }
+    None
 }
 
 pub async fn get_notification_counts(client: &Client) -> HashMap<String, NotificationCounts> {

@@ -4,12 +4,7 @@ use leptos::task::spawn_local;
 use log::error;
 use serde_json::json;
 use shared::{
-    account_data::{Breadcrumbs, ServerOrder},
-    api::AudioDeviceInfos,
-    profile::{CustomProperties, MemberProfile, PresenceInfo, RoomProfile, UserProfile},
-    sidebar::{NotificationCounts, RoomKind, RoomNode, SidebarState, UserDevice},
-    synth::ProfileAudio,
-    timeline::UiMediaSource,
+    account_data::{Breadcrumbs, ServerOrder}, api::AudioDeviceInfos, profile::{CustomProperties, MemberProfile, PresenceInfo, RoomProfile, UserProfile}, sidebar::{DmList, DmRoomNode, NotificationCounts, RoomNode, ServerList, ServerRoomNode, SpaceRoomNode, UserDevice}, synth::ProfileAudio, timeline::UiMediaSource,
 };
 
 use crate::{
@@ -41,7 +36,9 @@ pub struct AppState {
     pub server_order: RwSignal<ServerOrder>,
     pub data_initialized: RwSignal<bool>,
 
-    pub sidebar_state: RwSignal<SidebarState>,
+    pub room_map: RwSignal<HashMap<String, ArcRwSignal<RoomNode>>>,
+    pub dm_list: RwSignal<DmList>,
+    pub server_list: RwSignal<ServerList>,
 
     pub is_focused: RwSignal<bool>,
 
@@ -123,30 +120,36 @@ impl AppState {
     }
 
     pub fn active_room_name_untracked(&self) -> Option<String> {
-        self.active_room.get_untracked().map(|room| room.get_name())
+        self.active_room.get_untracked().and_then(|room| room.name())
     }
 
     pub fn apply_server_order(&self) {
-        let old_sidebar = self.sidebar_state.get_untracked();
+        let old_list = self.server_list.get_untracked();
 
-        let new_sidebar = old_sidebar.apply_order(self.server_order.get_untracked());
+        let new_list = old_list.apply_order(self.server_order.get_untracked());
 
-        if new_sidebar != old_sidebar {
-            self.sidebar_state.set(new_sidebar);
+        if new_list != old_list {
+            self.server_list.set(new_list);
         }
     }
 
     pub fn reorder_servers(&self, source_id: &str, target_id: &str) {
-        let old_sidebar = self.sidebar_state.get_untracked();
+        let old_list = self.server_list.get_untracked();
 
-        let new_sidebar = old_sidebar.reorder_servers(source_id, target_id);
+        let new_list = old_list.reorder_servers(source_id, target_id);
 
-        if new_sidebar != old_sidebar {
-            self.sidebar_state.set(new_sidebar);
+        if new_list != old_list {
+            self.server_list.set(new_list);
 
             log::debug!("Reordered servers: {} -> {}", source_id, target_id);
             self.save_server_order();
         }
+    }
+
+    pub fn get_room_sig(&self, room_id: &str) -> Option<ArcRwSignal<RoomNode>> {
+        let sidebar_state = self.room_map.get();
+
+        sidebar_state.get(room_id).cloned()
     }
 
     pub fn get_room_profiles_in_active_server(&self) -> Vec<RoomProfile> {
@@ -154,24 +157,20 @@ impl AppState {
             return Vec::new();
         };
 
-        let sidebar_state = self.sidebar_state.get_untracked();
-
-        let Some(RoomNode {
-            kind: RoomKind::Space { all_children, .. },
-            ..
-        }) = sidebar_state.server_rooms.get(&server_id)
+        let Some(RoomNode::Server(ServerRoomNode {all_children, ..})) = self.get_room_sig(&server_id).map(|sig| sig.get_untracked())
         else {
             return Vec::new();
         };
 
-        sidebar_state
-            .server_rooms
-            .clone()
+        self.room_map
+            .get_untracked()
             .into_iter()
             .filter_map(|(room_id, room)| {
-                all_children
-                    .contains(&room_id)
-                    .then_some(RoomProfile::from(room))
+                if all_children.contains(&room_id) {
+                    room.try_get_untracked().map(RoomProfile::from)
+                } else {
+                    None
+                }
             })
             .collect()
     }
@@ -182,7 +181,7 @@ impl AppState {
     /// when a different room becomes active, so id-only subscribers (the timeline
     /// loader) don't react to that churn.
     fn set_active_room_node(&self, node: Option<RoomNode>) {
-        let new_id = node.as_ref().map(|n| n.room_id.clone());
+        let new_id = node.as_ref().map(|n| n.room_id().to_string());
 
         if self.active_room_id.with_untracked(|cur| cur != &new_id) {
             self.active_room_id.set(new_id);
@@ -194,13 +193,11 @@ impl AppState {
     }
 
     pub fn set_active_room_with_id(&self, room_id: Option<String>) {
-        let state = self.sidebar_state.get_untracked();
-
         let active_room = if let Some(room_id) = &room_id {
-            if let Some(node) = state.server_rooms.get(room_id).cloned() {
-                Some(node)
+            if let Some(node) = self.room_map.get_untracked().get(room_id).cloned() {
+                node.try_get_untracked()
             } else {
-                state.dms.iter().find(|dm| dm.room_id == *room_id).cloned()
+                None
             }
         } else {
             None
@@ -247,40 +244,13 @@ impl AppState {
     }
 
     fn first_channel_id_for_server(&self, server_id: &str) -> Option<String> {
-        let state = self.sidebar_state.get();
+        let server = self.room_map.get_untracked().get(server_id)?.try_get_untracked()?;
 
-        let server = state.server_rooms.get(server_id)?.clone();
-
-        match &server.kind {
-            RoomKind::Space { children, .. } => self.find_first_channel(children),
-            RoomKind::TextChannel => Some(server.room_id.clone()),
-            RoomKind::Dm { .. } => Some(server.room_id.clone()),
-            RoomKind::VoiceChannel => Some(server.room_id.clone()),
+        if let RoomNode::Server(ServerRoomNode { children, .. }) = &server {
+            children.first().cloned()
+        } else {
+            None
         }
-    }
-
-    fn find_first_channel(&self, room_ids: &[String]) -> Option<String> {
-        let sidebar_state = self.sidebar_state.get_untracked();
-
-        let nodes: Vec<RoomNode> = room_ids
-            .iter()
-            .filter_map(|id| sidebar_state.server_rooms.get(id).cloned())
-            .collect();
-
-        for node in nodes {
-            match &node.kind {
-                RoomKind::TextChannel => return Some(node.room_id.clone()),
-                RoomKind::Space { children, .. } => {
-                    if let Some(room_id) = self.find_first_channel(children) {
-                        return Some(room_id);
-                    }
-                }
-                RoomKind::Dm { .. } => return Some(node.room_id.clone()),
-                RoomKind::VoiceChannel => return Some(node.room_id.clone()),
-            }
-        }
-
-        None
     }
 
     fn append_room_id(&self, room_id: String) {
@@ -338,24 +308,22 @@ impl AppState {
             return RoomHeader::Unknown;
         };
 
-        let active_room_id = room.room_id.clone();
+        let active_room_id = room.room_id().to_string();
 
-        match &room.kind {
-            RoomKind::Dm { other_user_id, .. } => {
+        match &room {
+            RoomNode::Dm(DmRoomNode { other_user_id, .. }) => {
                 let profile = member_store.get_member_profile(&active_room_id, other_user_id);
 
                 RoomHeader::DM(profile)
             }
-            RoomKind::TextChannel => RoomHeader::TextChannel(room.get_name()),
-            RoomKind::VoiceChannel => RoomHeader::VoiceChannel(room.get_name()),
-            RoomKind::Space { .. } => RoomHeader::Space(room.get_name()),
+            RoomNode::TextChannel(_) => RoomHeader::TextChannel(room.display_name()),
+            RoomNode::VoiceChannel(_) => RoomHeader::VoiceChannel(room.display_name()),
+            RoomNode::Space(_) => RoomHeader::Space(room.display_name()),
+            RoomNode::Server(_) => RoomHeader::Space(room.display_name()),
         }
     }
 
     pub fn update_active_room(&self) {
-        // Fall back to the most recent breadcrumb room so the correct room is
-        // restored when the sidebar arrives after the initial data load (or when
-        // set_active_room_with_id was called while the sidebar was still empty).
         let current_room_id = self.active_room_id_untracked().or_else(|| {
             self.breadcrums
                 .get_untracked()
@@ -365,40 +333,51 @@ impl AppState {
         });
 
         let new_active_room = if let Some(room_id) = current_room_id {
-            let sidebar_state = self.sidebar_state.get();
-            self.find_room_in_rooms(&sidebar_state.top_level_servers, &room_id)
-                .or_else(|| {
-                    sidebar_state
-                        .dms
-                        .iter()
-                        .find(|dm| dm.room_id == room_id)
-                        .cloned()
-                })
+            self.get_room_sig(&room_id).map(|sig| sig.get_untracked())
         } else {
             None
         };
 
-        // The sidebar is rebuilt on every sync, so this runs constantly. The helper
-        // only fires each signal when its value actually changed, so an unchanged
-        // room won't reload the timeline and unchanged metadata won't re-render the
-        // header, member list, etc.
         self.set_active_room_node(new_active_room);
+    }
+
+    pub fn find_room_in_rooms(
+        &self,
+        room_ids_to_search: &[String],
+        target_room_id: &str,
+    ) -> Option<RoomNode> {
+        for room_id in room_ids_to_search {
+            let room_node = self.room_map.get_untracked().get(room_id)?.try_get_untracked()?;
+
+            if room_node.room_id() == target_room_id {
+                return Some(room_node);
+            }
+
+            match room_node {
+                RoomNode::Server(ServerRoomNode { children, .. })
+                | RoomNode::Space(SpaceRoomNode { children, .. }) => {
+                    if let Some(found_room) = self.find_room_in_rooms(&children, target_room_id) {
+                        return Some(found_room);
+                    }
+                }
+                _ => {}
+            }
+        }
+        None
     }
 
     /// Finds the top-level server room_id that contains `room_id` by searching
     /// the sidebar directly. Returns `None` if the room is a DM or not found.
     pub fn find_server_id_for_room(&self, room_id: &str) -> Option<String> {
-        let sidebar = self.sidebar_state.get_untracked();
-
-        for server_id in &sidebar.top_level_servers {
+        for server_id in self.server_list.get_untracked().0 {
             if server_id == room_id {
                 return Some(server_id.clone());
             }
 
-            let server = sidebar.server_rooms.get(server_id)?;
+            let server = self.room_map.get_untracked().get(&server_id)?.try_get_untracked()?;
 
-            if let RoomKind::Space { children, .. } = &server.kind
-                && self.find_room_in_rooms(children, room_id).is_some()
+            if let RoomNode::Server(ServerRoomNode { children, .. }) = server
+                && self.find_room_in_rooms(&children, room_id).is_some()
             {
                 return Some(server_id.clone());
             }
@@ -447,53 +426,19 @@ impl AppState {
             .collect()
     }
 
-    /// Recursively search for a room_id in a list of RoomNodes, returning the node if found.
-    fn find_room_in_rooms(&self, room_ids: &[String], target_room_id: &str) -> Option<RoomNode> {
-        let sidebar_state = self.sidebar_state.get_untracked();
-
-        for room_id in room_ids {
-            let node = sidebar_state.server_rooms.get(room_id)?;
-
-            if room_id == target_room_id {
-                return Some(node.clone());
-            }
-
-            if let RoomKind::Space { children, .. } = &node.kind
-                && let Some(found) = self.find_room_in_rooms(children, room_id)
-            {
-                return Some(found);
-            }
-        }
-
-        None
-    }
-
     pub fn get_rooms(&self) -> Vec<RoomNode> {
-        let sidebar_state = self.sidebar_state.get();
-
-        let server_rooms: Vec<RoomNode> = sidebar_state.server_rooms.values().cloned().collect();
-        [
-            server_rooms,
-            sidebar_state.dms,
-            sidebar_state.orphaned_rooms,
-        ]
-        .concat()
+        self.room_map
+            .get()
+            .values()
+            .filter_map(|sig| sig.try_get())
+            .collect()
     }
 
     pub fn get_room(&self, room_id: &str) -> Option<RoomNode> {
-        let sidebar_state = self.sidebar_state.get();
-
-        sidebar_state
-            .server_rooms
+        self.room_map
+            .get()
             .get(room_id)
-            .cloned()
-            .or_else(|| {
-                sidebar_state
-                    .dms
-                    .iter()
-                    .find(|dm| dm.room_id == room_id)
-                    .cloned()
-            })
+            .and_then(|sig| sig.try_get())
     }
 
     // pub fn get_room_untracked(&self, room_id: &str) -> Option<RoomNode> {

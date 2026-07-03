@@ -7,7 +7,7 @@ use matrix_sdk::encryption::{BackupDownloadStrategy, EncryptionSettings};
 use matrix_sdk::ruma::{OwnedDeviceId, UserId};
 use matrix_sdk::{AuthSession, Client as MatrixClient, SessionMeta, SessionTokens};
 use shared::api::errors::LoginError;
-use shared::api::events::{NotificationEvent, TauriEvent};
+use shared::api::events::TauriEvent;
 use shared::api::RestoreResponse;
 use shared::synth::ProfileAudio;
 use std::collections::HashMap;

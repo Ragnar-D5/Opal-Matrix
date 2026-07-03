@@ -8,9 +8,7 @@ use phosphor_leptos::{
     TRASH, WARNING_CIRCLE,
 };
 use shared::{
-    profile::MemberProfile,
-    sidebar::RoomKind,
-    timeline::{
+    profile::MemberProfile, sidebar::RoomNode, timeline::{
         DetailState, EventContent, EventFlags, MessageContent, ReactionInfo, ReplyInfo,
         RichTextSpan, SystemMessage, UiCallIntent, UiMembershipChange, UiMessageType,
         UiTimelineItem, UiTimelineItemKind,
@@ -1535,12 +1533,12 @@ pub fn render_timeline_item(
         UiTimelineItemKind::TimelineStart => {
             let room = state.active_room.get_untracked();
             let (icon, name, is_dm) = if let Some(ref room) = room {
-                let is_dm = matches!(room.kind, RoomKind::Dm { .. });
-                let icon = match &room.kind {
-                    RoomKind::VoiceChannel => SPEAKER_HIGH,
+                let is_dm = matches!(room, RoomNode::Dm(_));
+                let icon = match &room {
+                    RoomNode::VoiceChannel(_) => SPEAKER_HIGH,
                     _ => HASH,
                 };
-                (icon, room.get_name(), is_dm)
+                (icon, room.display_name(), is_dm)
             } else {
                 (HASH, "this channel".to_string(), false)
             };

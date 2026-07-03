@@ -1,12 +1,18 @@
+use matrix_sdk::ruma::events::direct::DirectEventContent;
+use matrix_sdk::ruma::OwnedRoomId;
+use matrix_sdk::RoomState;
 use matrix_sdk::{
     config::SyncSettings, ruma::presence::PresenceState, Client as MatrixClient, SessionChange,
 };
+use shared::sidebar::{DmList, RoomMapUpdate, RoomNode, ServerList};
 use shared::synth::ProfileAudio;
+use std::collections::{HashMap, HashSet};
 use std::pin::pin;
 use std::sync::{Arc, Mutex};
 use tauri::{async_runtime::spawn, AppHandle};
 
 use crate::frontend::profiles::handle_typing_notice;
+use crate::frontend::sidebar::{compute_dm_order, convert_room_to_node, handle_account_data};
 use crate::matrix_api::matrixrtc::handle_call_member_change;
 use crate::send_event;
 use crate::settings::handle_account_data_event;
@@ -14,7 +20,7 @@ use crate::{
     frontend::{
         presence::handle_presences,
         profiles::{on_member_update, send_all_members},
-        sidebar::{extract_call_memberships, handle_room_updates, send_sidebar},
+        sidebar::{extract_call_memberships, handle_room_updates},
     },
     matrix_api::{
         keyring::{save_session, StoredSession},
@@ -32,10 +38,6 @@ pub async fn attach_callbacks(
 ) -> Result<(), TauriError> {
     let mut session_subscriber = client.subscribe_to_session_changes();
     let client_clone = client.clone();
-
-    let Some(own_id) = client.user_id().map(|v| v.to_string()) else {
-        return Err("Failed to get own user ID from client".into());
-    };
 
     cleanup_ghost_calls(client).await;
 
@@ -66,7 +68,6 @@ pub async fn attach_callbacks(
 
     let rooms = client.rooms();
 
-    send_sidebar(&rooms, handle, &own_id).await?;
     send_user_to_frontend(handle, client, default_audio).await?;
 
     let members_client = client.clone();
@@ -103,6 +104,52 @@ pub async fn attach_callbacks(
 
         log::info!("Started background sync stream");
 
+        let mut dm_map = client_sync_clone
+            .account()
+            .fetch_account_data_static::<DirectEventContent>()
+            .await
+            .map_err(|e| log::error!("Failed to fetch direct message account data: {:?}", e))
+            .ok()
+            .flatten()
+            .and_then(|r| r.deserialize().ok());
+
+        let mut prev_dm_ids = compute_dm_order(&client_sync_clone, &dm_map);
+        send_event(&handle_clone, &DmList(prev_dm_ids.clone()));
+
+        let mut known_room_map = HashMap::new();
+        for room in client_sync_clone.rooms() {
+            if matches!(room.state(), RoomState::Banned | RoomState::Left) {
+                continue;
+            }
+
+            let Some(node) = convert_room_to_node(&room, &dm_map).await else {
+                continue;
+            };
+
+            known_room_map.insert(room.room_id().to_owned(), node);
+        }
+
+        send_event(
+            &handle_clone,
+            &vec![RoomMapUpdate::Set {
+                map: known_room_map
+                    .clone()
+                    .into_iter()
+                    .map(|(k, v)| (k.to_string(), v))
+                    .collect(),
+            }],
+        );
+
+        let mut prev_seen_servers: HashSet<OwnedRoomId> = known_room_map
+            .iter()
+            .filter_map(|(room_id, node)| {
+                matches!(node, RoomNode::Server(_)).then_some(room_id.clone())
+            })
+            .collect();
+        let servers: Vec<String> = prev_seen_servers.iter().map(|id| id.to_string()).collect();
+
+        send_event(&handle_clone, &ServerList(servers));
+
         while let Some(sync_item) = sync_stream.next().await {
             match sync_item {
                 Ok(sync_result) => {
@@ -112,14 +159,45 @@ pub async fn attach_callbacks(
                     {
                         log::error!("Failed to handle to-device messages: {:?}", e);
                     };
+
+                    if let Some(new_dms) = handle_account_data(
+                        &client_sync_clone,
+                        &sync_result.account_data,
+                        &mut dm_map,
+                        &mut prev_dm_ids,
+                    ) {
+                        send_event(&handle_clone, &DmList(new_dms));
+                    };
+
                     handle_presences(&sync_result.presence, &handle_clone);
                     handle_room_updates(
                         &sync_result.rooms,
                         &client_sync_clone,
                         &handle_clone,
-                        &own_id,
+                        &mut known_room_map,
+                        &dm_map,
+                        &mut prev_seen_servers,
                     )
                     .await;
+
+                    let dm_touched = sync_result
+                        .rooms
+                        .joined
+                        .keys()
+                        .chain(sync_result.rooms.left.keys())
+                        .any(|id| {
+                            dm_map
+                                .as_ref()
+                                .is_some_and(|m| m.values().flatten().any(|r| r == id))
+                        });
+
+                    if dm_touched {
+                        let new_order = compute_dm_order(&client_sync_clone, &dm_map);
+                        if new_order != prev_dm_ids {
+                            prev_dm_ids = new_order.clone();
+                            send_event(&handle_clone, &DmList(new_order));
+                        }
+                    }
                 }
                 Err(e) => {
                     log::error!("Sync loop exited with error: {}", e);

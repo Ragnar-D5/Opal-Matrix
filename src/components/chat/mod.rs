@@ -28,10 +28,7 @@ use leptos_use::{
     use_intersection_observer_with_options,
 };
 use shared::{
-    api::{FileMetadata, ScrollDirection, UiAttachmentSource},
-    profile::{MemberProfile, PresenceInfo},
-    sidebar::RoomKind,
-    timeline::{EventContent, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind},
+    api::{FileMetadata, ScrollDirection, UiAttachmentSource}, profile::{MemberProfile, PresenceInfo}, sidebar::RoomNode, timeline::{EventContent, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind},
 };
 use uuid::Uuid;
 use wasm_bindgen::JsCast;
@@ -1310,8 +1307,8 @@ pub fn Chat() -> impl IntoView {
                                 .into_any()
                         }
                         Some(node) => {
-                            match &node.kind {
-                                RoomKind::Dm { .. } | RoomKind::TextChannel => {
+                            match &node {
+                                RoomNode::Dm(_) | RoomNode::TextChannel(_) => {
                                     let Some(room_id) = state.active_room_id() else {
                                         return ().into_any();
                                     };
@@ -1336,7 +1333,7 @@ pub fn Chat() -> impl IntoView {
                                     }
                                         .into_any()
                                 }
-                                RoomKind::VoiceChannel => {
+                                RoomNode::VoiceChannel(_) => {
                                     view! {
                                         <div class="flex flex-row gap-(--gap) h-full w-full">
                                             <div class="flex flex-1 h-full border-(--tile-border-color) border-r">
@@ -1351,10 +1348,18 @@ pub fn Chat() -> impl IntoView {
                                     }
                                         .into_any()
                                 }
-                                RoomKind::Space { .. } => {
+                                RoomNode::Space(_) => {
                                     view! {
                                         <div class="flex-1 flex items-center justify-center text-muted">
                                             "Spaces are not supported yet"
+                                        </div>
+                                    }
+                                        .into_any()
+                                }
+                                RoomNode::Server(_) => {
+                                    view! {
+                                        <div class="flex-1 flex items-center justify-center text-muted">
+                                            "Servers are not supported yet"
                                         </div>
                                     }
                                         .into_any()

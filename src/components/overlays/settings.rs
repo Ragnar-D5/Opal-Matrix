@@ -398,18 +398,18 @@ fn render_profile_section() -> AnyView {
                                         room_resource
                                             .get()
                                             .into_iter()
-                                            .find(|room| Some(room.room_id.clone()) == selected_id)
+                                            .find(|room| Some(room.room_id().to_string()) == selected_id)
                                             .map(|room| {
                                                 view! {
                                                     {render_url_icon(
                                                         room.avatar_url(),
-                                                        room.get_name(),
+                                                        room.display_name(),
                                                         "16px",
-                                                        room.color.clone(),
+                                                        room.color(),
                                                         "[25%]",
                                                     )}
                                                     <span class="truncate text-sm text-normal">
-                                                        {room.name.clone()}
+                                                        {room.display_name()}
                                                     </span>
                                                 }
                                             })
@@ -432,14 +432,14 @@ fn render_profile_section() -> AnyView {
                                             .into_iter()
                                             .filter(move |room| {
                                                 search.is_empty()
-                                                    || room.get_name().to_lowercase().contains(&search)
-                                                    || room.room_id.to_lowercase().contains(&search)
+                                                || room.display_name().to_lowercase().contains(&search)
+                                                    || room.room_id().to_lowercase().contains(&search)
                                             })
                                             .collect::<Vec<_>>()
                                     }
-                                    key=|room| room.room_id.clone()
+                            key=|room| room.room_id().to_string()
                                     children=move |room| {
-                                        let room_id = room.room_id.clone();
+                                        let room_id = room.room_id().to_string();
                                         let is_selected = Some(room_id.clone())
                                             == selected_room.get();
                                         view! {
@@ -454,13 +454,13 @@ fn render_profile_section() -> AnyView {
                                             >
                                                 {render_url_icon(
                                                     room.avatar_url(),
-                                                    room.get_name(),
+                                                    room.display_name(),
                                                     "16px",
-                                                    room.color,
+                                                    room.color(),
                                                     "[25%]",
                                                 )}
                                                 <span class="truncate text-normal">
-                                                    {room.name.clone()}
+                                                    {room.display_name()}
                                                 </span>
                                             </button>
                                         }
@@ -473,8 +473,8 @@ fn render_profile_section() -> AnyView {
                                             .get()
                                             .into_iter()
                                             .all(|room| {
-                                                !room.get_name().to_lowercase().contains(&search)
-                                                    && !room.room_id.to_lowercase().contains(&search)
+                                                !room.display_name().to_lowercase().contains(&search)
+                                                    && !room.room_id().to_lowercase().contains(&search)
                                             })
                                 }>
                                     <span class="px-3 py-2 text-sm text-muted italic">

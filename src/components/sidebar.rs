@@ -1,5 +1,9 @@
 use phosphor_leptos::{Icon, IconData, IconWeight, HASH, MATRIX_LOGO, SPEAKER_HIGH};
-use shared::{get_color, profile::MemberProfile, sidebar::UserDevice, unknown_color};
+use shared::{
+    get_color,
+    profile::MemberProfile,
+    sidebar::{DmRoomNode, ServerRoomNode, UserDevice},
+};
 
 use crate::{
     components::{
@@ -11,71 +15,40 @@ use crate::{
 };
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use shared::sidebar::{RoomKind, RoomNode};
+use shared::sidebar::RoomNode;
 
 use crate::components::TextCircle;
 
-pub trait RoomNodeExt {
-    fn avatar_div<T: AsRef<str> + 'static>(&self, size_str: T) -> impl IntoView + 'static;
-    fn room_id(&self) -> String;
-    fn kind(&self) -> RoomKind;
-}
+fn render_server_avatar<T: AsRef<str> + 'static>(
+    node: RoomNode,
+    size_str: T,
+) -> impl IntoView + 'static {
+    let url = node.avatar_url();
+    let name = node.display_name();
+    let color = node.color();
 
-impl RoomNodeExt for RoomNode {
-    fn avatar_div<T: AsRef<str> + 'static>(&self, size_str: T) -> impl IntoView + 'static {
-        let url = self.avatar_url();
-        let name = self.get_name();
-        let color = self.color.clone();
+    let rounding = if let RoomNode::Dm { .. } = node {
+        "full"
+    } else {
+        "[25%]"
+    };
 
-        let rounding = if let RoomKind::Dm { .. } = self.kind {
-            "full"
-        } else {
-            "[25%]"
-        };
-
-        render_url_icon(url, name, size_str, color, rounding)
-    }
-
-    fn room_id(&self) -> String {
-        self.room_id.clone()
-    }
-
-    fn kind(&self) -> RoomKind {
-        self.kind.clone()
-    }
-}
-
-impl RoomNodeExt for Option<RoomNode> {
-    fn avatar_div<T: AsRef<str> + 'static>(&self, size_str: T) -> impl IntoView + 'static {
-        if let Some(node) = self {
-            node.avatar_div(size_str).into_any()
-        } else {
-            render_url_icon(None, "?", size_str, unknown_color(), "[25%]").into_any()
-        }
-    }
-
-    fn room_id(&self) -> String {
-        self.as_ref().map(|node| node.room_id()).unwrap_or_default()
-    }
-
-    fn kind(&self) -> RoomKind {
-        self.as_ref().map(|node| node.kind()).unwrap_or_default()
-    }
+    render_url_icon(url, name, size_str, color, rounding)
 }
 
 #[component]
-fn DmDiv(dm: RoomNode) -> impl IntoView {
+fn DmDiv(dm: DmRoomNode) -> impl IntoView {
     let state: AppState = expect_context();
     let members: ProfileStore = expect_context();
 
-    let id = dm.room_id.to_string();
-    let name = dm.name.clone().unwrap_or_else(|| "Unnamed".to_string());
+    let id = dm.room_id();
+    let name = dm.display_name();
 
     let is_active = Memo::new(move |_| state.active_room_id() == Some(id.clone()));
 
-    let color = get_color(&dm.dm_user_id().unwrap_or_default());
+    let color = get_color(&dm.other_user_id);
 
-    let user_id = dm.dm_user_id().clone().unwrap_or_default();
+    let user_id = dm.other_user_id.clone();
 
     let members = members.clone();
     let presence = members.get_presence(&user_id);
@@ -105,13 +78,13 @@ fn DmDiv(dm: RoomNode) -> impl IntoView {
         />
     };
 
-    let call_room_id = dm.room_id.clone();
+    let call_room_id = dm.room_id();
 
     let notifications = move || {
         state
             .notification_counts
             .get()
-            .get(&dm.room_id)
+            .get(&dm.room_id())
             .cloned()
             .unwrap_or_default()
     };
@@ -290,23 +263,21 @@ pub fn CutoutBadge(
     }
 }
 
-fn render_dm_preview(dm: RoomNode, members: Option<Vec<UserDevice>>) -> impl IntoView {
+fn render_dm_preview(dm: DmRoomNode, members: Option<Vec<UserDevice>>) -> impl IntoView {
     let state: AppState = expect_context();
 
-    let click_id = dm.room_id.to_string();
+    let click_id = dm.room_id();
     let clone = click_id.clone();
 
     let initial = dm
-        .name
-        .clone()
-        .unwrap_or_else(|| "Unnamed".to_string())
+        .display_name()
         .chars()
         .next()
         .unwrap_or_default()
         .to_string();
 
     let is_active = Memo::new(move |_| state.active_room_id() == Some(click_id.clone()));
-    let room_id_for_count = dm.room_id.clone();
+    let room_id_for_count = dm.room_id();
 
     let notifications = Memo::new(move |_| {
         state
@@ -375,7 +346,7 @@ fn render_dm_preview(dm: RoomNode, members: Option<Vec<UserDevice>>) -> impl Int
                         dm.avatar_url(),
                         initial,
                         "40px",
-                        get_color(&dm.dm_user_id().unwrap_or_default()),
+                        get_color(&dm.other_user_id),
                         "full",
                     )}
                 </div>
@@ -385,7 +356,7 @@ fn render_dm_preview(dm: RoomNode, members: Option<Vec<UserDevice>>) -> impl Int
 }
 
 #[component]
-pub fn ServerIcon(server: impl RoomNodeExt) -> impl IntoView {
+pub fn ServerIcon(server: ServerRoomNode) -> impl IntoView {
     let state = expect_context::<AppState>();
 
     let server_id = server.room_id();
@@ -411,27 +382,23 @@ pub fn ServerIcon(server: impl RoomNodeExt) -> impl IntoView {
         counts.notification_count > 0 || counts.highlight_count > 0
     });
 
-    let avatar_content = server.avatar_div("40px");
+    let avatar_content = render_server_avatar(RoomNode::Server(server.clone()), "40px");
 
-    let kind = server.kind();
     let tr_corner = move || {
-        if let RoomKind::Space { all_children, .. } = kind.clone() {
-            let user_ids_in_calls = state.get_call_members_in_rooms(all_children.clone());
+        let user_ids_in_calls =
+            state.get_call_members_in_rooms(server.all_children.clone().into_iter().collect());
 
-            if !user_ids_in_calls.is_empty() {
-                let user_in_call = user_ids_in_calls.contains(&state.user_id.get());
-                Some(CutoutBadgeCorner {
-                    fg_color: "white".to_string(),
-                    bg_color: if user_in_call {
-                        "var(--online-color)".to_string()
-                    } else {
-                        "var(--offline-color)".to_string()
-                    },
-                    content: CutoutBadgeContent::Icon(SPEAKER_HIGH),
-                })
-            } else {
-                None
-            }
+        if !user_ids_in_calls.is_empty() {
+            let user_in_call = user_ids_in_calls.contains(&state.user_id.get());
+            Some(CutoutBadgeCorner {
+                fg_color: "white".to_string(),
+                bg_color: if user_in_call {
+                    "var(--online-color)".to_string()
+                } else {
+                    "var(--offline-color)".to_string()
+                },
+                content: CutoutBadgeContent::Icon(SPEAKER_HIGH),
+            })
         } else {
             None
         }
@@ -485,25 +452,25 @@ pub fn render_server_channel(child: RoomNode) -> impl IntoView {
     let state: AppState = expect_context();
     let store: ProfileStore = expect_context();
 
-    let channel_icon = match child.kind {
-        RoomKind::Dm { .. } => HASH,
-        RoomKind::TextChannel => HASH,
-        RoomKind::VoiceChannel => SPEAKER_HIGH,
-        RoomKind::Space { .. } => MATRIX_LOGO,
+    let channel_icon = match &child {
+        RoomNode::Dm(_) => HASH,
+        RoomNode::TextChannel(_) => HASH,
+        RoomNode::VoiceChannel(_) => SPEAKER_HIGH,
+        _ => MATRIX_LOGO,
     };
 
-    let click_id = child.room_id.to_string();
-    let check_id = child.room_id.to_string();
+    let click_id = child.room_id();
+    let check_id = click_id.clone();
     let is_active = Memo::new(move |_| state.active_room_id() == Some(check_id.clone()));
 
-    let room_id = child.room_id.clone();
+    let room_id = child.room_id();
 
     let call_participants_sig = state.get_call_members(&room_id);
 
     let empty_sig = call_participants_sig.clone();
     let call_empty = move || empty_sig.get().is_empty();
 
-    let room_id_for_count = child.room_id.clone();
+    let room_id_for_count = child.room_id();
     let highlight_count = move || {
         let counts = state
             .notification_counts
@@ -514,7 +481,7 @@ pub fn render_server_channel(child: RoomNode) -> impl IntoView {
         counts.highlight_count
     };
 
-    let room_id_for_not = child.room_id.clone();
+    let room_id_for_not = child.room_id();
     let has_notifications = Memo::new(move |_| {
         let counts = state
             .notification_counts
@@ -527,12 +494,13 @@ pub fn render_server_channel(child: RoomNode) -> impl IntoView {
 
     let participants = Memo::new(move |_| call_participants_sig.get());
 
+    let name = child.display_name();
     let call_preview = move || {
-        if let RoomKind::VoiceChannel = &child.kind {
+        if let RoomNode::VoiceChannel(_) = &child {
             let participants = participants.get();
 
             let views = participants.iter().map(|device| {
-                    let profile = store.get_member_profile(&child.room_id, &device.user_id);
+                    let profile = store.get_member_profile(&child.room_id(), &device.user_id);
                     let clone = profile.clone();
 
                     view! {
@@ -580,7 +548,7 @@ pub fn render_server_channel(child: RoomNode) -> impl IntoView {
                     color=move || if call_empty() { "currentColor" } else { "var(--online-color)" }
                 />
                 <div class="w-1"></div>
-                {child.name}
+                {name}
                 {if highlight_count() > 0 {
                     view! {
                         <div class="ml-auto bg-(--mention-color) text-white text-xs font-bold px-1.5 py-0.5 rounded-full">
@@ -600,32 +568,24 @@ pub fn render_server_channel(child: RoomNode) -> impl IntoView {
 }
 
 #[component]
-pub fn ServerItems(active_server: RoomNode) -> impl IntoView {
-    let name = active_server.get_name();
+pub fn ServerItems(active_server: ServerRoomNode) -> impl IntoView {
+    let name = active_server.display_name();
     let state: AppState = expect_context();
 
-    match active_server.kind {
-        RoomKind::Space { children, .. } => {
-            view! {
-                <div class="header border-b border-(--tile-border-color) p-3 font-bold text-normal w-full">
-                    {name}
-                </div>
-                <div class="list pr-2 w-full pt-1">
-                    <For
-                        each=move || children.clone()
-                        key=|room_id| room_id.clone()
-                        children=move |room_id| {
-                            let Some(node) = state.get_room(&room_id) else {
-                                return view! { <div class="item p-4">"Loading..."</div> }.into_any()
-                            };
-                            render_server_channel(node).into_any()
-                        }
-                    />
-                </div>
-            }
-                .into_any()
-        }
-        _ => view! { <div class="item p-4">"Not found"</div> }.into_any(),
+    view! {
+        <div class="header border-b border-(--tile-border-color) p-3 font-bold text-normal w-full">
+            {name}
+        </div>
+        <div class="list pr-2 w-full pt-1">
+            <For
+                each=move || active_server.children.clone()
+                key=|room_id| room_id.clone()
+                children=move |room_id| {
+                    let node = state.get_room(&room_id)?;
+                    Some(render_server_channel(node).into_any())
+                }
+            />
+        </div>
     }
 }
 
@@ -643,26 +603,27 @@ pub fn Sidebar() -> impl IntoView {
     let active_dms = Memo::new(move |_| {
         let notifications = state.notification_counts.get();
 
-        let sidebar = state.sidebar_state.get();
-
-        sidebar
-            .dms
+        state
+            .dm_list
+            .get()
+            .0
             .into_iter()
-            .filter_map(|dm| {
+            .filter_map(|dm_id| {
                 let has_notifications = notifications
-                    .get(&dm.room_id)
+                    .get(&dm_id)
                     .cloned()
                     .unwrap_or_default()
                     .notification_count
                     > 0;
 
-                let call_members = state.get_call_members(&dm.room_id).get();
+                let call_members = state.get_call_members(&dm_id).get();
 
                 if !has_notifications && call_members.is_empty() {
                     None
                 } else {
                     let members = (!call_members.is_empty()).then_some(call_members);
-                    Some((dm, members))
+                    let dm_room = state.get_room(&dm_id)?.as_dm()?;
+                    Some((dm_room, members))
                 }
             })
             .collect::<Vec<_>>()
@@ -719,17 +680,22 @@ pub fn Sidebar() -> impl IntoView {
 
                     <For
                         each=move || active_dms.get()
-                        key=|(dm, _)| dm.room_id.to_string()
+                        key=|(dm, _)| dm.room_id()
                         children=move |(dm, members)| { render_dm_preview(dm, members) }
                     />
 
                     <div class="w-8 h-[1px] bg-red-500 rounded-full my-2 gap-[1px]"></div>
                     <For
-                        each=move || state.sidebar_state.get().top_level_servers
+                        each=move || state.server_list.get().0
                         key=|server_id| server_id.clone()
                         children=move |server_id| {
                             let drag_id = server_id.clone();
                             let drop_id = server_id.clone();
+                            let Some(server) = state
+                                .get_room(&server_id)
+                                .and_then(|r| r.as_server()) else {
+                                return ().into_any();
+                            };
 
                             view! {
                                 <div
@@ -760,18 +726,16 @@ pub fn Sidebar() -> impl IntoView {
                                     on:dragend=move |_| {
                                         set_dragged_server_id.set(None);
                                         spawn_local(async move {
-                                            let current_servers = state
-                                                .sidebar_state
-                                                .get_untracked()
-                                                .top_level_servers;
+                                            let current_servers = state.server_list.get_untracked().0;
                                             state.set_server_order(current_servers);
                                         });
                                     }
                                 >
-                                    <ServerIcon server=state.get_room(&server_id) />
+                                    <ServerIcon server=server />
                                     <div class="h-2 pointer-events-none"></div>
                                 </div>
                             }
+                                .into_any()
                         }
                     />
                 </div>
@@ -781,7 +745,6 @@ pub fn Sidebar() -> impl IntoView {
                 <FloatingTile class="h-(--header-height)">"Search stuff"</FloatingTile>
                 <FloatingTile class="flex-grow">
                     {move || {
-                        let current_state = state.sidebar_state.get();
                         match state.active_server_id.get() {
                             None => {
                                 view! {
@@ -790,19 +753,26 @@ pub fn Sidebar() -> impl IntoView {
                                     </div>
                                     <div class="py-1 gap-1 flex flex-col w-full">
                                         <For
-                                            each=move || current_state.dms.clone()
-                                            key=|dm| dm.room_id.to_string()
-                                            children=move |dm| {
-                                                let click_id = dm.room_id.to_string();
+                                            each=move || state.dm_list.get().0.clone()
+                                            key=|dm_id| dm_id.clone()
+                                            children=move |dm_id| {
+                                                let click_id = dm_id.clone();
+                                                let Some(dm) = state
+                                                    .get_room(&dm_id)
+                                                    .and_then(|r| r.as_dm()) else {
+                                                    return view! { <div class="item p-4">"Loading..."</div> }
+                                                        .into_any();
+                                                };
 
                                                 view! {
                                                     <DmDiv
-                                                        dm=dm.clone()
+                                                        dm=dm
                                                         on:click=move |_| {
                                                             state.set_active_room_with_id(Some(click_id.clone()))
                                                         }
                                                     />
                                                 }
+                                                    .into_any()
                                             }
                                         />
                                     </div>
@@ -810,14 +780,18 @@ pub fn Sidebar() -> impl IntoView {
                                     .into_any()
                             }
                             Some(active_id) => {
-                                let Some(active_server_id) = current_state
-                                    .top_level_servers
+                                let Some(active_server_id) = state
+                                    .server_list
+                                    .get()
+                                    .0
                                     .into_iter()
                                     .find(|s_id| s_id == &active_id) else {
                                     return view! { <div class="item p-4">"Not found"</div> }
                                         .into_any();
                                 };
-                                let Some(active_server) = state.get_room(&active_server_id) else {
+                                let Some(active_server) = state
+                                    .get_room(&active_server_id)
+                                    .and_then(|r| r.as_server()) else {
                                     return view! { <div class="item p-4">"Loading..."</div> }
                                         .into_any();
                                 };
@@ -859,11 +833,11 @@ pub fn ProfileCard() -> impl IntoView {
             let profile = profile_store.get_member_profile(&rid, &user_id).get();
             current_profile.set(Some(profile));
         } else {
-            let profile = profile_store.get_user_profile(&user_id).get();
-            current_profile.set(Some(MemberProfile {
-                room_id: "global".to_string(),
-                profile,
-            }));
+            let Some(rid) = state.active_server_id.get() else {
+                return;
+            };
+            let profile = profile_store.get_member_profile(&rid, &user_id).get();
+            current_profile.set(Some(profile));
         }
     });
 

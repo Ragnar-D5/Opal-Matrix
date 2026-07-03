@@ -79,9 +79,9 @@ async fn load_setting_from_cloud(client: &Client, key: &str) -> Result<Option<St
         .await?;
 
     if let Some(event) = event_opt {
-        let event_json: Value = serde_json::from_str(event.json().get())?;
+        let content_json: Value = serde_json::from_str(event.json().get())?;
 
-        if let Some(val) = event_json.get("content").and_then(|c| c.get("value")) {
+        if let Some(val) = content_json.get("value") {
             return Ok(Some(val.to_string()));
         }
     }
@@ -205,8 +205,6 @@ pub async fn handle_account_data_event(
     let Ok(event_json): Result<Value, _> = serde_json::from_str(event.json().get()) else {
         return;
     };
-
-    log::debug!("Received account data event: {:?}", event_json);
 
     let Some(key) = event_json.get("type").and_then(|t| t.as_str()) else {
         return;

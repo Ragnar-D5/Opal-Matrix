@@ -7,7 +7,7 @@ use shared::api::events::{
     CallMemberUpdate, NotificationUpdate, PresenceUpdate, ProfileUpdates, TypingUpdate,
 };
 use shared::api::{AudioDeviceInfos, RestoreResponse};
-use shared::sidebar::SidebarState;
+use shared::sidebar::{DmList, RoomMapUpdate, ServerList};
 use std::collections::HashMap;
 
 use log::error;
@@ -19,12 +19,12 @@ use wasm_bindgen::prelude::*;
 use web_sys::HtmlImageElement;
 
 use crate::components::{
-    SystemButtons,
     chat::Chat,
     overlays::emoji_picker::{EmojiPickerPortal, EmojiPickerState},
     overlays::gif_picker::{GifPickerPortal, GifPickerState},
     overlays::profile_card::{ProfileCardPortal, ProfileCardState},
     sidebar::Sidebar,
+    SystemButtons,
 };
 use crate::hooks::{setup_update_effect, use_tauri_event};
 use crate::state::{AppState, ProfileStore};
@@ -209,10 +209,43 @@ pub fn App() -> impl IntoView {
         state.audio_devices.set(update);
     });
 
-    let sidebar_update_event: ReadSignal<Option<SidebarState>> = use_tauri_event();
+    let room_map_event: ReadSignal<Option<Vec<RoomMapUpdate>>> = use_tauri_event();
+    let dm_list_event: ReadSignal<Option<DmList>> = use_tauri_event();
+    let server_list_event: ReadSignal<Option<ServerList>> = use_tauri_event();
+
+    setup_update_effect(room_map_event, move |new| {
+        let mut room_map = state.room_map.get_untracked();
+
+        for update in new {
+            match update {
+                RoomMapUpdate::Insert { key, value } => {
+                    if let Some(sig) = room_map.get(&key) {
+                        sig.set(value);
+                    } else {
+                        room_map.insert(key, ArcRwSignal::new(value));
+                    }
+                }
+                RoomMapUpdate::Remove { key } => {
+                    room_map.remove(&key);
+                }
+                RoomMapUpdate::Set { map } => {
+                    room_map.clear();
+                    for (room_id, node) in map {
+                        room_map.insert(room_id, ArcRwSignal::new(node));
+                    }
+                }
+            }
+        }
+
+        state.room_map.set(room_map);
+    });
+
+    setup_update_effect(dm_list_event, move |new| {
+        state.dm_list.set(new);
+    });
 
     Effect::new(move |_| {
-        if let Some(mut new_state) = sidebar_update_event.get() {
+        if let Some(mut new_state) = server_list_event.get() {
             let current_order = state.server_order.get_untracked();
 
             let order_map: HashMap<&String, usize> = current_order
@@ -222,14 +255,14 @@ pub fn App() -> impl IntoView {
                 .map(|(index, id)| (id, index))
                 .collect();
 
-            new_state.top_level_servers.sort_by(|a, b| {
+            new_state.0.sort_by(|a, b| {
                 let pos_a = order_map.get(a).copied().unwrap_or(usize::MAX);
                 let pos_b = order_map.get(b).copied().unwrap_or(usize::MAX);
 
                 pos_a.cmp(&pos_b)
             });
 
-            let final_order = new_state.top_level_servers.clone();
+            let final_order = new_state.0.clone();
 
             if final_order != current_order.servers {
                 state.server_order.set(ServerOrder {
@@ -237,7 +270,7 @@ pub fn App() -> impl IntoView {
                 });
             }
 
-            state.sidebar_state.set(new_state);
+            state.server_list.set(new_state);
             state.update_active_room();
 
             if state.current_window.get_untracked() == CurrentWindow::Loading {

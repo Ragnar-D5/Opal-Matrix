@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use csscolorparser::Color;
 use macros::TauriEvent;
@@ -12,25 +12,80 @@ pub struct UserDevice {
     pub device_id: String,
 }
 
-#[derive(Debug, Serialize, Clone, Deserialize, PartialEq, Default)]
-pub enum RoomKind {
-    Space {
-        children: Vec<String>,
-        all_children: HashSet<String>,
-    },
-    #[default]
-    TextChannel,
-    VoiceChannel,
-    Dm {
-        other_user_id: String,
-    },
-    // GroupDm {
-    // other_user_ids: Vec<String>,
-    // },
+#[derive(Debug, Serialize, Clone, Deserialize, PartialEq)]
+pub struct SpaceRoomNode {
+    pub info: RoomNodeInfo,
+    pub children: Vec<String>,
+}
+
+impl SpaceRoomNode {
+    pub fn display_name(&self) -> String {
+        self.info.get_name()
+    }
 }
 
 #[derive(Debug, Serialize, Clone, Deserialize, PartialEq)]
-pub struct RoomNode {
+pub struct ServerRoomNode {
+    pub info: RoomNodeInfo,
+    pub children: Vec<String>,
+    /// All children of the server, recursively, including children of children.
+    pub all_children: Vec<String>,
+}
+
+impl ServerRoomNode {
+    pub fn display_name(&self) -> String {
+        self.info.get_name()
+    }
+
+    pub fn room_id(&self) -> String {
+        self.info.room_id.clone()
+    }
+}
+
+#[derive(Debug, Serialize, Clone, Deserialize, PartialEq)]
+pub struct TextChannelRoomNode {
+    pub info: RoomNodeInfo,
+}
+
+#[derive(Debug, Serialize, Clone, Deserialize, PartialEq)]
+pub struct VoiceChannelRoomNode {
+    pub info: RoomNodeInfo,
+}
+
+#[derive(Debug, Serialize, Clone, Deserialize, PartialEq)]
+pub struct DmRoomNode {
+    pub info: RoomNodeInfo,
+    pub other_user_id: String,
+}
+
+impl DmRoomNode {
+    pub fn display_name(&self) -> String {
+        self.info.get_name()
+    }
+
+    pub fn room_id(&self) -> String {
+        self.info.room_id.clone()
+    }
+
+    pub fn avatar_url(&self) -> Option<String> {
+        self.info.has_avatar.then_some(format!(
+            "mxc://user/{}/room/{}",
+            self.other_user_id, self.info.room_id
+        ))
+    }
+}
+
+#[derive(Debug, Serialize, Clone, Deserialize, PartialEq, TauriEvent)]
+pub enum RoomNode {
+    Space(SpaceRoomNode),
+    Server(ServerRoomNode),
+    TextChannel(TextChannelRoomNode),
+    VoiceChannel(VoiceChannelRoomNode),
+    Dm(DmRoomNode),
+}
+
+#[derive(Debug, Serialize, Clone, Deserialize, PartialEq)]
+pub struct RoomNodeInfo {
     pub room_id: String,
     pub name: Option<String>,
     pub topic: Option<String>,
@@ -40,95 +95,154 @@ pub struct RoomNode {
 
     pub canonical_alias: Option<String>,
     pub aliases: Vec<String>,
-
-    pub kind: RoomKind,
 }
 
-impl From<RoomNode> for RoomProfile {
-    fn from(node: RoomNode) -> Self {
-        RoomProfile {
-            room_id: node.room_id,
-            name: node.name,
-            canonical_alias: node.canonical_alias,
-            aliases: node.aliases,
-        }
+impl RoomNodeInfo {
+    pub fn get_name(&self) -> String {
+        self.name.clone().unwrap_or(self.room_id.clone())
     }
 }
 
 impl RoomNode {
-    pub fn get_name(&self) -> String {
-        self.name.clone().unwrap_or(self.room_id.clone())
+    pub fn name(&self) -> Option<String> {
+        match self {
+            RoomNode::Space(node) => node.info.name.clone(),
+            RoomNode::TextChannel(node) => node.info.name.clone(),
+            RoomNode::VoiceChannel(node) => node.info.name.clone(),
+            RoomNode::Dm(node) => node.info.name.clone(),
+            RoomNode::Server(node) => node.info.name.clone(),
+        }
     }
 
-    pub fn dm_user_id(&self) -> Option<String> {
-        if let RoomKind::Dm { other_user_id, .. } = &self.kind {
-            return Some(other_user_id.clone());
-        }
+    pub fn display_name(&self) -> String {
+        self.name().unwrap_or_else(|| self.room_id().to_string())
+    }
 
-        None
+    pub fn room_id(&self) -> String {
+        match self {
+            RoomNode::Space(node) => node.info.room_id.clone(),
+            RoomNode::TextChannel(node) => node.info.room_id.clone(),
+            RoomNode::VoiceChannel(node) => node.info.room_id.clone(),
+            RoomNode::Dm(node) => node.info.room_id.clone(),
+            RoomNode::Server(node) => node.info.room_id.clone(),
+        }
+    }
+
+    fn canonical_alias(&self) -> Option<String> {
+        match self {
+            RoomNode::Space(node) => node.info.canonical_alias.clone(),
+            RoomNode::TextChannel(node) => node.info.canonical_alias.clone(),
+            RoomNode::VoiceChannel(node) => node.info.canonical_alias.clone(),
+            RoomNode::Dm(node) => node.info.canonical_alias.clone(),
+            RoomNode::Server(node) => node.info.canonical_alias.clone(),
+        }
+    }
+
+    fn aliases(&self) -> Vec<String> {
+        match self {
+            RoomNode::Space(node) => node.info.aliases.clone(),
+            RoomNode::TextChannel(node) => node.info.aliases.clone(),
+            RoomNode::VoiceChannel(node) => node.info.aliases.clone(),
+            RoomNode::Dm(node) => node.info.aliases.clone(),
+            RoomNode::Server(node) => node.info.aliases.clone(),
+        }
+    }
+
+    fn has_avatar(&self) -> bool {
+        match self {
+            RoomNode::Space(node) => node.info.has_avatar,
+            RoomNode::TextChannel(node) => node.info.has_avatar,
+            RoomNode::VoiceChannel(node) => node.info.has_avatar,
+            RoomNode::Dm(node) => node.info.has_avatar,
+            RoomNode::Server(node) => node.info.has_avatar,
+        }
     }
 
     pub fn avatar_url(&self) -> Option<String> {
-        if self.has_avatar {
-            match &self.kind {
-                RoomKind::Dm { other_user_id } => Some(format!(
-                    "mxc://user/{}/room/{}",
-                    other_user_id, self.room_id
-                )),
-                _ => Some(format!("mxc://room/{}", self.room_id)),
-            }
+        self.has_avatar().then_some(
+            if let RoomNode::Dm(DmRoomNode { other_user_id, .. }) = self {
+                format!("mxc://user/{}/room/{}", self.room_id(), other_user_id)
+            } else {
+                format!("mxc://room/{}", self.room_id())
+            },
+        )
+    }
+
+    pub fn color(&self) -> Color {
+        match self {
+            RoomNode::Space(node) => node.info.color.clone(),
+            RoomNode::TextChannel(node) => node.info.color.clone(),
+            RoomNode::VoiceChannel(node) => node.info.color.clone(),
+            RoomNode::Dm(node) => node.info.color.clone(),
+            RoomNode::Server(node) => node.info.color.clone(),
+        }
+    }
+
+    pub fn as_dm(&self) -> Option<DmRoomNode> {
+        if let RoomNode::Dm(dm_node) = self {
+            Some(dm_node.clone())
+        } else {
+            None
+        }
+    }
+
+    pub fn as_server(&self) -> Option<ServerRoomNode> {
+        if let RoomNode::Server(server_node) = self {
+            Some(server_node.clone())
         } else {
             None
         }
     }
 }
 
-#[derive(Debug, Serialize, Clone, Default, Deserialize, PartialEq, TauriEvent)]
-pub struct SidebarState {
-    pub dms: Vec<RoomNode>,
-    pub top_level_servers: Vec<String>,
-    pub orphaned_rooms: Vec<RoomNode>,
-
-    /// Rooms that aren't DMs or orphaned (not in a space)
-    pub server_rooms: HashMap<String, RoomNode>,
+impl From<RoomNode> for RoomProfile {
+    fn from(node: RoomNode) -> Self {
+        RoomProfile {
+            room_id: node.room_id().to_string(),
+            name: node.name(),
+            canonical_alias: node.canonical_alias(),
+            aliases: node.aliases(),
+        }
+    }
 }
 
-impl SidebarState {
+#[derive(Debug, Serialize, Clone, Default, Deserialize, PartialEq, TauriEvent)]
+pub struct ServerList(pub Vec<String>);
+
+impl ServerList {
     pub fn reorder_servers(&self, source_id: &str, target_id: &str) -> Self {
-        let mut new_state = self.clone();
+        let source_index = self.0.iter().position(|id| id == source_id);
+        let target_index = self.0.iter().position(|id| id == target_id);
 
-        let source_index = new_state
-            .top_level_servers
-            .iter()
-            .position(|id| id == source_id);
-        let target_index = new_state
-            .top_level_servers
-            .iter()
-            .position(|id| id == target_id);
-
+        let mut clone = self.0.clone();
         if let (Some(source_index), Some(target_index)) = (source_index, target_index) {
-            new_state.top_level_servers.remove(source_index);
-            new_state
-                .top_level_servers
-                .insert(target_index, source_id.to_string());
+            clone.remove(source_index);
+            clone.insert(target_index, source_id.to_string());
         }
 
-        new_state
+        Self(clone)
     }
 
     pub fn apply_order(&self, order: ServerOrder) -> Self {
         let new_order: Vec<String> = order
             .servers
             .iter()
-            .filter(|id| self.top_level_servers.contains(id))
+            .filter(|id| self.0.contains(id))
             .cloned()
             .collect();
 
-        Self {
-            top_level_servers: new_order,
-            ..self.clone()
-        }
+        Self(new_order)
     }
+}
+
+#[derive(Debug, Serialize, Clone, Deserialize, PartialEq, TauriEvent, Default)]
+pub struct DmList(pub Vec<String>);
+
+#[derive(Debug, Serialize, Clone, Deserialize, PartialEq, TauriEvent)]
+pub enum RoomMapUpdate {
+    Insert { key: String, value: RoomNode },
+    Remove { key: String },
+    Set { map: HashMap<String, RoomNode> },
 }
 
 #[derive(Debug, Serialize, Clone, Deserialize, PartialEq, Default, TauriEvent)]
