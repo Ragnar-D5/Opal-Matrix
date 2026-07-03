@@ -1,7 +1,7 @@
 use matrix_sdk::Client;
 use notify::Watcher;
 use percent_encoding::percent_decode_str;
-use shared::api::events::{NotificationEvent, SettingsUpdate};
+use shared::api::events::{NotificationEvent, NotificationLevel, SettingsUpdate};
 use shared::synth::ProfileAudio;
 use std::collections::HashMap;
 use std::fs::{read_to_string, write};
@@ -10,23 +10,25 @@ use std::str::FromStr;
 use std::sync::Arc;
 use tauri::async_runtime::{block_on, spawn};
 use tauri_plugin_updater::UpdaterExt;
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::{RwLock, mpsc};
 use toml_edit::DocumentMut;
 
 use chrono::Local;
-use log::{LevelFilter};
+use log::LevelFilter;
 use tauri::{App, Builder, Manager, Wry};
 
 use tauri_plugin_cli::CliExt;
 use tauri_plugin_log::{Target, TargetKind};
 
-use crate::{BrandColorsMap, TauriError, detect_content_type, diff_settings, send_event};
 use crate::matrix_api::media::{
     get_media_from_uuid_str, get_media_from_uuid_thmubnail_str, get_member_avatar, get_room_avatar,
     get_user_avatar,
 };
 use crate::state::{
     AppState, AudioManager, LiveKitRoomManager, MediaManager, TaskManager, TimelineManager,
+};
+use crate::{
+    BrandColorsMap, TauriError, detect_content_type, diff_settings, send_event, send_event_logless,
 };
 
 use super::frontend;
@@ -84,7 +86,14 @@ pub fn add_invoke_handler(builder: Builder<Wry>) -> Builder<Wry> {
     ])
 }
 
-fn add_logging_plugin(app: &mut App, log_dir: PathBuf, log_level: LevelFilter, livekit_log_level: LevelFilter, keyring_log_level: LevelFilter) -> Result<(), TauriError> {
+fn add_logging_plugin(
+    app: &mut App,
+    log_dir: PathBuf,
+    log_level: LevelFilter,
+    livekit_log_level: LevelFilter,
+    keyring_log_level: LevelFilter,
+) -> Result<(), TauriError> {
+    let handle = app.handle().clone();
     app.handle().plugin(
         tauri_plugin_log::Builder::new()
             .clear_targets()
@@ -110,7 +119,7 @@ fn add_logging_plugin(app: &mut App, log_dir: PathBuf, log_level: LevelFilter, l
             .level_for("apple_native_keyring_store", keyring_log_level)
             .level_for("android_native_keyring_store", keyring_log_level)
             .level_for("windows_native_keyring_store", keyring_log_level)
-            .format(|out, message, record| {
+            .format(move |out, message, record| {
                 let level = match record.level() {
                     log::Level::Error => "ERROR",
                     log::Level::Warn => "WARN",
@@ -122,6 +131,26 @@ fn add_logging_plugin(app: &mut App, log_dir: PathBuf, log_level: LevelFilter, l
                 let time = chrono::offset::Local::now()
                     .format("%Y-%m-%d %H:%M:%S.%3f")
                     .to_string();
+
+                match record.level() {
+                    log::Level::Error => send_event_logless(
+                        &handle.clone(),
+                        &NotificationEvent::GenericNotification {
+                            title: "Error".to_string(),
+                            message: message.to_string(),
+                            level: NotificationLevel::Error,
+                        },
+                    ),
+                    log::Level::Warn => send_event_logless(
+                        &handle.clone(),
+                        &NotificationEvent::GenericNotification {
+                            title: "Warning".to_string(),
+                            message: message.to_string(),
+                            level: NotificationLevel::Warning,
+                        },
+                    ),
+                    _ => {}
+                };
 
                 out.finish(format_args!(
                     "{}|{}|{}:{}|{}",

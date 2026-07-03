@@ -6,9 +6,9 @@ use matrix_sdk::authentication::matrix::MatrixSession;
 use matrix_sdk::encryption::{BackupDownloadStrategy, EncryptionSettings};
 use matrix_sdk::ruma::{OwnedDeviceId, UserId};
 use matrix_sdk::{AuthSession, Client as MatrixClient, SessionMeta, SessionTokens};
+use shared::api::RestoreResponse;
 use shared::api::errors::LoginError;
 use shared::api::events::TauriEvent;
-use shared::api::RestoreResponse;
 use shared::synth::ProfileAudio;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -17,7 +17,7 @@ use toml_edit::DocumentMut;
 
 use bytes::Bytes;
 use log::info;
-use tauri::{command, AppHandle, Emitter, Url};
+use tauri::{AppHandle, Emitter, Url, command};
 use tauri::{Manager, State};
 
 pub mod builder;
@@ -34,7 +34,7 @@ pub const APP_NAME: &str = "opal-matrix";
 use tauri_plugin_notification::{NotificationExt, PermissionState};
 
 use crate::builder::{add_invoke_handler, register_mxc_uri, setup_builder};
-use crate::matrix_api::keyring::{self, init_keyring, StoredSession};
+use crate::matrix_api::keyring::{self, StoredSession, init_keyring};
 use crate::state::{AppState, TimelineManager};
 use crate::sync::attach_callbacks;
 
@@ -96,6 +96,11 @@ pub fn send_event<T: TauriEvent>(app_handle: &AppHandle, payload: &T) {
     if let Err(e) = app_handle.emit(T::name().as_str(), payload) {
         error!("Failed to emit event {}: {:?}", T::name(), e);
     }
+}
+
+/// Like `send_event`, but without logging to prevent possible recursion
+pub fn send_event_logless<T: TauriEvent>(app_handle: &AppHandle, payload: &T) {
+    let _ = app_handle.emit(T::name().as_str(), &payload);
 }
 
 #[derive(serde::Serialize)]
