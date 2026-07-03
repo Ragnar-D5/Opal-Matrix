@@ -1507,13 +1507,8 @@ pub fn render_timeline_item(
 
             view! {
                 <div class="flex flex-col items-start px-4 pt-10 pb-6 gap-2 pt-30">
-                    <div class="w-16 h-16 rounded-full bg-(--ui-solid-bg)  border border-(--tile-border-color) flex items-center justify-center mb-2">
-                        <Icon
-                            icon=icon
-                            size="36px"
-                            weight=IconWeight::Bold
-                            color="var(--text-base)"
-                        />
+                    <div class="w-16 h-16 rounded-full bg-(--ui-solid-bg) border border-(--tile-border-color) flex items-center justify-center mb-2 text-normal">
+                        <Icon icon=icon size="36px" weight=IconWeight::Bold />
                     </div>
                     <h2 class="text-3xl font-bold text-bright">{heading}</h2>
                     <p class="text-muted text-sm">{subtitle}</p>

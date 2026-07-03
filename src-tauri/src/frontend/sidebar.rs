@@ -69,10 +69,6 @@ pub async fn convert_room_to_node(room: &Room) -> Option<RoomNode> {
     let topic = info.topic().map(|t| t.to_string());
     let color = get_color(&room_id);
 
-    if room.room_id().as_str() == "!jSVLSUCCGctEyNnXoi:erik-is.gay" {
-        log::info!("Room: {:?}", info);
-    }
-
     let info = RoomNodeInfo {
         name,
         has_avatar,

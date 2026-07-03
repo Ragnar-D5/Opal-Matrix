@@ -2,6 +2,7 @@ use csscolorparser::Color;
 use leptos::prelude::*;
 use shared::{
     profile::{MemberProfile, RoomProfile, UserProfile},
+    sidebar::RoomNodeInfo,
     timeline::{RichTextSpan, RoomIdFormat},
     unknown_color,
 };
@@ -18,7 +19,7 @@ pub fn render_url_icon<S: AsRef<str>, T: AsRef<str>, U: AsRef<str>>(
     size_str: T,
     color: Color,
     rounding: U,
-) -> impl IntoView {
+) -> AnyView {
     let stye_str = format!(
         "height: {}; width: {};",
         size_str.as_ref(),
@@ -118,6 +119,20 @@ pub fn render_unknown_name<T: AsRef<str>>(font_size_str: T) -> impl IntoView {
         font_size_str,
         false,
     )
+}
+
+pub trait RoomNodeExt {
+    fn render_icon<T: AsRef<str>>(&self, size_str: T) -> AnyView;
+}
+
+impl RoomNodeExt for RoomNodeInfo {
+    fn render_icon<T: AsRef<str>>(&self, size_str: T) -> AnyView {
+        if let Some(url) = self.avatar_url() {
+            render_url_icon(Some(url), &self.name, size_str, self.color.clone(), "full")
+        } else {
+            render_url_icon(None, &self.name, size_str, self.color.clone(), "full")
+        }
+    }
 }
 
 pub trait MemberProfileExt {

@@ -81,6 +81,16 @@ pub struct SingleRoomNode {
     pub other_user_ids: Vec<String>,
 }
 
+impl SingleRoomNode {
+    pub fn name(&self) -> String {
+        self.info.name.clone()
+    }
+
+    pub fn room_id(&self) -> String {
+        self.info.room_id.clone()
+    }
+}
+
 #[derive(Debug, Serialize, Clone, Deserialize, PartialEq, TauriEvent)]
 pub enum RoomNode {
     Space(SpaceRoomNode),
@@ -102,6 +112,13 @@ pub struct RoomNodeInfo {
 
     pub canonical_alias: Option<String>,
     pub aliases: Vec<String>,
+}
+
+impl RoomNodeInfo {
+    pub fn avatar_url(&self) -> Option<String> {
+        self.has_avatar
+            .then_some(format!("mxc://room/{}", self.room_id))
+    }
 }
 
 impl RoomNode {
@@ -192,6 +209,14 @@ impl RoomNode {
     pub fn as_server(&self) -> Option<ServerRoomNode> {
         if let RoomNode::Server(server_node) = self {
             Some(server_node.clone())
+        } else {
+            None
+        }
+    }
+
+    pub fn as_single(&self) -> Option<SingleRoomNode> {
+        if let RoomNode::Single(single_node) = self {
+            Some(single_node.clone())
         } else {
             None
         }

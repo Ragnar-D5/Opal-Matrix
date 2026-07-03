@@ -1,14 +1,13 @@
 use phosphor_leptos::{Icon, IconData, IconWeight, HASH, MATRIX_LOGO, SPEAKER_HIGH};
 use shared::{
-    get_color,
     profile::MemberProfile,
-    sidebar::{DmRoomNode, ServerRoomNode, UserDevice},
+    sidebar::{DmRoomNode, RoomNodeInfo, ServerRoomNode, SingleRoomNode, UserDevice},
 };
 
 use crate::{
     components::{
         presence::PresenceBadge,
-        user_profile::{render_url_icon, MemberProfileExt},
+        user_profile::{render_url_icon, MemberProfileExt, RoomNodeExt},
         AudioMenu, DeafenMenu, FloatingTile, MuteMenu, SettingsIcon,
     },
     state::{AppState, ProfileStore},
@@ -35,30 +34,22 @@ fn render_server_avatar<T: AsRef<str> + 'static>(
     render_url_icon(url, name, size_str, color, rounding)
 }
 
-#[component]
-fn DmDiv(dm: DmRoomNode) -> impl IntoView {
+fn render_full_room(info: RoomNodeInfo, other_user_id: Option<String>) -> impl IntoView {
     let state: AppState = expect_context();
-    let members: ProfileStore = expect_context();
+    let store: ProfileStore = expect_context();
 
-    let profile = members.get_member_profile(&dm.room_id(), &dm.other_user_id);
-    let name_profile = profile.clone();
-
-    let id = dm.room_id();
+    let id = info.room_id.clone();
 
     let is_active = Memo::new(move |_| state.active_room_id() == Some(id.clone()));
 
-    let user_id = dm.other_user_id.clone();
+    let call_room_id = info.room_id.clone();
 
-    let members = members.clone();
-    let presence = members.get_presence(&user_id);
-
-    let call_room_id = dm.room_id();
-
+    let notification_room_id = info.room_id.clone();
     let notifications = move || {
         state
             .notification_counts
             .get()
-            .get(&dm.room_id())
+            .get(&notification_room_id)
             .cloned()
             .unwrap_or_default()
     };
@@ -92,8 +83,16 @@ fn DmDiv(dm: DmRoomNode) -> impl IntoView {
         }
     };
 
+    let store_clone = store.clone();
+    let other_id_clone = other_user_id.clone();
+    let info_clone = info.clone();
+    let info_clone_clone = info.clone();
+    let click_id = info.room_id.clone();
     view! {
-        <div class="group flex flex-row w-full cursor-pointer px-2">
+        <div
+            class="group flex flex-row w-full cursor-pointer px-2"
+            on:click=move |_| { state.set_active_room_with_id(Some(click_id.clone())) }
+        >
             <div class="transition-[width] duration-300 ease-out shrink-0 w-0 group-hover:w-3"></div>
             <div
                 class="flex flex-row flex-grow items-center p-1 pl-2 rounded-[10px] cursor-pointer hover:text-normal"
@@ -102,11 +101,31 @@ fn DmDiv(dm: DmRoomNode) -> impl IntoView {
                 class=("hover:bg-[var(--color-item-hover)]", move || !is_active.get())
                 class=("text-dim", move || !is_active.get())
             >
-                <PresenceBadge presence=presence>
-                    {move || profile.get().render_icon("32px")}
-                </PresenceBadge>
+                {move || {
+                    if let Some(user_id) = &other_id_clone {
+                        let profile = store_clone.get_member_profile(&info_clone.room_id, user_id);
+                        let presence = store_clone.get_presence(user_id);
+
+                        view! {
+                            <PresenceBadge presence=presence>
+                                {move || profile.get().render_icon("32px")}
+                            </PresenceBadge>
+                        }
+                            .into_any()
+                    } else {
+                        info_clone.render_icon("32px")
+                    }
+                }}
                 <span class="inline-block align-center pl-2">
-                    {move || name_profile.get().get_name()}
+                    {move || {
+                        if let Some(user_id) = &other_user_id {
+                            let profile = store
+                                .get_member_profile(&info_clone_clone.room_id, user_id);
+                            profile.get().get_name()
+                        } else {
+                            info.name.clone()
+                        }
+                    }}
                 </span>
                 {call_icon}
                 {move || {
@@ -243,11 +262,12 @@ pub fn CutoutBadge(
 
 fn render_dm_preview(dm: DmRoomNode, members: Option<Vec<UserDevice>>) -> impl IntoView {
     let state: AppState = expect_context();
+    let store: ProfileStore = expect_context();
+
+    let profile = store.get_member_profile(&dm.room_id(), &dm.other_user_id);
 
     let click_id = dm.room_id();
     let clone = click_id.clone();
-
-    let initial = dm.name().chars().next().unwrap_or_default().to_string();
 
     let is_active = Memo::new(move |_| state.active_room_id() == Some(click_id.clone()));
     let room_id_for_count = dm.room_id();
@@ -315,13 +335,7 @@ fn render_dm_preview(dm: DmRoomNode, members: Option<Vec<UserDevice>>) -> impl I
 
             <CutoutBadge bottom_right=br_corner top_right=tr_corner class="justify-center flex">
                 <div class="avatar-circle w-10 h-10 rounded-full" style:justify-content="center">
-                    {render_url_icon(
-                        dm.avatar_url(),
-                        initial,
-                        "40px",
-                        get_color(&dm.other_user_id),
-                        "full",
-                    )}
+                    {profile.get().render_icon("40px")}
                 </div>
             </CutoutBadge>
         </div>
@@ -430,6 +444,15 @@ pub fn render_server_channel(child: RoomNode) -> impl IntoView {
         _ => MATRIX_LOGO,
     };
 
+    let avatar_url = child.avatar_url();
+    let avatar_name = child.name();
+    let avatar_color = child.color();
+    let avatar_rounding = if matches!(child, RoomNode::Dm(_) | RoomNode::Single(_)) {
+        "full"
+    } else {
+        "[25%]"
+    };
+
     let click_id = child.room_id();
     let check_id = click_id.clone();
     let is_active = Memo::new(move |_| state.active_room_id() == Some(check_id.clone()));
@@ -513,11 +536,31 @@ pub fn render_server_channel(child: RoomNode) -> impl IntoView {
                 class=("bg-(--color-item-selected)", move || is_active.get())
                 on:click=move |_| { state.set_active_room_with_id(Some(click_id.clone())) }
             >
-                <Icon
-                    icon=channel_icon
-                    size="20px"
-                    color=move || if call_empty() { "currentColor" } else { "var(--online-color)" }
-                />
+                {if avatar_url.is_some() {
+                    view! {
+                        <div class="w-5 h-5 shrink-0">
+                            {render_url_icon(
+                                avatar_url,
+                                avatar_name,
+                                "20px",
+                                avatar_color,
+                                avatar_rounding,
+                            )}
+                        </div>
+                    }
+                        .into_any()
+                } else {
+                    view! {
+                        <Icon
+                            icon=channel_icon
+                            size="20px"
+                            color=move || {
+                                if call_empty() { "currentColor" } else { "var(--online-color)" }
+                            }
+                        />
+                    }
+                        .into_any()
+                }}
                 <div class="w-1"></div>
                 {name}
                 {if highlight_count() > 0 {
@@ -614,12 +657,11 @@ pub fn Sidebar() -> impl IntoView {
     };
 
     let single_rooms = Memo::new(move |_| {
-        let mut rooms: Vec<RoomNode> = state
+        let rooms: Vec<SingleRoomNode> = state
             .get_rooms()
             .into_iter()
-            .filter(|r| matches!(r, RoomNode::Single(_)))
+            .filter_map(|r| r.as_single())
             .collect();
-        rooms.sort_by_key(|r| r.name());
         rooms
     });
 
@@ -825,18 +867,8 @@ pub fn Sidebar() -> impl IntoView {
                                                             each=move || state.dm_list.get().0.clone()
                                                             key=|dm_id| dm_id.clone()
                                                             children=move |dm_id| {
-                                                                let click_id = dm_id.clone();
-                                                                let dm = state.get_room(&dm_id).and_then(|r| r.as_dm());
-                                                                Some(
-                                                                    view! {
-                                                                        <DmDiv
-                                                                            dm=dm?
-                                                                            on:click=move |_| {
-                                                                                state.set_active_room_with_id(Some(click_id.clone()))
-                                                                            }
-                                                                        />
-                                                                    },
-                                                                )
+                                                                let dm = state.get_room(&dm_id).and_then(|r| r.as_dm())?;
+                                                                Some(render_full_room(dm.info, Some(dm.other_user_id)))
                                                             }
                                                         />
                                                     }
@@ -847,7 +879,9 @@ pub fn Sidebar() -> impl IntoView {
                                                         <For
                                                             each=move || single_rooms.get()
                                                             key=|room| room.room_id()
-                                                            children=move |room| render_server_channel(room)
+                                                            children=move |room| {
+                                                                Some(render_full_room(room.info, None))
+                                                            }
                                                         />
                                                     }
                                                         .into_any()
