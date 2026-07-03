@@ -1,6 +1,8 @@
 use matrix_sdk::deserialized_responses::{SyncOrStrippedState};
+use matrix_sdk::ruma::api::client::space::get_hierarchy;
 use matrix_sdk::ruma::events::direct::DirectEventContent;
 use matrix_sdk::ruma::events::space::child::{SpaceChildEventContent};
+use matrix_sdk::ruma::room::RoomSummary;
 use matrix_sdk::ruma::serde::Raw;
 use matrix_sdk::ruma::OwnedRoomId;
 use shared::api::events::CallMemberUpdate;
@@ -14,7 +16,7 @@ use matrix_sdk::room::ParentSpace;
 use matrix_sdk::ruma::events::call::member::CallMemberEventContent;
 use matrix_sdk::ruma::events::{AnyGlobalAccountDataEvent, AnySyncStateEvent, AnySyncTimelineEvent, OriginalSyncStateEvent};
 use matrix_sdk::sync::RoomUpdates;
-use shared::sidebar::{DmRoomNode, NotificationCounts, RoomMapUpdate, RoomNode, RoomNodeInfo, ServerList, ServerRoomNode, SingleRoomNode, SpaceRoomNode, TextChannelRoomNode, UserDevice, VoiceChannelRoomNode};
+use shared::sidebar::{DmRoomNode, NotificationCounts, RoomMapUpdate, RoomNode, RoomNodeInfo, ServerList, ServerRoomNode, SingleRoomNode, SpaceRoomNode, TextChannelRoomNode, UnjoinedRoomNode, UserDevice, VoiceChannelRoomNode};
 use tauri::AppHandle;
 
 use crate::{TauriError, send_event};
@@ -32,6 +34,7 @@ async fn get_child_room_ids(room: &Room) -> Result<Vec<OwnedRoomId>, TauriError>
             if child.content.via.is_empty() {
                 return None;
             }
+
             Some(child.state_key.clone())
         })
         .collect();
@@ -230,14 +233,22 @@ pub async fn handle_room_updates(
         };
 
         if is_new && matches!(node, RoomNode::Server(_)) {
+            updates.push(RoomMapUpdate::Insert { key: room_id.to_string(), value: node.clone() });
             prev_seen_servers.insert(room_id.clone());
+
             let servers: Vec<String> = prev_seen_servers.iter().map(|id| id.to_string()).collect();
             send_event(handle, &ServerList(servers));
+
+            updates.extend(get_unknown_children(&room, client, known_room_map).await);
         }
 
         if known_room_map.get(&room_id) != Some(&node) {
             updates.push(RoomMapUpdate::Insert { key: room_id.to_string(), value: node.clone() });
             servers_chaned = known_room_map.insert(room_id.clone(), node).is_none();
+
+            if servers_chaned {
+                updates.extend(get_unknown_children(&room, client, known_room_map).await);
+            }
         }
 
         if is_new && let Ok(stream) = room.parent_spaces().await {
@@ -418,3 +429,83 @@ pub async fn extract_call_memberships(rooms: &[Room]) -> Option<HashMap<String, 
 
     (!memberships.is_empty()).then_some(memberships)
 }
+
+pub fn calculate_preview_name(preview: &RoomSummary) -> String {
+    if let Some(name) = &preview.name {
+        return name.clone();
+    }
+
+    if let Some(alias) = &preview.canonical_alias {
+        return alias.to_string();
+    }
+
+    "Empty Room".to_string()
+}
+
+pub async fn get_unknown_children(room: &Room, client: &Client, known_room_map: &mut HashMap<OwnedRoomId, RoomNode>) -> Vec<RoomMapUpdate> {
+    let request = get_hierarchy::v1::Request::new(room.room_id().to_owned());
+
+    let response = match client.send(request).await {
+        Ok(res) => res,
+        Err(err) => {
+            log::error!("Failed to get hierarchy for room {}: {:?}", room.room_id(), err);
+            return Vec::new();
+        }
+    };
+
+    let mut updates = Vec::new();
+    for chunk in response.rooms {
+        let summary = chunk.summary;
+
+        let room_id = summary.room_id.clone();
+        if known_room_map.contains_key(&room_id) {
+            continue;
+        }
+
+        let info = RoomNodeInfo {
+            name: calculate_preview_name(&summary),
+            has_avatar: summary.avatar_url.is_some(),
+            canonical_alias: summary.canonical_alias.map(|a| a.to_string()),
+            aliases: Vec::new(),
+            room_id: room_id.to_string(),
+            topic: summary.topic.clone(),
+            color: get_color(room_id.as_ref()),
+        };
+        let unjoined_node = UnjoinedRoomNode { info };
+        let node = RoomNode::Unjoined(unjoined_node.clone());
+
+        known_room_map.insert(room_id.clone(), node.clone());
+        updates.push(RoomMapUpdate::Insert { key: room_id.to_string(), value: node });
+    };
+
+    updates
+}
+
+// #[command(rename_all = "snake_case")]
+// pub async fn get_unknown_room(client: State<'_, RwLock<Client>>, handle: AppHandle, room_id: String) -> Result<Option<UnjoinedRoomNode>, TauriError> {
+//     let room_id = RoomId::parse(room_id)?;
+//     let target = OwnedRoomOrAliasId::from(room_id.clone());
+
+//     let server = room_id.server_name().ok_or(format!("Room doesn't have server name: {room_id}"))?.to_owned();
+
+//     let Some(preview) = client.read().await.get_room_preview(&target, vec![server]).await.ok() else {
+//         return Ok(None);
+//     };
+
+//     let info = RoomNodeInfo {
+//         name: calculate_preview_name(&preview),
+//         has_avatar: preview.avatar_url.is_some(),
+//         canonical_alias: preview.canonical_alias.map(|a| a.to_string()),
+//         aliases: Vec::new(),
+//         room_id: room_id.to_string(),
+//         topic: preview.topic.clone(),
+//         color: get_color(room_id.as_ref()),
+//     };
+//     let node = UnjoinedRoomNode {
+//         info,
+//     };
+
+//     send_event(&handle, &vec![RoomMapUpdate::Insert { key: room_id.to_string(), value: RoomNode::Unjoined(node.clone()) }]);
+
+//     Ok(Some(node))
+// }

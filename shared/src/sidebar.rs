@@ -91,6 +91,11 @@ impl SingleRoomNode {
     }
 }
 
+#[derive(Debug, Serialize, Clone, Deserialize, PartialEq)]
+pub struct UnjoinedRoomNode {
+    pub info: RoomNodeInfo,
+}
+
 #[derive(Debug, Serialize, Clone, Deserialize, PartialEq, TauriEvent)]
 pub enum RoomNode {
     Space(SpaceRoomNode),
@@ -99,6 +104,7 @@ pub enum RoomNode {
     VoiceChannel(VoiceChannelRoomNode),
     Dm(DmRoomNode),
     Single(SingleRoomNode),
+    Unjoined(UnjoinedRoomNode),
 }
 
 #[derive(Debug, Serialize, Clone, Deserialize, PartialEq)]
@@ -130,6 +136,7 @@ impl RoomNode {
             RoomNode::Dm(node) => &node.info,
             RoomNode::Server(node) => &node.info,
             RoomNode::Single(node) => &node.info,
+            RoomNode::Unjoined(node) => &node.info,
         }
     }
 
@@ -141,6 +148,7 @@ impl RoomNode {
             RoomNode::Dm(node) => node.info.name.clone(),
             RoomNode::Server(node) => node.info.name.clone(),
             RoomNode::Single(node) => node.info.name.clone(),
+            RoomNode::Unjoined(node) => node.info.name.clone(),
         }
     }
 
@@ -152,6 +160,7 @@ impl RoomNode {
             RoomNode::Dm(node) => node.info.room_id.clone(),
             RoomNode::Server(node) => node.info.room_id.clone(),
             RoomNode::Single(node) => node.info.room_id.clone(),
+            RoomNode::Unjoined(node) => node.info.room_id.clone(),
         }
     }
 
@@ -163,6 +172,7 @@ impl RoomNode {
             RoomNode::Dm(node) => node.info.canonical_alias.clone(),
             RoomNode::Server(node) => node.info.canonical_alias.clone(),
             RoomNode::Single(node) => node.info.canonical_alias.clone(),
+            RoomNode::Unjoined(node) => node.info.canonical_alias.clone(),
         }
     }
 
@@ -174,6 +184,7 @@ impl RoomNode {
             RoomNode::Dm(node) => node.info.aliases.clone(),
             RoomNode::Server(node) => node.info.aliases.clone(),
             RoomNode::Single(node) => node.info.aliases.clone(),
+            RoomNode::Unjoined(node) => node.info.aliases.clone(),
         }
     }
 
@@ -185,6 +196,7 @@ impl RoomNode {
             RoomNode::Dm(node) => node.info.has_avatar,
             RoomNode::Server(node) => node.info.has_avatar,
             RoomNode::Single(node) => node.info.has_avatar,
+            RoomNode::Unjoined(node) => node.info.has_avatar,
         }
     }
 
@@ -206,6 +218,7 @@ impl RoomNode {
             RoomNode::Dm(node) => node.info.color.clone(),
             RoomNode::Server(node) => node.info.color.clone(),
             RoomNode::Single(node) => node.info.color.clone(),
+            RoomNode::Unjoined(node) => node.info.color.clone(),
         }
     }
 
@@ -235,6 +248,10 @@ impl RoomNode {
         } else {
             None
         }
+    }
+
+    pub fn is_unjoined(&self) -> bool {
+        matches!(self, RoomNode::Unjoined(_))
     }
 }
 

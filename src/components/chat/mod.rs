@@ -1367,6 +1367,14 @@ pub fn Chat() -> impl IntoView {
                                     }
                                         .into_any()
                                 }
+                                RoomNode::Unjoined(_) => {
+                                    view! {
+                                        <div class="flex-1 flex items-center justify-center text-muted">
+                                            "You have not joined this room"
+                                        </div>
+                                    }
+                                        .into_any()
+                                }
                             }
                         }
                     }}

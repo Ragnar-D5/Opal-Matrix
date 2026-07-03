@@ -16,9 +16,7 @@ use shared::{
 };
 
 use crate::{
-    app::{CurrentWindow, call_tauri},
-    components::{chat::Attachment, user_profile::MemberProfileExt},
-    tauri_functions::get_user_profile,
+    app::{CurrentWindow, call_tauri}, components::{chat::Attachment, user_profile::MemberProfileExt}, tauri_functions::get_user_profile
 };
 use leptos::prelude::*;
 
@@ -226,13 +224,8 @@ impl AppState {
     pub fn set_active_room_with_id(&self, room_id: Option<String>) {
         let active_room = if let Some(room_id) = &room_id {
             let node = self.room_map.get_untracked().get(room_id).cloned();
-            let resolved = node.and_then(|sig| sig.try_get_untracked());
 
-            if resolved.is_none() {
-                log::warn!("set_active_room_with_id: room {room_id} not found in room_map yet");
-            }
-
-            resolved
+            node.and_then(|sig| sig.try_get_untracked())
         } else {
             None
         };
@@ -298,15 +291,14 @@ impl AppState {
     }
 
     fn first_channel_id_for_server(&self, server_id: &str) -> Option<String> {
-        let server = self
-            .room_map
-            .get_untracked()
+        let map = self.room_map.get_untracked();
+
+        let server = map
             .get(server_id)?
             .try_get_untracked()?;
 
         let res = match server {
-            RoomNode::Server(ServerRoomNode { children, .. }) => children.first().cloned(),
-            RoomNode::Space(SpaceRoomNode { children, .. }) => children.first().cloned(),
+            RoomNode::Server(ServerRoomNode { children, .. }) | RoomNode::Space(SpaceRoomNode { children, .. }) => children.iter().find(|id| !map.get(*id).map(|sig| sig.try_get_untracked().map(|node| !node.is_unjoined()).unwrap_or(false)).unwrap_or(false)).cloned(),
             _ => None
         };
 
@@ -381,6 +373,7 @@ impl AppState {
             RoomNode::Single(_) => RoomHeader::TextChannel(room.name()),
             RoomNode::TextChannel(_) => RoomHeader::TextChannel(room.name()),
             RoomNode::VoiceChannel(_) => RoomHeader::VoiceChannel(room.name()),
+            RoomNode::Unjoined(_) => RoomHeader::TextChannel(room.name()),
             RoomNode::Space(_) => RoomHeader::Space(room.name()),
             RoomNode::Server(_) => RoomHeader::Space(room.name()),
         }

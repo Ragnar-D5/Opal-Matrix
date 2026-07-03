@@ -12,7 +12,10 @@ use std::sync::{Arc, Mutex};
 use tauri::{async_runtime::spawn, AppHandle};
 
 use crate::frontend::profiles::handle_typing_notice;
-use crate::frontend::sidebar::{compute_dm_order, compute_single_order, convert_room_to_node, handle_account_data};
+use crate::frontend::sidebar::{
+    compute_dm_order, compute_single_order, convert_room_to_node, get_unknown_children,
+    handle_account_data,
+};
 use crate::matrix_api::matrixrtc::handle_call_member_change;
 use crate::send_event;
 use crate::settings::handle_account_data_event;
@@ -152,6 +155,18 @@ pub async fn attach_callbacks(
         let servers: Vec<String> = prev_seen_servers.iter().map(|id| id.to_string()).collect();
 
         send_event(&handle_clone, &ServerList(servers));
+        let mut updates = Vec::new();
+        for room_id in &prev_seen_servers {
+            let Some(room) = client_sync_clone.get_room(room_id) else {
+                continue;
+            };
+            updates
+                .extend(get_unknown_children(&room, &client_sync_clone, &mut known_room_map).await);
+        }
+
+        if !updates.is_empty() {
+            send_event(&handle_clone, &updates);
+        }
 
         while let Some(sync_item) = sync_stream.next().await {
             match sync_item {
