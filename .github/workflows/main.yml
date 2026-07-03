@@ -114,6 +114,11 @@ jobs:
             CODEBERG_TOKEN: ${{ secrets.CODEBERG_TOKEN }}
             VERSION: ${{ needs.publish-tauri.outputs.appVersion }}
         steps:
+            # gh cli refuses to run outside a git repository, even for pure
+            # API calls with GH_TOKEN/--repo set (cli/cli#7556), so it needs
+            # a checkout even though nothing here touches the working tree.
+            - uses: actions/checkout@v4
+
             - name: Copy release assets from the GitHub mirror to Codeberg
               shell: bash
               run: |
