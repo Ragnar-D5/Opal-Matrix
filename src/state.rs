@@ -239,7 +239,8 @@ impl AppState {
         };
 
         if let Some(room_id) = self.first_channel_id_for_server(server_id) {
-            self.set_active_room_with_id(Some(room_id));
+            self.set_active_room_with_id(Some(room_id.clone()));
+        } else {
         }
     }
 

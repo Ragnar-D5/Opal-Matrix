@@ -404,8 +404,6 @@ pub fn ServerIcon(server: ServerRoomNode) -> impl IntoView {
         }
     };
 
-    let server_id_for_click = server_id_for_click.clone();
-
     let br_corner = move || {
         let highlight_count = notifications.get().highlight_count;
         if highlight_count > 0 {
@@ -434,7 +432,7 @@ pub fn ServerIcon(server: ServerRoomNode) -> impl IntoView {
                         class=("bg-[var(--color-icon-bg)]", move || !is_active.get())
                         class=("hover:bg-[var(--color-icon-hover)]", move || !is_active.get())
                         on:click=move |_| {
-                            state.set_active_server_id(Some(server_id_for_click.clone()))
+                            state.set_active_server_id(Some(server_id_for_click.clone()));
                         }
                     >
                         <div class="avatar-circle w-full h-full rounded-[25%] overflow-hidden">
@@ -801,10 +799,8 @@ pub fn Sidebar() -> impl IntoView {
                             }
                         }
                     }}
-                // </div>
                 </FloatingTile>
 
-                // Small card with current room profile
                 <FloatingTile class="h-(--header-height) w-full" style="overflow: visible;">
                     <ProfileCard />
                 </FloatingTile>

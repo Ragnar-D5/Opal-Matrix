@@ -177,4 +177,4 @@ jobs:
                   done
 
                   echo "Cleaning up the temporary draft on the GitHub mirror..."
-                  gh release delete "$TAG" --yes --cleanup-tag
+                  gh release delete "$TAG" --yes
