@@ -43,6 +43,14 @@ impl CurrentSection {
         }
     }
 
+    pub fn from_key(key: &str) -> Self {
+        match key {
+            "dms" => CurrentSection::Dms,
+            "single" => CurrentSection::Single,
+            server_id => CurrentSection::Server(server_id.to_string()),
+        }
+    }
+
     pub fn is_not_server(&self) -> bool {
         !matches!(self, CurrentSection::Server(_))
     }
@@ -260,13 +268,21 @@ impl AppState {
 
         let key = section.key();
 
-        if let Some(room_id) = self.breadcrums.get().last_space_ids.get(&key).cloned() {
+        let cached_room_id = self
+            .breadcrums
+            .get_untracked()
+            .last_space_ids
+            .get(&key)
+            .cloned()
+            .filter(|room_id| self.room_belongs_to_section(room_id, &section));
+
+        if let Some(room_id) = cached_room_id {
             self.set_active_room_with_id(Some(room_id.clone()));
             self.append_room_id(room_id);
             return;
         }
 
-        log::warn!("No last room for section {key}, falling back to first room");
+        log::warn!("No valid last room for section {key}, falling back to first room");
 
         match &section {
             CurrentSection::Dms => {
@@ -379,6 +395,52 @@ impl AppState {
         }
     }
 
+    fn room_belongs_to_section(&self, room_id: &str, section: &CurrentSection) -> bool {
+        match section {
+            CurrentSection::Dms => self.dm_list.get_untracked().0.iter().any(|id| id == room_id),
+            CurrentSection::Single => self
+                .single_room_list
+                .get_untracked()
+                .0
+                .iter()
+                .any(|id| id == room_id),
+            CurrentSection::Server(server_id) => {
+                server_id == room_id
+                    || self.find_server_id_for_room(room_id).as_deref() == Some(server_id.as_str())
+            }
+        }
+    }
+
+    pub fn section_for_room(&self, room_id: &str) -> CurrentSection {
+        let recorded_section = self
+            .breadcrums
+            .get_untracked()
+            .last_space_ids
+            .iter()
+            .find(|(_, last_room_id)| last_room_id.as_str() == room_id)
+            .map(|(key, _)| CurrentSection::from_key(key));
+
+        if let Some(section) = recorded_section {
+            return section;
+        }
+
+        if self.dm_list.get_untracked().0.iter().any(|id| id == room_id) {
+            CurrentSection::Dms
+        } else if self
+            .single_room_list
+            .get_untracked()
+            .0
+            .iter()
+            .any(|id| id == room_id)
+        {
+            CurrentSection::Single
+        } else if let Some(server_id) = self.find_server_id_for_room(room_id) {
+            CurrentSection::Server(server_id)
+        } else {
+            CurrentSection::default()
+        }
+    }
+
     pub fn update_active_room(&self) {
         let current_room_id = self.active_room_id_untracked().or_else(|| {
             self.breadcrums
@@ -393,6 +455,13 @@ impl AppState {
         } else {
             None
         };
+
+        if let Some(room_id) = &current_room_id {
+            let section = self.section_for_room(room_id);
+            if self.active_section.get_untracked() != section {
+                self.active_section.set(section);
+            }
+        }
 
         self.set_active_room_node(current_room_id, new_active_room);
     }

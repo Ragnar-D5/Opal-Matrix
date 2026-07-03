@@ -29,7 +29,7 @@ use crate::components::{
     SystemButtons,
 };
 use crate::hooks::{setup_update_effect, use_tauri_event};
-use crate::state::{AppState, CurrentSection, ProfileStore};
+use crate::state::{AppState, ProfileStore};
 use crate::tauri_functions::{get_server_order, set_backend_room_id, set_focused_in_backend};
 
 use macros::matrix_settings;
@@ -298,7 +298,10 @@ pub fn App() -> impl IntoView {
                         }
                         RestoreResponse::Success { user_id } => {
                             state.user_id.set(user_id);
-                            state.current_window.set(CurrentWindow::Home);
+                            // Stay on `Loading` until the `server_list_event` handler
+                            // fires below — that's after `dm_list`/`single_room_list`/
+                            // `room_map` have synced, so `update_active_room` resolves
+                            // `active_section` correctly before the sidebar ever mounts.
                         }
                         RestoreResponse::Failed { home_server: _ } => {
                             state.current_window.set(CurrentWindow::Login);
@@ -315,17 +318,7 @@ pub fn App() -> impl IntoView {
                     let breadcrumbs: Breadcrumbs = serde_wasm_bindgen::from_value(js_val).unwrap();
 
                     if let Some(room_id) = breadcrumbs.recent_rooms.first() {
-                        let section = if state.dm_list.get_untracked().0.contains(room_id) {
-                            CurrentSection::Dms
-                        } else if state.single_room_list.get_untracked().0.contains(room_id) {
-                            CurrentSection::Single
-                        } else {
-                            match state.find_server_id_for_room(room_id) {
-                                Some(server_id) => CurrentSection::Server(server_id),
-                                None => CurrentSection::default(),
-                            }
-                        };
-                        state.active_section.set(section);
+                        state.active_section.set(state.section_for_room(room_id));
                     }
 
                     state.breadcrums.set(breadcrumbs.clone());

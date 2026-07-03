@@ -1281,9 +1281,7 @@ pub fn Chat() -> impl IntoView {
 
     Effect::new({
         move |_| {
-            if !matches!(state.active_section.get(), CurrentSection::Server(_)) {
-                chat_sidebar_open.set(false);
-            }
+            chat_sidebar_open.set(matches!(state.active_section.get(), CurrentSection::Server(_)))
         }
     });
 
