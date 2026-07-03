@@ -4,11 +4,13 @@ use crate::components::previews::ImageLightbox;
 use crate::components::shader::BackgroundShader;
 use chrono::{DateTime, Local};
 use shared::api::events::{
-    CallMemberUpdate, NotificationUpdate, PresenceUpdate, ProfileUpdates, TypingUpdate,
+    CallMemberUpdate, NotificationEvent, NotificationLevel, NotificationUpdate, PresenceUpdate,
+    ProfileUpdates, TypingUpdate,
 };
 use shared::api::{AudioDeviceInfos, RestoreResponse};
 use shared::sidebar::{DmList, RoomMapUpdate, ServerList};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use log::error;
 
@@ -19,12 +21,12 @@ use wasm_bindgen::prelude::*;
 use web_sys::HtmlImageElement;
 
 use crate::components::{
+    SystemButtons,
     chat::Chat,
     overlays::emoji_picker::{EmojiPickerPortal, EmojiPickerState},
     overlays::gif_picker::{GifPickerPortal, GifPickerState},
     overlays::profile_card::{ProfileCardPortal, ProfileCardState},
     sidebar::Sidebar,
-    SystemButtons,
 };
 use crate::hooks::{setup_update_effect, use_tauri_event};
 use crate::state::{AppState, ProfileStore};
@@ -355,6 +357,7 @@ pub fn App() -> impl IntoView {
             CurrentWindow::Home => view! { <HomePage /> }.into_any(),
             CurrentWindow::Loading => Loading().into_any(),
         }}
+        <Notifications />
     }
 }
 
@@ -427,4 +430,73 @@ pub struct Settings {
     pub url_previews_default: bool,
     #[setting("Show image border", false, default = true)]
     pub show_image_border: bool,
+}
+
+#[component]
+pub fn Notifications() -> impl IntoView {
+    #[derive(Clone, PartialEq)]
+    struct ActiveNotification {
+        id: u64,
+        event: NotificationEvent,
+    }
+
+    static NOTIFICATION_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+    let active_notifications = RwSignal::new(Vec::<ActiveNotification>::new());
+
+    let notification_update: ReadSignal<Option<NotificationEvent>> = use_tauri_event();
+
+    setup_update_effect(notification_update, move |notification| {
+        let id = NOTIFICATION_COUNTER.fetch_add(1, Ordering::Relaxed);
+
+        active_notifications.update(|buf| {
+            buf.push(ActiveNotification {
+                id,
+                event: notification,
+            });
+        });
+
+        set_timeout(
+            move || {
+                active_notifications.update(|buf| {
+                    buf.retain(|n| n.id != id);
+                });
+            },
+            std::time::Duration::from_millis(7000),
+        );
+    });
+
+    view! {
+        <div class="fixed bottom-4 right-4 z-50 flex flex-col-reverse gap-3 max-w-sm w-full pointer-events-none">
+            <For
+                each=move || active_notifications.get()
+                key=|n| n.id
+                children=move |tracked_notif| {
+                    let (title, message, bg_color, border_color) = match tracked_notif.event {
+                        NotificationEvent::UpdateAvailable => (
+                            "Update Available".to_string(),
+                            "A new version of the app is ready to install.".to_string(),
+                            "bg-blue-50 dark:bg-blue-950/30",
+                            "border-blue-200 dark:border-blue-900"
+                        ),
+                        NotificationEvent::GenericNotification { title, message, level } => {
+                            let (bg, border) = match level {
+                                NotificationLevel::Info => ("bg-blue-50 dark:bg-blue-950/30", "border-blue-200 dark:border-blue-900"),
+                                NotificationLevel::Warning => ("bg-yellow-50 dark:bg-yellow-950/30", "border-yellow-200 dark:border-yellow-900"),
+                                NotificationLevel::Error => ("bg-red-50 dark:bg-red-950/30", "border-red-200 dark:border-red-900"),
+                            };
+                            (title, message, bg, border)
+                        }
+                    };
+
+                    view! {
+                        <div class=format!("pointer-events-auto flex flex-col border shadow-xl rounded-lg p-4 transition-all duration-300 animate-fade-in-up text-gray-900 dark:text-gray-100 {} {}", bg_color, border_color)>
+                            <p class="text-sm font-semibold">{title}</p>
+                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{message}</p>
+                        </div>
+                    }
+                }
+            />
+        </div>
+    }
 }

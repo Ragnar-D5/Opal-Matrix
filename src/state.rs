@@ -4,7 +4,15 @@ use leptos::task::spawn_local;
 use log::error;
 use serde_json::json;
 use shared::{
-    account_data::{Breadcrumbs, ServerOrder}, api::AudioDeviceInfos, profile::{CustomProperties, MemberProfile, PresenceInfo, RoomProfile, UserProfile}, sidebar::{DmList, DmRoomNode, NotificationCounts, RoomNode, ServerList, ServerRoomNode, SpaceRoomNode, UserDevice}, synth::ProfileAudio, timeline::UiMediaSource,
+    account_data::{Breadcrumbs, ServerOrder},
+    api::AudioDeviceInfos,
+    profile::{CustomProperties, MemberProfile, PresenceInfo, RoomProfile, UserProfile},
+    sidebar::{
+        DmList, DmRoomNode, NotificationCounts, RoomNode, ServerList, ServerRoomNode,
+        SpaceRoomNode, UserDevice,
+    },
+    synth::ProfileAudio,
+    timeline::UiMediaSource,
 };
 
 use crate::{
@@ -120,7 +128,9 @@ impl AppState {
     }
 
     pub fn active_room_name_untracked(&self) -> Option<String> {
-        self.active_room.get_untracked().map(|room| room.name())
+        self.active_room
+            .get_untracked()
+            .and_then(|room| Some(room.name()))
     }
 
     pub fn apply_server_order(&self) {
@@ -157,7 +167,8 @@ impl AppState {
             return Vec::new();
         };
 
-        let Some(RoomNode::Server(ServerRoomNode {all_children, ..})) = self.get_room_sig(&server_id).map(|sig| sig.get_untracked())
+        let Some(RoomNode::Server(ServerRoomNode { all_children, .. })) =
+            self.get_room_sig(&server_id).map(|sig| sig.get_untracked())
         else {
             return Vec::new();
         };
@@ -244,7 +255,11 @@ impl AppState {
     }
 
     fn first_channel_id_for_server(&self, server_id: &str) -> Option<String> {
-        let server = self.room_map.get_untracked().get(server_id)?.try_get_untracked()?;
+        let server = self
+            .room_map
+            .get_untracked()
+            .get(server_id)?
+            .try_get_untracked()?;
 
         if let RoomNode::Server(ServerRoomNode { children, .. }) = &server {
             children.first().cloned()
@@ -347,7 +362,11 @@ impl AppState {
         target_room_id: &str,
     ) -> Option<RoomNode> {
         for room_id in room_ids_to_search {
-            let room_node = self.room_map.get_untracked().get(room_id)?.try_get_untracked()?;
+            let room_node = self
+                .room_map
+                .get_untracked()
+                .get(room_id)?
+                .try_get_untracked()?;
 
             if room_node.room_id() == target_room_id {
                 return Some(room_node);
@@ -374,7 +393,11 @@ impl AppState {
                 return Some(server_id.clone());
             }
 
-            let server = self.room_map.get_untracked().get(&server_id)?.try_get_untracked()?;
+            let server = self
+                .room_map
+                .get_untracked()
+                .get(&server_id)?
+                .try_get_untracked()?;
 
             if let RoomNode::Server(ServerRoomNode { children, .. }) = server
                 && self.find_room_in_rooms(&children, room_id).is_some()
