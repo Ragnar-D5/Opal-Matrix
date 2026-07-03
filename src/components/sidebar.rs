@@ -766,7 +766,7 @@ pub fn Sidebar() -> impl IntoView {
                         children=move |(room, members)| { render_room_preview(room, members) }
                     />
 
-                    <div class="w-8 h-[1px] bg-(--tile-border-color) rounded-full my-2 gap-[1px]"></div>
+                    <div class="w-8 h-[2px] bg-(--tile-border-color) rounded-full my-2 gap-[1px]"></div>
                     <For
                         each=move || state.server_list.get().0
                         key=|server_id| server_id.clone()

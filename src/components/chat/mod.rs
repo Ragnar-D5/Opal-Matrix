@@ -700,6 +700,7 @@ fn ChatHeader(header: Memo<RoomHeader>, chat_sidebar_open: RwSignal<bool>) -> im
                         </div>
                     </button>
                 </div>
+                <div class="h-6 w-[2px] mx-1 bg-(--tile-border-color) rounded" />
             </div>
         </FloatingTile>
     }
