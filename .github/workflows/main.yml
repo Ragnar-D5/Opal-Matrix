@@ -143,12 +143,17 @@ jobs:
                   # Point the updater manifest at the Codeberg copies of the assets.
                   sed -i "s#https://github.com/${GITHUB_REPOSITORY}/releases/download/#https://codeberg.org/${CB_OWNER}/${CB_REPO}/releases/download/#g" assets/latest.json
 
-                  echo "Looking for an existing draft release with tag ${TAG} on Codeberg..."
-                  resp=$(api GET "/releases?draft=true&limit=50")
+                  echo "Looking for an existing release with tag ${TAG} on Codeberg..."
+                  resp=$(api GET "/releases/tags/${TAG}")
                   code=$(tail -n1 <<<"$resp")
                   body=$(sed '$d' <<<"$resp")
-                  if [ "$code" != "200" ]; then echo "$body"; exit 1; fi
-                  RELEASE_ID=$(jq -r --arg TAG "$TAG" '.[] | select(.tag_name==$TAG) | .id' <<<"$body" | head -n1)
+                  if [ "$code" == "200" ]; then
+                      RELEASE_ID=$(jq -r '.id' <<<"$body")
+                  elif [ "$code" == "404" ]; then
+                      RELEASE_ID=""
+                  else
+                      echo "$body"; exit 1
+                  fi
 
                   if [ -z "${RELEASE_ID:-}" ]; then
                       echo "None found, creating a new draft release..."
