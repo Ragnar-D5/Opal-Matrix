@@ -3,7 +3,7 @@ use leptos::portal::Portal;
 use leptos::prelude::*;
 use leptos_icons::Icon as LIcon;
 use phosphor_leptos::{
-    CAMERA, CARET_DOWN, Icon, IconWeight, IconWeightData, PAINT_BRUSH, PENCIL_SIMPLE,
+    Icon, IconWeight, IconWeightData, CAMERA, CARET_DOWN, PAINT_BRUSH, PENCIL_SIMPLE,
 };
 use serde_json::json;
 use web_sys::{HtmlButtonElement, KeyboardEvent};
@@ -14,7 +14,7 @@ use crate::tauri_functions::{save_banner_color, save_displayname, save_name_colo
 
 use crate::app::call_tauri;
 use crate::components::presence::PresenceBadge;
-use crate::components::user_profile::{MemberProfileExt, render_url_icon};
+use crate::components::user_profile::{render_url_icon, MemberProfileExt};
 use crate::components::{CloseButton, FloatingTile};
 use crate::state::{AppState, ProfileSignal, ProfileStore};
 
@@ -398,18 +398,20 @@ fn render_profile_section() -> AnyView {
                                         room_resource
                                             .get()
                                             .into_iter()
-                                            .find(|room| Some(room.room_id().to_string()) == selected_id)
+                                            .find(|room| {
+                                                Some(room.room_id().to_string()) == selected_id
+                                            })
                                             .map(|room| {
                                                 view! {
                                                     {render_url_icon(
                                                         room.avatar_url(),
-                                                        room.display_name(),
+                                                        room.name(),
                                                         "16px",
                                                         room.color(),
                                                         "[25%]",
                                                     )}
                                                     <span class="truncate text-sm text-normal">
-                                                        {room.display_name()}
+                                                        {room.name()}
                                                     </span>
                                                 }
                                             })
@@ -432,12 +434,12 @@ fn render_profile_section() -> AnyView {
                                             .into_iter()
                                             .filter(move |room| {
                                                 search.is_empty()
-                                                || room.display_name().to_lowercase().contains(&search)
+                                                    || room.name().to_lowercase().contains(&search)
                                                     || room.room_id().to_lowercase().contains(&search)
                                             })
                                             .collect::<Vec<_>>()
                                     }
-                            key=|room| room.room_id().to_string()
+                                    key=|room| room.room_id().to_string()
                                     children=move |room| {
                                         let room_id = room.room_id().to_string();
                                         let is_selected = Some(room_id.clone())
@@ -454,14 +456,12 @@ fn render_profile_section() -> AnyView {
                                             >
                                                 {render_url_icon(
                                                     room.avatar_url(),
-                                                    room.display_name(),
+                                                    room.name(),
                                                     "16px",
                                                     room.color(),
                                                     "[25%]",
                                                 )}
-                                                <span class="truncate text-normal">
-                                                    {room.display_name()}
-                                                </span>
+                                                <span class="truncate text-normal">{room.name()}</span>
                                             </button>
                                         }
                                     }
@@ -473,7 +473,7 @@ fn render_profile_section() -> AnyView {
                                             .get()
                                             .into_iter()
                                             .all(|room| {
-                                                !room.display_name().to_lowercase().contains(&search)
+                                                !room.name().to_lowercase().contains(&search)
                                                     && !room.room_id().to_lowercase().contains(&search)
                                             })
                                 }>
@@ -670,7 +670,10 @@ fn render_profile_section() -> AnyView {
                             <button
                                 class="shrink-0 px-3 py-1 text-sm bg-(--accent-color) text-white rounded-(--ui-border-radius) hover:brightness-110 cursor-pointer"
                                 on:click=move |_| {
-                                    if let Err(e) = save_displayname(&displayname_val.get_untracked(), selected_room.get_untracked()) {
+                                    if let Err(e) = save_displayname(
+                                        &displayname_val.get_untracked(),
+                                        selected_room.get_untracked(),
+                                    ) {
                                         log::error!("Failed to save displayname: {e}");
                                     }
                                 }

@@ -241,7 +241,6 @@ pub fn App() -> impl IntoView {
     });
 
     setup_update_effect(dm_list_event, move |new| {
-        log::info!("Received new DM list: {:?}", new);
         state.dm_list.set(new);
     });
 

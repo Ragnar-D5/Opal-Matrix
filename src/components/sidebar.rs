@@ -23,7 +23,7 @@ fn render_server_avatar<T: AsRef<str> + 'static>(
     size_str: T,
 ) -> impl IntoView + 'static {
     let url = node.avatar_url();
-    let name = node.display_name();
+    let name = node.name();
     let color = node.color();
 
     let rounding = if let RoomNode::Dm { .. } = node {
@@ -247,12 +247,7 @@ fn render_dm_preview(dm: DmRoomNode, members: Option<Vec<UserDevice>>) -> impl I
     let click_id = dm.room_id();
     let clone = click_id.clone();
 
-    let initial = dm
-        .display_name()
-        .chars()
-        .next()
-        .unwrap_or_default()
-        .to_string();
+    let initial = dm.name().chars().next().unwrap_or_default().to_string();
 
     let is_active = Memo::new(move |_| state.active_room_id() == Some(click_id.clone()));
     let room_id_for_count = dm.room_id();
@@ -470,7 +465,7 @@ pub fn render_server_channel(child: RoomNode) -> impl IntoView {
 
     let participants = Memo::new(move |_| call_participants_sig.get());
 
-    let name = child.display_name();
+    let name = child.name();
     let call_preview = move || {
         if let RoomNode::VoiceChannel(_) = &child {
             let participants = participants.get();
@@ -545,7 +540,7 @@ pub fn render_server_channel(child: RoomNode) -> impl IntoView {
 
 #[component]
 pub fn ServerItems(active_server: ServerRoomNode) -> impl IntoView {
-    let name = active_server.display_name();
+    let name = active_server.name();
     let state: AppState = expect_context();
 
     view! {
@@ -624,7 +619,7 @@ pub fn Sidebar() -> impl IntoView {
             .into_iter()
             .filter(|r| matches!(r, RoomNode::Single(_)))
             .collect();
-        rooms.sort_by_key(|r| r.display_name());
+        rooms.sort_by_key(|r| r.name());
         rooms
     });
 
@@ -775,7 +770,7 @@ pub fn Sidebar() -> impl IntoView {
             </FloatingTile>
 
             <div class="flex flex-col gap-(--gap) w-70">
-                <FloatingTile class="h-(--header-height)">"Search stuff"</FloatingTile>
+                // <FloatingTile class="h-(--header-height)">"Search stuff"</FloatingTile>
                 <FloatingTile class="flex-grow">
                     {move || {
                         match state.active_server_id.get() {

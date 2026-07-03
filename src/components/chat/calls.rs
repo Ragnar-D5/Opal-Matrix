@@ -29,7 +29,7 @@ pub fn CallView(node: RoomNode) -> impl IntoView {
     let part_room_id = room_id.clone();
     let participants = Memo::new(move |_| state.get_call_members(&part_room_id).get());
 
-    let name = node.display_name();
+    let name = node.name();
 
     let content_name = name.clone();
     let content = move || {
@@ -61,7 +61,8 @@ pub fn CallView(node: RoomNode) -> impl IntoView {
                     {participants
                         .iter()
                         .map(|device| {
-                            let profile = store.get_member_profile(&node.room_id(), &device.user_id);
+                            let profile = store
+                                .get_member_profile(&node.room_id(), &device.user_id);
                             let clone = profile.clone();
                             let colors = move || {
                                 let mut color = clone.get().banner_color();

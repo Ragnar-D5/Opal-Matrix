@@ -1489,7 +1489,7 @@ pub fn render_timeline_item(
                     RoomNode::VoiceChannel(_) => SPEAKER_HIGH,
                     _ => HASH,
                 };
-                (icon, room.display_name(), is_dm)
+                (icon, room.name(), is_dm)
             } else {
                 (HASH, "this channel".to_string(), false)
             };

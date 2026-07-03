@@ -19,8 +19,8 @@ pub struct SpaceRoomNode {
 }
 
 impl SpaceRoomNode {
-    pub fn display_name(&self) -> String {
-        self.info.get_name()
+    pub fn name(&self) -> String {
+        self.info.name.clone()
     }
 }
 
@@ -33,8 +33,8 @@ pub struct ServerRoomNode {
 }
 
 impl ServerRoomNode {
-    pub fn display_name(&self) -> String {
-        self.info.get_name()
+    pub fn name(&self) -> String {
+        self.info.name.clone()
     }
 
     pub fn room_id(&self) -> String {
@@ -59,8 +59,8 @@ pub struct DmRoomNode {
 }
 
 impl DmRoomNode {
-    pub fn display_name(&self) -> String {
-        self.info.get_name()
+    pub fn name(&self) -> String {
+        self.info.name.clone()
     }
 
     pub fn room_id(&self) -> String {
@@ -94,7 +94,7 @@ pub enum RoomNode {
 #[derive(Debug, Serialize, Clone, Deserialize, PartialEq)]
 pub struct RoomNodeInfo {
     pub room_id: String,
-    pub name: Option<String>,
+    pub name: String,
     pub topic: Option<String>,
     pub has_avatar: bool,
 
@@ -104,14 +104,8 @@ pub struct RoomNodeInfo {
     pub aliases: Vec<String>,
 }
 
-impl RoomNodeInfo {
-    pub fn get_name(&self) -> String {
-        self.name.clone().unwrap_or(self.room_id.clone())
-    }
-}
-
 impl RoomNode {
-    pub fn name(&self) -> Option<String> {
+    pub fn name(&self) -> String {
         match self {
             RoomNode::Space(node) => node.info.name.clone(),
             RoomNode::TextChannel(node) => node.info.name.clone(),
@@ -120,10 +114,6 @@ impl RoomNode {
             RoomNode::Server(node) => node.info.name.clone(),
             RoomNode::Single(node) => node.info.name.clone(),
         }
-    }
-
-    pub fn display_name(&self) -> String {
-        self.name().unwrap_or_else(|| self.room_id().to_string())
     }
 
     pub fn room_id(&self) -> String {
@@ -212,7 +202,7 @@ impl From<RoomNode> for RoomProfile {
     fn from(node: RoomNode) -> Self {
         RoomProfile {
             room_id: node.room_id().to_string(),
-            name: node.name(),
+            name: Some(node.name()),
             canonical_alias: node.canonical_alias(),
             aliases: node.aliases(),
         }

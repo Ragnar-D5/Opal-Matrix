@@ -120,7 +120,7 @@ impl AppState {
     }
 
     pub fn active_room_name_untracked(&self) -> Option<String> {
-        self.active_room.get_untracked().and_then(|room| room.name())
+        self.active_room.get_untracked().map(|room| room.name())
     }
 
     pub fn apply_server_order(&self) {
@@ -313,14 +313,13 @@ impl AppState {
         match &room {
             RoomNode::Dm(DmRoomNode { other_user_id, .. }) => {
                 let profile = member_store.get_member_profile(&active_room_id, other_user_id);
-
                 RoomHeader::DM(profile)
             }
-            RoomNode::Single(_) => RoomHeader::TextChannel(room.display_name()),
-            RoomNode::TextChannel(_) => RoomHeader::TextChannel(room.display_name()),
-            RoomNode::VoiceChannel(_) => RoomHeader::VoiceChannel(room.display_name()),
-            RoomNode::Space(_) => RoomHeader::Space(room.display_name()),
-            RoomNode::Server(_) => RoomHeader::Space(room.display_name()),
+            RoomNode::Single(_) => RoomHeader::TextChannel(room.name()),
+            RoomNode::TextChannel(_) => RoomHeader::TextChannel(room.name()),
+            RoomNode::VoiceChannel(_) => RoomHeader::VoiceChannel(room.name()),
+            RoomNode::Space(_) => RoomHeader::Space(room.name()),
+            RoomNode::Server(_) => RoomHeader::Space(room.name()),
         }
     }
 

@@ -61,13 +61,17 @@ async fn get_all_child_room_ids(room: &Room) -> Result<Vec<OwnedRoomId>, TauriEr
 pub async fn convert_room_to_node(room: &Room) -> Option<RoomNode> {
     let info = room.clone_info();
 
-    let name = info.name().map(|n| n.to_string());
+    let name = room.display_name().await.ok()?.to_string();
     let has_avatar = info.avatar_url().is_some();
     let canonical_alias = info.canonical_alias().map(|a| a.to_string());
     let aliases = info.alt_aliases().iter().map(|a| a.to_string()).collect();
     let room_id = room.room_id().to_string();
     let topic = info.topic().map(|t| t.to_string());
     let color = get_color(&room_id);
+
+    if room.room_id().as_str() == "!jSVLSUCCGctEyNnXoi:erik-is.gay" {
+        log::info!("Room: {:?}", info);
+    }
 
     let info = RoomNodeInfo {
         name,
