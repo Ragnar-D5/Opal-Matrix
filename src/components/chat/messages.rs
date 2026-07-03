@@ -465,7 +465,13 @@ fn render_message_content(
                 } else {
                     ().into_any()
                 }}
-                {move || if settings.url_previews_default.signal().get() {spans.clone().into_iter().map(render_link).collect_view().into_any()} else {().into_any()}}
+                {move || {
+                    if settings.url_previews_default.signal().get() {
+                        spans.clone().into_iter().map(render_link).collect_view().into_any()
+                    } else {
+                        ().into_any()
+                    }
+                }}
             </div>
         }
             .into_any(),
@@ -657,10 +663,10 @@ fn render_system_message(
         let name_sig = profile_sig.clone();
 
         view! {
-            <div class="inline-flex items-center gap-1 pr-1 align-middle">
+            <span class="inline-flex items-center mr-1 align-middle">
                 {move || profile_sig.get().render_icon("20px")}
-                {move || name_sig.get().render_name_popup("16px")}
-            </div>
+            </span>
+            <span class="mr-1">{move || name_sig.get().render_name_popup("16px")}</span>
         }
     };
 
@@ -670,8 +676,13 @@ fn render_system_message(
                 match change {
                     UiMembershipChange::Joined => {
                         view! {
-                            <span class="inline-flex align-middle">
-                                <Icon icon=ARROW_RIGHT color="var(--online-color)" weight=IconWeight::Bold size="15px" />
+                            <span class="inline-flex align-middle mr-1">
+                                <Icon
+                                    icon=ARROW_RIGHT
+                                    color="var(--online-color)"
+                                    weight=IconWeight::Bold
+                                    size="15px"
+                                />
                             </span>
                         }
                             .into_any()
@@ -705,42 +716,18 @@ fn render_system_message(
                 "changed membership"
             };
 
-            view! {
-                <div>
-                    {before} {user_div(&user_id)} <span>{text}</span>
-                </div>
-            }
+            view! { <div>{before} {user_div(&user_id)} <span>{text}</span></div> }
             .into_any()
         }
-        SystemMessage::CallInvite => view! {
-            <div>
-                {user_div(&sender_id_str)} <span>"started a call"</span>
-            </div>
-        }
+        SystemMessage::CallInvite => view! { <div>{user_div(&sender_id_str)} <span>"started a call"</span></div> }
         .into_any(),
-        SystemMessage::CallMember => view! {
-            <div>
-                {user_div(&sender_id_str)} <span>"joined a call"</span>
-            </div>
-        }
+        SystemMessage::CallMember => view! { <div>{user_div(&sender_id_str)} <span>"joined a call"</span></div> }
         .into_any(),
-        SystemMessage::PolicyRuleRoom => view! {
-            <div>
-                {user_div(&sender_id_str)} <span>"changed the room's policy"</span>
-            </div>
-        }
+        SystemMessage::PolicyRuleRoom => view! { <div>{user_div(&sender_id_str)} <span>"changed the room's policy"</span></div> }
         .into_any(),
-        SystemMessage::PolicyRuleServer => view! {
-            <div>
-                {user_div(&sender_id_str)} <span>"changed the server's policy"</span>
-            </div>
-        }
+        SystemMessage::PolicyRuleServer => view! { <div>{user_div(&sender_id_str)} <span>"changed the server's policy"</span></div> }
         .into_any(),
-        SystemMessage::PolicyRuleUser => view! {
-            <div>
-                {user_div(&sender_id_str)} <span>"changed their policy"</span>
-            </div>
-        }
+        SystemMessage::PolicyRuleUser => view! { <div>{user_div(&sender_id_str)} <span>"changed their policy"</span></div> }
         .into_any(),
         SystemMessage::ProfileChange(change) => {
             let text = change.display_string();
@@ -748,17 +735,9 @@ fn render_system_message(
             view! { <div>{user_div(&change.user_id)} <span>{text}</span></div> }
             .into_any()
         }
-        SystemMessage::Redacted => view! {
-            <div>
-                {user_div(&sender_id_str)} <span>"had a message redacted"</span>
-            </div>
-        }
+        SystemMessage::Redacted => view! { <div>{user_div(&sender_id_str)} <span>"had a message redacted"</span></div> }
         .into_any(),
-        SystemMessage::RoomAvatar { .. } => view! {
-            <div>
-                {user_div(&sender_id_str)} <span>"changed the room avatar"</span>
-            </div>
-        }
+        SystemMessage::RoomAvatar { .. } => view! { <div>{user_div(&sender_id_str)} <span>"changed the room avatar"</span></div> }
         .into_any(),
         SystemMessage::RoomCanonicalAlias { alias } => {
             let text = format!(
@@ -831,23 +810,11 @@ fn render_system_message(
             </div>
         }
         .into_any(),
-        SystemMessage::RoomPinnedEvents { .. } => view! {
-            <div>
-                {user_div(&sender_id_str)} <span>"changed pinned events"</span>
-            </div>
-        }
+        SystemMessage::RoomPinnedEvents { .. } => view! { <div>{user_div(&sender_id_str)} <span>"changed pinned events"</span></div> }
         .into_any(),
-        SystemMessage::RoomPowerLevels => view! {
-            <div>
-                {user_div(&sender_id_str)} <span>"changed the room power levels"</span>
-            </div>
-        }
+        SystemMessage::RoomPowerLevels => view! { <div>{user_div(&sender_id_str)} <span>"changed the room power levels"</span></div> }
         .into_any(),
-        SystemMessage::RoomServerAcl => view! {
-            <div>
-                {user_div(&sender_id_str)} <span>"changed the room server ACL"</span>
-            </div>
-        }
+        SystemMessage::RoomServerAcl => view! { <div>{user_div(&sender_id_str)} <span>"changed the room server ACL"</span></div> }
         .into_any(),
         SystemMessage::RoomThirdPartyInvite { display_name } => view! {
             <div>
@@ -982,29 +949,13 @@ fn render_system_message(
             }
             .into_any()
         }
-        SystemMessage::Unknown => view! {
-            <div>
-                {user_div(&sender_id_str)} <span>"performed an unknown system action"</span>
-            </div>
-        }
+        SystemMessage::Unknown => view! { <div>{user_div(&sender_id_str)} <span>"performed an unknown system action"</span></div> }
         .into_any(),
-        SystemMessage::BeaconInfo => view! {
-            <div>
-                {user_div(&sender_id_str)} <span>"shared a live location"</span>
-            </div>
-        }
+        SystemMessage::BeaconInfo => view! { <div>{user_div(&sender_id_str)} <span>"shared a live location"</span></div> }
         .into_any(),
-        SystemMessage::MemberHints => view! {
-            <div>
-                {user_div(&sender_id_str)} <span>"updated their member hints"</span>
-            </div>
-        }
+        SystemMessage::MemberHints => view! { <div>{user_div(&sender_id_str)} <span>"updated their member hints"</span></div> }
         .into_any(),
-        SystemMessage::RoomImagePack => view! {
-            <div>
-                {user_div(&sender_id_str)} <span>"updated the room's image pack"</span>
-            </div>
-        }
+        SystemMessage::RoomImagePack => view! { <div>{user_div(&sender_id_str)} <span>"updated the room's image pack"</span></div> }
         .into_any(),
     };
 

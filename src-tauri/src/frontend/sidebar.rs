@@ -8,13 +8,13 @@ use shared::get_color;
 use std::collections::{HashMap, HashSet};
 
 use futures::{StreamExt, TryFutureExt, };
-use matrix_sdk::{Client, Room, RoomState, };
+use matrix_sdk::{Client, Room, RoomMemberships, RoomState };
 
 use matrix_sdk::room::ParentSpace;
 use matrix_sdk::ruma::events::call::member::CallMemberEventContent;
 use matrix_sdk::ruma::events::{AnyGlobalAccountDataEvent, AnySyncStateEvent, AnySyncTimelineEvent, OriginalSyncStateEvent};
 use matrix_sdk::sync::RoomUpdates;
-use shared::sidebar::{DmRoomNode, NotificationCounts, RoomMapUpdate, RoomNode, RoomNodeInfo, ServerList, ServerRoomNode, SpaceRoomNode, TextChannelRoomNode, UserDevice, VoiceChannelRoomNode};
+use shared::sidebar::{DmRoomNode, NotificationCounts, RoomMapUpdate, RoomNode, RoomNodeInfo, ServerList, ServerRoomNode, SingleRoomNode, SpaceRoomNode, TextChannelRoomNode, UserDevice, VoiceChannelRoomNode};
 use tauri::AppHandle;
 
 use crate::{TauriError, send_event};
@@ -128,6 +128,32 @@ pub async fn convert_room_to_node(room: &Room) -> Option<RoomNode> {
         return Some(RoomNode::VoiceChannel(VoiceChannelRoomNode {
             info
         }));
+    }
+
+    // Check if room has parents
+    if let Ok(stream) = room.parent_spaces().await {
+        let has_reciprocal_parent = stream
+            .collect::<Vec<_>>()
+            .await
+            .iter()
+            .any(|res| matches!(res, Ok(ParentSpace::Reciprocal(_))));
+
+        if has_reciprocal_parent {
+            return Some(RoomNode::TextChannel(TextChannelRoomNode {
+                info,
+            }));
+        } else {
+            let other_user_ids = room.members(RoomMemberships::ACTIVE).await.ok()?.iter().filter_map(|m| if m.user_id() != room.own_user_id() {
+                Some(m.user_id().to_string())
+            } else {
+                None
+            }).collect();
+
+            return Some(RoomNode::Single(SingleRoomNode {
+                info,
+                other_user_ids,
+            }))
+        }
     }
 
     Some(RoomNode::TextChannel(TextChannelRoomNode {

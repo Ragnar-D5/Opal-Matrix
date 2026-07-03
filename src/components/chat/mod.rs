@@ -1308,7 +1308,9 @@ pub fn Chat() -> impl IntoView {
                         }
                         Some(node) => {
                             match &node {
-                                RoomNode::Dm(_) | RoomNode::TextChannel(_) => {
+                                RoomNode::Dm(_)
+                                | RoomNode::TextChannel(_)
+                                | RoomNode::Single(_) => {
                                     let Some(room_id) = state.active_room_id() else {
                                         return ().into_any();
                                     };

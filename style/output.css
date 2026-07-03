@@ -321,6 +321,9 @@
   .bottom-1 {
     bottom: calc(var(--spacing) * 1);
   }
+  .bottom-3 {
+    bottom: calc(var(--spacing) * 3);
+  }
   .bottom-full {
     bottom: 100%;
   }

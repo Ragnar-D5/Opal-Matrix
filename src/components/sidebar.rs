@@ -16,6 +16,7 @@ use crate::{
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use shared::sidebar::RoomNode;
+use web_sys::HtmlButtonElement;
 
 fn render_server_avatar<T: AsRef<str> + 'static>(
     node: RoomNode,
@@ -564,11 +565,68 @@ pub fn ServerItems(active_server: ServerRoomNode) -> impl IntoView {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum HomeSection {
+    Dms,
+    Rooms,
+}
+
 #[component]
 pub fn Sidebar() -> impl IntoView {
     let state: AppState = expect_context();
 
     let (dragged_server_id, set_dragged_server_id) = signal::<Option<String>>(None);
+    let (home_section, set_home_section) = signal(HomeSection::Dms);
+
+    let dms_btn = NodeRef::new();
+    let rooms_btn = NodeRef::new();
+
+    let pill_left = RwSignal::new(0);
+    let pill_width = RwSignal::new(0);
+    let has_measured = RwSignal::new(false);
+
+    Effect::new(move |_| {
+        let is_rooms = home_section.get() == HomeSection::Rooms;
+        let target_node: Option<HtmlButtonElement> = if is_rooms {
+            rooms_btn.get()
+        } else {
+            dms_btn.get()
+        };
+
+        if let Some(el) = target_node {
+            request_animation_frame(move || {
+                pill_left.set(el.offset_left());
+                pill_width.set(el.offset_width());
+
+                if !has_measured.get_untracked() {
+                    set_timeout(
+                        move || has_measured.set(true),
+                        std::time::Duration::from_millis(50),
+                    );
+                }
+            });
+        }
+    });
+
+    let pill_style = move || {
+        let w = pill_width.get();
+        let l = pill_left.get();
+        if w > 0 {
+            format!("left: {}px; width: {}px; opacity: 1;", l, w)
+        } else {
+            "opacity: 0;".to_string()
+        }
+    };
+
+    let single_rooms = Memo::new(move |_| {
+        let mut rooms: Vec<RoomNode> = state
+            .get_rooms()
+            .into_iter()
+            .filter(|r| matches!(r, RoomNode::Single(_)))
+            .collect();
+        rooms.sort_by_key(|r| r.display_name());
+        rooms
+    });
 
     let Ok(img) = web_sys::HtmlImageElement::new() else {
         return view! { <div class="item p-4">"Error initializing drag image"</div> }.into_any();
@@ -723,28 +781,84 @@ pub fn Sidebar() -> impl IntoView {
                         match state.active_server_id.get() {
                             None => {
                                 view! {
-                                    <div class="header border-b border-(--tile-border-color) font-bold text-normal p-3 flex flex-row w-full">
-                                        "Direct Messages" <div class="flex flex-grow"></div>
+                                    <div class="relative header border-b border-(--tile-border-color) font-bold text-normal p-3 flex flex-row gap-3 w-full">
+                                        <button
+                                            node_ref=dms_btn
+                                            class="font-medium hover:text-normal cursor-pointer"
+                                            class=(
+                                                "text-(--accent-color)",
+                                                move || home_section.get() == HomeSection::Dms,
+                                            )
+                                            class=(
+                                                "text-dim",
+                                                move || home_section.get() != HomeSection::Dms,
+                                            )
+                                            on:click=move |_| set_home_section.set(HomeSection::Dms)
+                                        >
+                                            "Direct Messages"
+                                        </button>
+                                        <button
+                                            node_ref=rooms_btn
+                                            class="font-medium hover:text-normal cursor-pointer"
+                                            class=(
+                                                "text-(--accent-color)",
+                                                move || home_section.get() == HomeSection::Rooms,
+                                            )
+                                            class=(
+                                                "text-dim",
+                                                move || home_section.get() != HomeSection::Rooms,
+                                            )
+                                            on:click=move |_| set_home_section.set(HomeSection::Rooms)
+                                        >
+                                            "Rooms"
+                                        </button>
+                                        <div class="flex flex-grow"></div>
+                                        <div
+                                            class="absolute bottom-3 h-[2px] rounded-full bg-(--accent-color)"
+                                            class=("transition-all", move || has_measured.get())
+                                            class=("duration-100", move || has_measured.get())
+                                            class=("ease-in-out", move || has_measured.get())
+                                            style=pill_style
+                                        />
                                     </div>
                                     <div class="py-1 gap-1 flex flex-col w-full">
-                                        <For
-                                            each=move || state.dm_list.get().0.clone()
-                                            key=|dm_id| dm_id.clone()
-                                            children=move |dm_id| {
-                                                let click_id = dm_id.clone();
-                                                let dm = state.get_room(&dm_id).and_then(|r| r.as_dm());
-                                                Some(
+                                        {move || {
+                                            match home_section.get() {
+                                                HomeSection::Dms => {
                                                     view! {
-                                                        <DmDiv
-                                                            dm=dm?
-                                                            on:click=move |_| {
-                                                                state.set_active_room_with_id(Some(click_id.clone()))
+                                                        <For
+                                                            each=move || state.dm_list.get().0.clone()
+                                                            key=|dm_id| dm_id.clone()
+                                                            children=move |dm_id| {
+                                                                let click_id = dm_id.clone();
+                                                                let dm = state.get_room(&dm_id).and_then(|r| r.as_dm());
+                                                                Some(
+                                                                    view! {
+                                                                        <DmDiv
+                                                                            dm=dm?
+                                                                            on:click=move |_| {
+                                                                                state.set_active_room_with_id(Some(click_id.clone()))
+                                                                            }
+                                                                        />
+                                                                    },
+                                                                )
                                                             }
                                                         />
-                                                    },
-                                                )
+                                                    }
+                                                        .into_any()
+                                                }
+                                                HomeSection::Rooms => {
+                                                    view! {
+                                                        <For
+                                                            each=move || single_rooms.get()
+                                                            key=|room| room.room_id()
+                                                            children=move |room| render_server_channel(room)
+                                                        />
+                                                    }
+                                                        .into_any()
+                                                }
                                             }
-                                        />
+                                        }}
                                     </div>
                                 }
                                     .into_any()

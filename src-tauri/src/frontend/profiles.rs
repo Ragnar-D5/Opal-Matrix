@@ -70,7 +70,7 @@ pub async fn send_all_members(
 
     for room in rooms {
         let room_id = room.room_id().to_string();
-        let members = room.members(RoomMemberships::JOIN).await?;
+        let members = room.members(RoomMemberships::all()).await?;
 
         let profiles: Vec<MemberProfile> = members
             .into_iter()

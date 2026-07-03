@@ -75,6 +75,12 @@ impl DmRoomNode {
     }
 }
 
+#[derive(Debug, Serialize, Clone, Deserialize, PartialEq)]
+pub struct SingleRoomNode {
+    pub info: RoomNodeInfo,
+    pub other_user_ids: Vec<String>,
+}
+
 #[derive(Debug, Serialize, Clone, Deserialize, PartialEq, TauriEvent)]
 pub enum RoomNode {
     Space(SpaceRoomNode),
@@ -82,6 +88,7 @@ pub enum RoomNode {
     TextChannel(TextChannelRoomNode),
     VoiceChannel(VoiceChannelRoomNode),
     Dm(DmRoomNode),
+    Single(SingleRoomNode),
 }
 
 #[derive(Debug, Serialize, Clone, Deserialize, PartialEq)]
@@ -111,6 +118,7 @@ impl RoomNode {
             RoomNode::VoiceChannel(node) => node.info.name.clone(),
             RoomNode::Dm(node) => node.info.name.clone(),
             RoomNode::Server(node) => node.info.name.clone(),
+            RoomNode::Single(node) => node.info.name.clone(),
         }
     }
 
@@ -125,6 +133,7 @@ impl RoomNode {
             RoomNode::VoiceChannel(node) => node.info.room_id.clone(),
             RoomNode::Dm(node) => node.info.room_id.clone(),
             RoomNode::Server(node) => node.info.room_id.clone(),
+            RoomNode::Single(node) => node.info.room_id.clone(),
         }
     }
 
@@ -135,6 +144,7 @@ impl RoomNode {
             RoomNode::VoiceChannel(node) => node.info.canonical_alias.clone(),
             RoomNode::Dm(node) => node.info.canonical_alias.clone(),
             RoomNode::Server(node) => node.info.canonical_alias.clone(),
+            RoomNode::Single(node) => node.info.canonical_alias.clone(),
         }
     }
 
@@ -145,6 +155,7 @@ impl RoomNode {
             RoomNode::VoiceChannel(node) => node.info.aliases.clone(),
             RoomNode::Dm(node) => node.info.aliases.clone(),
             RoomNode::Server(node) => node.info.aliases.clone(),
+            RoomNode::Single(node) => node.info.aliases.clone(),
         }
     }
 
@@ -155,6 +166,7 @@ impl RoomNode {
             RoomNode::VoiceChannel(node) => node.info.has_avatar,
             RoomNode::Dm(node) => node.info.has_avatar,
             RoomNode::Server(node) => node.info.has_avatar,
+            RoomNode::Single(node) => node.info.has_avatar,
         }
     }
 
@@ -175,6 +187,7 @@ impl RoomNode {
             RoomNode::VoiceChannel(node) => node.info.color.clone(),
             RoomNode::Dm(node) => node.info.color.clone(),
             RoomNode::Server(node) => node.info.color.clone(),
+            RoomNode::Single(node) => node.info.color.clone(),
         }
     }
 

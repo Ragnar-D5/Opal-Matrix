@@ -316,6 +316,7 @@ impl AppState {
 
                 RoomHeader::DM(profile)
             }
+            RoomNode::Single(_) => RoomHeader::TextChannel(room.display_name()),
             RoomNode::TextChannel(_) => RoomHeader::TextChannel(room.display_name()),
             RoomNode::VoiceChannel(_) => RoomHeader::VoiceChannel(room.display_name()),
             RoomNode::Space(_) => RoomHeader::Space(room.display_name()),
