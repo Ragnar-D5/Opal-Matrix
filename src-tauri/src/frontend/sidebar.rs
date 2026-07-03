@@ -2,7 +2,7 @@ use matrix_sdk::deserialized_responses::{SyncOrStrippedState};
 use matrix_sdk::ruma::events::direct::DirectEventContent;
 use matrix_sdk::ruma::events::space::child::{SpaceChildEventContent};
 use matrix_sdk::ruma::serde::Raw;
-use matrix_sdk::ruma::{OwnedRoomId, OwnedUserId};
+use matrix_sdk::ruma::OwnedRoomId;
 use shared::api::events::CallMemberUpdate;
 use shared::get_color;
 use std::collections::{HashMap, HashSet};
@@ -58,19 +58,7 @@ async fn get_all_child_room_ids(room: &Room) -> Result<Vec<OwnedRoomId>, TauriEr
     Ok(all_children)
 }
 
-pub async fn construct_dm_node(room: &Room, other_user_id: OwnedUserId, mut info: RoomNodeInfo) -> Option<DmRoomNode> {
-    let profile = room.get_member(&other_user_id).await.map_err(|e| log::error!("Failed to get member for user {} in room {}: {e}", other_user_id, room.room_id())).ok()??;
-
-    info.name = profile.display_name().map(|n| n.to_string());
-    info.has_avatar = profile.avatar_url().is_some();
-
-    Some(DmRoomNode {
-        info,
-        other_user_id: other_user_id.to_string()
-    })
-}
-
-pub async fn convert_room_to_node(room: &Room, dm_map: &Option<DirectEventContent>) -> Option<RoomNode> {
+pub async fn convert_room_to_node(room: &Room) -> Option<RoomNode> {
     let info = room.clone_info();
 
     let name = info.name().map(|n| n.to_string());
@@ -91,22 +79,19 @@ pub async fn convert_room_to_node(room: &Room, dm_map: &Option<DirectEventConten
         color,
     };
 
-    if room.compute_is_dm().map_err(|e| log::error!("Failed to compite if room is dm for room {}: {e}", &room_id)).await.ok()? {
-        if let Some(dm_map) = dm_map {
-        for (user_id, rooms) in dm_map.iter() {
-            if rooms.contains(&room.room_id().to_owned()) {
-                let user_id = user_id.clone().into_user_id()?;
+    if room.compute_is_dm().map_err(|e| log::error!("Failed to compite if room is dm for room {}: {e}", &room_id)).await.unwrap_or(false) {
+        let other_user_id = room.direct_targets().into_iter().find_map(|id| id.into_user_id());
 
-                return construct_dm_node(room, user_id, info).await.map(RoomNode::Dm);
-            }
-        }
-        return None
-        } else {
-            let other_user_id = room.joined_user_ids().await.map_err(|e| log::error!("Failed to get joined user ids for room {}: {e}", &room_id)).ok()?.iter().find(|id| *id != room.own_user_id()).map(|id| id.to_owned())?;
+        let other_user_id = match other_user_id {
+            Some(id) => Some(id),
+            None => room.joined_user_ids().await.map_err(|e| log::error!("Failed to get joined user ids for room {}: {e}", &room_id)).ok().and_then(|ids| ids.into_iter().find(|id| id != room.own_user_id())),
+        };
 
-            return construct_dm_node(room, other_user_id, info).await.map(RoomNode::Dm);
+        if let Some(other_user_id) = other_user_id {
+            return Some(RoomNode::Dm(DmRoomNode { info, other_user_id: other_user_id.to_string() }));
         }
 
+        log::warn!("Room {} looked like a DM but no DM node could be built; falling back to a normal room", &room_id);
     }
 
     if room.is_space() {
@@ -178,7 +163,6 @@ pub async fn handle_room_updates(
     client: &Client,
     handle: &AppHandle,
     known_room_map: &mut HashMap<OwnedRoomId, RoomNode>,
-    dm_map: &Option<DirectEventContent>,
     prev_seen_servers: &mut HashSet<OwnedRoomId>,
 ) {
     if should_notification_update(room_updates) {
@@ -215,7 +199,7 @@ pub async fn handle_room_updates(
         }
 
         let is_new = !known_room_map.contains_key(&room_id);
-        let Some(node) = convert_room_to_node(&room, dm_map).await else {
+        let Some(node) = convert_room_to_node(&room).await else {
             continue;
         };
 

@@ -17,8 +17,6 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use shared::sidebar::RoomNode;
 
-use crate::components::TextCircle;
-
 fn render_server_avatar<T: AsRef<str> + 'static>(
     node: RoomNode,
     size_str: T,
@@ -41,42 +39,17 @@ fn DmDiv(dm: DmRoomNode) -> impl IntoView {
     let state: AppState = expect_context();
     let members: ProfileStore = expect_context();
 
+    let profile = members.get_member_profile(&dm.room_id(), &dm.other_user_id);
+    let name_profile = profile.clone();
+
     let id = dm.room_id();
-    let name = dm.display_name();
 
     let is_active = Memo::new(move |_| state.active_room_id() == Some(id.clone()));
-
-    let color = get_color(&dm.other_user_id);
 
     let user_id = dm.other_user_id.clone();
 
     let members = members.clone();
     let presence = members.get_presence(&user_id);
-
-    let avatar_url = dm.avatar_url();
-    let failed = RwSignal::new(avatar_url.is_none());
-    let first_char = name.chars().next().unwrap_or('?').to_string();
-    let avatar_content = view! {
-        {avatar_url
-            .map(|url| {
-                view! {
-                    <img
-                        class="avatar-img w-8 h-8 rounded-full object-cover"
-                        class:hidden=failed
-                        src=url
-                        alt=name.clone()
-                        on:error=move |_| failed.set(true)
-                        on:load=move |_| failed.set(false)
-                    />
-                }
-            })}
-        <TextCircle
-            text=first_char
-            color=color
-            class="rounded-full w-8 h-8"
-            class:hidden=move || !failed.get()
-        />
-    };
 
     let call_room_id = dm.room_id();
 
@@ -128,8 +101,12 @@ fn DmDiv(dm: DmRoomNode) -> impl IntoView {
                 class=("hover:bg-[var(--color-item-hover)]", move || !is_active.get())
                 class=("text-dim", move || !is_active.get())
             >
-                <PresenceBadge presence=presence>{avatar_content}</PresenceBadge>
-                <span class="inline-block align-center pl-2">{name}</span>
+                <PresenceBadge presence=presence>
+                    {move || profile.get().render_icon("32px")}
+                </PresenceBadge>
+                <span class="inline-block align-center pl-2">
+                    {move || name_profile.get().get_name()}
+                </span>
                 {call_icon}
                 {move || {
                     let notifications = notifications().notification_count;
@@ -755,22 +732,17 @@ pub fn Sidebar() -> impl IntoView {
                                             key=|dm_id| dm_id.clone()
                                             children=move |dm_id| {
                                                 let click_id = dm_id.clone();
-                                                let Some(dm) = state
-                                                    .get_room(&dm_id)
-                                                    .and_then(|r| r.as_dm()) else {
-                                                    return view! { <div class="item p-4">"Loading..."</div> }
-                                                        .into_any();
-                                                };
-
-                                                view! {
-                                                    <DmDiv
-                                                        dm=dm
-                                                        on:click=move |_| {
-                                                            state.set_active_room_with_id(Some(click_id.clone()))
-                                                        }
-                                                    />
-                                                }
-                                                    .into_any()
+                                                let dm = state.get_room(&dm_id).and_then(|r| r.as_dm());
+                                                Some(
+                                                    view! {
+                                                        <DmDiv
+                                                            dm=dm?
+                                                            on:click=move |_| {
+                                                                state.set_active_room_with_id(Some(click_id.clone()))
+                                                            }
+                                                        />
+                                                    },
+                                                )
                                             }
                                         />
                                     </div>

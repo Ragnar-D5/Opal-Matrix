@@ -546,11 +546,6 @@
   .aspect-video {
     aspect-ratio: var(--aspect-video);
   }
-  .avatar-img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
   .h-\(--header-height\) {
     height: var(--header-height);
   }

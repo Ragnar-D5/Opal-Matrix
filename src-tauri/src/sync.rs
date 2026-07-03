@@ -114,7 +114,6 @@ pub async fn attach_callbacks(
             .and_then(|r| r.deserialize().ok());
 
         let mut prev_dm_ids = compute_dm_order(&client_sync_clone, &dm_map);
-        send_event(&handle_clone, &DmList(prev_dm_ids.clone()));
 
         let mut known_room_map = HashMap::new();
         for room in client_sync_clone.rooms() {
@@ -122,7 +121,7 @@ pub async fn attach_callbacks(
                 continue;
             }
 
-            let Some(node) = convert_room_to_node(&room, &dm_map).await else {
+            let Some(node) = convert_room_to_node(&room).await else {
                 continue;
             };
 
@@ -139,6 +138,7 @@ pub async fn attach_callbacks(
                     .collect(),
             }],
         );
+        send_event(&handle_clone, &DmList(prev_dm_ids.clone()));
 
         let mut prev_seen_servers: HashSet<OwnedRoomId> = known_room_map
             .iter()
@@ -153,7 +153,7 @@ pub async fn attach_callbacks(
         while let Some(sync_item) = sync_stream.next().await {
             match sync_item {
                 Ok(sync_result) => {
-                    log::debug!("Received sync");
+                    log::trace!("Received sync");
                     if let Err(e) =
                         handle_to_device_messages(sync_result.to_device, handle_clone.clone()).await
                     {
@@ -175,7 +175,6 @@ pub async fn attach_callbacks(
                         &client_sync_clone,
                         &handle_clone,
                         &mut known_room_map,
-                        &dm_map,
                         &mut prev_seen_servers,
                     )
                     .await;
