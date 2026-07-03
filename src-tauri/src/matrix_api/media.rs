@@ -216,6 +216,24 @@ pub async fn get_user_avatar(
     }
 }
 
+/// Fetches media content directly from a literal `mxc://` content URI, without going
+/// through local room/user state. Used for previews (e.g. unjoined room avatars) where
+/// we only have the raw URI from a server response like the space hierarchy endpoint.
+pub async fn get_direct_media(
+    client: &Client,
+    mxc_uri: &str,
+) -> Result<Option<Vec<u8>>, TauriError> {
+    let request = MediaRequestParameters {
+        source: MediaSource::Plain(OwnedMxcUri::from(mxc_uri)),
+        format: MediaFormat::File,
+    };
+
+    match client.media().get_media_content(&request, true).await {
+        Ok(media) => Ok(Some(media)),
+        Err(e) => Err(format!("Failed to fetch direct media {}: {:?}", mxc_uri, e).into()),
+    }
+}
+
 pub async fn get_room_avatar(
     client: &Client,
     room_id: &str,

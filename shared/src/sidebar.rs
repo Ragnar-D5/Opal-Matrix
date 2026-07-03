@@ -94,6 +94,7 @@ impl SingleRoomNode {
 #[derive(Debug, Serialize, Clone, Deserialize, PartialEq)]
 pub struct UnjoinedRoomNode {
     pub info: RoomNodeInfo,
+    pub avatar_url: Option<String>,
 }
 
 #[derive(Debug, Serialize, Clone, Deserialize, PartialEq, TauriEvent)]
@@ -201,6 +202,10 @@ impl RoomNode {
     }
 
     pub fn avatar_url(&self) -> Option<String> {
+        if let RoomNode::Unjoined(node) = self {
+            return node.avatar_url.clone();
+        }
+
         self.has_avatar().then_some(
             if let RoomNode::Dm(DmRoomNode { other_user_id, .. }) = self {
                 format!("mxc://user/{}/room/{}", self.room_id(), other_user_id)

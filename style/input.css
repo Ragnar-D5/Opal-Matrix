@@ -10,7 +10,7 @@
     --dim-text-color: hsl(220, 15%, 40%);
     --text-color: hsl(220, 25%, 65%);
     --bright-text-color: hsl(220, 25%, 95%);
-    --muted-text-color: hsl(220, 15%, 32%);
+    --muted-text-color: hsl(220, 15%, 25%);
 
     --tile-border-color: rgba(255, 255, 255, 0.175);
     --gap: 5px;
@@ -44,7 +44,9 @@
     --busy-color: #da7d9b;
     --offline-color: #6a6a6a;
     --system-button-size: 14px;
-    --system-button-padding: calc(var(--header-height) / 2 - var(--system-button-size) / 2);
+    --system-button-padding: calc(
+        var(--header-height) / 2 - var(--system-button-size) / 2
+    );
 
     --overlay-bg-color: rgba(0, 0, 0, 0.5);
 }

@@ -663,7 +663,7 @@ fn render_system_message(
         let name_sig = profile_sig.clone();
 
         view! {
-            <span class="inline-flex items-center mr-1 align-middle">
+            <span class="inline-flex items-center mr-[6px] align-middle">
                 {move || profile_sig.get().render_icon("20px")}
             </span>
             <span class="mr-1">{move || name_sig.get().render_name_popup("16px")}</span>
@@ -959,7 +959,7 @@ fn render_system_message(
         .into_any(),
     };
 
-    view! { <div class="flex text-muted items-center justify-center my-2">{content.into_any()}</div> }
+    view! { <div class="flex text-dim items-center justify-center my-2">{content.into_any()}</div> }
     .into_any()
 }
 

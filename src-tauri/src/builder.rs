@@ -21,8 +21,8 @@ use tauri_plugin_cli::CliExt;
 use tauri_plugin_log::{Target, TargetKind};
 
 use crate::matrix_api::media::{
-    get_media_from_uuid_str, get_media_from_uuid_thmubnail_str, get_member_avatar, get_room_avatar,
-    get_user_avatar,
+    get_direct_media, get_media_from_uuid_str, get_media_from_uuid_thmubnail_str,
+    get_member_avatar, get_room_avatar, get_user_avatar,
 };
 use crate::state::{
     AppState, AudioManager, LiveKitRoomManager, MediaManager, TaskManager, TimelineManager,
@@ -282,14 +282,7 @@ pub fn register_mxc_uri(builder: Builder<Wry>) -> Builder<Wry> {
                     } else if let Some(room_id) = uri.strip_prefix("mxc://room/") {
                         get_room_avatar(&client, room_id).await
                     } else {
-                        log::error!("Invalid mxc URI format: {}", uri);
-                        responder.respond(
-                            tauri::http::Response::builder()
-                                .status(400)
-                                .body(Vec::new())
-                                .unwrap(),
-                        );
-                        return;
+                        get_direct_media(&client, &uri).await
                     };
 
                     match res {

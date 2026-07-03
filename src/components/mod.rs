@@ -269,7 +269,7 @@ pub fn SystemButtons() -> impl IntoView {
 
                     view! {
                         <button
-                            class="h-3.5 w-3.5 rounded-full hover:brightness-[60%] transition-transform duration-75 z-9999"
+                            class="h-3.5 w-3.5 rounded-full hover:brightness-[60%] transition-transform duration-75 z-9999 cursor-pointer"
                             style=format!("background-color: {color};")
                             on:click=move |_| callback.run(())
                             class=("scale-75", move || btn_pressed.get())

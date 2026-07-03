@@ -471,7 +471,10 @@ pub async fn get_unknown_children(room: &Room, client: &Client, known_room_map: 
             topic: summary.topic.clone(),
             color: get_color(room_id.as_ref()),
         };
-        let unjoined_node = UnjoinedRoomNode { info };
+        let unjoined_node = UnjoinedRoomNode {
+            info,
+            avatar_url: summary.avatar_url.map(|url| url.to_string()),
+        };
         let node = RoomNode::Unjoined(unjoined_node.clone());
 
         known_room_map.insert(room_id.clone(), node.clone());
@@ -480,32 +483,3 @@ pub async fn get_unknown_children(room: &Room, client: &Client, known_room_map: 
 
     updates
 }
-
-// #[command(rename_all = "snake_case")]
-// pub async fn get_unknown_room(client: State<'_, RwLock<Client>>, handle: AppHandle, room_id: String) -> Result<Option<UnjoinedRoomNode>, TauriError> {
-//     let room_id = RoomId::parse(room_id)?;
-//     let target = OwnedRoomOrAliasId::from(room_id.clone());
-
-//     let server = room_id.server_name().ok_or(format!("Room doesn't have server name: {room_id}"))?.to_owned();
-
-//     let Some(preview) = client.read().await.get_room_preview(&target, vec![server]).await.ok() else {
-//         return Ok(None);
-//     };
-
-//     let info = RoomNodeInfo {
-//         name: calculate_preview_name(&preview),
-//         has_avatar: preview.avatar_url.is_some(),
-//         canonical_alias: preview.canonical_alias.map(|a| a.to_string()),
-//         aliases: Vec::new(),
-//         room_id: room_id.to_string(),
-//         topic: preview.topic.clone(),
-//         color: get_color(room_id.as_ref()),
-//     };
-//     let node = UnjoinedRoomNode {
-//         info,
-//     };
-
-//     send_event(&handle, &vec![RoomMapUpdate::Insert { key: room_id.to_string(), value: RoomNode::Unjoined(node.clone()) }]);
-
-//     Ok(Some(node))
-// }

@@ -1,4 +1,4 @@
-use phosphor_leptos::{Icon, IconData, IconWeight, HASH, MATRIX_LOGO, SPEAKER_HIGH};
+use phosphor_leptos::{Icon, IconData, IconWeight, HASH, MATRIX_LOGO, SIGN_IN, SPEAKER_HIGH};
 use shared::{
     profile::MemberProfile,
     sidebar::{RoomNodeInfo, ServerRoomNode, UserDevice},
@@ -454,6 +454,7 @@ pub fn render_server_channel(child: RoomNode) -> impl IntoView {
         RoomNode::Dm(_) => HASH,
         RoomNode::TextChannel(_) => HASH,
         RoomNode::VoiceChannel(_) => SPEAKER_HIGH,
+        RoomNode::Unjoined(_) => SIGN_IN,
         _ => MATRIX_LOGO,
     };
 
@@ -500,14 +501,16 @@ pub fn render_server_channel(child: RoomNode) -> impl IntoView {
     });
 
     let participants = Memo::new(move |_| call_participants_sig.get());
-
     let name = child.name();
+
+    let child_memo = Memo::new(move |_| child.clone());
+
     let call_preview = move || {
-        if let RoomNode::VoiceChannel(_) = &child {
+        if let RoomNode::VoiceChannel(_) = &child_memo.get() {
             let participants = participants.get();
 
             let views = participants.iter().map(|device| {
-                    let profile = store.get_member_profile(&child.room_id(), &device.user_id);
+                    let profile = store.get_member_profile(&child_memo.get().room_id(), &device.user_id);
                     let clone = profile.clone();
 
                     view! {
@@ -539,9 +542,24 @@ pub fn render_server_channel(child: RoomNode) -> impl IntoView {
             <div class="transition-[width] duration-300 ease-out shrink-0 w-2 group-hover:w-5"></div>
 
             <div
-                class="flex flex-row flex-grow items-center p-1 rounded-[10px] cursor-pointer transition-colors hover:text-normal"
+                class="flex flex-row flex-grow items-center p-1 rounded-[10px] cursor-pointer transition-colors"
                 class=("hover:bg-(--color-item-hover)", move || !is_active.get())
-                class=("text-dim", move || !is_active.get() && !has_notifications.get())
+                class=("hover:text-normal", move || !child_memo.get().is_unjoined())
+                class=("hover:text-dim", move || child_memo.get().is_unjoined())
+                class=(
+                    "text-dim",
+                    move || {
+                        !is_active.get() && !has_notifications.get()
+                            && !child_memo.get().is_unjoined()
+                    },
+                )
+                class=(
+                    "text-muted",
+                    move || {
+                        !is_active.get() && !has_notifications.get()
+                            && child_memo.get().is_unjoined()
+                    },
+                )
                 class=(
                     "text-normal",
                     move || { !is_active.get() && has_notifications.get() || is_active.get() },
