@@ -616,18 +616,11 @@ pub fn ServerItems(active_server: ServerRoomNode) -> impl IntoView {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum HomeSection {
-    Dms,
-    Rooms,
-}
-
 #[component]
 pub fn Sidebar() -> impl IntoView {
     let state: AppState = expect_context();
 
     let (dragged_server_id, set_dragged_server_id) = signal::<Option<String>>(None);
-    let (home_section, set_home_section) = signal(HomeSection::Dms);
 
     let dms_btn = NodeRef::new();
     let rooms_btn = NodeRef::new();
@@ -637,7 +630,7 @@ pub fn Sidebar() -> impl IntoView {
     let has_measured = RwSignal::new(false);
 
     Effect::new(move |_| {
-        let is_rooms = home_section.get() == HomeSection::Rooms;
+        let is_rooms = state.active_section.get() == CurrentSection::Single;
         let target_node: Option<HtmlButtonElement> = if is_rooms {
             rooms_btn.get()
         } else {
@@ -836,15 +829,14 @@ pub fn Sidebar() -> impl IntoView {
                                             class="font-medium hover:text-normal cursor-pointer"
                                             class=(
                                                 "text-(--accent-color)",
-                                                move || home_section.get() == HomeSection::Dms,
+                                                move || state.active_section.get() == CurrentSection::Dms,
                                             )
                                             class=(
                                                 "text-dim",
-                                                move || home_section.get() != HomeSection::Dms,
+                                                move || state.active_section.get() != CurrentSection::Dms,
                                             )
                                             on:click=move |_| {
                                                 state.set_active_section(CurrentSection::Dms);
-                                                set_home_section.set(HomeSection::Dms);
                                             }
                                         >
                                             "Direct Messages"
@@ -854,15 +846,14 @@ pub fn Sidebar() -> impl IntoView {
                                             class="font-medium hover:text-normal cursor-pointer"
                                             class=(
                                                 "text-(--accent-color)",
-                                                move || home_section.get() == HomeSection::Rooms,
+                                                move || state.active_section.get() == CurrentSection::Single,
                                             )
                                             class=(
                                                 "text-dim",
-                                                move || home_section.get() != HomeSection::Rooms,
+                                                move || state.active_section.get() != CurrentSection::Single,
                                             )
                                             on:click=move |_| {
                                                 state.set_active_section(CurrentSection::Single);
-                                                set_home_section.set(HomeSection::Rooms);
                                             }
                                         >
                                             "Rooms"
@@ -878,21 +869,8 @@ pub fn Sidebar() -> impl IntoView {
                                     </div>
                                     <div class="py-1 gap-1 flex flex-col w-full">
                                         {move || {
-                                            match home_section.get() {
-                                                HomeSection::Dms => {
-                                                    view! {
-                                                        <For
-                                                            each=move || state.dm_list.get().0.clone()
-                                                            key=|dm_id| dm_id.clone()
-                                                            children=move |dm_id| {
-                                                                let dm = state.get_room(&dm_id).and_then(|r| r.as_dm())?;
-                                                                Some(render_full_room(dm.info, Some(dm.other_user_id)))
-                                                            }
-                                                        />
-                                                    }
-                                                        .into_any()
-                                                }
-                                                HomeSection::Rooms => {
+                                            match state.active_section.get() {
+                                                CurrentSection::Single => {
                                                     view! {
                                                         <For
                                                             each=move || state.single_room_list.get().0
@@ -902,6 +880,19 @@ pub fn Sidebar() -> impl IntoView {
                                                                     .get_room(&room_id)
                                                                     .and_then(|r| r.as_single())?;
                                                                 Some(render_full_room(room.info, None))
+                                                            }
+                                                        />
+                                                    }
+                                                        .into_any()
+                                                }
+                                                _ => {
+                                                    view! {
+                                                        <For
+                                                            each=move || state.dm_list.get().0.clone()
+                                                            key=|dm_id| dm_id.clone()
+                                                            children=move |dm_id| {
+                                                                let dm = state.get_room(&dm_id).and_then(|r| r.as_dm())?;
+                                                                Some(render_full_room(dm.info, Some(dm.other_user_id)))
                                                             }
                                                         />
                                                     }

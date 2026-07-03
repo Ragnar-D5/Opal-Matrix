@@ -213,11 +213,9 @@ impl AppState {
     /// every sync (unread counts, `last_ts`, …); `active_room_id` only changes
     /// when a different room becomes active, so id-only subscribers (the timeline
     /// loader) don't react to that churn.
-    fn set_active_room_node(&self, node: Option<RoomNode>) {
-        let new_id = node.as_ref().map(|n| n.room_id().to_string());
-
-        if self.active_room_id.with_untracked(|cur| cur != &new_id) {
-            self.active_room_id.set(new_id);
+    fn set_active_room_node(&self, room_id: Option<String>, node: Option<RoomNode>) {
+        if self.active_room_id.with_untracked(|cur| cur != &room_id) {
+            self.active_room_id.set(room_id);
         }
 
         if self.active_room.with_untracked(|cur| cur != &node) {
@@ -227,15 +225,18 @@ impl AppState {
 
     pub fn set_active_room_with_id(&self, room_id: Option<String>) {
         let active_room = if let Some(room_id) = &room_id {
-            if let Some(node) = self.room_map.get_untracked().get(room_id).cloned() {
-                node.try_get_untracked()
-            } else {
-                None
+            let node = self.room_map.get_untracked().get(room_id).cloned();
+            let resolved = node.and_then(|sig| sig.try_get_untracked());
+
+            if resolved.is_none() {
+                log::warn!("set_active_room_with_id: room {room_id} not found in room_map yet");
             }
+
+            resolved
         } else {
             None
         };
-        self.set_active_room_node(active_room);
+        self.set_active_room_node(room_id.clone(), active_room);
 
         let Some(room_id) = room_id else {
             return;
@@ -269,17 +270,30 @@ impl AppState {
         if let Some(room_id) = self.breadcrums.get().last_space_ids.get(&key).cloned() {
             self.set_active_room_with_id(Some(room_id.clone()));
             self.append_room_id(room_id);
-
-            self.save_breadcrumbs();
             return;
         }
 
-        let CurrentSection::Server(server_id) = &section else {
-            return;
-        };
+        log::warn!("No last room for section {key}, falling back to first room");
 
-        if let Some(room_id) = self.first_channel_id_for_server(server_id) {
-            self.set_active_room_with_id(Some(room_id.clone()));
+        match &section {
+            CurrentSection::Dms => {
+                if let Some(room_id) = self.dm_list.get_untracked().0.first().cloned() {
+                    self.set_active_room_with_id(Some(room_id.clone()));
+                    self.append_room_id(room_id);
+                }
+            }
+            CurrentSection::Single => {
+                if let Some(room_id) = self.single_room_list.get_untracked().0.first().cloned() {
+                    self.set_active_room_with_id(Some(room_id.clone()));
+                    self.append_room_id(room_id);
+                }
+            }
+            CurrentSection::Server(server_id) => {
+                if let Some(room_id) = self.first_channel_id_for_server(server_id) {
+                    self.set_active_room_with_id(Some(room_id.clone()));
+                    self.append_room_id(room_id);
+                }
+            }
         }
     }
 
@@ -290,11 +304,16 @@ impl AppState {
             .get(server_id)?
             .try_get_untracked()?;
 
-        if let RoomNode::Server(ServerRoomNode { children, .. }) = &server {
-            children.first().cloned()
-        } else {
-            None
+        let res = match server {
+            RoomNode::Server(ServerRoomNode { children, .. }) => children.first().cloned(),
+            RoomNode::Space(SpaceRoomNode { children, .. }) => children.first().cloned(),
+            _ => None
+        };
+
+        if res.is_none() {
+            log::warn!("Server {} has no children", server_id);
         }
+        res
     }
 
     fn append_room_id(&self, room_id: String) {
@@ -376,13 +395,13 @@ impl AppState {
                 .cloned()
         });
 
-        let new_active_room = if let Some(room_id) = current_room_id {
-            self.get_room_sig(&room_id).map(|sig| sig.get_untracked())
+        let new_active_room = if let Some(room_id) = &current_room_id {
+            self.get_room_sig(room_id).map(|sig| sig.get_untracked())
         } else {
             None
         };
 
-        self.set_active_room_node(new_active_room);
+        self.set_active_room_node(current_room_id, new_active_room);
     }
 
     pub fn find_room_in_rooms(

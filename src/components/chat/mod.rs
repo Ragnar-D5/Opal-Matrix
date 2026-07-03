@@ -13,7 +13,7 @@ use crate::{
         }, presence::PresenceBadge, user_profile::{MemberProfileExt, render_user_profile_card}
     },
     hooks::{setup_update_effect, use_tauri_event},
-    state::{AppState, ProfileStore, RoomHeader},
+    state::{AppState, CurrentSection, ProfileStore, RoomHeader},
     tauri_functions::{get_timeline, indicate_typing, pick_files, scroll_timeline},
 };
 
@@ -517,14 +517,6 @@ fn ChatHeader(header: Memo<RoomHeader>, chat_sidebar_open: RwSignal<bool>) -> im
     let state: AppState = expect_context();
 
     let info_hovered = RwSignal::new(false);
-
-    Effect::new(move |_| {
-        let header = header.get();
-        chat_sidebar_open.set(matches!(
-            header,
-            RoomHeader::TextChannel(_) | RoomHeader::VoiceChannel(_)
-        ));
-    });
 
     let toggle_icon = move || match header.get() {
         RoomHeader::DM(_) => USER_CIRCLE,
@@ -1285,7 +1277,15 @@ pub fn Chat() -> impl IntoView {
         move |_| state.get_room_header(member_store.clone())
     });
 
-    let chat_sidebar_open = RwSignal::new(true);
+    let chat_sidebar_open = RwSignal::new(matches!(state.active_section.get_untracked(), CurrentSection::Server(_)));
+
+    Effect::new({
+        move |_| {
+            if !matches!(state.active_section.get(), CurrentSection::Server(_)) {
+                chat_sidebar_open.set(false);
+            }
+        }
+    });
 
     let input_info: RwSignal<Option<ChatInputInfo>> = RwSignal::new(None);
     provide_context(input_info);
