@@ -18,7 +18,10 @@
     --color-yellow-200: oklch(94.5% 0.129 101.54);
     --color-yellow-900: oklch(42.1% 0.095 57.708);
     --color-yellow-950: oklch(28.6% 0.066 53.813);
+    --color-green-50: oklch(98.2% 0.018 155.826);
+    --color-green-200: oklch(92.5% 0.084 155.995);
     --color-green-600: oklch(62.7% 0.194 149.214);
+    --color-green-900: oklch(39.3% 0.095 152.535);
     --color-blue-50: oklch(97% 0.014 254.604);
     --color-blue-200: oklch(88.2% 0.059 254.128);
     --color-blue-400: oklch(70.7% 0.165 254.624);
@@ -1118,6 +1121,9 @@
   .border-blue-200 {
     border-color: var(--color-blue-200);
   }
+  .border-green-200 {
+    border-color: var(--color-green-200);
+  }
   .border-neutral-800\/80 {
     border-color: color-mix(in srgb, oklch(26.9% 0 0) 80%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
@@ -1241,6 +1247,9 @@
   .bg-gray-700 {
     background-color: var(--color-gray-700);
   }
+  .bg-green-50 {
+    background-color: var(--color-green-50);
+  }
   .bg-neutral-700 {
     background-color: var(--color-neutral-700);
   }
@@ -1252,9 +1261,6 @@
   }
   .bg-red-50 {
     background-color: var(--color-red-50);
-  }
-  .bg-red-500 {
-    background-color: var(--color-red-500);
   }
   .bg-red-600 {
     background-color: var(--color-red-600);
@@ -2127,6 +2133,11 @@
   .dark\:border-blue-900 {
     @media (prefers-color-scheme: dark) {
       border-color: var(--color-blue-900);
+    }
+  }
+  .dark\:border-green-900 {
+    @media (prefers-color-scheme: dark) {
+      border-color: var(--color-green-900);
     }
   }
   .dark\:border-red-900 {

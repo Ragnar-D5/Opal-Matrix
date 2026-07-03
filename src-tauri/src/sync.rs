@@ -4,7 +4,7 @@ use matrix_sdk::RoomState;
 use matrix_sdk::{
     config::SyncSettings, ruma::presence::PresenceState, Client as MatrixClient, SessionChange,
 };
-use shared::sidebar::{DmList, RoomMapUpdate, RoomNode, ServerList};
+use shared::sidebar::{DmList, RoomMapUpdate, RoomNode, ServerList, SingleList};
 use shared::synth::ProfileAudio;
 use std::collections::{HashMap, HashSet};
 use std::pin::pin;
@@ -12,7 +12,7 @@ use std::sync::{Arc, Mutex};
 use tauri::{async_runtime::spawn, AppHandle};
 
 use crate::frontend::profiles::handle_typing_notice;
-use crate::frontend::sidebar::{compute_dm_order, convert_room_to_node, handle_account_data};
+use crate::frontend::sidebar::{compute_dm_order, compute_single_order, convert_room_to_node, handle_account_data};
 use crate::matrix_api::matrixrtc::handle_call_member_change;
 use crate::send_event;
 use crate::settings::handle_account_data_event;
@@ -140,6 +140,9 @@ pub async fn attach_callbacks(
         );
         send_event(&handle_clone, &DmList(prev_dm_ids.clone()));
 
+        let mut prev_single_ids = compute_single_order(&client_sync_clone, &known_room_map);
+        send_event(&handle_clone, &SingleList(prev_single_ids.clone()));
+
         let mut prev_seen_servers: HashSet<OwnedRoomId> = known_room_map
             .iter()
             .filter_map(|(room_id, node)| {
@@ -195,6 +198,24 @@ pub async fn attach_callbacks(
                         if new_order != prev_dm_ids {
                             prev_dm_ids = new_order.clone();
                             send_event(&handle_clone, &DmList(new_order));
+                        }
+                    }
+
+                    let single_touched = sync_result
+                        .rooms
+                        .joined
+                        .keys()
+                        .chain(sync_result.rooms.left.keys())
+                        .any(|id| {
+                            matches!(known_room_map.get(id), Some(RoomNode::Single(_)))
+                                || prev_single_ids.iter().any(|prev_id| prev_id == id.as_str())
+                        });
+
+                    if single_touched {
+                        let new_order = compute_single_order(&client_sync_clone, &known_room_map);
+                        if new_order != prev_single_ids {
+                            prev_single_ids = new_order.clone();
+                            send_event(&handle_clone, &SingleList(new_order));
                         }
                     }
                 }

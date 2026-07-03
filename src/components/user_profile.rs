@@ -66,7 +66,7 @@ pub fn render_url_icon<S: AsRef<str>, T: AsRef<str>, U: AsRef<str>>(
     }
 }
 
-pub fn render_unknown_icon<T: AsRef<str>>(size_str: T) -> impl IntoView {
+pub fn render_unknown_icon<T: AsRef<str>>(size_str: T) -> AnyView {
     render_url_icon(None, "Unknown", size_str, unknown_color(), "full")
 }
 
@@ -77,7 +77,7 @@ pub fn render_profile_name<T: AsRef<str>>(
     room_id: Option<String>,
     font_size_str: T,
     popup: bool,
-) -> impl IntoView {
+) -> AnyView {
     let font_size_str = font_size_str.as_ref().to_string();
     let card_state: ProfileCardState = expect_context();
 
@@ -108,6 +108,7 @@ pub fn render_profile_name<T: AsRef<str>>(
             {name.clone()}
         </span>
     }
+    .into_any()
 }
 
 pub fn render_unknown_name<T: AsRef<str>>(font_size_str: T) -> impl IntoView {
@@ -136,15 +137,15 @@ impl RoomNodeExt for RoomNodeInfo {
 }
 
 pub trait MemberProfileExt {
-    fn render_icon<T: AsRef<str>>(self, size_str: T) -> impl IntoView;
+    fn render_icon<T: AsRef<str>>(self, size_str: T) -> AnyView;
     fn render_icon_room<T: AsRef<str>, U: AsRef<str>>(
         self,
         size_str: T,
         room_id: Option<U>,
-    ) -> impl IntoView;
-    fn render_name<T: AsRef<str>>(self, font_size_str: T, popup: bool) -> impl IntoView;
-    fn render_name_popup<T: AsRef<str>>(self, font_size_str: T) -> impl IntoView;
-    fn render_name_no_popup<T: AsRef<str>>(self, font_size_str: T) -> impl IntoView;
+    ) -> AnyView;
+    fn render_name<T: AsRef<str>>(self, font_size_str: T, popup: bool) -> AnyView;
+    fn render_name_popup<T: AsRef<str>>(self, font_size_str: T) -> AnyView;
+    fn render_name_no_popup<T: AsRef<str>>(self, font_size_str: T) -> AnyView;
     fn to_span(&self) -> RichTextSpan;
 
     fn is_room(&self) -> bool;
@@ -169,7 +170,7 @@ impl MemberProfileExt for MemberProfile {
         self.profile.user_id.starts_with("!")
     }
 
-    fn render_icon<T: AsRef<str>>(self, size_str: T) -> impl IntoView {
+    fn render_icon<T: AsRef<str>>(self, size_str: T) -> AnyView {
         self.profile.render_icon_room(size_str, Some(self.room_id))
     }
 
@@ -177,11 +178,11 @@ impl MemberProfileExt for MemberProfile {
         self,
         size_str: T,
         room_id: Option<U>,
-    ) -> impl IntoView {
+    ) -> AnyView {
         self.profile.render_icon_room(size_str, room_id)
     }
 
-    fn render_name<T: AsRef<str>>(self, font_size_str: T, popup: bool) -> impl IntoView {
+    fn render_name<T: AsRef<str>>(self, font_size_str: T, popup: bool) -> AnyView {
         render_profile_name(
             self.get_name(),
             self.name_color(),
@@ -192,11 +193,11 @@ impl MemberProfileExt for MemberProfile {
         )
     }
 
-    fn render_name_popup<T: AsRef<str>>(self, font_size_str: T) -> impl IntoView {
+    fn render_name_popup<T: AsRef<str>>(self, font_size_str: T) -> AnyView {
         self.render_name(font_size_str, true)
     }
 
-    fn render_name_no_popup<T: AsRef<str>>(self, font_size_str: T) -> impl IntoView {
+    fn render_name_no_popup<T: AsRef<str>>(self, font_size_str: T) -> AnyView {
         self.render_name(font_size_str, false)
     }
 }
@@ -217,7 +218,7 @@ impl MemberProfileExt for UserProfile {
         self,
         size_str: T,
         room_id: Option<U>,
-    ) -> impl IntoView {
+    ) -> AnyView {
         let url = if self.has_avatar {
             if let Some(room_id) = room_id {
                 Some(format!(
@@ -235,11 +236,11 @@ impl MemberProfileExt for UserProfile {
         render_url_icon(url, self.get_name(), size_str, self.name_color(), "full")
     }
 
-    fn render_icon<T: AsRef<str>>(self, size_str: T) -> impl IntoView {
+    fn render_icon<T: AsRef<str>>(self, size_str: T) -> AnyView {
         self.render_icon_room(size_str, None::<T>)
     }
 
-    fn render_name<T: AsRef<str>>(self, font_size_str: T, popup: bool) -> impl IntoView {
+    fn render_name<T: AsRef<str>>(self, font_size_str: T, popup: bool) -> AnyView {
         render_profile_name(
             self.get_name(),
             self.name_color(),
@@ -250,17 +251,17 @@ impl MemberProfileExt for UserProfile {
         )
     }
 
-    fn render_name_popup<T: AsRef<str>>(self, font_size_str: T) -> impl IntoView {
+    fn render_name_popup<T: AsRef<str>>(self, font_size_str: T) -> AnyView {
         self.render_name(font_size_str, true)
     }
 
-    fn render_name_no_popup<T: AsRef<str>>(self, font_size_str: T) -> impl IntoView {
+    fn render_name_no_popup<T: AsRef<str>>(self, font_size_str: T) -> AnyView {
         self.render_name(font_size_str, false)
     }
 }
 
 impl MemberProfileExt for Option<MemberProfile> {
-    fn render_icon<T: AsRef<str>>(self, size_str: T) -> impl IntoView {
+    fn render_icon<T: AsRef<str>>(self, size_str: T) -> AnyView {
         if let Some(profile) = self {
             profile.render_icon(size_str).into_any()
         } else {
@@ -272,7 +273,7 @@ impl MemberProfileExt for Option<MemberProfile> {
         self,
         size_str: T,
         room_id: Option<U>,
-    ) -> impl IntoView {
+    ) -> AnyView {
         if let Some(profile) = self {
             profile.render_icon_room(size_str, room_id).into_any()
         } else {
@@ -294,7 +295,7 @@ impl MemberProfileExt for Option<MemberProfile> {
         }
     }
 
-    fn render_name<T: AsRef<str>>(self, font_size_str: T, popup: bool) -> impl IntoView {
+    fn render_name<T: AsRef<str>>(self, font_size_str: T, popup: bool) -> AnyView {
         if let Some(profile) = self {
             profile.render_name(font_size_str, popup).into_any()
         } else {
@@ -302,17 +303,17 @@ impl MemberProfileExt for Option<MemberProfile> {
         }
     }
 
-    fn render_name_popup<T: AsRef<str>>(self, font_size_str: T) -> impl IntoView {
+    fn render_name_popup<T: AsRef<str>>(self, font_size_str: T) -> AnyView {
         self.render_name(font_size_str, true)
     }
 
-    fn render_name_no_popup<T: AsRef<str>>(self, font_size_str: T) -> impl IntoView {
+    fn render_name_no_popup<T: AsRef<str>>(self, font_size_str: T) -> AnyView {
         self.render_name(font_size_str, false)
     }
 }
 
 impl MemberProfileExt for Option<UserProfile> {
-    fn render_icon<T: AsRef<str>>(self, size_str: T) -> impl IntoView {
+    fn render_icon<T: AsRef<str>>(self, size_str: T) -> AnyView {
         if let Some(profile) = self {
             profile.render_icon(size_str).into_any()
         } else {
@@ -324,7 +325,7 @@ impl MemberProfileExt for Option<UserProfile> {
         self,
         size_str: T,
         room_id: Option<U>,
-    ) -> impl IntoView {
+    ) -> AnyView {
         if let Some(profile) = self {
             profile.render_icon_room(size_str, room_id).into_any()
         } else {
@@ -346,7 +347,7 @@ impl MemberProfileExt for Option<UserProfile> {
         }
     }
 
-    fn render_name<T: AsRef<str>>(self, font_size_str: T, popup: bool) -> impl IntoView {
+    fn render_name<T: AsRef<str>>(self, font_size_str: T, popup: bool) -> AnyView {
         if let Some(profile) = self {
             profile.render_name(font_size_str, popup).into_any()
         } else {
@@ -354,11 +355,11 @@ impl MemberProfileExt for Option<UserProfile> {
         }
     }
 
-    fn render_name_popup<T: AsRef<str>>(self, font_size_str: T) -> impl IntoView {
+    fn render_name_popup<T: AsRef<str>>(self, font_size_str: T) -> AnyView {
         self.render_name(font_size_str, true)
     }
 
-    fn render_name_no_popup<T: AsRef<str>>(self, font_size_str: T) -> impl IntoView {
+    fn render_name_no_popup<T: AsRef<str>>(self, font_size_str: T) -> AnyView {
         self.render_name(font_size_str, false)
     }
 }

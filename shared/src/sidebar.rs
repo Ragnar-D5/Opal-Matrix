@@ -122,6 +122,17 @@ impl RoomNodeInfo {
 }
 
 impl RoomNode {
+    pub fn info(&self) -> &RoomNodeInfo {
+        match self {
+            RoomNode::Space(node) => &node.info,
+            RoomNode::TextChannel(node) => &node.info,
+            RoomNode::VoiceChannel(node) => &node.info,
+            RoomNode::Dm(node) => &node.info,
+            RoomNode::Server(node) => &node.info,
+            RoomNode::Single(node) => &node.info,
+        }
+    }
+
     pub fn name(&self) -> String {
         match self {
             RoomNode::Space(node) => node.info.name.clone(),
@@ -206,6 +217,10 @@ impl RoomNode {
         }
     }
 
+    pub fn is_dm(&self) -> bool {
+        matches!(self, RoomNode::Dm(_))
+    }
+
     pub fn as_server(&self) -> Option<ServerRoomNode> {
         if let RoomNode::Server(server_node) = self {
             Some(server_node.clone())
@@ -265,6 +280,9 @@ impl ServerList {
 
 #[derive(Debug, Serialize, Clone, Deserialize, PartialEq, TauriEvent, Default)]
 pub struct DmList(pub Vec<String>);
+
+#[derive(Debug, Serialize, Clone, Deserialize, PartialEq, TauriEvent, Default)]
+pub struct SingleList(pub Vec<String>);
 
 #[derive(Debug, Serialize, Clone, Deserialize, PartialEq, TauriEvent)]
 pub enum RoomMapUpdate {

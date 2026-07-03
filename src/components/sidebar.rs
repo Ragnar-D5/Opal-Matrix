@@ -1,7 +1,7 @@
 use phosphor_leptos::{Icon, IconData, IconWeight, HASH, MATRIX_LOGO, SPEAKER_HIGH};
 use shared::{
     profile::MemberProfile,
-    sidebar::{DmRoomNode, RoomNodeInfo, ServerRoomNode, SingleRoomNode, UserDevice},
+    sidebar::{RoomNodeInfo, ServerRoomNode, UserDevice},
 };
 
 use crate::{
@@ -10,7 +10,7 @@ use crate::{
         user_profile::{render_url_icon, MemberProfileExt, RoomNodeExt},
         AudioMenu, DeafenMenu, FloatingTile, MuteMenu, SettingsIcon,
     },
-    state::{AppState, ProfileStore},
+    state::{AppState, CurrentSection, ProfileStore},
 };
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -260,17 +260,15 @@ pub fn CutoutBadge(
     }
 }
 
-fn render_dm_preview(dm: DmRoomNode, members: Option<Vec<UserDevice>>) -> impl IntoView {
+fn render_room_preview(room: RoomNode, members: Option<Vec<UserDevice>>) -> impl IntoView {
     let state: AppState = expect_context();
     let store: ProfileStore = expect_context();
 
-    let profile = store.get_member_profile(&dm.room_id(), &dm.other_user_id);
-
-    let click_id = dm.room_id();
+    let click_id = room.room_id();
     let clone = click_id.clone();
 
     let is_active = Memo::new(move |_| state.active_room_id() == Some(click_id.clone()));
-    let room_id_for_count = dm.room_id();
+    let room_id_for_count = room.room_id();
 
     let notifications = Memo::new(move |_| {
         state
@@ -319,12 +317,18 @@ fn render_dm_preview(dm: DmRoomNode, members: Option<Vec<UserDevice>>) -> impl I
         }
     };
 
+    let room_clone = room.clone();
     view! {
         <div class="h-2"></div>
         <div
             class="relative flex items-center justify-center group w-full cursor-pointer"
             on:click=move |_| {
-                state.set_active_server_id(None);
+                let section = if room_clone.is_dm() {
+                    CurrentSection::Dms
+                } else {
+                    CurrentSection::Single
+                };
+                state.set_active_section(section);
                 state.set_active_room_with_id(Some(clone.clone()));
             }
         >
@@ -335,7 +339,12 @@ fn render_dm_preview(dm: DmRoomNode, members: Option<Vec<UserDevice>>) -> impl I
 
             <CutoutBadge bottom_right=br_corner top_right=tr_corner class="justify-center flex">
                 <div class="avatar-circle w-10 h-10 rounded-full" style:justify-content="center">
-                    {profile.get().render_icon("40px")}
+                    {if let RoomNode::Dm(dm) = &room {
+                        let profile = store.get_member_profile(&room.room_id(), &dm.other_user_id);
+                        profile.get().render_icon("40px")
+                    } else {
+                        room.info().render_icon("40px")
+                    }}
                 </div>
             </CutoutBadge>
         </div>
@@ -351,8 +360,9 @@ pub fn ServerIcon(server: ServerRoomNode) -> impl IntoView {
     let server_id_for_active = server_id.clone();
     let server_id_for_click = server_id.clone();
 
-    let is_active =
-        Memo::new(move |_| state.active_server_id.get() == Some(server_id_for_active.clone()));
+    let is_active = Memo::new(move |_| {
+        state.active_section.get() == CurrentSection::Server(server_id_for_active.clone())
+    });
 
     let server_id_for_not = server_id.clone();
     let notifications = Memo::new(move |_| {
@@ -419,7 +429,10 @@ pub fn ServerIcon(server: ServerRoomNode) -> impl IntoView {
                         class=("bg-[var(--color-icon-bg)]", move || !is_active.get())
                         class=("hover:bg-[var(--color-icon-hover)]", move || !is_active.get())
                         on:click=move |_| {
-                            state.set_active_server_id(Some(server_id_for_click.clone()));
+                            state
+                                .set_active_section(
+                                    CurrentSection::Server(server_id_for_click.clone()),
+                                );
                         }
                     >
                         <div class="avatar-circle w-full h-full rounded-[25%] overflow-hidden">
@@ -656,21 +669,12 @@ pub fn Sidebar() -> impl IntoView {
         }
     };
 
-    let single_rooms = Memo::new(move |_| {
-        let rooms: Vec<SingleRoomNode> = state
-            .get_rooms()
-            .into_iter()
-            .filter_map(|r| r.as_single())
-            .collect();
-        rooms
-    });
-
     let Ok(img) = web_sys::HtmlImageElement::new() else {
         return view! { <div class="item p-4">"Error initializing drag image"</div> }.into_any();
     };
     img.set_src("data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7");
 
-    let active_dms = Memo::new(move |_| {
+    let active_rooms = Memo::new(move |_| {
         let notifications = state.notification_counts.get();
 
         state
@@ -678,6 +682,7 @@ pub fn Sidebar() -> impl IntoView {
             .get()
             .0
             .into_iter()
+            .chain(state.single_room_list.get().0)
             .filter_map(|dm_id| {
                 let has_notifications = notifications
                     .get(&dm_id)
@@ -692,8 +697,8 @@ pub fn Sidebar() -> impl IntoView {
                     None
                 } else {
                     let members = (!call_members.is_empty()).then_some(call_members);
-                    let dm_room = state.get_room(&dm_id)?.as_dm()?;
-                    Some((dm_room, members))
+                    let room = state.get_room(&dm_id)?;
+                    Some((room, members))
                 }
             })
             .collect::<Vec<_>>()
@@ -713,25 +718,32 @@ pub fn Sidebar() -> impl IntoView {
 
                     <div class="relative flex items-center justify-center group w-full">
                         <IndicatorPill
-                            is_active=Memo::new(move |_| state.active_server_id.get().is_none())
+                            is_active=Memo::new(move |_| state.active_section.get().is_not_server())
                             has_notifications=Memo::new(move |_| false)
                         />
 
                         <div
                             class="server-btn flex items-center justify-center w-10 h-10 bg-gray-700 text-white rounded-[25%] cursor-pointer transition-colors"
                             style:background-color=move || {
-                                if state.active_server_id.get().is_none() {
+                                if state.active_section.get().is_not_server() {
                                     "var(--accent-color)".to_string()
                                 } else {
                                     "var(--color-item-hover)".to_string()
                                 }
                             }
-                            on:click=move |_| state.set_active_server_id(None)
+                            on:click=move |_| {
+                                let section = if state.breadcrums.get_untracked().dms_last {
+                                    CurrentSection::Dms
+                                } else {
+                                    CurrentSection::Single
+                                };
+                                state.set_active_section(section);
+                            }
                         >
                             <div
                                 class="transition-colors w-full h-full flex items-center justify-center"
                                 style:color=move || {
-                                    if state.active_server_id.get().is_none() {
+                                    if state.active_section.get().is_not_server() {
                                         "var(--color-item)".to_string()
                                     } else {
                                         "var(--accent-color)".to_string()
@@ -749,12 +761,12 @@ pub fn Sidebar() -> impl IntoView {
                     </div>
 
                     <For
-                        each=move || active_dms.get()
+                        each=move || active_rooms.get()
                         key=|(dm, _)| dm.room_id()
-                        children=move |(dm, members)| { render_dm_preview(dm, members) }
+                        children=move |(room, members)| { render_room_preview(room, members) }
                     />
 
-                    <div class="w-8 h-[1px] bg-red-500 rounded-full my-2 gap-[1px]"></div>
+                    <div class="w-8 h-[1px] bg-(--tile-border-color) rounded-full my-2 gap-[1px]"></div>
                     <For
                         each=move || state.server_list.get().0
                         key=|server_id| server_id.clone()
@@ -815,8 +827,8 @@ pub fn Sidebar() -> impl IntoView {
                 // <FloatingTile class="h-(--header-height)">"Search stuff"</FloatingTile>
                 <FloatingTile class="flex-grow">
                     {move || {
-                        match state.active_server_id.get() {
-                            None => {
+                        match state.active_section.get() {
+                            CurrentSection::Dms | CurrentSection::Single => {
                                 view! {
                                     <div class="relative header border-b border-(--tile-border-color) font-bold text-normal p-3 flex flex-row gap-3 w-full">
                                         <button
@@ -830,7 +842,10 @@ pub fn Sidebar() -> impl IntoView {
                                                 "text-dim",
                                                 move || home_section.get() != HomeSection::Dms,
                                             )
-                                            on:click=move |_| set_home_section.set(HomeSection::Dms)
+                                            on:click=move |_| {
+                                                state.set_active_section(CurrentSection::Dms);
+                                                set_home_section.set(HomeSection::Dms);
+                                            }
                                         >
                                             "Direct Messages"
                                         </button>
@@ -845,7 +860,10 @@ pub fn Sidebar() -> impl IntoView {
                                                 "text-dim",
                                                 move || home_section.get() != HomeSection::Rooms,
                                             )
-                                            on:click=move |_| set_home_section.set(HomeSection::Rooms)
+                                            on:click=move |_| {
+                                                state.set_active_section(CurrentSection::Single);
+                                                set_home_section.set(HomeSection::Rooms);
+                                            }
                                         >
                                             "Rooms"
                                         </button>
@@ -877,9 +895,12 @@ pub fn Sidebar() -> impl IntoView {
                                                 HomeSection::Rooms => {
                                                     view! {
                                                         <For
-                                                            each=move || single_rooms.get()
-                                                            key=|room| room.room_id()
-                                                            children=move |room| {
+                                                            each=move || state.single_room_list.get().0
+                                                            key=|room_id| room_id.clone()
+                                                            children=move |room_id| {
+                                                                let room = state
+                                                                    .get_room(&room_id)
+                                                                    .and_then(|r| r.as_single())?;
                                                                 Some(render_full_room(room.info, None))
                                                             }
                                                         />
@@ -892,7 +913,7 @@ pub fn Sidebar() -> impl IntoView {
                                 }
                                     .into_any()
                             }
-                            Some(active_id) => {
+                            CurrentSection::Server(active_id) => {
                                 let Some(active_server_id) = state
                                     .server_list
                                     .get()
@@ -944,7 +965,7 @@ pub fn ProfileCard() -> impl IntoView {
             let profile = profile_store.get_member_profile(&rid, &user_id).get();
             current_profile.set(Some(profile));
         } else {
-            let Some(rid) = state.active_server_id.get() else {
+            let CurrentSection::Server(rid) = state.active_section.get() else {
                 return;
             };
             let profile = profile_store.get_member_profile(&rid, &user_id).get();

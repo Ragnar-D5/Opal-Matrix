@@ -270,6 +270,18 @@ pub fn compute_dm_order(client: &Client, dm_map: &Option<DirectEventContent>) ->
     dms.into_iter().map(|(id, _)| id.to_string()).collect()
 }
 
+pub fn compute_single_order(client: &Client, known_room_map: &HashMap<OwnedRoomId, RoomNode>) -> Vec<String> {
+    let mut singles: Vec<_> = known_room_map.iter().filter_map(|(room_id, node)| {
+        if !matches!(node, RoomNode::Single(_)) {
+            return None;
+        }
+        let room = client.get_room(room_id)?;
+        (room.state() == RoomState::Joined).then(|| (room_id.clone(), room.latest_event_timestamp()))
+    }).collect();
+    singles.sort_by(|(id1, ts1), (id2, ts2)| ts2.cmp(ts1).then_with(|| id1.cmp(id2)));
+    singles.into_iter().map(|(id, _)| id.to_string()).collect()
+}
+
 pub fn handle_account_data(client: &Client ,account_data: &Vec<Raw<AnyGlobalAccountDataEvent>>, dm_map: &mut Option<DirectEventContent>, prev_dm_ids: &mut Vec<String>) -> Option<Vec<String>> {
     for raw in account_data {
         let Ok(AnyGlobalAccountDataEvent::Direct(ev)) = raw.deserialize() else {

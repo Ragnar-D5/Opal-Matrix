@@ -8,7 +8,7 @@ use shared::api::events::{
     ProfileUpdates, TypingUpdate,
 };
 use shared::api::{AudioDeviceInfos, RestoreResponse};
-use shared::sidebar::{DmList, RoomMapUpdate, ServerList};
+use shared::sidebar::{DmList, RoomMapUpdate, ServerList, SingleList};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -21,15 +21,15 @@ use wasm_bindgen::prelude::*;
 use web_sys::HtmlImageElement;
 
 use crate::components::{
-    SystemButtons,
     chat::Chat,
     overlays::emoji_picker::{EmojiPickerPortal, EmojiPickerState},
     overlays::gif_picker::{GifPickerPortal, GifPickerState},
     overlays::profile_card::{ProfileCardPortal, ProfileCardState},
     sidebar::Sidebar,
+    SystemButtons,
 };
 use crate::hooks::{setup_update_effect, use_tauri_event};
-use crate::state::{AppState, ProfileStore};
+use crate::state::{AppState, CurrentSection, ProfileStore};
 use crate::tauri_functions::{get_server_order, set_backend_room_id, set_focused_in_backend};
 
 use macros::matrix_settings;
@@ -213,6 +213,7 @@ pub fn App() -> impl IntoView {
 
     let room_map_event: ReadSignal<Option<Vec<RoomMapUpdate>>> = use_tauri_event();
     let dm_list_event: ReadSignal<Option<DmList>> = use_tauri_event();
+    let single_room_list_event: ReadSignal<Option<SingleList>> = use_tauri_event();
     let server_list_event: ReadSignal<Option<ServerList>> = use_tauri_event();
 
     setup_update_effect(room_map_event, move |new| {
@@ -244,6 +245,10 @@ pub fn App() -> impl IntoView {
 
     setup_update_effect(dm_list_event, move |new| {
         state.dm_list.set(new);
+    });
+
+    setup_update_effect(single_room_list_event, move |new| {
+        state.single_room_list.set(new);
     });
 
     Effect::new(move |_| {
@@ -310,15 +315,17 @@ pub fn App() -> impl IntoView {
                     let breadcrumbs: Breadcrumbs = serde_wasm_bindgen::from_value(js_val).unwrap();
 
                     if let Some(room_id) = breadcrumbs.recent_rooms.first() {
-                        let server_id = state.find_server_id_for_room(room_id).or_else(|| {
-                            breadcrumbs
-                                .last_space_ids
-                                .iter()
-                                .find(|(_, last_room)| last_room.as_str() == room_id.as_str())
-                                .filter(|(server, _)| server.as_str() != "dms")
-                                .map(|(server, _)| server.clone())
-                        });
-                        state.active_server_id.set(server_id);
+                        let section = if state.dm_list.get_untracked().0.contains(room_id) {
+                            CurrentSection::Dms
+                        } else if state.single_room_list.get_untracked().0.contains(room_id) {
+                            CurrentSection::Single
+                        } else {
+                            match state.find_server_id_for_room(room_id) {
+                                Some(server_id) => CurrentSection::Server(server_id),
+                                None => CurrentSection::default(),
+                            }
+                        };
+                        state.active_section.set(section);
                     }
 
                     state.breadcrums.set(breadcrumbs.clone());
@@ -442,7 +449,7 @@ pub fn Notifications() -> impl IntoView {
 
     static NOTIFICATION_COUNTER: AtomicU64 = AtomicU64::new(0);
 
-    let active_notifications = RwSignal::new(Vec::<ActiveNotification>::new());
+    let active_notifications: RwSignal<Vec<ActiveNotification>> = RwSignal::new(Vec::new());
 
     let notification_update: ReadSignal<Option<NotificationEvent>> = use_tauri_event();
 
@@ -473,24 +480,45 @@ pub fn Notifications() -> impl IntoView {
                 key=|n| n.id
                 children=move |tracked_notif| {
                     let (title, message, bg_color, border_color) = match tracked_notif.event {
-                        NotificationEvent::UpdateAvailable => (
-                            "Update Available".to_string(),
-                            "A new version of the app is ready to install.".to_string(),
-                            "bg-blue-50 dark:bg-blue-950/30",
-                            "border-blue-200 dark:border-blue-900"
-                        ),
+                        NotificationEvent::UpdateAvailable => {
+                            (
+                                "Update Available".to_string(),
+                                "A new version of the app is ready to install.".to_string(),
+                                "bg-blue-50 dark:bg-blue-950/30",
+                                "border-blue-200 dark:border-blue-900",
+                            )
+                        }
                         NotificationEvent::GenericNotification { title, message, level } => {
                             let (bg, border) = match level {
-                                NotificationLevel::Info => ("bg-blue-50 dark:bg-blue-950/30", "border-blue-200 dark:border-blue-900"),
-                                NotificationLevel::Warning => ("bg-yellow-50 dark:bg-yellow-950/30", "border-yellow-200 dark:border-yellow-900"),
-                                NotificationLevel::Error => ("bg-red-50 dark:bg-red-950/30", "border-red-200 dark:border-red-900"),
+                                NotificationLevel::Info => {
+                                    (
+                                        "bg-green-50 dark:bg-blue-950/30",
+                                        "border-green-200 dark:border-green-900",
+                                    )
+                                }
+                                NotificationLevel::Warning => {
+                                    (
+                                        "bg-yellow-50 dark:bg-yellow-950/30",
+                                        "border-yellow-200 dark:border-yellow-900",
+                                    )
+                                }
+                                NotificationLevel::Error => {
+                                    (
+                                        "bg-red-50 dark:bg-red-950/30",
+                                        "border-red-200 dark:border-red-900",
+                                    )
+                                }
                             };
                             (title, message, bg, border)
                         }
                     };
 
                     view! {
-                        <div class=format!("pointer-events-auto flex flex-col border shadow-xl rounded-lg p-4 transition-all duration-300 animate-fade-in-up text-gray-900 dark:text-gray-100 {} {}", bg_color, border_color)>
+                        <div class=format!(
+                            "pointer-events-auto flex flex-col border shadow-xl rounded-lg p-4 transition-all duration-300 animate-fade-in-up text-gray-900 dark:text-gray-100 {} {}",
+                            bg_color,
+                            border_color,
+                        )>
                             <p class="text-sm font-semibold">{title}</p>
                             <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{message}</p>
                         </div>

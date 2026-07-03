@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::{collections::{HashMap, HashSet}};
 
 use leptos::task::spawn_local;
 use log::error;
@@ -9,7 +9,7 @@ use shared::{
     profile::{CustomProperties, MemberProfile, PresenceInfo, RoomProfile, UserProfile},
     sidebar::{
         DmList, DmRoomNode, NotificationCounts, RoomNode, ServerList, ServerRoomNode,
-        SpaceRoomNode, UserDevice,
+        SingleList, SpaceRoomNode, UserDevice,
     },
     synth::ProfileAudio,
     timeline::UiMediaSource,
@@ -28,6 +28,28 @@ pub struct MessageDraft {
     pub attachments: Vec<Attachment>,
 }
 
+#[derive(Clone, Debug, PartialEq, Default)]
+pub enum CurrentSection {
+    Server(String),
+    #[default]
+    Dms,
+    Single
+}
+
+impl CurrentSection {
+    pub fn key(&self) -> String {
+        match self {
+            CurrentSection::Server(server_id) => server_id.clone(),
+            CurrentSection::Dms => "dms".to_string(),
+            CurrentSection::Single => "single".to_string(),
+        }
+    }
+
+    pub fn is_not_server(&self) -> bool {
+        !matches!(self, CurrentSection::Server(_))
+    }
+}
+
 #[derive(Clone, Debug, Copy, Default)]
 pub struct AppState {
     pub current_window: RwSignal<CurrentWindow>,
@@ -38,7 +60,7 @@ pub struct AppState {
     pub active_room: RwSignal<Option<RoomNode>>,
 
     pub active_room_id: RwSignal<Option<String>>,
-    pub active_server_id: RwSignal<Option<String>>,
+    pub active_section: RwSignal<CurrentSection>,
 
     pub breadcrums: RwSignal<Breadcrumbs>,
     pub server_order: RwSignal<ServerOrder>,
@@ -46,6 +68,7 @@ pub struct AppState {
 
     pub room_map: RwSignal<HashMap<String, ArcRwSignal<RoomNode>>>,
     pub dm_list: RwSignal<DmList>,
+    pub single_room_list: RwSignal<SingleList>,
     pub server_list: RwSignal<ServerList>,
 
     pub is_focused: RwSignal<bool>,
@@ -129,8 +152,7 @@ impl AppState {
 
     pub fn active_room_name_untracked(&self) -> Option<String> {
         self.active_room
-            .get_untracked()
-            .and_then(|room| Some(room.name()))
+            .get_untracked().map(|room| room.name())
     }
 
     pub fn apply_server_order(&self) {
@@ -163,7 +185,7 @@ impl AppState {
     }
 
     pub fn get_room_profiles_in_active_server(&self) -> Vec<RoomProfile> {
-        let Some(server_id) = self.active_server_id.get_untracked() else {
+        let CurrentSection::Server(server_id) = self.active_section.get_untracked() else {
             return Vec::new();
         };
 
@@ -219,10 +241,7 @@ impl AppState {
             return;
         };
 
-        let key = self
-            .active_server_id
-            .get_untracked()
-            .unwrap_or("dms".to_string());
+        let key = self.active_section.get_untracked().key();
 
         self.breadcrums.update(|bc| {
             bc.last_space_ids.insert(key, room_id.clone());
@@ -232,10 +251,20 @@ impl AppState {
         self.save_breadcrumbs();
     }
 
-    pub fn set_active_server_id(&self, server_id: Option<String>) {
-        self.active_server_id.set(server_id.clone());
+    pub fn set_active_section(&self, section: CurrentSection) {
+        self.active_section.set(section.clone());
 
-        let key = server_id.clone().unwrap_or("dms".to_string());
+        if matches!(section, CurrentSection::Dms) {
+            self.breadcrums.update(|bc| {
+                bc.dms_last = true;
+            });
+        } else if matches!(section, CurrentSection::Single) {
+            self.breadcrums.update(|bc| {
+                bc.dms_last = false;
+            });
+        }
+
+        let key = section.key();
 
         if let Some(room_id) = self.breadcrums.get().last_space_ids.get(&key).cloned() {
             self.set_active_room_with_id(Some(room_id.clone()));
@@ -245,7 +274,7 @@ impl AppState {
             return;
         }
 
-        let Some(server_id) = server_id.as_deref() else {
+        let CurrentSection::Server(server_id) = &section else {
             return;
         };
 
