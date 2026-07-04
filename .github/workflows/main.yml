@@ -89,19 +89,25 @@ jobs:
             # bundled copies the host's own libwayland is loaded, which any
             # system able to run webkit2gtk ships anyway. Stripping at bundle
             # time (before signing) keeps the updater signature valid.
+            #
+            # The real plugin must NOT be stored under a linuxdeploy-plugin-*
+            # name: linuxdeploy registers every executable in this directory
+            # matching ^linuxdeploy-plugin-([^\s.-]+)(-[^.]+)?(\..+)?$ and the
+            # first hit per name wins, so e.g. linuxdeploy-plugin-gtk-real.sh
+            # would also register as plugin "gtk" and shadow the wrapper.
             - name: Strip bundled wayland libs from AppImage (Ubuntu only)
               if: matrix.platform == 'ubuntu-22.04'
               shell: bash
               run: |
                   mkdir -p ~/.cache/tauri
-                  curl -sSL -o ~/.cache/tauri/linuxdeploy-plugin-gtk-real.sh \
+                  curl -sSL -o ~/.cache/tauri/gtk-plugin-real.sh \
                       https://raw.githubusercontent.com/tauri-apps/linuxdeploy-plugin-gtk/master/linuxdeploy-plugin-gtk.sh
                   cat > ~/.cache/tauri/linuxdeploy-plugin-gtk.sh <<'EOF'
                   #!/usr/bin/env bash
                   set -euo pipefail
 
                   here="$(dirname "$(readlink -f "$0")")"
-                  "$here/linuxdeploy-plugin-gtk-real.sh" "$@"
+                  "$here/gtk-plugin-real.sh" "$@"
 
                   appdir=""
                   prev=""
@@ -115,7 +121,7 @@ jobs:
                       rm -fv "$appdir"/usr/lib/libwayland-*
                   fi
                   EOF
-                  chmod +x ~/.cache/tauri/linuxdeploy-plugin-gtk.sh ~/.cache/tauri/linuxdeploy-plugin-gtk-real.sh
+                  chmod +x ~/.cache/tauri/linuxdeploy-plugin-gtk.sh ~/.cache/tauri/gtk-plugin-real.sh
 
             # 8. Run the Tauri Action
             # Builds and drafts the release on the GitHub mirror (where this
