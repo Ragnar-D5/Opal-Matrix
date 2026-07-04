@@ -78,7 +78,46 @@ jobs:
               shell: bash
               run: cargo run --manifest-path .github/tools/collapse-toml/Cargo.toml --quiet -- Cargo.toml shared/Cargo.toml macros/Cargo.toml src-tauri/Cargo.toml
 
-            # 7. Run the Tauri Action
+            # 7. Pre-seed a wrapped linuxdeploy GTK plugin into tauri-bundler's
+            # tool cache. tauri-bundler only downloads the plugin when the file
+            # is missing, so this wrapper is what the AppImage bundling runs:
+            # it forwards to the real plugin, then deletes the libwayland-*
+            # copies linuxdeploy deployed into the AppDir. Shipping Ubuntu
+            # 22.04's wayland libs breaks EGL display creation against newer
+            # host Mesa/driver stacks — WebKit aborts with EGL_BAD_PARAMETER
+            # and the window stays white (seen on Arch + RDNA4). Without the
+            # bundled copies the host's own libwayland is loaded, which any
+            # system able to run webkit2gtk ships anyway. Stripping at bundle
+            # time (before signing) keeps the updater signature valid.
+            - name: Strip bundled wayland libs from AppImage (Ubuntu only)
+              if: matrix.platform == 'ubuntu-22.04'
+              shell: bash
+              run: |
+                  mkdir -p ~/.cache/tauri
+                  curl -sSL -o ~/.cache/tauri/linuxdeploy-plugin-gtk-real.sh \
+                      https://raw.githubusercontent.com/tauri-apps/linuxdeploy-plugin-gtk/master/linuxdeploy-plugin-gtk.sh
+                  cat > ~/.cache/tauri/linuxdeploy-plugin-gtk.sh <<'EOF'
+                  #!/usr/bin/env bash
+                  set -euo pipefail
+
+                  here="$(dirname "$(readlink -f "$0")")"
+                  "$here/linuxdeploy-plugin-gtk-real.sh" "$@"
+
+                  appdir=""
+                  prev=""
+                  for arg in "$@"; do
+                      if [ "$prev" = "--appdir" ]; then appdir="$arg"; fi
+                      prev="$arg"
+                  done
+
+                  if [ -n "$appdir" ]; then
+                      echo "Removing bundled libwayland from $appdir so the host's copy is used"
+                      rm -fv "$appdir"/usr/lib/libwayland-*
+                  fi
+                  EOF
+                  chmod +x ~/.cache/tauri/linuxdeploy-plugin-gtk.sh ~/.cache/tauri/linuxdeploy-plugin-gtk-real.sh
+
+            # 8. Run the Tauri Action
             # Builds and drafts the release on the GitHub mirror (where this
             # workflow runs). tauri-action can't upload assets straight to
             # Codeberg: its Gitea compatibility mode only covers release
