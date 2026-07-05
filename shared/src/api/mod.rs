@@ -143,6 +143,7 @@ impl AudioDeviceInfos {
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, TauriEvent)]
 pub struct RoomSearchParameters {
+    pub room_ids: Vec<String>,
     pub text: String,
     pub senders: Vec<String>,
     pub after: Option<DateTime<Utc>>,
@@ -186,5 +187,15 @@ impl RoomSearchParameters {
         }
 
         clauses.join(" AND ")
+    }
+
+    pub fn is_empty(&self, current_room_id: Option<String>) -> bool {
+        self.room_ids.is_empty()
+            || (self.room_ids.first().cloned() == current_room_id)
+                && self.text.is_empty()
+                && self.senders.is_empty()
+                && self.after.is_none()
+                && self.before.is_none()
+                && !self.has_link
     }
 }

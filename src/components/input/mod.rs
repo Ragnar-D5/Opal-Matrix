@@ -2,6 +2,7 @@ use leptos::task::spawn_local;
 use leptos::{html::Div, prelude::*, tachys::dom::document};
 use log::warn;
 use regex::Regex;
+use shared::api::RoomSearchParameters;
 use wasm_bindgen::JsCast;
 use web_sys::{HtmlDivElement, HtmlElement, KeyboardEvent};
 use web_sys::{Node, window};
@@ -9,7 +10,7 @@ use web_sys::{Node, window};
 use crate::components::chat::{Attachment, ChatInputInfo};
 use crate::components::input::menu::commit_selection;
 use crate::components::input::menu::{MenuCompletionMatches, MenuType};
-use crate::state::{AppState, MessageDraft, ProfileStore};
+use crate::state::{AppState, RoomState, ProfileStore};
 use crate::tauri_functions::{commit_message, edit_message, send_attachment};
 
 pub(crate) mod menu;
@@ -46,6 +47,7 @@ pub fn handle_input(
     is_empty: RwSignal<bool>,
     state: AppState,
     attachments: RwSignal<Vec<Attachment>>,
+    search_parameters: RwSignal<Option<RoomSearchParameters>>,
 ) {
     let Some(el) = input_ref.get() else { return };
     let doc = document();
@@ -110,15 +112,16 @@ pub fn handle_input(
     let empty = check_if_empty(&el, is_empty) && attachments.get_untracked().is_empty();
 
     if let Some(room_id) = state.active_room_id_untracked() {
-        state.drafts.update(|drafts| {
+        state.room_states.update(|drafts| {
             if empty {
                 drafts.remove(&room_id);
             } else {
                 drafts.insert(
                     room_id,
-                    MessageDraft {
+                    RoomState {
                         content: el.inner_html(),
                         attachments: attachments.get_untracked(),
+                        search_parameters: search_parameters.get_untracked(),
                     },
                 );
             }
@@ -260,7 +263,7 @@ pub fn handle_keydown(
                 let atts = attachments.get_untracked();
                 attachments.set(vec![]);
                 if let Some(room_id) = state.active_room_id_untracked() {
-                    state.drafts.update(|drafts| {
+                    state.room_states.update(|drafts| {
                         drafts.remove(&room_id);
                     });
                 }

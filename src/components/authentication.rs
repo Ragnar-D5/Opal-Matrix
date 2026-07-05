@@ -192,7 +192,7 @@ pub fn LoginPage(window: RwSignal<CurrentWindow>) -> impl IntoView {
                     let user_id: String = serde_wasm_bindgen::from_value(js_val).unwrap();
 
                     state.user_id.set(user_id);
-                    window.set(CurrentWindow::Loading);
+                    window.set(CurrentWindow::Home);
                     get_stuff_after_login(state, settings);
                 }
                 Err(js_val) => {

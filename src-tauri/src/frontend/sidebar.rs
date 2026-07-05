@@ -112,12 +112,13 @@ pub async fn convert_room_to_node(room: &Room) -> Option<RoomNode> {
         };
 
         return if is_top_level {
-            let all_children = get_all_child_room_ids(room).await.unwrap_or_default().iter().map(|id| id.to_string()).collect();
-
+            // `all_children` walks the whole space tree recursively and is filled in
+            // afterwards by `spawn_all_children_update` so a server can be classified
+            // and shown without waiting on that walk.
             Some(RoomNode::Server(ServerRoomNode {
                 info,
                 children,
-                all_children,
+                all_children: Vec::new(),
             }))
         } else {
             Some(RoomNode::Space(SpaceRoomNode {
@@ -162,6 +163,36 @@ pub async fn convert_room_to_node(room: &Room) -> Option<RoomNode> {
     Some(RoomNode::TextChannel(TextChannelRoomNode {
         info,
     }))
+}
+
+/// Recursively resolves a server's full descendant room list and pushes it to the
+/// frontend once ready, so the initial `Server` classification doesn't have to wait
+/// on the whole-tree walk.
+pub fn spawn_all_children_update(client: Client, handle: AppHandle, room_id: OwnedRoomId) {
+    tauri::async_runtime::spawn(async move {
+        let Some(room) = client.get_room(&room_id) else {
+            return;
+        };
+
+        let Some(RoomNode::Server(mut node)) = convert_room_to_node(&room).await else {
+            return;
+        };
+
+        node.all_children = get_all_child_room_ids(&room)
+            .await
+            .unwrap_or_default()
+            .iter()
+            .map(|id| id.to_string())
+            .collect();
+
+        send_event(
+            &handle,
+            &vec![RoomMapUpdate::Insert {
+                key: room_id.to_string(),
+                value: RoomNode::Server(node),
+            }],
+        );
+    });
 }
 
 fn should_notification_update(room_updates: &RoomUpdates) -> bool {
@@ -238,6 +269,8 @@ pub async fn handle_room_updates(
 
             let servers: Vec<String> = prev_seen_servers.iter().map(|id| id.to_string()).collect();
             send_event(handle, &ServerList(servers));
+
+            spawn_all_children_update(client.clone(), handle.clone(), room_id.clone());
 
             updates.extend(get_unknown_children(&room, client, known_room_map).await);
         }

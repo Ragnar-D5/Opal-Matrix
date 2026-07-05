@@ -241,6 +241,10 @@ pub fn App() -> impl IntoView {
         }
 
         state.room_map.set(room_map);
+
+        if state.current_window.get_untracked() == CurrentWindow::Loading {
+            state.current_window.set(CurrentWindow::Home);
+        }
     });
 
     setup_update_effect(dm_list_event, move |new| {
@@ -279,10 +283,6 @@ pub fn App() -> impl IntoView {
 
             state.server_list.set(new_state);
             state.update_active_room();
-
-            if state.current_window.get_untracked() == CurrentWindow::Loading {
-                state.current_window.set(CurrentWindow::Home);
-            }
         }
     });
 

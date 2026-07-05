@@ -14,7 +14,7 @@ use tauri::{async_runtime::spawn, AppHandle};
 use crate::frontend::profiles::handle_typing_notice;
 use crate::frontend::sidebar::{
     compute_dm_order, compute_single_order, convert_room_to_node, get_unknown_children,
-    handle_account_data,
+    handle_account_data, spawn_all_children_update,
 };
 use crate::matrix_api::matrixrtc::handle_call_member_change;
 use crate::send_event;
@@ -42,7 +42,10 @@ pub async fn attach_callbacks(
     let mut session_subscriber = client.subscribe_to_session_changes();
     let client_clone = client.clone();
 
-    cleanup_ghost_calls(client).await;
+    let cleanup_client = client.clone();
+    spawn(async move {
+        cleanup_ghost_calls(&cleanup_client).await;
+    });
 
     spawn(async move {
         while let Ok(change) = session_subscriber.recv().await {
@@ -118,18 +121,22 @@ pub async fn attach_callbacks(
 
         let mut prev_dm_ids = compute_dm_order(&client_sync_clone, &dm_map);
 
-        let mut known_room_map = HashMap::new();
-        for room in client_sync_clone.rooms() {
-            if matches!(room.state(), RoomState::Banned | RoomState::Left) {
-                continue;
-            }
+        let mut known_room_map: HashMap<OwnedRoomId, RoomNode> = futures_util::stream::iter(
+            client_sync_clone
+                .rooms()
+                .into_iter()
+                .filter(|room| !matches!(room.state(), RoomState::Banned | RoomState::Left)),
+        )
+        .map(|room| async move {
+            let node = convert_room_to_node(&room).await?;
+            Some((room.room_id().to_owned(), node))
+        })
+        .buffer_unordered(16)
+        .filter_map(|entry| async move { entry })
+        .collect()
+        .await;
 
-            let Some(node) = convert_room_to_node(&room).await else {
-                continue;
-            };
-
-            known_room_map.insert(room.room_id().to_owned(), node);
-        }
+        log::info!("Initial room map");
 
         send_event(
             &handle_clone,
@@ -155,6 +162,15 @@ pub async fn attach_callbacks(
         let servers: Vec<String> = prev_seen_servers.iter().map(|id| id.to_string()).collect();
 
         send_event(&handle_clone, &ServerList(servers));
+
+        for room_id in &prev_seen_servers {
+            spawn_all_children_update(
+                client_sync_clone.clone(),
+                handle_clone.clone(),
+                room_id.clone(),
+            );
+        }
+
         let mut updates = Vec::new();
         for room_id in &prev_seen_servers {
             let Some(room) = client_sync_clone.get_room(room_id) else {

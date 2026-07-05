@@ -5,10 +5,10 @@ use log::error;
 use serde_json::json;
 use shared::{
     account_data::{Breadcrumbs, ServerOrder},
-    api::AudioDeviceInfos,
+    api::{AudioDeviceInfos, RoomSearchParameters},
     profile::{CustomProperties, MemberProfile, PresenceInfo, RoomProfile, UserProfile},
     sidebar::{
-        DmList, DmRoomNode, NotificationCounts, RoomNode, ServerList, ServerRoomNode,
+        DmList, NotificationCounts, RoomNode, ServerList, ServerRoomNode,
         SingleList, SpaceRoomNode, UserDevice,
     },
     synth::ProfileAudio,
@@ -21,9 +21,10 @@ use crate::{
 use leptos::prelude::*;
 
 #[derive(Clone, Debug, Default)]
-pub struct MessageDraft {
+pub struct RoomState {
     pub content: String,
     pub attachments: Vec<Attachment>,
+    pub search_parameters: Option<RoomSearchParameters>
 }
 
 #[derive(Clone, Debug, PartialEq, Default)]
@@ -79,7 +80,7 @@ pub struct AppState {
 
     pub is_focused: RwSignal<bool>,
 
-    pub drafts: RwSignal<HashMap<String, MessageDraft>>,
+    pub room_states: RwSignal<HashMap<String, RoomState>>,
 
     pub lightbox_image: RwSignal<Option<LighboxImage>>,
 
@@ -101,15 +102,6 @@ pub struct LighboxImage {
     pub origin_rect: Option<(f64, f64, f64, f64)>, // left, top, width, height of clicked thumbnail
     pub width: Option<u64>,
     pub height: Option<u64>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum RoomHeader {
-    Space(String),
-    TextChannel(String),
-    VoiceChannel(String),
-    DM(ArcRwSignal<MemberProfile>),
-    Unknown,
 }
 
 impl AppState {
@@ -282,25 +274,29 @@ impl AppState {
             return;
         }
 
-        log::warn!("No valid last room for section {key}, falling back to first room");
-
         match &section {
             CurrentSection::Dms => {
                 if let Some(room_id) = self.dm_list.get_untracked().0.first().cloned() {
                     self.set_active_room_with_id(Some(room_id.clone()));
                     self.append_room_id(room_id);
+                } else {
+                    log::warn!("DM list is empty, cannot set active room");
                 }
             }
             CurrentSection::Single => {
                 if let Some(room_id) = self.single_room_list.get_untracked().0.first().cloned() {
                     self.set_active_room_with_id(Some(room_id.clone()));
                     self.append_room_id(room_id);
+                } else {
+                    log::warn!("Single room list is empty, cannot set active room");
                 }
             }
             CurrentSection::Server(server_id) => {
                 if let Some(room_id) = self.first_channel_id_for_server(server_id) {
                     self.set_active_room_with_id(Some(room_id.clone()));
                     self.append_room_id(room_id);
+                } else {
+                    log::warn!("Server {} has no channels to set as active room", server_id);
                 }
             }
         }
@@ -314,7 +310,17 @@ impl AppState {
             .try_get_untracked()?;
 
         let res = match server {
-            RoomNode::Server(ServerRoomNode { children, .. }) | RoomNode::Space(SpaceRoomNode { children, .. }) => children.iter().find(|id| !map.get(*id).map(|sig| sig.try_get_untracked().map(|node| !node.is_unjoined()).unwrap_or(false)).unwrap_or(false)).cloned(),
+            RoomNode::Server(ServerRoomNode { children, .. }) | RoomNode::Space(SpaceRoomNode { children, .. }) => {
+                for id in children {
+                    if let Some(sig) = map.get(&id)
+                    && let Some(node) = sig.try_get_untracked()
+                    && !node.is_unjoined() {
+                        return Some(id.clone());
+                    }
+                }
+
+                return None;
+            }
             _ => None
         };
 
@@ -372,27 +378,6 @@ impl AppState {
                 error!("Error saving server order: {:?}", err);
             }
         });
-    }
-
-    pub fn get_room_header(&self, member_store: ProfileStore) -> RoomHeader {
-        let Some(room) = self.active_room.get() else {
-            return RoomHeader::Unknown;
-        };
-
-        let active_room_id = room.room_id().to_string();
-
-        match &room {
-            RoomNode::Dm(DmRoomNode { other_user_id, .. }) => {
-                let profile = member_store.get_member_profile(&active_room_id, other_user_id);
-                RoomHeader::DM(profile)
-            }
-            RoomNode::Single(_) => RoomHeader::TextChannel(room.name()),
-            RoomNode::TextChannel(_) => RoomHeader::TextChannel(room.name()),
-            RoomNode::VoiceChannel(_) => RoomHeader::VoiceChannel(room.name()),
-            RoomNode::Unjoined(_) => RoomHeader::TextChannel(room.name()),
-            RoomNode::Space(_) => RoomHeader::Space(room.name()),
-            RoomNode::Server(_) => RoomHeader::Space(room.name()),
-        }
     }
 
     fn room_belongs_to_section(&self, room_id: &str, section: &CurrentSection) -> bool {

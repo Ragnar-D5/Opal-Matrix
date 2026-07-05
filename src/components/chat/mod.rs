@@ -1,25 +1,24 @@
 use std::time::Duration;
 
 use crate::{
-    app::{call_tauri, convertFileSrc, format_bytes},
+    app::{convertFileSrc, format_bytes},
     components::{
-        FloatingTile, TypingIndicator, chat::{calls::CallView, messages::render_timeline_item}, input::{
+        FloatingTile, TypingIndicator, chat::{calls::CallView, header::ChatHeader, info::ChatInfo, messages::render_timeline_item}, input::{
             get_active_filter, get_caret_position, handle_input, handle_keydown,
             insert_text_at_caret,
             menu::{MenuCompletionMatches, MenuType, SelectionMenu},
         }, overlays::{
             emoji_picker::{EmojiPickerState, pick_emoji},
             gif_picker::{GifPickerState, pick_gif},
-        }, presence::PresenceBadge, user_profile::{MemberProfileExt, render_user_profile_card}
+        }, user_profile::MemberProfileExt
     },
     hooks::{setup_update_effect, use_tauri_event},
-    state::{AppState, CurrentSection, ProfileStore, RoomHeader},
+    state::{AppState, CurrentSection, ProfileStore},
     tauri_functions::{get_timeline, indicate_typing, pick_files, scroll_timeline},
 };
 
 use phosphor_leptos::{
-    GIF, HASH, INFO, Icon, IconWeight, MATRIX_LOGO, PHONE, PHONE_DISCONNECT, SMILEY, SPEAKER_HIGH,
-    TRASH, UPLOAD_SIMPLE, USER_CIRCLE, USER_LIST, X_CIRCLE,
+    GIF, Icon, IconWeight, SMILEY, TRASH, UPLOAD_SIMPLE, X_CIRCLE
 };
 
 use leptos::{ev, html::Div, prelude::*, task::spawn_local};
@@ -28,7 +27,7 @@ use leptos_use::{
     use_intersection_observer_with_options,
 };
 use shared::{
-    api::{FileMetadata, ScrollDirection, UiAttachmentSource}, profile::{MemberProfile, PresenceInfo}, sidebar::RoomNode, timeline::{EventContent, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind},
+    api::{FileMetadata, RoomSearchParameters, ScrollDirection, UiAttachmentSource}, sidebar::RoomNode, timeline::{EventContent, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind},
 };
 use uuid::Uuid;
 use wasm_bindgen::JsCast;
@@ -40,6 +39,8 @@ use web_sys::{
 
 pub(crate) mod calls;
 pub(crate) mod messages;
+pub(crate) mod info;
+pub(crate) mod header;
 
 #[component]
 fn TimeLine() -> impl IntoView {
@@ -511,192 +512,6 @@ fn TypingUserIndicator() -> impl IntoView {
     }
 }
 
-#[component]
-fn ChatHeader(header: Memo<RoomHeader>, chat_sidebar_open: RwSignal<bool>) -> impl IntoView {
-    let member_store: ProfileStore = expect_context();
-    let state: AppState = expect_context();
-
-    let info_hovered = RwSignal::new(false);
-
-    let toggle_icon = move || match header.get() {
-        RoomHeader::DM(_) => USER_CIRCLE,
-        RoomHeader::TextChannel(_) | RoomHeader::VoiceChannel(_) => USER_LIST,
-        _ => INFO,
-    };
-
-    view! {
-        <FloatingTile class="h-(--header-height) items-start flex-row gap-1 pl-[5px]">
-            <div class="w-8 self-center flex items-center justify-center">
-                {move || {
-                    let clone = member_store.clone();
-                    match header.get() {
-                        RoomHeader::TextChannel(_) => {
-                            view! {
-                                <div class="text-(--ui-base-color) w-full justify-center flex">
-                                    <Icon icon=HASH color="currentColor" size="70%" />
-                                </div>
-                            }
-                                .into_any()
-                        }
-                        RoomHeader::VoiceChannel(_) => {
-                            view! {
-                                <div class="text-(--ui-base-color) w-full justify-center flex">
-                                    <Icon icon=SPEAKER_HIGH color="currentColor" size="70%" />
-                                </div>
-                            }
-                                .into_any()
-                        }
-                        RoomHeader::DM(profile_sig) => {
-                            {
-                                view! {
-                                    {move || {
-                                        let profile = profile_sig.get();
-                                        let presence = clone
-                                            .clone()
-                                            .get_presence(profile.user_id());
-                                        view! {
-                                            <PresenceBadge presence=presence size=14.0>
-                                                {profile.render_icon("30px")}
-                                            </PresenceBadge>
-                                        }
-                                            .into_any()
-                                    }}
-                                }
-                            }
-                                .into_any()
-                        }
-                        RoomHeader::Unknown => {
-                            view! {
-                                <div class="w-8 text-end">
-                                    <span class="text-lg text-bright self-center align-middle">
-                                        "?"
-                                    </span>
-                                </div>
-                            }
-                                .into_any()
-                        }
-                        RoomHeader::Space(_) => {
-                            view! {
-                                <div class="text-(--ui-base-color) w-full justify-center flex">
-                                    <Icon icon=MATRIX_LOGO color="currentColor" size="70%" />
-                                </div>
-                            }
-                                .into_any()
-                        }
-                    }
-                }}
-            </div>
-            <div class="flex-1 flex flex-col self-center text-bright text-m font-semibold">
-                {move || match header.get() {
-                    RoomHeader::TextChannel(name) => {
-                        view! { <span>{name.clone()}</span> }.into_any()
-                    }
-                    RoomHeader::VoiceChannel(name) => {
-                        view! { <span>{name.clone()}</span> }.into_any()
-                    }
-                    RoomHeader::DM(profile_sig) => {
-                        {
-                            view! { {move || profile_sig.get().render_name_popup("16px")} }
-                                .into_any()
-                        }
-                            .into_any()
-                    }
-                    RoomHeader::Unknown => view! { <span>"Unknown Room"</span> }.into_any(),
-                    RoomHeader::Space(name) => view! { <span>{name.clone()}</span> }.into_any(),
-                }}
-            </div>
-            <div class="flex items-center h-full pr-[90px]">
-                <div class="self-center h-full">
-                    <button
-                        class="transition-opacity h-full aspect-square mr-1"
-                        class=("text-(--ui-hover-color)", move || info_hovered.get())
-                        class=("text-(--ui-base-color)", move || !info_hovered.get())
-                        on:click=move |_| chat_sidebar_open.update(|v| *v = !*v)
-                        on:mouseenter=move |_| info_hovered.set(true)
-                        on:mouseleave=move |_| info_hovered.set(false)
-                    >
-                        <div class="h-full justify-center items-center flex cursor-pointer">
-                            {move || {
-                                let icon = toggle_icon();
-                                view! {
-                                    <Icon
-                                        icon=icon
-                                        size="80%"
-                                        color="currentColor"
-                                        weight=move || {
-                                            if chat_sidebar_open.get() {
-                                                IconWeight::Fill
-                                            } else {
-                                                IconWeight::Light
-                                            }
-                                        }
-                                    />
-                                }
-                            }}
-                        </div>
-                    </button>
-                </div>
-                <div class="self-center h-full">
-                    <button
-                        class="transition-opacity h-full aspect-square mr-1"
-                        class=("text-(--ui-hover-color)", move || info_hovered.get())
-                        class=("text-(--ui-base-color)", move || !info_hovered.get())
-                        on:click=move |_| {
-                            let value = serde_wasm_bindgen::to_value(
-                                &serde_json::json!({"room_id": &state.active_room_id().unwrap()}),
-                            );
-                            spawn_local(async move {
-                                log::debug!(
-                                    "{:?}", call_tauri("join_matrixrtc_call", value.unwrap()).await
-                                );
-                            })
-                        }
-                        on:mouseenter=move |_| info_hovered.set(true)
-                        on:mouseleave=move |_| info_hovered.set(false)
-                    >
-                        <div class="h-full justify-center items-center flex cursor-pointer">
-                            <Icon
-                                icon=PHONE
-                                size="80%"
-                                color="currentColor"
-                                weight=IconWeight::Duotone
-                            />
-                        </div>
-                    </button>
-                </div>
-                <div class="self-center h-full">
-                    <button
-                        class="transition-opacity h-full aspect-square mr-1"
-                        class=("text-(--ui-hover-color)", move || info_hovered.get())
-                        class=("text-(--ui-base-color)", move || !info_hovered.get())
-                        on:click=move |_| {
-                            let value = serde_wasm_bindgen::to_value(
-                                &serde_json::json!({"room_id": &state.active_room_id().unwrap()}),
-                            );
-                            spawn_local(async move {
-                                log::debug!(
-                                    "{:?}", call_tauri("leave_matrixrtc_call", value.unwrap()).await
-                                );
-                            })
-                        }
-                        on:mouseenter=move |_| info_hovered.set(true)
-                        on:mouseleave=move |_| info_hovered.set(false)
-                    >
-                        <div class="h-full justify-center items-center flex cursor-pointer">
-                            <Icon
-                                icon=PHONE_DISCONNECT
-                                size="80%"
-                                color="currentColor"
-                                weight=IconWeight::Duotone
-                            />
-                        </div>
-                    </button>
-                </div>
-                <div class="h-6 w-[2px] mx-1 bg-(--tile-border-color) rounded" />
-            </div>
-        </FloatingTile>
-    }
-}
 
 #[derive(Clone, Copy)]
 pub struct ScrollTarget(pub RwSignal<Option<String>>);
@@ -880,7 +695,7 @@ fn handle_paste(
                 };
                 attachments.update(|v| v.push(att));
                 if let Some(room_id) = state.active_room_id() {
-                    state.drafts.update(|d| {
+                    state.room_states.update(|d| {
                         d.entry(room_id).or_default().attachments = attachments.get_untracked();
                     });
                 }
@@ -944,7 +759,7 @@ fn handle_paste(
                 };
                 attachments.update(|v| v.push(att));
                 if let Some(room_id) = state.active_room_id() {
-                    state.drafts.update(|d| {
+                    state.room_states.update(|d| {
                         d.entry(room_id).or_default().attachments = attachments.get_untracked();
                     });
                 }
@@ -965,6 +780,7 @@ fn ChatInput() -> impl IntoView {
     provide_context(selected_index);
 
     let input_info: RwSignal<Option<ChatInputInfo>> = expect_context();
+    let search_parameters: RwSignal<Option<RoomSearchParameters>> = expect_context();
 
     let matches: RwSignal<MenuCompletionMatches> = RwSignal::new(MenuCompletionMatches::None);
     provide_context(matches);
@@ -1014,7 +830,7 @@ fn ChatInput() -> impl IntoView {
     Effect::new(move |_| {
         let room_id = state.active_room_id();
         let draft = room_id
-            .and_then(|rid| state.drafts.with_untracked(|d| d.get(&rid).cloned()))
+            .and_then(|rid| state.room_states.with_untracked(|d| d.get(&rid).cloned()))
             .unwrap_or_default();
 
         let Some(el) = input_ref.get() else {
@@ -1111,10 +927,10 @@ fn ChatInput() -> impl IntoView {
                     attachments.set(new_atts);
 
                     if let Some(room_id) = state.active_room_id_untracked() {
-                        let mut drafts = state.drafts.get_untracked();
+                        let mut drafts = state.room_states.get_untracked();
                         let draft = drafts.entry(room_id).or_default();
                         draft.attachments = attachments.get_untracked();
-                        state.drafts.set(drafts);
+                        state.room_states.set(drafts);
                     }
                 }
                 Err(e) => log::error!("File picking failed: {}", e),
@@ -1213,7 +1029,7 @@ fn ChatInput() -> impl IntoView {
                         class="text-normal outline-none w-full whitespace-pre-wrap break-words py-3 max-h-100 overflow-y-auto"
                         on:input=move |_| {
                             on_type();
-                            handle_input(input_ref, is_empty, state, attachments)
+                            handle_input(input_ref, is_empty, state, attachments, search_parameters)
                         }
                         on:paste=move |ev| handle_paste(ev, attachments, state)
                         on:keydown=move |ev| handle_keydown(
@@ -1270,12 +1086,6 @@ fn ChatInput() -> impl IntoView {
 #[component]
 pub fn Chat() -> impl IntoView {
     let state: AppState = expect_context();
-    let member_store: ProfileStore = expect_context();
-
-    let header = Memo::new({
-        let member_store = member_store.clone();
-        move |_| state.get_room_header(member_store.clone())
-    });
 
     let chat_sidebar_open = RwSignal::new(matches!(state.active_section.get_untracked(), CurrentSection::Server(_)));
 
@@ -1291,9 +1101,12 @@ pub fn Chat() -> impl IntoView {
     let important_event_id: RwSignal<Option<String>> = RwSignal::new(None);
     provide_context(important_event_id);
 
+    let search_parameters: RwSignal<Option<RoomSearchParameters>> = RwSignal::new(None);
+    provide_context(search_parameters);
+
     view! {
         <div class="flex-1 h-full flex gap-[var(--gap)] flex-col overflow-hidden">
-            <ChatHeader header=header chat_sidebar_open=chat_sidebar_open />
+            <ChatHeader chat_sidebar_open=chat_sidebar_open />
             <div class="flex flex-row h-full min-h-0">
                 <FloatingTile class="flex-1 flex flex-col h-full min-h-0 overflow-hidden">
                     {move || match state.active_room.get() {
@@ -1380,192 +1193,11 @@ pub fn Chat() -> impl IntoView {
                 <Show when=move || chat_sidebar_open.get()>
                     <div class="flex-shrink-0 h-full w-[20rem] ml-[var(--gap)]">
                         <FloatingTile class="w-full h-full overflow-hidden">
-                            <ChatInfo header=header />
+                            <ChatInfo />
                         </FloatingTile>
                     </div>
                 </Show>
             </div>
         </div>
     }
-}
-
-#[component]
-fn ChatInfo(header: Memo<RoomHeader>) -> impl IntoView {
-    let content = move || {
-        match header.get() {
-            RoomHeader::DM(profile_sig) => {
-                let member = profile_sig.get_untracked();
-                let user_id = member.profile.user_id.clone();
-                let room_id = member.room_id.clone();
-                render_user_profile_card(70.0, 108.0, user_id, Some(room_id)).into_any()
-            }
-            RoomHeader::TextChannel(_) => view! { <MemberList /> }.into_any(),
-            RoomHeader::VoiceChannel(_) => view! { <MemberList /> }.into_any(),
-            RoomHeader::Space(_) => view! { <MemberList /> }.into_any(),
-            RoomHeader::Unknown => view! {
-                <div class="flex-1 flex items-center justify-center text-muted">
-                    "No information available for this room"
-                </div>
-            }
-            .into_any(),
-        }
-    };
-
-    view! { <div class="flex flex-col w-full overflow-visible">{content}</div> }
-}
-
-#[component]
-fn MemberList() -> impl IntoView {
-    let state: AppState = expect_context();
-    let store: ProfileStore = expect_context();
-
-    let room_id = state.active_room_id_untracked().unwrap_or_default();
-
-    let members_store = store.clone();
-    let members = Memo::new(move |_| members_store.clone().get_member_signals(&room_id));
-
-    let online_store = store.clone();
-    let online_view = move || {
-        let members = members.get();
-
-        let mut elements: Vec<(
-            String,
-            ArcRwSignal<MemberProfile>,
-            ArcRwSignal<PresenceInfo>,
-        )> = members
-            .into_iter()
-            .filter_map(|(user_id, member_sig)| {
-                let presence = online_store.get_presence(&user_id);
-
-                if !presence.get().is_offline() {
-                    let name = member_sig.get().get_name();
-                    Some((name, member_sig, presence))
-                } else {
-                    None
-                }
-            })
-            .collect();
-
-        elements.sort_by_key(|v| v.0.clone());
-
-        let views: Vec<_> = elements
-            .into_iter()
-            .map(|(_, member_sig, presence)| {
-                let profile = member_sig.get();
-                let name_profile = profile.clone();
-
-                view! {
-                    <div class="flex items-center gap-2">
-                        <PresenceBadge presence=presence size=15.5>
-                            {profile.render_icon("32px")}
-                        </PresenceBadge>
-                        <span class="text-bright">{name_profile.render_name_popup("16px")}</span>
-                    </div>
-                }
-            })
-            .collect();
-
-        let online_i = views.len();
-
-        let number_view =
-            view! { <span class="text-sm text-muted">{format!("Online — {online_i}")}</span> }
-                .into_any();
-
-        if online_i > 0 {
-            view! {
-                <div>
-                    {number_view} <div class="flex flex-col gap-2 mt-2">{views.collect_view()}</div>
-                </div>
-            }
-            .into_any()
-        } else {
-            ().into_any()
-        }
-    };
-
-    let offline_store = store.clone();
-    let offline_view = move || {
-        let members = members.get();
-
-        let mut elements: Vec<(
-            String,
-            ArcRwSignal<MemberProfile>,
-            ArcRwSignal<PresenceInfo>,
-        )> = members
-            .into_iter()
-            .filter_map(|(user_id, member_sig)| {
-                let presence = offline_store.get_presence(&user_id);
-
-                if presence.get().is_offline() {
-                    let name = member_sig.get().get_name();
-                    Some((name, member_sig, presence))
-                } else {
-                    None
-                }
-            })
-            .collect();
-
-        elements.sort_by_key(|v| v.0.clone());
-
-        let views: Vec<_> = elements
-            .into_iter()
-            .map(|(_, member_sig, presence)| {
-                let profile = member_sig.get();
-                let name_profile = profile.clone();
-
-                view! {
-                    <div class="flex items-center gap-2">
-                        <PresenceBadge presence=presence size=15.5>
-                            {profile.render_icon("32px")}
-                        </PresenceBadge>
-                        <span class="text-bright">{name_profile.render_name_popup("18px")}</span>
-                    </div>
-                }
-            })
-            .collect();
-
-        let offline_i = views.len();
-
-        let number_view =
-            view! { <span class="text-sm text-muted">{format!("Offline — {offline_i}")}</span> }
-                .into_any();
-
-        if offline_i > 0 {
-            view! {
-                <div>
-                    {number_view} <div class="flex flex-col gap-2 mt-2">{views.collect_view()}</div>
-                </div>
-            }
-            .into_any()
-        } else {
-            ().into_any()
-        }
-    };
-
-    let header = move || {
-        let members = members.get();
-
-        let mut online_count = 0;
-        let mut offline_count = 0;
-
-        for member in members.keys() {
-            let presence = store.get_presence(member);
-            if !presence.get().is_offline() {
-                online_count += 1;
-            } else {
-                offline_count += 1;
-            }
-        }
-
-        view! {
-            <div class="flex items-center gap-2 justify-center">
-                <div class="w-3 h-3 rounded-full bg-(--online-color)"></div>
-                <span class="text-ms text-(--online-color) pr-5">{online_count}</span>
-                <div class="w-3 h-3 rounded-full bg-(--offline-color)"></div>
-                <span class="text-ms text-(--offline-color)">{offline_count}</span>
-            </div>
-        }
-    };
-
-    view! { <div class="flex flex-col gap-2 p-3">{header} {online_view} {offline_view}</div> }
 }

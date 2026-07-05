@@ -258,6 +258,10 @@ impl RoomNode {
     pub fn is_unjoined(&self) -> bool {
         matches!(self, RoomNode::Unjoined(_))
     }
+
+    pub fn is_space(&self) -> bool {
+        matches!(self, RoomNode::Space(_) | RoomNode::Server(_))
+    }
 }
 
 impl From<RoomNode> for RoomProfile {
