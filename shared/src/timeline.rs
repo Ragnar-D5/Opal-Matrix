@@ -498,6 +498,22 @@ pub enum EventContent {
     SystemMessage(SystemMessage),
 }
 
+impl EventContent {
+    pub fn to_timeline_item(self, id: String, sender: String, timestamp: u64) -> UiTimelineItem {
+        UiTimelineItem {
+            id: id.clone(),
+            kind: UiTimelineItemKind::Event(Box::new(TimelineEvent {
+                state: None,
+                timestamp,
+                flags: EventFlags::default(),
+                sender_id: sender,
+                event_id: Some(id),
+                content: self,
+            })),
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub enum DetailState<T> {
     Unavailable,

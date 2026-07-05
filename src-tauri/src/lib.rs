@@ -6,9 +6,9 @@ use matrix_sdk::authentication::matrix::MatrixSession;
 use matrix_sdk::encryption::{BackupDownloadStrategy, EncryptionSettings};
 use matrix_sdk::ruma::{OwnedDeviceId, UserId};
 use matrix_sdk::{AuthSession, Client as MatrixClient, SessionMeta, SessionTokens};
-use shared::api::RestoreResponse;
 use shared::api::errors::LoginError;
 use shared::api::events::TauriEvent;
+use shared::api::RestoreResponse;
 use shared::synth::ProfileAudio;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -17,7 +17,7 @@ use toml_edit::DocumentMut;
 
 use bytes::Bytes;
 use log::info;
-use tauri::{AppHandle, Emitter, Url, command};
+use tauri::{command, AppHandle, Emitter, Url};
 use tauri::{Manager, State};
 
 pub mod builder;
@@ -34,7 +34,7 @@ pub const APP_NAME: &str = "opal-matrix";
 use tauri_plugin_notification::{NotificationExt, PermissionState};
 
 use crate::builder::{add_invoke_handler, register_mxc_uri, setup_builder};
-use crate::matrix_api::keyring::{self, StoredSession, init_keyring};
+use crate::matrix_api::keyring::{self, get_or_create_passphrase, init_keyring, StoredSession};
 use crate::state::{AppState, TimelineManager};
 use crate::sync::attach_callbacks;
 
@@ -188,17 +188,20 @@ async fn try_restore(
         return Ok(RestoreResponse::NoSession);
     };
 
-    let safe_user_id = session.user_id.to_string().replace(':', "_");
+    let user_id = session.user_id;
+    let safe_user_id = user_id.replace(':', "_");
     let path = app_handle
         .path()
         .app_data_dir()?
         .join("sessions")
         .join(format!("{}-{}.db", safe_user_id, session.device_id));
 
+    let passphrase = get_or_create_passphrase(&user_id).await?;
+
     let new_client = MatrixClient::builder()
         .homeserver_url(session.homeserver_url.clone())
         .handle_refresh_tokens()
-        .sqlite_store(path, None)
+        .sqlite_store(path, Some(&passphrase))
         .with_encryption_settings(EncryptionSettings {
             backup_download_strategy: BackupDownloadStrategy::AfterDecryptionFailure,
             ..Default::default()
@@ -209,7 +212,7 @@ async fn try_restore(
     let session = AuthSession::Matrix(MatrixSession {
         meta: SessionMeta {
             device_id: OwnedDeviceId::from(session.device_id.to_string()),
-            user_id: UserId::parse(session.user_id)?,
+            user_id: UserId::parse(user_id)?,
         },
         tokens: SessionTokens {
             access_token: session.access_token,
@@ -275,12 +278,19 @@ async fn login(
         .join("sessions")
         .join(format!("{}-{}.db", safe_user_id, device_id));
 
+    let passphrase = get_or_create_passphrase(user_id.as_str())
+        .await
+        .map_err(|e| {
+            error!("Failed to get or create passphrase: {:?}", e);
+            LoginError::BackendError
+        })?;
+
     let new_client = MatrixClient::builder()
         .homeserver_url(
             Url::parse(server_url.as_str()).expect("Valid homeserverurl from other client"),
         )
         .handle_refresh_tokens()
-        .sqlite_store(path, None)
+        .sqlite_store(path, Some(&passphrase))
         .with_encryption_settings(EncryptionSettings {
             backup_download_strategy: BackupDownloadStrategy::AfterDecryptionFailure,
             ..Default::default()

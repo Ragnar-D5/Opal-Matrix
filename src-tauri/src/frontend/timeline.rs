@@ -285,7 +285,7 @@ fn from_call_intent_to_ui(value: CallIntent) -> UiCallIntent {
     }
 }
 
-fn timeline_item_content_to_ui(
+pub fn timeline_item_content_to_ui(
     value: &TimelineItemContent,
     media_store: &mut HashMap<Uuid, MediaSource>,
     outer_event_id: Option<&EventId>,

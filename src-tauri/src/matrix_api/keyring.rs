@@ -1,9 +1,10 @@
-use crate::{APP_NAME, TauriError};
+use crate::{TauriError, APP_NAME};
 
 use keyring_core::Entry;
 use log::info;
 
 use serde::{Deserialize, Serialize};
+use tauri::async_runtime::spawn_blocking;
 
 const LAST_USER_KEY: &str = "__last_active_user__";
 
@@ -86,7 +87,14 @@ pub fn save_session(session: &StoredSession) -> Result<(), TauriError> {
 }
 
 /// Retrieves the existing passphrase for the given user ID from the keyring, or generates a new random passphrase using the `getrandom` crate if none exists.
-pub async fn _get_or_create_passphrase(user_id: String) -> Result<String, TauriError> {
+pub async fn get_or_create_passphrase(user_id: &str) -> Result<String, TauriError> {
+    let user_id = user_id.to_string();
+    spawn_blocking(move || get_or_create_passphrase_blocking(&user_id))
+        .await
+        .expect("Keyring blocking task panicked")
+}
+
+fn get_or_create_passphrase_blocking(user_id: &str) -> Result<String, TauriError> {
     let entry = Entry::new(APP_NAME, &format!("passphrase:{}", user_id))?;
 
     match entry.get_password() {

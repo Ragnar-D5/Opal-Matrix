@@ -1,11 +1,12 @@
 use crate::{
-    app::{call_tauri, CurrentWindow},
+    app::{call_tauri, call_tauri_no_args, CurrentWindow, Settings},
     components::{input::move_caret_to_end, SingleFloatingTile},
     state::AppState,
+    tauri_functions::get_server_order,
 };
 use leptos::{html::Input, prelude::*, task::spawn_local};
 use serde_json::json;
-use shared::api::errors::LoginError;
+use shared::{account_data::Breadcrumbs, api::errors::LoginError};
 use web_sys::{HtmlInputElement, SubmitEvent};
 
 #[component]
@@ -75,9 +76,47 @@ impl From<LoginError> for LoginInputStatus {
     }
 }
 
+pub fn get_stuff_after_login(state: AppState, settings: Settings) {
+    spawn_local(async move {
+        match call_tauri_no_args("get_breadcrumbs").await {
+            Ok(js_val) => {
+                let breadcrumbs: Breadcrumbs = serde_wasm_bindgen::from_value(js_val).unwrap();
+
+                if let Some(room_id) = breadcrumbs.recent_rooms.first() {
+                    state.active_section.set(state.section_for_room(room_id));
+                }
+
+                state.breadcrums.set(breadcrumbs.clone());
+
+                state.set_active_room_with_id(breadcrumbs.recent_rooms.first().cloned());
+            }
+            Err(err) => {
+                log::error!("Error fetching breadcrumbs: {:?}", err);
+            }
+        }
+
+        match get_server_order().await {
+            Ok(order) => {
+                state.server_order.set(order);
+                state.apply_server_order();
+            }
+            Err(err) => {
+                log::error!("Error fetching server order: {:?}", err);
+            }
+        };
+
+        if let Err(e) = settings.get_all().await {
+            log::error!("Failed to get settings from backend: {:?}", e);
+        };
+
+        state.data_initialized.set(true);
+    });
+}
+
 #[component]
 pub fn LoginPage(window: RwSignal<CurrentWindow>) -> impl IntoView {
     let state: AppState = expect_context();
+    let settings: Settings = expect_context();
 
     let username = RwSignal::new(String::new());
     let password = RwSignal::new(String::new());
@@ -154,6 +193,7 @@ pub fn LoginPage(window: RwSignal<CurrentWindow>) -> impl IntoView {
 
                     state.user_id.set(user_id);
                     window.set(CurrentWindow::Loading);
+                    get_stuff_after_login(state, settings);
                 }
                 Err(js_val) => {
                     let err: LoginError =

@@ -1,4 +1,4 @@
-use crate::components::authentication::Authentication;
+use crate::components::authentication::{get_stuff_after_login, Authentication};
 use crate::components::loading::Loading;
 use crate::components::previews::ImageLightbox;
 use crate::components::shader::BackgroundShader;
@@ -16,7 +16,7 @@ use log::error;
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use shared::account_data::{Breadcrumbs, ServerOrder};
+use shared::account_data::ServerOrder;
 use wasm_bindgen::prelude::*;
 use web_sys::HtmlImageElement;
 
@@ -30,7 +30,7 @@ use crate::components::{
 };
 use crate::hooks::{setup_update_effect, use_tauri_event};
 use crate::state::{AppState, ProfileStore};
-use crate::tauri_functions::{get_server_order, set_backend_room_id, set_focused_in_backend};
+use crate::tauri_functions::{set_backend_room_id, set_focused_in_backend};
 
 use macros::matrix_settings;
 
@@ -298,10 +298,7 @@ pub fn App() -> impl IntoView {
                         }
                         RestoreResponse::Success { user_id } => {
                             state.user_id.set(user_id);
-                            // Stay on `Loading` until the `server_list_event` handler
-                            // fires below — that's after `dm_list`/`single_room_list`/
-                            // `room_map` have synced, so `update_active_room` resolves
-                            // `active_section` correctly before the sidebar ever mounts.
+                            get_stuff_after_login(state, settings);
                         }
                         RestoreResponse::Failed { home_server: _ } => {
                             state.current_window.set(CurrentWindow::Login);
@@ -312,39 +309,6 @@ pub fn App() -> impl IntoView {
                     error!("Error during restore, showing home server discovery");
                 }
             }
-
-            match call_tauri_no_args("get_breadcrumbs").await {
-                Ok(js_val) => {
-                    let breadcrumbs: Breadcrumbs = serde_wasm_bindgen::from_value(js_val).unwrap();
-
-                    if let Some(room_id) = breadcrumbs.recent_rooms.first() {
-                        state.active_section.set(state.section_for_room(room_id));
-                    }
-
-                    state.breadcrums.set(breadcrumbs.clone());
-
-                    state.set_active_room_with_id(breadcrumbs.recent_rooms.first().cloned());
-                }
-                Err(err) => {
-                    error!("Error fetching breadcrumbs: {:?}", err);
-                }
-            }
-
-            match get_server_order().await {
-                Ok(order) => {
-                    state.server_order.set(order);
-                    state.apply_server_order();
-                }
-                Err(err) => {
-                    error!("Error fetching server order: {:?}", err);
-                }
-            };
-
-            if let Err(e) = settings.get_all().await {
-                log::error!("Failed to get settings from backend: {:?}", e);
-            };
-
-            state.data_initialized.set(true);
         });
     });
 

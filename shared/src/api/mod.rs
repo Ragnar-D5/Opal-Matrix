@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use chrono::{DateTime, Utc};
 use macros::TauriEvent;
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -137,5 +138,53 @@ impl AudioDeviceInfos {
                 .and_then(|id| self.output_devices.iter().find(|d| &d.id == id))
                 .cloned()
         }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, TauriEvent)]
+pub struct RoomSearchParameters {
+    pub text: String,
+    pub senders: Vec<String>,
+    pub after: Option<DateTime<Utc>>,
+    pub before: Option<DateTime<Utc>>,
+    pub has_link: bool,
+}
+
+impl RoomSearchParameters {
+    pub fn build_query(&self) -> String {
+        let mut clauses = Vec::new();
+
+        let words: Vec<_> = self
+            .text
+            .split_ascii_whitespace()
+            .map(|w| format!("\"{}\"", w.replace('"', "\\\"")))
+            .collect();
+
+        if !words.is_empty() {
+            clauses.push(words.join(" AND "));
+        }
+
+        if !self.senders.is_empty() {
+            let senders_clause = self
+                .senders
+                .iter()
+                .map(|s| format!("from:{}", s))
+                .collect::<Vec<_>>()
+                .join(" OR ");
+            clauses.push(format!("({})", senders_clause));
+        }
+
+        if let Some(after) = self.after {
+            clauses.push(format!("data:>={}", after.to_rfc3339()));
+        }
+        if let Some(before) = self.before {
+            clauses.push(format!("data:<{}", before.to_rfc3339()));
+        }
+
+        if self.has_link {
+            clauses.push("(http OR https)".to_string());
+        }
+
+        clauses.join(" AND ")
     }
 }

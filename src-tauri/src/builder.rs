@@ -61,6 +61,7 @@ pub fn add_invoke_handler(builder: Builder<Wry>) -> Builder<Wry> {
         frontend::dialog::save_file_to_picked_dest,
         frontend::settings::change_screen_scaling,
         frontend::klipy::search_gifs,
+        frontend::search::search_room,
         // matrix API commands
         matrix_api::discovery::choose_home_server,
         // matrix_api::messages::fetch_messages,
@@ -119,6 +120,7 @@ fn add_logging_plugin(
             .level_for("apple_native_keyring_store", keyring_log_level)
             .level_for("android_native_keyring_store", keyring_log_level)
             .level_for("windows_native_keyring_store", keyring_log_level)
+            .level_for("tantivy", LevelFilter::Warn)
             .format(move |out, message, record| {
                 let level = match record.level() {
                     log::Level::Error => "ERROR",
