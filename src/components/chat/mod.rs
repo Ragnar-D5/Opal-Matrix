@@ -608,7 +608,7 @@ fn ChatHeader(header: Memo<RoomHeader>, chat_sidebar_open: RwSignal<bool>) -> im
             <div class="flex items-center h-full pr-[90px]">
                 <div class="self-center h-full">
                     <button
-                        class="transition-opacity h-full mr-1"
+                        class="transition-opacity h-full aspect-square mr-1"
                         class=("text-(--ui-hover-color)", move || info_hovered.get())
                         class=("text-(--ui-base-color)", move || !info_hovered.get())
                         on:click=move |_| chat_sidebar_open.update(|v| *v = !*v)
@@ -638,7 +638,7 @@ fn ChatHeader(header: Memo<RoomHeader>, chat_sidebar_open: RwSignal<bool>) -> im
                 </div>
                 <div class="self-center h-full">
                     <button
-                        class="transition-opacity h-full mr-1"
+                        class="transition-opacity h-full aspect-square mr-1"
                         class=("text-(--ui-hover-color)", move || info_hovered.get())
                         class=("text-(--ui-base-color)", move || !info_hovered.get())
                         on:click=move |_| {
@@ -666,7 +666,7 @@ fn ChatHeader(header: Memo<RoomHeader>, chat_sidebar_open: RwSignal<bool>) -> im
                 </div>
                 <div class="self-center h-full">
                     <button
-                        class="transition-opacity h-full mr-1"
+                        class="transition-opacity h-full aspect-square mr-1"
                         class=("text-(--ui-hover-color)", move || info_hovered.get())
                         class=("text-(--ui-base-color)", move || !info_hovered.get())
                         on:click=move |_| {

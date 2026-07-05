@@ -119,6 +119,13 @@ jobs:
                   if [ -n "$appdir" ]; then
                       echo "Removing bundled libwayland from $appdir so the host's copy is used"
                       rm -fv "$appdir"/usr/lib/libwayland-*
+                      # The plugin's generated AppRun hook forces GDK_BACKEND=x11
+                      # (workaround for tauri-apps/tauri#8541). Under a scaled
+                      # Wayland desktop that means XWayland upscaling: blurry
+                      # output and wrong effective DPI. The app runs fine on
+                      # native Wayland (verified with webkit 2.50 + host
+                      # libwayland), so let GDK pick the backend itself.
+                      sed -i '/export GDK_BACKEND=x11/d' "$appdir"/apprun-hooks/linuxdeploy-plugin-gtk.sh
                   fi
                   EOF
                   chmod +x ~/.cache/tauri/linuxdeploy-plugin-gtk.sh ~/.cache/tauri/gtk-plugin-real.sh
