@@ -1,24 +1,25 @@
 use std::collections::HashMap;
 
 use futures::future::join_all;
+use futures_util::StreamExt;
 use matrix_sdk::{
+    Client, Room, RoomMemberships,
     event_handler::Ctx,
     ruma::{
+        OwnedUserId, UserId,
         events::{room::member::OriginalSyncRoomMemberEvent, typing::SyncTypingEvent},
         profile::ProfileFieldName,
-        OwnedUserId, UserId,
     },
-    Client, Room, RoomMemberships,
 };
 use shared::{
     api::events::TypingUpdate,
     profile::{CustomProperties, MemberProfile, UserProfile},
     synth::ProfileAudio,
 };
-use tauri::{async_runtime::spawn_blocking, command, AppHandle, State};
+use tauri::{AppHandle, State, async_runtime::spawn_blocking, command};
 use tokio::sync::RwLock;
 
-use crate::{matrix_api::profile::get_custom_fields, send_event, TauriError};
+use crate::{TauriError, matrix_api::profile::get_custom_fields, send_event};
 
 pub async fn on_member_update(
     event: OriginalSyncRoomMemberEvent,
@@ -63,47 +64,68 @@ pub async fn send_all_members(
     rooms: &[Room],
     default_audio: &ProfileAudio,
 ) -> Result<(), TauriError> {
-    let mut payload: HashMap<String, Vec<MemberProfile>> = HashMap::new();
-    // user_id -> list of (room_id, has_avatar, display_name) across all rooms
-    let mut user_memberships: HashMap<OwnedUserId, Vec<(String, bool, Option<String>)>> =
-        HashMap::new();
+    let room_memberships: Vec<(String, Vec<(OwnedUserId, bool, Option<String>)>)> =
+        futures_util::stream::iter(rooms.iter().cloned())
+            .map(|room| {
+                let default_audio = default_audio.clone();
+                async move {
+                    let room_id = room.room_id().to_string();
+                    let members = match room.members(RoomMemberships::all()).await {
+                        Ok(members) => members,
+                        Err(e) => {
+                            log::error!("Failed to get members for room {}: {:?}", room_id, e);
+                            return None;
+                        }
+                    };
 
-    for room in rooms {
-        let room_id = room.room_id().to_string();
-        let members = room.members(RoomMemberships::all()).await?;
+                    let mut memberships = Vec::with_capacity(members.len());
+                    let profiles: Vec<MemberProfile> = members
+                        .into_iter()
+                        .map(|member| {
+                            let user_id = member.user_id().to_owned();
+                            let has_avatar = member.avatar_url().is_some();
+                            let display_name = member.display_name().map(|s| s.to_string());
 
-        let profiles: Vec<MemberProfile> = members
-            .into_iter()
-            .map(|member| {
-                let user_id = member.user_id().to_owned();
-                let has_avatar = member.avatar_url().is_some();
-                let display_name = member.display_name().map(|s| s.to_string());
+                            memberships.push((user_id.clone(), has_avatar, display_name.clone()));
 
-                user_memberships.entry(user_id.clone()).or_default().push((
-                    room_id.clone(),
-                    has_avatar,
-                    display_name.clone(),
-                ));
+                            MemberProfile {
+                                room_id: room_id.clone(),
+                                profile: UserProfile {
+                                    user_id: user_id.to_string(),
+                                    display_name,
+                                    has_avatar,
+                                    custom_properties: CustomProperties::from_user_id(
+                                        user_id.as_str(),
+                                        default_audio.clone(),
+                                    ),
+                                },
+                            }
+                        })
+                        .collect();
 
-                MemberProfile {
-                    room_id: room_id.clone(),
-                    profile: UserProfile {
-                        user_id: user_id.to_string(),
-                        display_name,
-                        has_avatar,
-                        custom_properties: CustomProperties::from_user_id(
-                            user_id.as_str(),
-                            default_audio.clone(),
-                        ),
-                    },
+                    Some((room_id, profiles, memberships))
                 }
             })
-            .collect();
+            .buffer_unordered(16)
+            .filter_map(|entry| async move { entry })
+            .map(|(room_id, profiles, memberships)| {
+                send_event(handle, &HashMap::from([(room_id.clone(), profiles)]));
+                (room_id, memberships)
+            })
+            .collect()
+            .await;
 
-        payload.insert(room_id, profiles);
+    let mut user_memberships: HashMap<OwnedUserId, Vec<(String, bool, Option<String>)>> =
+        HashMap::new();
+    for (room_id, memberships) in room_memberships {
+        for (user_id, has_avatar, display_name) in memberships {
+            user_memberships.entry(user_id).or_default().push((
+                room_id.clone(),
+                has_avatar,
+                display_name,
+            ));
+        }
     }
-
-    send_event(handle, &payload);
 
     let futs: Vec<_> = user_memberships
         .keys()
@@ -139,10 +161,6 @@ pub async fn send_all_members(
 
     send_event(handle, &update_payload);
 
-    // Render everyone's audio on a single background thread instead of the
-    // async runtime (keeps it off the tokio workers) and instead of one
-    // spawn_blocking per member (spawning a burst of OS threads is itself
-    // slow), then deliver it as a single batch.
     let update_payload = spawn_blocking(move || {
         let mut update_payload: HashMap<String, Vec<MemberProfile>> = HashMap::new();
         for (user_id, (custom_properties, sonic_signature)) in results {
