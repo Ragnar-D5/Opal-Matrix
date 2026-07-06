@@ -2,7 +2,7 @@ use leptos::task::spawn_local;
 use leptos::{html::Div, prelude::*, tachys::dom::document};
 use log::warn;
 use regex::Regex;
-use shared::api::RoomSearchParameters;
+use shared::api::SearchParameters;
 use wasm_bindgen::JsCast;
 use web_sys::{HtmlDivElement, HtmlElement, KeyboardEvent};
 use web_sys::{Node, window};
@@ -47,7 +47,7 @@ pub fn handle_input(
     is_empty: RwSignal<bool>,
     state: AppState,
     attachments: RwSignal<Vec<Attachment>>,
-    search_parameters: RwSignal<Option<RoomSearchParameters>>,
+    search_parameters: RwSignal<Option<SearchParameters>>,
 ) {
     let Some(el) = input_ref.get() else { return };
     let doc = document();

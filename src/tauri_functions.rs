@@ -1,13 +1,18 @@
+use std::collections::HashMap;
+
 use klipy::{MediaItem, Page};
 use leptos::task::spawn_local;
 use serde_json::json;
 use shared::{
     account_data::ServerOrder,
-    api::{FileMetadata, GetTimelineResult, LinkPreviewResponse, ScrollDirection},
+    api::{
+        FileMetadata, GetTimelineResult, LinkPreviewResponse, ScrollDirection, SearchParameters,
+    },
     commands::Command,
     profile::UserProfile,
-    timeline::UiMediaSource,
+    timeline::{UiMediaSource, UiTimelineItem},
 };
+use uuid::Uuid;
 
 use crate::app::{call_tauri, call_tauri_no_args};
 
@@ -347,4 +352,22 @@ pub fn set_input_device(id: String) -> Result<(), String> {
     });
 
     Ok(())
+}
+
+pub fn search_rooms(parameters: SearchParameters, search_id: Uuid) {
+    let args = match serde_wasm_bindgen::to_value(
+        &json!({ "parameters": parameters, "search_id": search_id }),
+    ) {
+        Ok(value) => value,
+        Err(e) => {
+            log::error!("Failed to serialize request: {:?}", e);
+            return;
+        }
+    };
+
+    spawn_local(async move {
+        if let Err(e) = call_tauri("search_rooms", args).await {
+            log::error!("Tauri call failed: {:?}", e);
+        }
+    });
 }

@@ -101,6 +101,7 @@ fn MessageHeader(
     active_room_id: String,
     scroll_to_item: Callback<String>,
     show_header: bool,
+    preview: bool,
     sender_profile_sig: ArcRwSignal<MemberProfile>,
     date: DateTime<Local>,
     current_highlight: Memo<Option<String>>,
@@ -111,16 +112,23 @@ fn MessageHeader(
 
     view! {
         <div class="flex gap-(--gap)">
-            <div
-                class="rounded-full w-1 m-1"
-                style=move || {
-                    if let Some(color) = current_highlight.get() {
-                        format!("background-color: {color}")
-                    } else {
-                        "transparent".to_string()
-                    }
+            {if !preview {
+                view! {
+                    <div
+                        class="rounded-full w-1 m-1"
+                        style=move || {
+                            if let Some(color) = current_highlight.get() {
+                                format!("background-color: {color}")
+                            } else {
+                                "transparent".to_string()
+                            }
+                        }
+                    ></div>
                 }
-            ></div>
+                    .into_any()
+            } else {
+                ().into_any()
+            }}
 
             <div class="shrink-0 mr-2 w-[40px] relative flex flex-col">
                 <Show when=move || has_reply>
@@ -1179,7 +1187,7 @@ fn render_timeline_event(
     let picker_open = RwSignal::new(false);
     let show_delete_confirm = RwSignal::new(false);
 
-    let scroll_target = expect_context::<super::ScrollTarget>().0;
+    let scroll_target = use_context::<super::ScrollTarget>().unwrap_or_default().0;
     let node_ref = NodeRef::<Div>::new();
 
     let (show_highlight, date, sender_id, reply_info, event_id) = item_sig.with_untracked(|item| {
@@ -1375,6 +1383,7 @@ fn render_timeline_event(
                 active_room_id=reply_room_id
                 scroll_to_item=scroll_to_event
                 show_header=show_header
+                preview=preview
                 sender_profile_sig=sender_profile_sig
                 date=date
                 current_highlight=current_highlight
@@ -1428,7 +1437,7 @@ pub fn render_timeline_item(
     show_header: bool,
     preview: bool,
     scroll_to_event: Callback<String>,
-) -> impl IntoView {
+) -> AnyView {
     let state: AppState = expect_context();
     let store: ProfileStore = expect_context();
 
@@ -1517,5 +1526,5 @@ pub fn render_timeline_item(
             .into_any()
         }
         UiTimelineItemKind::Event(_) => render_timeline_event(store, &room_id, &user_id, item_sig, show_header, preview, scroll_to_event).into_any()
-    }
+    }.into_any()
 }

@@ -1,9 +1,9 @@
-use std::time::Duration;
+use std::{collections::HashMap, time::Duration};
 
 use crate::{
     app::{convertFileSrc, format_bytes},
     components::{
-        FloatingTile, TypingIndicator, chat::{calls::CallView, header::ChatHeader, info::ChatInfo, messages::render_timeline_item}, input::{
+        FloatingTile, TypingIndicator, chat::{calls::CallView, header::ChatHeader, info::{chat_info, chat_search}, messages::render_timeline_item}, input::{
             get_active_filter, get_caret_position, handle_input, handle_keydown,
             insert_text_at_caret,
             menu::{MenuCompletionMatches, MenuType, SelectionMenu},
@@ -27,7 +27,7 @@ use leptos_use::{
     use_intersection_observer_with_options,
 };
 use shared::{
-    api::{FileMetadata, RoomSearchParameters, ScrollDirection, UiAttachmentSource}, sidebar::RoomNode, timeline::{EventContent, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind},
+    api::{FileMetadata, ScrollDirection, SearchParameters, UiAttachmentSource, events::SearchResultUpdate}, sidebar::RoomNode, timeline::{EventContent, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind},
 };
 use uuid::Uuid;
 use wasm_bindgen::JsCast;
@@ -513,7 +513,7 @@ fn TypingUserIndicator() -> impl IntoView {
 }
 
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 pub struct ScrollTarget(pub RwSignal<Option<String>>);
 
 #[derive(Clone, Debug)]
@@ -780,7 +780,7 @@ fn ChatInput() -> impl IntoView {
     provide_context(selected_index);
 
     let input_info: RwSignal<Option<ChatInputInfo>> = expect_context();
-    let search_parameters: RwSignal<Option<RoomSearchParameters>> = expect_context();
+    let search_parameters: RwSignal<Option<SearchParameters>> = expect_context();
 
     let matches: RwSignal<MenuCompletionMatches> = RwSignal::new(MenuCompletionMatches::None);
     provide_context(matches);
@@ -1101,8 +1101,23 @@ pub fn Chat() -> impl IntoView {
     let important_event_id: RwSignal<Option<String>> = RwSignal::new(None);
     provide_context(important_event_id);
 
-    let search_parameters: RwSignal<Option<RoomSearchParameters>> = RwSignal::new(None);
+    let search_parameters: RwSignal<Option<SearchParameters>> = RwSignal::new(None);
     provide_context(search_parameters);
+
+    let search_results: RwSignal<Option<HashMap<String, Vec<UiTimelineItem>>>> = RwSignal::new(None);
+    provide_context(search_results);
+
+    let search_update_sig: ReadSignal<Option<SearchResultUpdate>> = use_tauri_event();
+    setup_update_effect(search_update_sig, move |(result_search_id, room_id, update)| {
+        if let Some(SearchParameters { search_id, .. }) = search_parameters.get_untracked() && search_id ==  result_search_id {
+            search_results.update(|res| {
+                if let Some(res) = res {
+                    let room_results = res.entry(room_id.clone()).or_default();
+                    room_results.extend(update);
+                }
+            });
+        }
+    });
 
     view! {
         <div class="flex-1 h-full flex gap-[var(--gap)] flex-col overflow-hidden">
@@ -1190,13 +1205,26 @@ pub fn Chat() -> impl IntoView {
                         }
                     }}
                 </FloatingTile>
-                <Show when=move || chat_sidebar_open.get()>
-                    <div class="flex-shrink-0 h-full w-[20rem] ml-[var(--gap)]">
-                        <FloatingTile class="w-full h-full overflow-hidden">
-                            <ChatInfo />
-                        </FloatingTile>
-                    </div>
-                </Show>
+                {move || {
+                    let searching = search_parameters.get().is_some();
+                    let sidebar = chat_sidebar_open.get();
+                    if searching || sidebar {
+                        view! {
+                            <div
+                                class="flex-shrink-0 h-full ml-[var(--gap)]"
+                                class=("w-[30rem]", move || searching)
+                                class=("w-[20rem]", move || !searching)
+                            >
+                                <FloatingTile class="w-full h-full">
+                                    {if searching { chat_search() } else { chat_info() }}
+                                </FloatingTile>
+                            </div>
+                        }
+                            .into_any()
+                    } else {
+                        ().into_any()
+                    }
+                }}
             </div>
         </div>
     }

@@ -7,6 +7,7 @@ use matrix_sdk::ruma::serde::Raw;
 use matrix_sdk::ruma::OwnedRoomId;
 use shared::api::events::CallMemberUpdate;
 use shared::get_color;
+use tauri::async_runtime::spawn;
 use std::collections::{HashMap, HashSet};
 
 use futures::{StreamExt, TryFutureExt, };
@@ -262,6 +263,16 @@ pub async fn handle_room_updates(
         let Some(node) = convert_room_to_node(&room).await else {
             continue;
         };
+
+        if is_new
+            && let Ok((room_cache, _)) = room.event_cache().await {
+                let room_id_clone = room_id.clone();
+                spawn(async move {
+                    if let Err(e) = room_cache.pagination().run_backwards_until(u16::MAX).await {
+                        log::error!("Failed to run backwards pagination for room {}: {:?}", room_id_clone, e);
+                    };
+                });
+            };
 
         if is_new && matches!(node, RoomNode::Server(_)) {
             updates.push(RoomMapUpdate::Insert { key: room_id.to_string(), value: node.clone() });

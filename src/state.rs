@@ -5,7 +5,7 @@ use log::error;
 use serde_json::json;
 use shared::{
     account_data::{Breadcrumbs, ServerOrder},
-    api::{AudioDeviceInfos, RoomSearchParameters},
+    api::{AudioDeviceInfos, SearchParameters},
     profile::{CustomProperties, MemberProfile, PresenceInfo, RoomProfile, UserProfile},
     sidebar::{
         DmList, NotificationCounts, RoomNode, ServerList, ServerRoomNode,
@@ -24,7 +24,7 @@ use leptos::prelude::*;
 pub struct RoomState {
     pub content: String,
     pub attachments: Vec<Attachment>,
-    pub search_parameters: Option<RoomSearchParameters>
+    pub search_parameters: Option<SearchParameters>
 }
 
 #[derive(Clone, Debug, PartialEq, Default)]

@@ -61,7 +61,7 @@ pub fn add_invoke_handler(builder: Builder<Wry>) -> Builder<Wry> {
         frontend::dialog::save_file_to_picked_dest,
         frontend::settings::change_screen_scaling,
         frontend::klipy::search_gifs,
-        frontend::search::search_room,
+        frontend::search::search_rooms,
         // matrix API commands
         matrix_api::discovery::choose_home_server,
         // matrix_api::messages::fetch_messages,

@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use chrono::{DateTime, Utc};
 use macros::TauriEvent;
 use serde::{Deserialize, Deserializer, Serialize};
+use uuid::Uuid;
 
 fn deserialize_u32_or_string<'de, D: Deserializer<'de>>(d: D) -> Result<Option<u32>, D::Error> {
     #[derive(Deserialize)]
@@ -142,7 +143,8 @@ impl AudioDeviceInfos {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, TauriEvent)]
-pub struct RoomSearchParameters {
+pub struct SearchParameters {
+    pub search_id: Uuid,
     pub room_ids: Vec<String>,
     pub text: String,
     pub senders: Vec<String>,
@@ -151,7 +153,7 @@ pub struct RoomSearchParameters {
     pub has_link: bool,
 }
 
-impl RoomSearchParameters {
+impl SearchParameters {
     pub fn build_query(&self) -> String {
         let mut clauses = Vec::new();
 
@@ -176,10 +178,10 @@ impl RoomSearchParameters {
         }
 
         if let Some(after) = self.after {
-            clauses.push(format!("data:>={}", after.to_rfc3339()));
+            clauses.push(format!("date:>={}", after.to_rfc3339()));
         }
         if let Some(before) = self.before {
-            clauses.push(format!("data:<{}", before.to_rfc3339()));
+            clauses.push(format!("date:<{}", before.to_rfc3339()));
         }
 
         if self.has_link {

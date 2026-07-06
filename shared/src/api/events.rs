@@ -2,10 +2,12 @@ use std::collections::HashMap;
 
 use macros::TauriEvent;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::{
     profile::{MemberProfile, PresenceInfo},
     sidebar::{NotificationCounts, UserDevice},
+    timeline::UiTimelineItem,
 };
 
 pub trait TauriEvent: Serialize + DeserializeOwned + PartialEq {
@@ -15,6 +17,12 @@ pub trait TauriEvent: Serialize + DeserializeOwned + PartialEq {
 impl TauriEvent for String {
     fn name() -> String {
         "String".to_string()
+    }
+}
+
+impl TauriEvent for Uuid {
+    fn name() -> String {
+        "Uuid".to_string()
     }
 }
 
@@ -34,6 +42,27 @@ where
 {
     fn name() -> String {
         format!("HashMap_{}_{}", K::name(), V::name())
+    }
+}
+
+impl<K, V> TauriEvent for (K, V)
+where
+    K: TauriEvent,
+    V: TauriEvent,
+{
+    fn name() -> String {
+        format!("Tuple_{}_{}", K::name(), V::name())
+    }
+}
+
+impl<K, V, T> TauriEvent for (K, V, T)
+where
+    K: TauriEvent,
+    V: TauriEvent,
+    T: TauriEvent,
+{
+    fn name() -> String {
+        format!("Tuple_{}_{}_{}", K::name(), V::name(), T::name())
     }
 }
 
@@ -74,3 +103,5 @@ pub enum NotificationEvent {
         level: NotificationLevel,
     },
 }
+
+pub type SearchResultUpdate = (Uuid, String, Vec<UiTimelineItem>);

@@ -635,7 +635,7 @@ pub enum UiTimelineItemKind {
     TimelineStart,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, TauriEvent)]
 pub struct UiTimelineItem {
     pub id: String,
 

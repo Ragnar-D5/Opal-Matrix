@@ -1,14 +1,18 @@
+use std::collections::HashMap;
+
 use leptos::{prelude::*, task::spawn_local};
 use phosphor_leptos::{
     Icon, IconWeight, HASH, INFO, MATRIX_LOGO, PHONE, PHONE_DISCONNECT, SPEAKER_HIGH, USER_CIRCLE,
     USER_LIST,
 };
-use shared::{api::RoomSearchParameters, sidebar::RoomNode};
+use shared::{api::SearchParameters, sidebar::RoomNode, timeline::UiTimelineItem};
+use uuid::Uuid;
 
 use crate::{
     app::call_tauri,
     components::{presence::PresenceBadge, user_profile::MemberProfileExt, FloatingTile},
     state::{AppState, CurrentSection, ProfileStore},
+    tauri_functions::search_rooms,
 };
 
 #[component]
@@ -44,7 +48,38 @@ pub fn ChatHeader(chat_sidebar_open: RwSignal<bool>) -> impl IntoView {
         }
     };
 
-    let search_params: RwSignal<Option<RoomSearchParameters>> = expect_context();
+    let search_params: RwSignal<Option<SearchParameters>> = expect_context();
+    let search_results: RwSignal<Option<HashMap<String, Vec<UiTimelineItem>>>> = expect_context();
+
+    let on_search_input = move |ev| {
+        let input = event_target_value(&ev);
+
+        let mut params = search_params.get().unwrap_or_default();
+        params.text = input.clone();
+
+        let active_room_id = state.active_room_id();
+
+        if params.room_ids.is_empty() && let Some(room_id) = active_room_id.clone() {
+            params.room_ids.push(room_id);
+        }
+
+        if params.is_empty(active_room_id) {
+            search_params.set(None);
+            return;
+        }
+
+        if input.len() < 3 {
+            return;
+        }
+
+        let search_id = Uuid::new_v4();
+        params.search_id = search_id;
+
+        search_results.set(Some(HashMap::new()));
+        search_params.set(Some(params.clone()));
+
+        search_rooms(params, search_id);
+    };
 
     let store_clone = store.clone();
     view! {
@@ -237,32 +272,7 @@ pub fn ChatHeader(chat_sidebar_open: RwSignal<bool>) -> impl IntoView {
                     type="text"
                     placeholder=move || format!("Search {}", name().unwrap_or("Room".to_string()))
                     class="bg-(--ui-solid-bg) text-(--ui-base-color) text-m h-8 rounded-(--ui-border-radius) px-2 outline-none border border-(--tile-border-color) w-[200px] text-normal placeholder:text-muted"
-                    on:input=move |ev| {
-                        let input = event_target_value(&ev);
-                        search_params
-                            .update(|v| {
-                                let active_room_id = state.active_room_id();
-                                let params = if let Some(params) = v {
-                                    params.text = input;
-                                    params.clone()
-                                } else {
-                                    RoomSearchParameters {
-                                        room_ids: if let Some(room_id) = active_room_id.clone() {
-                                            vec![room_id]
-                                        } else {
-                                            vec![]
-                                        },
-                                        text: input,
-                                        senders: vec![],
-                                        after: None,
-                                        before: None,
-                                        has_link: false,
-                                    }
-                                };
-                                    *v = Some(params);
-                            });
-                        log::debug!("Search params: {:?}", search_params.get_untracked());
-                    }
+                    on:input=on_search_input
                 />
                 <div class="h-6 w-[2px] ml-2 mx-1 bg-(--tile-border-color) rounded" />
             </div>

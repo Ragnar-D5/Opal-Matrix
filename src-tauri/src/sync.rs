@@ -39,6 +39,8 @@ pub async fn attach_callbacks(
     handle: &AppHandle,
     default_audio: &ProfileAudio,
 ) -> Result<(), TauriError> {
+    client.event_cache().subscribe()?;
+
     let mut session_subscriber = client.subscribe_to_session_changes();
     let client_clone = client.clone();
 
