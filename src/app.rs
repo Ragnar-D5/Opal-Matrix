@@ -241,10 +241,6 @@ pub fn App() -> impl IntoView {
         }
 
         state.room_map.set(room_map);
-
-        if state.current_window.get_untracked() == CurrentWindow::Loading {
-            state.current_window.set(CurrentWindow::Home);
-        }
     });
 
     setup_update_effect(dm_list_event, move |new| {
@@ -298,6 +294,8 @@ pub fn App() -> impl IntoView {
                         }
                         RestoreResponse::Success { user_id } => {
                             state.user_id.set(user_id);
+                            state.current_window.set(CurrentWindow::Home);
+                            log::info!("Restored session, fetching data...");
                             get_stuff_after_login(state, settings);
                         }
                         RestoreResponse::Failed { home_server: _ } => {
