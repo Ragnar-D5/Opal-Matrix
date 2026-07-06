@@ -86,22 +86,27 @@ pub fn save_session(session: &StoredSession) -> Result<(), TauriError> {
     Ok(())
 }
 
-/// Retrieves the existing passphrase for the given user ID from the keyring, or generates a new random passphrase using the `getrandom` crate if none exists.
-pub async fn get_or_create_passphrase(user_id: &str) -> Result<String, TauriError> {
+/// Retrieves the existing store encryption key for the given user ID from the keyring, or
+/// generates a new random one using the `getrandom` crate if none exists.
+///
+/// The key is already a uniformly random 256-bit secret (not a human-memorized password), so
+/// it's passed to the sqlite store as a raw key rather than a passphrase, which skips a
+/// pointless (and slow) PBKDF2 stretch on every store open.
+pub async fn get_or_create_store_key(user_id: &str) -> Result<[u8; 32], TauriError> {
     let user_id = user_id.to_string();
-    spawn_blocking(move || get_or_create_passphrase_blocking(&user_id))
+    spawn_blocking(move || get_or_create_store_key_blocking(&user_id))
         .await
         .expect("Keyring blocking task panicked")
 }
 
-fn get_or_create_passphrase_blocking(user_id: &str) -> Result<String, TauriError> {
+fn get_or_create_store_key_blocking(user_id: &str) -> Result<[u8; 32], TauriError> {
     let entry = Entry::new(APP_NAME, &format!("passphrase:{}", user_id))?;
 
-    match entry.get_password() {
-        Ok(passphrase) => Ok(passphrase),
+    let hex_key = match entry.get_password() {
+        Ok(passphrase) => passphrase,
         Err(keyring_core::Error::NoEntry) => {
             info!(
-                "No existing passphrase found for user {}, generating a new one",
+                "No existing store key found for user {}, generating a new one",
                 user_id
             );
 
@@ -113,12 +118,18 @@ fn get_or_create_passphrase_blocking(user_id: &str) -> Result<String, TauriError
 
             entry.set_password(&new_passphrase)?;
 
-            info!("Generated and stored new passphrase for user {}", user_id);
+            info!("Generated and stored new store key for user {}", user_id);
 
-            Ok(new_passphrase)
+            new_passphrase
         }
-        Err(e) => Err(format!("Keyring error: {}", e).into()),
-    }
+        Err(e) => return Err(format!("Keyring error: {}", e).into()),
+    };
+
+    let key_bytes = hex::decode(&hex_key).map_err(|e| format!("Invalid stored key: {}", e))?;
+
+    key_bytes
+        .try_into()
+        .map_err(|_| "Stored key has unexpected length".into())
 }
 
 // Processes an incoming encrypted message by attempting to decrypt it using the OlmMachine. If decryption is successful, the decrypted content is returned; otherwise, the original message is returned as a fallback.

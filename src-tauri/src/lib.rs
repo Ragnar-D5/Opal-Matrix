@@ -5,7 +5,7 @@ use log::{error, trace};
 use matrix_sdk::authentication::matrix::MatrixSession;
 use matrix_sdk::encryption::{BackupDownloadStrategy, EncryptionSettings};
 use matrix_sdk::ruma::{OwnedDeviceId, UserId};
-use matrix_sdk::{AuthSession, Client as MatrixClient, SessionMeta, SessionTokens};
+use matrix_sdk::{AuthSession, Client as MatrixClient, SessionMeta, SessionTokens, SqliteStoreConfig};
 use shared::api::errors::LoginError;
 use shared::api::events::TauriEvent;
 use shared::api::RestoreResponse;
@@ -34,7 +34,7 @@ pub const APP_NAME: &str = "opal-matrix";
 use tauri_plugin_notification::{NotificationExt, PermissionState};
 
 use crate::builder::{add_invoke_handler, register_mxc_uri, setup_builder};
-use crate::matrix_api::keyring::{self, get_or_create_passphrase, init_keyring, StoredSession};
+use crate::matrix_api::keyring::{self, get_or_create_store_key, init_keyring, StoredSession};
 use crate::state::{AppState, TimelineManager};
 use crate::sync::attach_callbacks;
 
@@ -196,12 +196,13 @@ async fn try_restore(
         .join("sessions")
         .join(format!("{}-{}.db", safe_user_id, session.device_id));
 
-    let passphrase = get_or_create_passphrase(&user_id).await?;
+    let store_key = get_or_create_store_key(&user_id).await?;
+    let sqlite_store_config = SqliteStoreConfig::new(path).key(Some(&store_key));
 
     let new_client = MatrixClient::builder()
         .homeserver_url(session.homeserver_url.clone())
         .handle_refresh_tokens()
-        .sqlite_store(path, Some(&passphrase))
+        .sqlite_store_with_config_and_cache_path(sqlite_store_config, None::<std::path::PathBuf>)
         .with_encryption_settings(EncryptionSettings {
             backup_download_strategy: BackupDownloadStrategy::AfterDecryptionFailure,
             ..Default::default()
@@ -278,19 +279,20 @@ async fn login(
         .join("sessions")
         .join(format!("{}-{}.db", safe_user_id, device_id));
 
-    let passphrase = get_or_create_passphrase(user_id.as_str())
+    let store_key = get_or_create_store_key(user_id.as_str())
         .await
         .map_err(|e| {
-            error!("Failed to get or create passphrase: {:?}", e);
+            error!("Failed to get or create store key: {:?}", e);
             LoginError::BackendError
         })?;
+    let sqlite_store_config = SqliteStoreConfig::new(path).key(Some(&store_key));
 
     let new_client = MatrixClient::builder()
         .homeserver_url(
             Url::parse(server_url.as_str()).expect("Valid homeserverurl from other client"),
         )
         .handle_refresh_tokens()
-        .sqlite_store(path, Some(&passphrase))
+        .sqlite_store_with_config_and_cache_path(sqlite_store_config, None::<std::path::PathBuf>)
         .with_encryption_settings(EncryptionSettings {
             backup_download_strategy: BackupDownloadStrategy::AfterDecryptionFailure,
             ..Default::default()
