@@ -128,9 +128,7 @@ fn MessageHeader(
                     .into_any()
             } else {
                 ().into_any()
-            }}
-
-            <div class="shrink-0 mr-2 w-[40px] relative flex flex-col">
+            }} <div class="shrink-0 mr-2 w-[40px] relative flex flex-col">
                 <Show when=move || has_reply>
                     <div class="absolute left-[calc(50%-1px)] right-[-8px] top-2 h-4 border-l-2 border-t-2 border-white/20 rounded-tl-md -z-10"></div>
                 </Show>
@@ -146,9 +144,7 @@ fn MessageHeader(
                         ().into_any()
                     }}
                 </div>
-            </div>
-
-            <div class="flex flex-col min-w-0 flex-1">
+            </div> <div class="flex flex-col min-w-0 flex-1">
                 <ReplyPreview
                     reply_info=reply_info
                     active_room_id=active_room_id
@@ -157,9 +153,14 @@ fn MessageHeader(
 
                 {move || {
                     if show_header {
+                        let name_view = if preview {
+                            name_profile_sig.get().render_name_no_popup("16px")
+                        } else {
+                            name_profile_sig.get().render_name_popup("16px")
+                        };
                         view! {
                             <div class="flex items-baseline gap-2">
-                                {name_profile_sig.get().render_name_popup("16px")}
+                                {name_view}
                                 <span class="text-muted text-xs">{format_date(date)}</span>
                             </div>
                         }
@@ -1207,6 +1208,9 @@ fn render_timeline_event(
 
     let this_event_id = event_id.clone();
     Effect::new(move |_| {
+        if preview {
+            return;
+        }
         let Some(el) = node_ref.get() else { return };
         let Some(target) = scroll_target.get() else {
             return;
@@ -1328,11 +1332,13 @@ fn render_timeline_event(
     view! {
         <div
             node_ref=node_ref
-            class="group/msg mx-1 relative flex flex-col gap-[var(--gap)] hover:bg-black/20 rounded-md transform-gpu border border-transparent hover:border-[var(--tile-border-color)] pt-0.75"
+            class="group/msg mx-1 relative flex flex-col gap-[var(--gap)] rounded-md transform-gpu border border-transparent pt-0.75"
+            class=("hover:bg-black/20", !preview)
+            class=("hover:border-[var(--tile-border-color)]", !preview)
             class=("mt-4", show_header && !preview)
-            class=("pointer-events-none", preview)
+            class=("[&_*]:pointer-events-none", preview)
             class=("bg-black/20", move || picker_open.get() || show_delete_confirm.get())
-            id=move || item_sig.get().render_key()
+            id=move || { if preview { String::new() } else { item_sig.get().render_key() } }
             style:background=move || {
                 current_highlight
                     .get()

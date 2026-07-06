@@ -12,7 +12,7 @@ use shared::{
         SingleList, SpaceRoomNode, UserDevice,
     },
     synth::ProfileAudio,
-    timeline::UiMediaSource,
+    timeline::{UiMediaSource, UiTimelineItem},
 };
 
 use crate::{
@@ -24,7 +24,8 @@ use leptos::prelude::*;
 pub struct RoomState {
     pub content: String,
     pub attachments: Vec<Attachment>,
-    pub search_parameters: Option<SearchParameters>
+    pub search_parameters: Option<SearchParameters>,
+    pub search_results: Option<HashMap<String, Vec<UiTimelineItem>>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Default)]

@@ -206,6 +206,8 @@ fn TimeLine() -> impl IntoView {
 
     let timeline_id: RwSignal<Option<String>> = RwSignal::new(None);
 
+    let JumpTarget(jump_target) = expect_context();
+
     let fetch_more = move |scroll_direction: ScrollDirection,
                            loading: RwSignal<bool>,
                            has_more: RwSignal<bool>| {
@@ -270,6 +272,12 @@ fn TimeLine() -> impl IntoView {
 
     Effect::new(move || {
         if let Some(room_id) = state.active_room_id() {
+            if jump_target.get_untracked().is_some() {
+                // A jump to a specific message is pending for this room; let the
+                // jump_target effect below fetch a timeline centered on it instead.
+                return;
+            }
+
             log::debug!("Loading room {}, resetting messages to empty", room_id);
             messages.set(Vec::new());
             has_more_top.set(true);
@@ -308,8 +316,7 @@ fn TimeLine() -> impl IntoView {
 
     let important_event_id: RwSignal<Option<String>> = expect_context();
 
-    let scroll_target: RwSignal<Option<String>> = RwSignal::new(None);
-    provide_context(ScrollTarget(scroll_target));
+    let ScrollTarget(scroll_target) = expect_context();
 
     let input_info: RwSignal<Option<ChatInputInfo>> = expect_context();
     Effect::new(move |_| {
@@ -378,6 +385,13 @@ fn TimeLine() -> impl IntoView {
                 }
             }
         });
+    });
+
+    Effect::new(move |_| {
+        if let Some(event_id) = jump_target.get() {
+            jump_target.set(None);
+            scroll_to_event.run(event_id);
+        }
     });
 
     view! {
@@ -515,6 +529,12 @@ fn TypingUserIndicator() -> impl IntoView {
 
 #[derive(Clone, Copy, Default)]
 pub struct ScrollTarget(pub RwSignal<Option<String>>);
+
+/// Set to request jumping to a message in the chat (e.g. from search results), the
+/// same way clicking a reply preview does: scroll to it if already loaded, otherwise
+/// fetch a timeline centered on it.
+#[derive(Clone, Copy, Default)]
+pub struct JumpTarget(pub RwSignal<Option<String>>);
 
 #[derive(Clone, Debug)]
 pub enum ChatInputInfo {
@@ -780,7 +800,6 @@ fn ChatInput() -> impl IntoView {
     provide_context(selected_index);
 
     let input_info: RwSignal<Option<ChatInputInfo>> = expect_context();
-    let search_parameters: RwSignal<Option<SearchParameters>> = expect_context();
 
     let matches: RwSignal<MenuCompletionMatches> = RwSignal::new(MenuCompletionMatches::None);
     provide_context(matches);
@@ -1029,7 +1048,7 @@ fn ChatInput() -> impl IntoView {
                         class="text-normal outline-none w-full whitespace-pre-wrap break-words py-3 max-h-100 overflow-y-auto"
                         on:input=move |_| {
                             on_type();
-                            handle_input(input_ref, is_empty, state, attachments, search_parameters)
+                            handle_input(input_ref, is_empty, state, attachments)
                         }
                         on:paste=move |ev| handle_paste(ev, attachments, state)
                         on:keydown=move |ev| handle_keydown(
@@ -1101,11 +1120,28 @@ pub fn Chat() -> impl IntoView {
     let important_event_id: RwSignal<Option<String>> = RwSignal::new(None);
     provide_context(important_event_id);
 
+    let scroll_target: RwSignal<Option<String>> = RwSignal::new(None);
+    provide_context(ScrollTarget(scroll_target));
+
+    let jump_target: RwSignal<Option<String>> = RwSignal::new(None);
+    provide_context(JumpTarget(jump_target));
+
     let search_parameters: RwSignal<Option<SearchParameters>> = RwSignal::new(None);
     provide_context(search_parameters);
 
     let search_results: RwSignal<Option<HashMap<String, Vec<UiTimelineItem>>>> = RwSignal::new(None);
     provide_context(search_results);
+
+    // Load the active room's search draft whenever the active room changes.
+    Effect::new(move |_| {
+        let draft = state
+            .active_room_id()
+            .and_then(|rid| state.room_states.with_untracked(|d| d.get(&rid).cloned()))
+            .unwrap_or_default();
+
+        search_parameters.set(draft.search_parameters);
+        search_results.set(draft.search_results);
+    });
 
     let search_update_sig: ReadSignal<Option<SearchResultUpdate>> = use_tauri_event();
     setup_update_effect(search_update_sig, move |(result_search_id, room_id, update)| {
@@ -1116,6 +1152,13 @@ pub fn Chat() -> impl IntoView {
                     room_results.extend(update);
                 }
             });
+
+            if let Some(active_room_id) = state.active_room_id_untracked() {
+                state.room_states.update(|drafts| {
+                    drafts.entry(active_room_id).or_default().search_results =
+                        search_results.get_untracked();
+                });
+            }
         }
     });
 

@@ -1,9 +1,8 @@
 use std::collections::HashMap;
 
-use leptos::{prelude::*, task::spawn_local};
+use leptos::{html::Input, prelude::*, task::spawn_local};
 use phosphor_leptos::{
-    Icon, IconWeight, HASH, INFO, MATRIX_LOGO, PHONE, PHONE_DISCONNECT, SPEAKER_HIGH, USER_CIRCLE,
-    USER_LIST,
+    HASH, INFO, Icon, IconWeight, MAGNIFYING_GLASS, MATRIX_LOGO, PHONE, PHONE_DISCONNECT, SPEAKER_HIGH, USER_CIRCLE, USER_LIST, X
 };
 use shared::{api::SearchParameters, sidebar::RoomNode, timeline::UiTimelineItem};
 use uuid::Uuid;
@@ -63,8 +62,17 @@ pub fn ChatHeader(chat_sidebar_open: RwSignal<bool>) -> impl IntoView {
             params.room_ids.push(room_id);
         }
 
-        if params.is_empty(active_room_id) {
+        if params.is_empty(active_room_id.clone()) {
             search_params.set(None);
+            search_results.set(None);
+
+            if let Some(room_id) = active_room_id {
+                state.room_states.update(|drafts| {
+                    let draft = drafts.entry(room_id).or_default();
+                    draft.search_parameters = None;
+                    draft.search_results = None;
+                });
+            }
             return;
         }
 
@@ -75,10 +83,36 @@ pub fn ChatHeader(chat_sidebar_open: RwSignal<bool>) -> impl IntoView {
         let search_id = Uuid::new_v4();
         params.search_id = search_id;
 
-        search_results.set(Some(HashMap::new()));
+        let results = Some(HashMap::new());
+        search_results.set(results.clone());
         search_params.set(Some(params.clone()));
 
+        if let Some(room_id) = active_room_id {
+            state.room_states.update(|drafts| {
+                let draft = drafts.entry(room_id).or_default();
+                draft.search_parameters = Some(params.clone());
+                draft.search_results = results;
+            });
+        }
+
         search_rooms(params, search_id);
+    };
+
+    let search_input_ref: NodeRef<Input> = NodeRef::new();
+    let input_empty = Memo::new(move |_| {
+        search_params
+            .get()
+            .map(|p| p.text.is_empty()).unwrap_or(true)
+    });
+
+    let input_icon = move || {
+        let icon = if input_empty.get() {
+            MAGNIFYING_GLASS
+        } else {
+            X
+        };
+
+        view! { <Icon icon=icon size="16px" /> }
     };
 
     let store_clone = store.clone();
@@ -268,12 +302,37 @@ pub fn ChatHeader(chat_sidebar_open: RwSignal<bool>) -> impl IntoView {
                         </div>
                     </button>
                 </div>
-                <input
-                    type="text"
-                    placeholder=move || format!("Search {}", name().unwrap_or("Room".to_string()))
-                    class="bg-(--ui-solid-bg) text-(--ui-base-color) text-m h-8 rounded-(--ui-border-radius) px-2 outline-none border border-(--tile-border-color) w-[200px] text-normal placeholder:text-muted"
-                    on:input=on_search_input
-                />
+                <div class="bg-(--ui-solid-bg) text-sm h-7 rounded-(--ui-border-radius) px-1 border border-(--tile-border-color) w-[200px] text-dim flex">
+                    <input
+                        node_ref=search_input_ref
+                        type="text"
+                        placeholder=move || {
+                            format!("Search {}...", name().unwrap_or("Room".to_string()))
+                        }
+                        class="text-normal placeholder:text-muted outline-none flex-1 min-w-0"
+                        prop:value=move || search_params.get().map(|p| p.text).unwrap_or_default()
+                        on:input=on_search_input
+                    />
+                    <button
+                        class=("cursor-text", move || input_empty.get())
+                        class=("cursor-pointer", move || !input_empty.get())
+                        class=("hover:text-normal", move || !input_empty.get())
+                        on:click=move |_| {
+                            if let Some(input) = search_input_ref.get() {
+                                if !input.value().is_empty() {
+                                    input.set_value("");
+                                    search_params.set(None);
+                                    search_results.set(None);
+                                    let _ = input.blur();
+                                } else {
+                                    let _ = input.focus();
+                                }
+                            }
+                        }
+                    >
+                        {input_icon}
+                    </button>
+                </div>
                 <div class="h-6 w-[2px] ml-2 mx-1 bg-(--tile-border-color) rounded" />
             </div>
         </FloatingTile>

@@ -4,7 +4,6 @@ use leptos::prelude::*;
 use phosphor_leptos::Icon;
 use phosphor_leptos::{AT, CARET_DOWN, CARET_UP, GLOBE, HASH, QUESTION_MARK, SPEAKER_HIGH};
 use shared::{
-    api::SearchParameters,
     profile::{MemberProfile, PresenceInfo},
     sidebar::RoomNode,
     timeline::UiTimelineItem,
@@ -12,7 +11,7 @@ use shared::{
 
 use crate::{
     components::{
-        chat::messages::render_timeline_item,
+        chat::{messages::render_timeline_item, JumpTarget},
         presence::PresenceBadge,
         user_profile::{render_user_profile_card, MemberProfileExt},
     },
@@ -226,6 +225,10 @@ pub fn chat_search() -> AnyView {
         let len = results.len();
         let total_len: usize = results.values().map(|v| v.len()).sum();
 
+        if total_len == 0 {
+            return "No results".to_string();
+        }
+
         let extra = if len > 1 {
             Some(format!(" across {} rooms", len))
         } else {
@@ -270,7 +273,7 @@ pub fn chat_search() -> AnyView {
                 let messages_view = if is_collapsed {
                     ().into_any()
                 } else {
-                    render_list_of_messages(messages)
+                    render_list_of_messages(room_id.clone(), messages)
                 };
 
                 view! {
@@ -325,7 +328,10 @@ pub fn chat_search() -> AnyView {
     .into_any()
 }
 
-fn render_list_of_messages(messages: &[UiTimelineItem]) -> AnyView {
+fn render_list_of_messages(room_id: String, messages: &[UiTimelineItem]) -> AnyView {
+    let state: AppState = expect_context();
+    let JumpTarget(jump_target) = expect_context();
+
     let render_msg = move |msg: &UiTimelineItem| {
         let content = render_timeline_item(
             RwSignal::new(msg.clone()),
@@ -334,10 +340,32 @@ fn render_list_of_messages(messages: &[UiTimelineItem]) -> AnyView {
             Callback::new(move |_| {}),
         );
 
+        let hovered = RwSignal::new(false);
+        let event_id = msg.event_id();
+        let jump_room_id = room_id.clone();
+
         view! {
-            <div class="p-1 bg-(--ui-solid-bg) border border-(--tile-border-color) rounded-(--gap)">
+            <button
+                class="relative p-1 bg-(--ui-solid-bg) border border-(--tile-border-color) rounded-(--gap) cursor-pointer items-start text-left"
+                on:mouseenter=move |_| hovered.set(true)
+                on:mouseleave=move |_| hovered.set(false)
+                on:click=move |_| {
+                    let Some(event_id) = event_id.clone() else {
+                        return;
+                    };
+                    jump_target.set(Some(event_id));
+                    state.set_active_room_with_id(Some(jump_room_id.clone()));
+                }
+            >
                 {content}
-            </div>
+                <div
+                    class="absolute top-2 right-2 text-xs text-dim bg-white/8 rounded-(--gap) px-1 py-0.5"
+                    class=("opacity-100", move || hovered.get())
+                    class=("opacity-0", move || !hovered.get())
+                >
+                    "Jump"
+                </div>
+            </button>
         }
     };
 

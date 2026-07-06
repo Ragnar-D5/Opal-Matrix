@@ -1292,6 +1292,12 @@
       background-color: color-mix(in oklab, var(--color-white) 5%, transparent);
     }
   }
+  .bg-white\/8 {
+    background-color: color-mix(in srgb, #fff 8%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      background-color: color-mix(in oklab, var(--color-white) 8%, transparent);
+    }
+  }
   .bg-yellow-50 {
     background-color: var(--color-yellow-50);
   }
@@ -1607,6 +1613,9 @@
   .text-\(--confirm-text-color\) {
     color: var(--confirm-text-color);
   }
+  .text-\(--link-color\) {
+    color: var(--link-color);
+  }
   .text-\(--offline-color\) {
     color: var(--offline-color);
   }
@@ -1618,9 +1627,6 @@
   }
   .text-\(--ui-hover-color\) {
     color: var(--ui-hover-color);
-  }
-  .text-\[\#00a8fc\] {
-    color: #00a8fc;
   }
   .text-\[\#dbdee1\] {
     color: #dbdee1;
@@ -2255,7 +2261,7 @@
   --ui-solid-hover-bg: #1e1e2e;
   --ui-border-radius: 6px;
   --ui-hover-bg: rgba(255, 255, 255, 0.075);
-  --link-color: #5865f2;
+  --link-color: var(--accent-color);
   --confirm-color: #2b7fff;
   --confirm-hover-color: #184890;
   --confirm-text-color: #ffffff;

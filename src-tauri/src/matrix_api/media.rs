@@ -55,7 +55,7 @@ pub async fn get_media_from_uuid_str(
     drop(sources);
 
     let bytes = get_media(client, media_source, MediaFormat::File).await?;
-    log::debug!("Fetched {} bytes for UUID {}", bytes.len(), uuid_str);
+    log::trace!("Fetched {} bytes for UUID {}", bytes.len(), uuid_str);
     Ok(bytes)
 }
 

@@ -2,7 +2,6 @@ use leptos::task::spawn_local;
 use leptos::{html::Div, prelude::*, tachys::dom::document};
 use log::warn;
 use regex::Regex;
-use shared::api::SearchParameters;
 use wasm_bindgen::JsCast;
 use web_sys::{HtmlDivElement, HtmlElement, KeyboardEvent};
 use web_sys::{Node, window};
@@ -10,7 +9,7 @@ use web_sys::{Node, window};
 use crate::components::chat::{Attachment, ChatInputInfo};
 use crate::components::input::menu::commit_selection;
 use crate::components::input::menu::{MenuCompletionMatches, MenuType};
-use crate::state::{AppState, RoomState, ProfileStore};
+use crate::state::{AppState, ProfileStore};
 use crate::tauri_functions::{commit_message, edit_message, send_attachment};
 
 pub(crate) mod menu;
@@ -47,7 +46,6 @@ pub fn handle_input(
     is_empty: RwSignal<bool>,
     state: AppState,
     attachments: RwSignal<Vec<Attachment>>,
-    search_parameters: RwSignal<Option<SearchParameters>>,
 ) {
     let Some(el) = input_ref.get() else { return };
     let doc = document();
@@ -113,17 +111,16 @@ pub fn handle_input(
 
     if let Some(room_id) = state.active_room_id_untracked() {
         state.room_states.update(|drafts| {
-            if empty {
+            let has_search = drafts
+                .get(&room_id)
+                .is_some_and(|draft| draft.search_parameters.is_some());
+
+            if empty && !has_search {
                 drafts.remove(&room_id);
             } else {
-                drafts.insert(
-                    room_id,
-                    RoomState {
-                        content: el.inner_html(),
-                        attachments: attachments.get_untracked(),
-                        search_parameters: search_parameters.get_untracked(),
-                    },
-                );
+                let draft = drafts.entry(room_id).or_default();
+                draft.content = el.inner_html();
+                draft.attachments = attachments.get_untracked();
             }
         });
     }

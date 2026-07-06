@@ -49,7 +49,7 @@ impl RichTextExt for RichTextSpan {
 
                 view! {
                     <span
-                        class="text-token text-(--accent-color) cursor-pointer hover:underline"
+                        class="text-token text-(--link-color) cursor-pointer hover:underline"
                         on:click=move |_| {
                             let url_async = url_click.clone();
                             spawn_local(async move {

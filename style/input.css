@@ -33,7 +33,7 @@
 
     --ui-border-radius: 6px;
     --ui-hover-bg: rgba(255, 255, 255, 0.075);
-    --link-color: #5865f2;
+    --link-color: var(--accent-color);
 
     --confirm-color: #2b7fff;
     --confirm-hover-color: #184890;

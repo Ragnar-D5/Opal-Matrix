@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use klipy::{MediaItem, Page};
 use leptos::task::spawn_local;
 use serde_json::json;
@@ -10,7 +8,7 @@ use shared::{
     },
     commands::Command,
     profile::UserProfile,
-    timeline::{UiMediaSource, UiTimelineItem},
+    timeline::UiMediaSource,
 };
 use uuid::Uuid;
 

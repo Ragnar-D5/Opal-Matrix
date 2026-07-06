@@ -74,7 +74,7 @@ pub fn render_link(span: RichTextSpan) -> impl IntoView {
                                                 href=link_url.clone()
                                                 target="_blank"
                                                 rel="noopener noreferrer"
-                                                class="text-[15px] font-semibold text-[#00a8fc] hover:underline line-clamp-2 leading-tight"
+                                                class="text-[15px] font-semibold text-(--link-color) hover:underline line-clamp-2 leading-tight"
                                             >
                                                 {data.title}
                                             </a>
