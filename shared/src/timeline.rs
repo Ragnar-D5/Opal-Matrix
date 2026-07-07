@@ -132,6 +132,113 @@ pub enum RichTextSpan {
         text: Option<String>,
     },
     Newline,
+    Highlight(String),
+}
+
+/// Splits the `Plain` spans so that every case-insensitive occurrence of one
+/// of `words` becomes a `Highlight` span. `words` must be lowercase.
+pub fn highlight_words(spans: Vec<RichTextSpan>, words: &[String]) -> Vec<RichTextSpan> {
+    if words.is_empty() {
+        return spans;
+    }
+
+    spans
+        .into_iter()
+        .flat_map(|span| match span {
+            RichTextSpan::Plain(text) => highlight_plain(&text, words),
+            other => vec![other],
+        })
+        .collect()
+}
+
+fn highlight_plain(text: &str, words: &[String]) -> Vec<RichTextSpan> {
+    let mut lower = String::with_capacity(text.len());
+    let mut offsets = Vec::with_capacity(text.len());
+    for (i, c) in text.char_indices() {
+        for lc in c.to_lowercase() {
+            lower.push(lc);
+            offsets.extend(std::iter::repeat_n(i, lc.len_utf8()));
+        }
+    }
+
+    let mut spans = Vec::new();
+    let mut pos = 0;
+    let mut emitted = 0;
+
+    while pos < lower.len() {
+        // Earliest match of any word; on ties prefer the longest word.
+        let next_match = words
+            .iter()
+            .enumerate()
+            .filter(|(_, w)| !w.is_empty())
+            .filter_map(|(word_index, w)| {
+                lower[pos..]
+                    .find(w.as_str())
+                    .map(|i| (pos + i, std::cmp::Reverse(w.len()), word_index))
+            })
+            .min();
+
+        let Some((start, std::cmp::Reverse(len), word_index)) = next_match else {
+            break;
+        };
+
+        // Merge the words following the matched one in the query into the
+        // highlight, as long as they also directly follow it in the text.
+        let mut end = start + len;
+        for next_word in &words[word_index + 1..] {
+            let Some(extended) = extend_run(&lower, end, next_word) else {
+                break;
+            };
+            end = extended;
+        }
+
+        let match_start = offsets[start];
+        let mut match_end = offsets.get(end).copied().unwrap_or(text.len());
+        if match_end <= match_start {
+            let c = text[match_start..].chars().next();
+            match_end = match_start + c.map_or(0, char::len_utf8);
+        }
+
+        if match_start > emitted {
+            spans.push(RichTextSpan::Plain(text[emitted..match_start].into()));
+        }
+        if match_end > emitted {
+            spans.push(RichTextSpan::Highlight(
+                text[emitted.max(match_start)..match_end].into(),
+            ));
+            emitted = match_end;
+        }
+
+        pos = end;
+    }
+
+    if emitted < text.len() {
+        spans.push(RichTextSpan::Plain(text[emitted..].into()));
+    }
+
+    spans
+}
+
+/// If `word` follows position `end` in `lower` with only whitespace in
+/// between, returns the position right after it.
+fn extend_run(lower: &str, end: usize, word: &str) -> Option<usize> {
+    if word.is_empty() {
+        return None;
+    }
+
+    let whitespace: usize = lower[end..]
+        .chars()
+        .take_while(|c| c.is_whitespace())
+        .map(char::len_utf8)
+        .sum();
+    if whitespace == 0 {
+        return None;
+    }
+
+    let after = end + whitespace;
+    lower[after..]
+        .starts_with(word)
+        .then(|| after + word.len())
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -686,6 +793,19 @@ impl UiTimelineItem {
             None
         }
     }
+
+    /// Returns a copy of this item with every occurrence of one of `words`
+    /// in the message body turned into a `Highlight` span. `words` must be
+    /// lowercase.
+    pub fn with_highlights(&self, words: &[String]) -> Self {
+        let mut item = self.clone();
+        if let UiTimelineItemKind::Event(event) = &mut item.kind
+            && let EventContent::MsgLike(content) = &mut event.content
+        {
+            content.body = highlight_words(std::mem::take(&mut content.body), words);
+        }
+        item
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, TauriEvent)]
@@ -736,4 +856,133 @@ pub fn coalesce_diffs(diffs: Vec<UiTimelineDiff>) -> Vec<UiTimelineDiff> {
     }
 
     optimized
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn plain(s: &str) -> RichTextSpan {
+        RichTextSpan::Plain(s.to_string())
+    }
+
+    fn hl(s: &str) -> RichTextSpan {
+        RichTextSpan::Highlight(s.to_string())
+    }
+
+    fn words(w: &[&str]) -> Vec<String> {
+        w.iter().map(|s| s.to_lowercase()).collect()
+    }
+
+    #[test]
+    fn highlights_case_insensitively() {
+        let spans = highlight_words(vec![plain("Hello World, hello again")], &words(&["hello"]));
+        assert_eq!(
+            spans,
+            vec![
+                hl("Hello"),
+                plain(" World, "),
+                hl("hello"),
+                plain(" again"),
+            ]
+        );
+    }
+
+    #[test]
+    fn highlights_any_of_multiple_words() {
+        let spans = highlight_words(vec![plain("foo bar baz")], &words(&["baz", "foo"]));
+        assert_eq!(spans, vec![hl("foo"), plain(" bar "), hl("baz")]);
+    }
+
+    #[test]
+    fn no_match_keeps_text() {
+        let spans = highlight_words(vec![plain("nothing here")], &words(&["xyz"]));
+        assert_eq!(spans, vec![plain("nothing here")]);
+    }
+
+    #[test]
+    fn empty_words_keep_spans_untouched() {
+        let spans = highlight_words(vec![plain("text")], &[]);
+        assert_eq!(spans, vec![plain("text")]);
+        let spans = highlight_words(vec![plain("text")], &words(&[""]));
+        assert_eq!(spans, vec![plain("text")]);
+    }
+
+    #[test]
+    fn non_plain_spans_are_untouched() {
+        let link = RichTextSpan::Link {
+            url: "https://example.com".to_string(),
+            text: None,
+        };
+        let spans = highlight_words(vec![link.clone()], &words(&["example"]));
+        assert_eq!(spans, vec![link]);
+    }
+
+    #[test]
+    fn handles_multibyte_text() {
+        let spans = highlight_words(vec![plain("héllo wörld héllo")], &words(&["wörld"]));
+        assert_eq!(spans, vec![plain("héllo "), hl("wörld"), plain(" héllo")]);
+    }
+
+    #[test]
+    fn does_not_panic_on_expanding_lowercase() {
+        // 'İ' lowercases to two chars; must not slice mid-char.
+        for needle in ["i", "i\u{307}", "İ"] {
+            highlight_words(vec![plain("İstanbul İİ")], &words(&[needle]));
+        }
+    }
+
+    #[test]
+    fn adjacent_and_overlapping_matches() {
+        let spans = highlight_words(vec![plain("aaa")], &words(&["aa"]));
+        assert_eq!(spans, vec![hl("aa"), plain("a")]);
+    }
+
+    #[test]
+    fn merges_words_adjacent_in_text_and_query() {
+        let spans = highlight_words(
+            vec![plain("say Hello World now")],
+            &words(&["hello", "world"]),
+        );
+        assert_eq!(
+            spans,
+            vec![plain("say "), hl("Hello World"), plain(" now")]
+        );
+    }
+
+    #[test]
+    fn merges_longer_runs_across_extra_whitespace() {
+        let spans = highlight_words(vec![plain("one  two\tthree!")], &words(&["one", "two", "three"]));
+        assert_eq!(spans, vec![hl("one  two\tthree"), plain("!")]);
+    }
+
+    #[test]
+    fn does_not_merge_words_in_different_query_order() {
+        let spans = highlight_words(vec![plain("hello world")], &words(&["world", "hello"]));
+        assert_eq!(spans, vec![hl("hello"), plain(" "), hl("world")]);
+    }
+
+    #[test]
+    fn does_not_merge_words_separated_in_text() {
+        let spans = highlight_words(vec![plain("hello there world")], &words(&["hello", "world"]));
+        assert_eq!(
+            spans,
+            vec![hl("hello"), plain(" there "), hl("world")]
+        );
+    }
+
+    #[test]
+    fn merges_run_starting_at_repeated_query_word() {
+        let spans = highlight_words(
+            vec![plain("hello world")],
+            &words(&["world", "hello", "world"]),
+        );
+        assert_eq!(spans, vec![hl("hello world")]);
+    }
+
+    #[test]
+    fn prefers_longest_word_on_same_start() {
+        let spans = highlight_words(vec![plain("foobar")], &words(&["foo", "foobar"]));
+        assert_eq!(spans, vec![hl("foobar")]);
+    }
 }

@@ -4,6 +4,7 @@ use leptos::prelude::*;
 use phosphor_leptos::Icon;
 use phosphor_leptos::{AT, CARET_DOWN, CARET_UP, GLOBE, HASH, QUESTION_MARK, SPEAKER_HIGH};
 use shared::{
+    api::SearchParameters,
     profile::{MemberProfile, PresenceInfo},
     sidebar::RoomNode,
     timeline::UiTimelineItem,
@@ -213,16 +214,24 @@ fn member_list() -> AnyView {
 pub fn chat_search() -> AnyView {
     let state: AppState = expect_context();
 
+    let search_params: RwSignal<Option<SearchParameters>> = expect_context();
     let search_results: RwSignal<Option<HashMap<String, Vec<UiTimelineItem>>>> = expect_context();
 
     let collapsed_rooms: RwSignal<HashSet<String>> = RwSignal::new(HashSet::new());
+
+    let highlight_words: Memo<Vec<String>> = Memo::new(move |_| {
+        search_params
+            .get()
+            .map(|p| p.text.split_whitespace().map(str::to_lowercase).collect())
+            .unwrap_or_default()
+    });
 
     let header_text = move || {
         let Some(results) = search_results.get() else {
             return "Search".to_string();
         };
 
-        let len = results.len();
+        let len = results.values().filter(|v| !v.is_empty()).count();
         let total_len: usize = results.values().map(|v| v.len()).sum();
 
         if total_len == 0 {
@@ -243,77 +252,24 @@ pub fn chat_search() -> AnyView {
         )
     };
 
-    let content = move || {
-        let Some(results) = search_results.get() else {
-            return ().into_any();
-        };
-
-        let collapsed = collapsed_rooms.get();
-
-        results
-            .iter()
-            .map(|(room_id, messages)| {
-                let Some(node) = state.get_room(room_id) else {
-                    return ().into_any();
-                };
-
-                let room_name = node.name();
-
-                let icon = match node {
-                    RoomNode::Dm(_) => AT,
-                    RoomNode::TextChannel(_) | RoomNode::Single(_) => HASH,
-                    RoomNode::Server(_) | RoomNode::Space(_) => GLOBE,
-                    RoomNode::VoiceChannel(_) => SPEAKER_HIGH,
-                    RoomNode::Unjoined(_) => QUESTION_MARK,
-                };
-
-                let is_collapsed = collapsed.contains(room_id);
-                let toggle_room_id = room_id.clone();
-
-                let messages_view = if is_collapsed {
-                    ().into_any()
-                } else {
-                    render_list_of_messages(room_id.clone(), messages)
-                };
-
-                view! {
-                    <div class="flex flex-col gap-(--gap) text-normal">
-                        <div class="flex flex-row items-center gap-1 p-2">
-                            <div
-                                class="flex flex-row flex-1 text-normal cursor-pointer gap-1 items-center hover:text-(--accent-color) hover:underline"
-
-                                on:click=move |_| {
-                                    state.set_active_room_with_id(Some(node.room_id()));
-                                }
-                            >
-                                <Icon icon=icon size="20px" />
-                                <span>{room_name}</span>
-                            </div>
-                            <button
-                                class="text-muted hover:text-bright cursor-pointer flex items-center justify-center"
-                                on:click=move |_| {
-                                    collapsed_rooms
-                                        .update(|rooms| {
-                                            if !rooms.remove(&toggle_room_id) {
-                                                rooms.insert(toggle_room_id.clone());
-                                            }
-                                        });
-                                }
-                            >
-                                <Icon
-                                    icon=if is_collapsed { CARET_UP } else { CARET_DOWN }
-                                    size="20px"
-                                />
-                            </button>
-                        </div>
-                        {messages_view}
-                    </div>
-                }
-                .into_any()
+    let room_ids = Memo::new(move |_| {
+        let mut ids: Vec<String> = search_results
+            .get()
+            .map(|results| {
+                results
+                    .iter()
+                    .filter(|(_, messages)| !messages.is_empty())
+                    .map(|(room_id, _)| room_id.clone())
+                    .collect()
             })
-            .collect_view()
-            .into_any()
-    };
+            .unwrap_or_default();
+
+        ids.sort_by_cached_key(|id| {
+            let name = state.get_room(id).map(|n| n.name()).unwrap_or_default();
+            (name, id.clone())
+        });
+        ids
+    });
 
     view! {
         <div class="flex flex-col w-full h-full min-h-0 overflow-visible">
@@ -321,53 +277,148 @@ pub fn chat_search() -> AnyView {
                 {header_text}
             </div>
             <div class="flex flex-1 min-h-0 flex-col gap-(--gap) w-full overflow-y-auto p-(--gap)">
-                {content}
+                <For
+                    each=move || room_ids.get()
+                    key=|room_id| room_id.clone()
+                    children=move |room_id| room_results(room_id, collapsed_rooms, highlight_words)
+                />
             </div>
         </div>
     }
     .into_any()
 }
 
-fn render_list_of_messages(room_id: String, messages: &[UiTimelineItem]) -> AnyView {
+fn room_results(
+    room_id: String,
+    collapsed_rooms: RwSignal<HashSet<String>>,
+    highlight_words: Memo<Vec<String>>,
+) -> AnyView {
+    let state: AppState = expect_context();
+    let search_results: RwSignal<Option<HashMap<String, Vec<UiTimelineItem>>>> = expect_context();
+
+    let Some(node) = state.get_room(&room_id) else {
+        return ().into_any();
+    };
+
+    let room_name = node.name();
+
+    let icon = match node {
+        RoomNode::Dm(_) => AT,
+        RoomNode::TextChannel(_) | RoomNode::Single(_) => HASH,
+        RoomNode::Server(_) | RoomNode::Space(_) => GLOBE,
+        RoomNode::VoiceChannel(_) => SPEAKER_HIGH,
+        RoomNode::Unjoined(_) => QUESTION_MARK,
+    };
+
+    let messages = Memo::new({
+        let room_id = room_id.clone();
+        move |_| {
+            search_results
+                .get()
+                .and_then(|results| results.get(&room_id).cloned())
+                .unwrap_or_default()
+        }
+    });
+
+    let is_collapsed = Memo::new({
+        let room_id = room_id.clone();
+        move |_| collapsed_rooms.get().contains(&room_id)
+    });
+
+    let toggle_room_id = room_id.clone();
+
+    view! {
+        <div class="flex flex-col gap-(--gap) text-normal">
+            <div class="flex flex-row items-center gap-1 p-2">
+                <div
+                    class="flex flex-row flex-1 text-normal cursor-pointer gap-1 items-center hover:text-(--accent-color) hover:underline"
+
+                    on:click=move |_| {
+                        state.set_active_room_with_id(Some(node.room_id()));
+                    }
+                >
+                    <Icon icon=icon size="20px" />
+                    <span>{room_name}</span>
+                </div>
+                <button
+                    class="text-muted hover:text-bright cursor-pointer flex items-center justify-center"
+                    on:click=move |_| {
+                        collapsed_rooms
+                            .update(|rooms| {
+                                if !rooms.remove(&toggle_room_id) {
+                                    rooms.insert(toggle_room_id.clone());
+                                }
+                            });
+                    }
+                >
+                    {move || {
+                        let icon = if is_collapsed.get() { CARET_UP } else { CARET_DOWN };
+                        view! { <Icon icon=icon size="20px" /> }
+                    }}
+                </button>
+            </div>
+            {move || {
+                if is_collapsed.get() {
+                    return ().into_any();
+                }
+
+                let room_id = room_id.clone();
+                view! {
+                    <For
+                        each=move || messages.get()
+                        key=|msg| msg.render_key()
+                        children=move |msg| message_result(msg, room_id.clone(), highlight_words)
+                    />
+                }
+                .into_any()
+            }}
+        </div>
+    }
+    .into_any()
+}
+
+fn message_result(
+    msg: UiTimelineItem,
+    room_id: String,
+    highlight_words: Memo<Vec<String>>,
+) -> AnyView {
     let state: AppState = expect_context();
     let JumpTarget(jump_target) = expect_context();
 
-    let render_msg = move |msg: &UiTimelineItem| {
-        let content = render_timeline_item(
-            RwSignal::new(msg.clone()),
-            true,
-            true,
-            Callback::new(move |_| {}),
-        );
+    let event_id = msg.event_id();
+    let highlighted = Memo::new(move |_| msg.with_highlights(&highlight_words.get()));
 
-        let hovered = RwSignal::new(false);
-        let event_id = msg.event_id();
-        let jump_room_id = room_id.clone();
+    let hovered = RwSignal::new(false);
 
-        view! {
-            <button
-                class="relative p-1 bg-(--ui-solid-bg) border border-(--tile-border-color) rounded-(--gap) cursor-pointer items-start text-left"
-                on:mouseenter=move |_| hovered.set(true)
-                on:mouseleave=move |_| hovered.set(false)
-                on:click=move |_| {
-                    let Some(event_id) = event_id.clone() else {
-                        return;
-                    };
-                    jump_target.set(Some(event_id));
-                    state.set_active_room_with_id(Some(jump_room_id.clone()));
-                }
+    view! {
+        <button
+            class="relative p-1 bg-(--ui-solid-bg) border border-(--tile-border-color) rounded-(--gap) cursor-pointer items-start text-left"
+            on:mouseenter=move |_| hovered.set(true)
+            on:mouseleave=move |_| hovered.set(false)
+            on:click=move |_| {
+                let Some(event_id) = event_id.clone() else {
+                    return;
+                };
+                jump_target.set(Some(event_id));
+                state.set_active_room_with_id(Some(room_id.clone()));
+            }
+        >
+            {move || {
+                render_timeline_item(
+                    RwSignal::new(highlighted.get()),
+                    true,
+                    true,
+                    Callback::new(move |_| {}),
+                )
+            }}
+            <div
+                class="absolute top-2 right-2 text-xs text-dim bg-white/8 rounded-(--gap) px-1 py-0.5"
+                class=("opacity-100", move || hovered.get())
+                class=("opacity-0", move || !hovered.get())
             >
-                {content}
-                <div
-                    class="absolute top-2 right-2 text-xs text-dim bg-white/8 rounded-(--gap) px-1 py-0.5"
-                    class=("opacity-100", move || hovered.get())
-                    class=("opacity-0", move || !hovered.get())
-                >
-                    "Jump"
-                </div>
-            </button>
-        }
-    };
-
-    messages.iter().map(render_msg).collect_view().into_any()
+                "Jump"
+            </div>
+        </button>
+    }
+    .into_any()
 }

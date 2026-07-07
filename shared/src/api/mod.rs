@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, SecondsFormat, Utc};
 use macros::TauriEvent;
 use serde::{Deserialize, Deserializer, Serialize};
 use uuid::Uuid;
@@ -154,34 +154,45 @@ pub struct SearchParameters {
 }
 
 impl SearchParameters {
+    /// Builds a tantivy query string for the search index. The indexed fields
+    /// are `body` (the default search field), `sender` and `date`.
     pub fn build_query(&self) -> String {
         let mut clauses = Vec::new();
 
+        // Quote each word so tantivy treats it as a literal term instead of
+        // query syntax. Matching is case-insensitive because the `body` field
+        // is tokenized with the default (lowercasing) tokenizer.
         let words: Vec<_> = self
             .text
-            .split_ascii_whitespace()
-            .map(|w| format!("\"{}\"", w.replace('"', "\\\"")))
+            .split_whitespace()
+            .map(|w| format!("\"{}\"", w.replace('\\', "\\\\").replace('"', "\\\"")))
             .collect();
 
         if !words.is_empty() {
-            clauses.push(words.join(" AND "));
+            clauses.push(format!("({})", words.join(" OR ")));
         }
 
         if !self.senders.is_empty() {
             let senders_clause = self
                 .senders
                 .iter()
-                .map(|s| format!("from:{}", s))
+                .map(|s| format!("sender:\"{}\"", s))
                 .collect::<Vec<_>>()
                 .join(" OR ");
             clauses.push(format!("({})", senders_clause));
         }
 
         if let Some(after) = self.after {
-            clauses.push(format!("date:>={}", after.to_rfc3339()));
+            clauses.push(format!(
+                "date:[{} TO *]",
+                after.to_rfc3339_opts(SecondsFormat::Secs, true)
+            ));
         }
         if let Some(before) = self.before {
-            clauses.push(format!("date:<{}", before.to_rfc3339()));
+            clauses.push(format!(
+                "date:[* TO {}}}",
+                before.to_rfc3339_opts(SecondsFormat::Secs, true)
+            ));
         }
 
         if self.has_link {

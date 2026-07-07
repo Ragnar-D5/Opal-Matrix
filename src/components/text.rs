@@ -119,6 +119,16 @@ impl RichTextExt for RichTextSpan {
                 .into_any()
             }
             RichTextSpan::Newline => view! { <br /> }.into_any(),
+
+            RichTextSpan::Highlight(text) => view! {
+                <span
+                    class="text-token cursor-text text-bright rounded-sm px-[2px] py-[1px]"
+                    style="background-color: color-mix(in srgb, var(--result-highlight-color) 40%, transparent);"
+                >
+                    {text}
+                </span>
+            }
+            .into_any(),
         }
     }
 }
@@ -136,7 +146,7 @@ pub fn richt_text_spans_to_html(
             .iter()
             .map(|span| {
                 match span.clone() {
-                    RichTextSpan::Plain(text) => {
+                    RichTextSpan::Plain(text) | RichTextSpan::Highlight(text) => {
                         text
                     }
                     RichTextSpan::RoomMention { .. } | RichTextSpan::UserMention { .. } => {

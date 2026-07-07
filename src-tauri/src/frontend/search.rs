@@ -63,11 +63,12 @@ pub async fn search_rooms(
         let handle_clone = handle.clone();
         let search_id_clone = search_id;
         spawn(async move {
+            let mut sent_any = false;
             loop {
                 tokio::select! {
                     _ = token_clone.cancelled() => {
                         log::trace!("Search task for room {room_id} cancelled");
-                        break;
+                        return;
                     }
                     next = stream.next_events() => {
                         let next = match next {
@@ -122,8 +123,17 @@ pub async fn search_rooms(
                         let payload: SearchResultUpdate = (search_id_clone, room_id.to_string(), messages);
 
                         send_event(&handle_clone, &payload);
+                        sent_any = true;
                     }
                 }
+            }
+
+            // The frontend keeps showing the previous search's results for
+            // this room until an update arrives, so always send one.
+            if !sent_any {
+                let payload: SearchResultUpdate =
+                    (search_id_clone, room_id.to_string(), Vec::new());
+                send_event(&handle_clone, &payload);
             }
         });
     }

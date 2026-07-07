@@ -1,4 +1,7 @@
-use std::{collections::HashMap, time::Duration};
+use std::{
+    collections::{HashMap, HashSet},
+    time::Duration,
+};
 
 use crate::{
     app::{convertFileSrc, format_bytes},
@@ -1144,11 +1147,30 @@ pub fn Chat() -> impl IntoView {
     });
 
     let search_update_sig: ReadSignal<Option<SearchResultUpdate>> = use_tauri_event();
+    // Rooms the currently displayed search has already received a batch for.
+    let seen_search_rooms: StoredValue<(Uuid, HashSet<String>)> =
+        StoredValue::new((Uuid::nil(), HashSet::new()));
     setup_update_effect(search_update_sig, move |(result_search_id, room_id, update)| {
         if let Some(SearchParameters { search_id, .. }) = search_parameters.get_untracked() && search_id ==  result_search_id {
+            // The first batch a search returns for a room replaces the room's
+            // results from the previous search, later batches extend them.
+            let first_batch = seen_search_rooms.with_value(|(id, rooms)| {
+                *id != result_search_id || !rooms.contains(&room_id)
+            });
+            seen_search_rooms.update_value(|(id, rooms)| {
+                if *id != result_search_id {
+                    *id = result_search_id;
+                    rooms.clear();
+                }
+                rooms.insert(room_id.clone());
+            });
+
             search_results.update(|res| {
                 if let Some(res) = res {
                     let room_results = res.entry(room_id.clone()).or_default();
+                    if first_batch {
+                        room_results.clear();
+                    }
                     room_results.extend(update);
                 }
             });

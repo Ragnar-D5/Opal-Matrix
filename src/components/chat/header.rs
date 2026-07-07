@@ -76,22 +76,25 @@ pub fn ChatHeader(chat_sidebar_open: RwSignal<bool>) -> impl IntoView {
             return;
         }
 
-        if input.len() < 3 {
-            return;
-        }
-
         let search_id = Uuid::new_v4();
         params.search_id = search_id;
 
-        let results = Some(HashMap::new());
-        search_results.set(results.clone());
+        // Keep the previous results visible while the new search runs, so the
+        // list is diffed instead of rebuilt; each room's results are replaced
+        // when the new search's first batch for it arrives. Only rooms that
+        // are no longer searched at all are dropped here.
+        search_results.update(|results| {
+            results
+                .get_or_insert_with(HashMap::new)
+                .retain(|room_id, _| params.room_ids.contains(room_id));
+        });
         search_params.set(Some(params.clone()));
 
         if let Some(room_id) = active_room_id {
             state.room_states.update(|drafts| {
                 let draft = drafts.entry(room_id).or_default();
                 draft.search_parameters = Some(params.clone());
-                draft.search_results = results;
+                draft.search_results = search_results.get_untracked();
             });
         }
 
