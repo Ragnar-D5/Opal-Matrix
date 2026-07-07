@@ -99,7 +99,7 @@ fn member_list() -> AnyView {
                         <PresenceBadge presence=presence size=15.5>
                             {profile.render_icon("32px")}
                         </PresenceBadge>
-                        <span class="text-bright">{name_profile.render_name_popup("16px")}</span>
+                        <span class="text-bright">{name_profile.render_name_popup("15px")}</span>
                     </div>
                 }
             })
@@ -158,7 +158,7 @@ fn member_list() -> AnyView {
                         <PresenceBadge presence=presence size=15.5>
                             {profile.render_icon("32px")}
                         </PresenceBadge>
-                        <span class="text-bright">{name_profile.render_name_popup("18px")}</span>
+                        <span class="text-bright">{name_profile.render_name_popup("15px")}</span>
                     </div>
                 }
             })

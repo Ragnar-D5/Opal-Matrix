@@ -1290,12 +1290,14 @@ pub fn Chat() -> impl IntoView {
                 {move || {
                     let searching = search_parameters.get().is_some();
                     let sidebar = chat_sidebar_open.get();
+                    let dm = matches!(state.active_room.get(), Some(RoomNode::Dm(_)));
                     if searching || sidebar {
                         view! {
                             <div
                                 class="flex-shrink-0 h-full ml-[var(--gap)]"
                                 class=("w-[30rem]", move || searching)
-                                class=("w-[20rem]", move || !searching)
+                                class=("w-[15rem]", move || !searching && !dm)
+                                class=("w-[20rem]", move || !searching && dm)
                             >
                                 <FloatingTile class="w-full h-full">
                                     {if searching { chat_search() } else { chat_info() }}
