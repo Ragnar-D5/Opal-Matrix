@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use leptos::{html::Input, prelude::*, task::spawn_local};
+use leptos::{html::Input, prelude::*};
 use leptos_use::use_active_element;
 use phosphor_leptos::{
     HASH, INFO, Icon, IconWeight, MAGNIFYING_GLASS, MATRIX_LOGO, PHONE, PHONE_DISCONNECT, SPEAKER_HIGH, USER_CIRCLE, USER_LIST, X
@@ -10,18 +10,15 @@ use uuid::Uuid;
 use web_sys::KeyboardEvent;
 
 use crate::{
-    app::call_tauri,
-    components::{presence::PresenceBadge, user_profile::MemberProfileExt, FloatingTile},
+    components::{FloatingTile, presence::PresenceBadge, user_profile::MemberProfileExt},
     state::{AppState, CurrentSection, ProfileStore},
-    tauri_functions::search_rooms,
+    tauri_functions::{join_call, leave_call, search_rooms},
 };
 
 #[component]
 pub fn ChatHeader(chat_sidebar_open: RwSignal<bool>) -> impl IntoView {
     let state: AppState = expect_context();
     let store: ProfileStore = expect_context();
-
-    let info_hovered = RwSignal::new(false);
 
     let toggle_icon = move || {
         if let Some(node) = state.active_room.get() {
@@ -139,6 +136,27 @@ pub fn ChatHeader(chat_sidebar_open: RwSignal<bool>) -> impl IntoView {
         }
     };
 
+    let in_call = move || {
+        let Some(room_id) = state.active_room_id() else {
+            return false;
+        };
+
+        let user_id = state.user_id.get_untracked();
+        state.get_call_members(&room_id).get().iter().any(|dev| dev.user_id == user_id)
+    };
+
+    let on_call_click = move |_| {
+        let Some(room_id) = state.active_room_id() else {
+            return;
+        };
+
+        if in_call() {
+            leave_call(&room_id);
+        } else {
+            join_call(&room_id);
+        }
+    };
+
     let store_clone = store.clone();
     view! {
         <FloatingTile class="h-(--header-height) items-start flex-row gap-1 pl-[5px]">
@@ -242,12 +260,8 @@ pub fn ChatHeader(chat_sidebar_open: RwSignal<bool>) -> impl IntoView {
             <div class="flex items-center h-full pr-[90px]">
                 <div class="self-center h-full">
                     <button
-                        class="transition-opacity h-full aspect-square"
-                        class=("text-(--ui-hover-color)", move || info_hovered.get())
-                        class=("text-(--ui-base-color)", move || !info_hovered.get())
+                        class="transition-opacity h-full aspect-square text-(--ui-base-color) hover:text-(--ui-hover-color)"
                         on:click=move |_| chat_sidebar_open.update(|v| *v = !*v)
-                        on:mouseenter=move |_| info_hovered.set(true)
-                        on:mouseleave=move |_| info_hovered.set(false)
                     >
                         <div class="h-full justify-center items-center flex cursor-pointer">
                             {move || {
@@ -272,57 +286,21 @@ pub fn ChatHeader(chat_sidebar_open: RwSignal<bool>) -> impl IntoView {
                 </div>
                 <div class="self-center h-full">
                     <button
-                        class="transition-opacity h-full aspect-square"
-                        class=("text-(--ui-hover-color)", move || info_hovered.get())
-                        class=("text-(--ui-base-color)", move || !info_hovered.get())
-                        on:click=move |_| {
-                            let value = serde_wasm_bindgen::to_value(
-                                &serde_json::json!({"room_id": &state.active_room_id().unwrap()}),
-                            );
-                            spawn_local(async move {
-                                log::debug!(
-                                    "{:?}", call_tauri("join_matrixrtc_call", value.unwrap()).await
-                                );
-                            })
-                        }
-                        on:mouseenter=move |_| info_hovered.set(true)
-                        on:mouseleave=move |_| info_hovered.set(false)
+                        class="transition-opacity h-full aspect-square text-(--ui-base-color) hover:text-(--ui-hover-color)"
+                        on:click=on_call_click
                     >
                         <div class="h-full justify-center items-center flex cursor-pointer">
-                            <Icon
-                                icon=PHONE
-                                size="60%"
-                                color="currentColor"
-                                weight=IconWeight::Duotone
-                            />
-                        </div>
-                    </button>
-                </div>
-                <div class="self-center h-full">
-                    <button
-                        class="transition-opacity h-full aspect-square mr-1"
-                        class=("text-(--ui-hover-color)", move || info_hovered.get())
-                        class=("text-(--ui-base-color)", move || !info_hovered.get())
-                        on:click=move |_| {
-                            let value = serde_wasm_bindgen::to_value(
-                                &serde_json::json!({"room_id": &state.active_room_id().unwrap()}),
-                            );
-                            spawn_local(async move {
-                                log::debug!(
-                                    "{:?}", call_tauri("leave_matrixrtc_call", value.unwrap()).await
-                                );
-                            })
-                        }
-                        on:mouseenter=move |_| info_hovered.set(true)
-                        on:mouseleave=move |_| info_hovered.set(false)
-                    >
-                        <div class="h-full justify-center items-center flex cursor-pointer">
-                            <Icon
-                                icon=PHONE_DISCONNECT
-                                size="60%"
-                                color="currentColor"
-                                weight=IconWeight::Duotone
-                            />
+                            {move || {
+                                let icon = if in_call() { PHONE_DISCONNECT } else { PHONE };
+                                view! {
+                                    <Icon
+                                        icon=icon
+                                        size="60%"
+                                        color="currentColor"
+                                        weight=IconWeight::Duotone
+                                    />
+                                }
+                            }}
                         </div>
                     </button>
                 </div>

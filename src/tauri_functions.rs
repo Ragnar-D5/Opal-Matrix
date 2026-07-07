@@ -369,3 +369,35 @@ pub fn search_rooms(parameters: SearchParameters, search_id: Uuid) {
         }
     });
 }
+
+pub fn join_call(room_id: &str) {
+    let args = match serde_wasm_bindgen::to_value(&json!({ "room_id": room_id })) {
+        Ok(value) => value,
+        Err(e) => {
+            log::error!("Failed to serialize request: {:?}", e);
+            return;
+        }
+    };
+
+    spawn_local(async move {
+        if let Err(e) = call_tauri("join_matrixrtc_call", args).await {
+            log::error!("Tauri call failed: {:?}", e);
+        }
+    });
+}
+
+pub fn leave_call(room_id: &str) {
+    let args = match serde_wasm_bindgen::to_value(&json!({ "room_id": room_id })) {
+        Ok(value) => value,
+        Err(e) => {
+            log::error!("Failed to serialize request: {:?}", e);
+            return;
+        }
+    };
+
+    spawn_local(async move {
+        if let Err(e) = call_tauri("leave_matrixrtc_call", args).await {
+            log::error!("Tauri call failed: {:?}", e);
+        }
+    });
+}
