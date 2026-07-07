@@ -55,6 +55,7 @@ pub fn add_invoke_handler(builder: Builder<Wry>) -> Builder<Wry> {
         frontend::messages::toggle_reaction,
         frontend::messages::delete_message,
         frontend::messages::indicate_typing,
+        frontend::messages::get_pinned_events,
         frontend::commands::get_commands,
         frontend::profiles::get_user_profile,
         frontend::dialog::open_file_dialog,

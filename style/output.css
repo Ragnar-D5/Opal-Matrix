@@ -2087,13 +2087,6 @@
       }
     }
   }
-  .hover\:text-\(--ui-hover-color\) {
-    &:hover {
-      @media (hover: hover) {
-        color: var(--ui-hover-color);
-      }
-    }
-  }
   .hover\:text-bright {
     &:hover {
       @media (hover: hover) {

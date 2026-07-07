@@ -254,7 +254,7 @@ fn convert_settings(mut item: ItemStruct) -> TokenStream {
             #(#accessor_methods)*
 
             pub async fn get_all(&self) -> Result<(), String> {
-                ::log::info!("Getting all settings");
+                ::log::debug!("Getting all settings");
                 #(#get_all_calls)*
                 Ok(())
             }

@@ -3,7 +3,7 @@ use std::{collections::{HashMap, HashSet}, io::Cursor, path::PathBuf, str::FromS
 use futures::{StreamExt};
 use image::ImageReader;
 use matrix_sdk::{Client as MatrixClient, attachment::{AttachmentInfo, BaseFileInfo, BaseImageInfo, BaseVideoInfo}, room::edit::EditedContent, ruma::{EventId, api::client::receipt::create_receipt::v3::ReceiptType, events::room::MediaSource}, };
-use matrix_sdk_ui::timeline::{AttachmentConfig, AttachmentSource, TimelineEventItemId};
+use matrix_sdk_ui::timeline::{AttachmentConfig, AttachmentSource, TimelineEventItemId, TimelineItemContent};
 use mime::Mime;
 use tauri_plugin_http::reqwest;
 use tokio_util::sync::CancellationToken;
@@ -18,13 +18,13 @@ use matrix_sdk::ruma::{
     },
 };
 use scraper::{Html, Node};
-use shared::{api::{FileMetadata, GetTimelineResult, ScrollDirection, UiAttachmentSource}, timeline::{coalesce_diffs}};
+use shared::{api::{FileMetadata, GetTimelineResult, ScrollDirection, UiAttachmentSource}, timeline::{UiTimelineItem, coalesce_diffs}};
 use tauri::{AppHandle, State, command};
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use crate::{
-    TauriError, frontend::timeline::{timeline_diff_to_ui, timeline_item_to_ui}, send_event, state::{MediaManager, TaskManager, TimelineManager}
+    TauriError, frontend::timeline::{timeline_diff_to_ui, timeline_item_content_to_ui, timeline_item_to_ui}, send_event, state::{MediaManager, TaskManager, TimelineManager}
 };
 
 #[command(rename_all = "snake_case")]
@@ -490,4 +490,67 @@ pub async fn indicate_typing(matrix_client: State<'_, RwLock<MatrixClient>>, roo
     room.typing_notice(is_typing).await?;
 
     Ok(())
+}
+
+#[command(rename_all = "snake_case")]
+pub async fn get_pinned_events(
+    client: State<'_, RwLock<MatrixClient>>,
+    media_manager: State<'_, MediaManager>,
+    room_id: String,
+) -> Result<Vec<UiTimelineItem>, TauriError> {
+    let client = client.read().await;
+    let room = client
+        .get_room(&RoomId::parse(&room_id)?)
+        .ok_or("Room not found")?;
+
+    let Some(pinned_event_ids) = room.load_pinned_events().await? else {
+        return Ok(Vec::new());
+    };
+
+    let mut media_store = HashMap::new();
+
+    let mut messages = Vec::new();
+    for event_id in pinned_event_ids {
+        let event = match room.event(&event_id, None).await {
+            Ok(ev) => ev,
+            Err(e) => {
+                log::warn!("Failed to fetch pinned event {}: {:?}", event_id, e);
+                continue;
+            }
+        };
+
+        let Some(sender) = event.sender() else {
+            continue;
+        };
+        let Some(ts) = event.timestamp else {
+            continue;
+        };
+        let ts: u64 = ts.as_secs().into();
+
+        let Some(content) = TimelineItemContent::from_event(&room, event).await else {
+            continue;
+        };
+
+        messages.push((
+            ts,
+            timeline_item_content_to_ui(
+                &content,
+                &mut media_store,
+                None,
+                &mut HashSet::new(),
+            )
+            .to_timeline_item(
+                event_id.to_string(),
+                sender.to_string(),
+                ts,
+            ),
+        ));
+    }
+
+    media_manager.sources.write().await.extend(media_store);
+
+    messages.sort_by_key(|(ts, _)| *ts);
+    let messages = messages.into_iter().map(|(_, msg)| msg).collect();
+
+    Ok(messages)
 }

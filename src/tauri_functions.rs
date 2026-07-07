@@ -8,7 +8,7 @@ use shared::{
     },
     commands::Command,
     profile::UserProfile,
-    timeline::UiMediaSource,
+    timeline::{UiMediaSource, UiTimelineItem},
 };
 use uuid::Uuid;
 
@@ -400,4 +400,20 @@ pub fn leave_call(room_id: &str) {
             log::error!("Tauri call failed: {:?}", e);
         }
     });
+}
+
+pub async fn get_pinned_events(room_id: &str) -> Result<Vec<UiTimelineItem>, String> {
+    let args = serde_wasm_bindgen::to_value(&json!({ "room_id": room_id }))
+        .map_err(|e| format!("Failed to serialize request: {:?}", e))?;
+
+    let res = call_tauri("get_pinned_events", args)
+        .await
+        .map_err(|e| format!("Tauri call failed: {:?}", e))?;
+
+    let json_string: String = js_sys::JSON::stringify(&res)
+        .map_err(|e| format!("Failed to convert response to string: {:?}", e))?
+        .into();
+
+    serde_json::from_str(&json_string)
+        .map_err(|e| format!("Failed to parse JSON response: {:?}", e))
 }

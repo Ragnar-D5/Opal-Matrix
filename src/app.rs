@@ -295,7 +295,6 @@ pub fn App() -> impl IntoView {
                         RestoreResponse::Success { user_id } => {
                             state.user_id.set(user_id);
                             state.current_window.set(CurrentWindow::Home);
-                            log::info!("Restored session, fetching data...");
                             get_stuff_after_login(state, settings);
                         }
                         RestoreResponse::Failed { home_server: _ } => {

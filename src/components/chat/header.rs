@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
-use leptos::{html::Input, prelude::*};
+use leptos::{html::Input, prelude::*, task::spawn_local};
 use leptos_use::use_active_element;
 use phosphor_leptos::{
-    HASH, INFO, Icon, IconWeight, MAGNIFYING_GLASS, MATRIX_LOGO, PHONE, PHONE_DISCONNECT, SPEAKER_HIGH, USER_CIRCLE, USER_LIST, X
+    HASH, INFO, Icon, IconWeight, MAGNIFYING_GLASS, MATRIX_LOGO, PHONE, PHONE_DISCONNECT, PUSH_PIN, SPEAKER_HIGH, USER_CIRCLE, USER_LIST, X
 };
 use shared::{api::SearchParameters, sidebar::RoomNode, timeline::UiTimelineItem};
 use uuid::Uuid;
@@ -12,7 +12,7 @@ use web_sys::KeyboardEvent;
 use crate::{
     components::{FloatingTile, presence::PresenceBadge, user_profile::MemberProfileExt},
     state::{AppState, CurrentSection, ProfileStore},
-    tauri_functions::{join_call, leave_call, search_rooms},
+    tauri_functions::{get_pinned_events, join_call, leave_call, search_rooms},
 };
 
 #[component]
@@ -157,6 +157,31 @@ pub fn ChatHeader(chat_sidebar_open: RwSignal<bool>) -> impl IntoView {
         }
     };
 
+    let pinned_messages: RwSignal<Option<Vec<UiTimelineItem>>> = expect_context();
+
+    let on_pin_click = move |_| {
+        if pinned_messages.get().is_some() {
+            pinned_messages.set(None);
+        } else {
+            let Some(room_id) = state.active_room_id() else {
+                return;
+            };
+
+            pinned_messages.set(Some(Vec::new()));
+
+            spawn_local(async move {
+                match get_pinned_events(&room_id).await {
+                    Ok(pinned) => {
+                        pinned_messages.set(Some(pinned));
+                    }
+                    Err(e) => {
+                        log::error!("Failed to fetch pinned messages: {e}");
+                    }
+                }
+            });
+        }
+    };
+
     let store_clone = store.clone();
     view! {
         <FloatingTile class="h-(--header-height) items-start flex-row gap-1 pl-[5px]">
@@ -257,10 +282,51 @@ pub fn ChatHeader(chat_sidebar_open: RwSignal<bool>) -> impl IntoView {
                     }
                 }}
             </div>
+            <div class="self-center h-full">
+                <button
+                    class="transition-opacity h-full aspect-square text-dim hover:text-normal"
+                    on:click=on_call_click
+                >
+                    <div class="h-full justify-center items-center flex cursor-pointer">
+                        {move || {
+                            let icon = if in_call() { PHONE_DISCONNECT } else { PHONE };
+                            view! {
+                                <Icon
+                                    icon=icon
+                                    size="60%"
+                                    color="currentColor"
+                                    weight=IconWeight::Duotone
+                                />
+                            }
+                        }}
+                    </div>
+                </button>
+            </div>
+            <div class="self-center h-full">
+                <button
+                    class="transition-opacity h-full aspect-square text-dim hover:text-normal"
+                    on:click=on_pin_click
+                >
+                    <div class="h-full justify-center items-center flex cursor-pointer">
+                        <Icon
+                            icon=PUSH_PIN
+                            size="60%"
+                            color="currentColor"
+                            weight=move || {
+                                if pinned_messages.get().is_some() {
+                                    IconWeight::Fill
+                                } else {
+                                    IconWeight::Light
+                                }
+                            }
+                        />
+                    </div>
+                </button>
+            </div>
             <div class="flex items-center h-full pr-[90px]">
                 <div class="self-center h-full">
                     <button
-                        class="transition-opacity h-full aspect-square text-(--ui-base-color) hover:text-(--ui-hover-color)"
+                        class="transition-opacity h-full aspect-square text-dim hover:text-normal"
                         on:click=move |_| chat_sidebar_open.update(|v| *v = !*v)
                     >
                         <div class="h-full justify-center items-center flex cursor-pointer">
@@ -278,26 +344,6 @@ pub fn ChatHeader(chat_sidebar_open: RwSignal<bool>) -> impl IntoView {
                                                 IconWeight::Light
                                             }
                                         }
-                                    />
-                                }
-                            }}
-                        </div>
-                    </button>
-                </div>
-                <div class="self-center h-full">
-                    <button
-                        class="transition-opacity h-full aspect-square text-(--ui-base-color) hover:text-(--ui-hover-color)"
-                        on:click=on_call_click
-                    >
-                        <div class="h-full justify-center items-center flex cursor-pointer">
-                            {move || {
-                                let icon = if in_call() { PHONE_DISCONNECT } else { PHONE };
-                                view! {
-                                    <Icon
-                                        icon=icon
-                                        size="60%"
-                                        color="currentColor"
-                                        weight=IconWeight::Duotone
                                     />
                                 }
                             }}

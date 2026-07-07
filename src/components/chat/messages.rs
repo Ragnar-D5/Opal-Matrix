@@ -664,6 +664,7 @@ fn render_system_message(
     content: SystemMessage,
     store: ProfileStore,
     room_id: String,
+    jump_target: RwSignal<Option<String>>
 ) -> impl IntoView {
     let sender_id_str = sender_id.clone();
 
@@ -819,8 +820,23 @@ fn render_system_message(
             </div>
         }
         .into_any(),
-        SystemMessage::RoomPinnedEvents { .. } => view! { <div>{user_div(&sender_id_str)} <span>"changed pinned events"</span></div> }
-        .into_any(),
+        SystemMessage::RoomPinnedEvents { pinned_events } => {
+            if pinned_events.is_empty() {
+                view! { <div>{user_div(&sender_id_str)} <span>"changed pinned events"</span></div> }.into_any()
+            } else {
+                view! {
+                    <div>
+                        {user_div(&sender_id_str)} <span>"pinned "</span>
+                        <span
+                            class="cursor-pointer underline font-bold text-normal"
+                            on:click=move |_| { jump_target.set(pinned_events.first().cloned()) }
+                        >
+                            "a message"
+                        </span>
+                    </div>
+                }.into_any()
+            }
+        },
         SystemMessage::RoomPowerLevels => view! { <div>{user_div(&sender_id_str)} <span>"changed the room power levels"</span></div> }
         .into_any(),
         SystemMessage::RoomServerAcl => view! { <div>{user_div(&sender_id_str)} <span>"changed the room server ACL"</span></div> }
@@ -1123,7 +1139,13 @@ fn MesssageButtons(
             <p class="text-bright text-xl font-bold">"Delete message"</p>
             <p class="text-muted">"Are you sure you want to delete this message?"</p>
             <div class="my-2 p-2 bg-(--ui-floating-bg) border border-(--tile-border-color) rounded-(--gap)">
-                {render_timeline_item(item_sig, true, true, Callback::new(|_| {}))}
+                {render_timeline_item(
+                    item_sig,
+                    true,
+                    true,
+                    Callback::new(|_| {}),
+                    RwSignal::new(None),
+                )}
             </div>
             <div class="flex gap-2 pt-2 justify-end w-full">
                 <button
@@ -1183,6 +1205,7 @@ fn render_timeline_event(
     show_header: bool,
     preview: bool,
     scroll_to_event: Callback<String>,
+    jump_target: RwSignal<Option<String>>
 ) -> impl IntoView {
     let hovered = RwSignal::new(false);
     let picker_open = RwSignal::new(false);
@@ -1273,7 +1296,8 @@ fn render_timeline_event(
                 sender_id,
                 ev,
                 store_for_content.clone(),
-                room_id_for_content.clone()
+                room_id_for_content.clone(),
+                jump_target
             ).into_any(),
         }
     };
@@ -1443,6 +1467,7 @@ pub fn render_timeline_item(
     show_header: bool,
     preview: bool,
     scroll_to_event: Callback<String>,
+    jump_target: RwSignal<Option<String>>
 ) -> AnyView {
     let state: AppState = expect_context();
     let store: ProfileStore = expect_context();
@@ -1531,6 +1556,6 @@ pub fn render_timeline_item(
             }
             .into_any()
         }
-        UiTimelineItemKind::Event(_) => render_timeline_event(store, &room_id, &user_id, item_sig, show_header, preview, scroll_to_event).into_any()
+        UiTimelineItemKind::Event(_) => render_timeline_event(store, &room_id, &user_id, item_sig, show_header, preview, scroll_to_event, jump_target).into_any()
     }.into_any()
 }

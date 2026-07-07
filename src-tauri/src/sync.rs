@@ -1,15 +1,15 @@
-use matrix_sdk::RoomState;
-use matrix_sdk::ruma::OwnedRoomId;
 use matrix_sdk::ruma::events::direct::DirectEventContent;
+use matrix_sdk::ruma::OwnedRoomId;
+use matrix_sdk::RoomState;
 use matrix_sdk::{
-    Client as MatrixClient, SessionChange, config::SyncSettings, ruma::presence::PresenceState,
+    config::SyncSettings, ruma::presence::PresenceState, Client as MatrixClient, SessionChange,
 };
 use shared::sidebar::{DmList, RoomMapUpdate, RoomNode, ServerList, SingleList};
 use shared::synth::ProfileAudio;
 use std::collections::{HashMap, HashSet};
 use std::pin::pin;
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, async_runtime::spawn};
+use tauri::{async_runtime::spawn, AppHandle};
 
 use crate::frontend::profiles::handle_typing_notice;
 use crate::frontend::sidebar::{
@@ -20,17 +20,17 @@ use crate::matrix_api::matrixrtc::handle_call_member_change;
 use crate::send_event;
 use crate::settings::handle_account_data_event;
 use crate::{
-    TauriError,
     frontend::{
         presence::handle_presences,
         profiles::{on_member_update, send_all_members},
         sidebar::{extract_call_memberships, handle_room_updates},
     },
     matrix_api::{
-        keyring::{StoredSession, save_session},
+        keyring::{save_session, StoredSession},
         matrixrtc::{cleanup_ghost_calls, handle_to_device_messages},
-        profile::{ProfileDebounce, client_user_profile_event_handle, send_user_to_frontend},
+        profile::{client_user_profile_event_handle, send_user_to_frontend, ProfileDebounce},
     },
+    TauriError,
 };
 use futures_util::StreamExt;
 
@@ -110,7 +110,7 @@ pub async fn attach_callbacks(
 
         let mut sync_stream = pin!(sync_stream);
 
-        log::info!("Started background sync stream");
+        log::debug!("Started background sync stream");
 
         let mut dm_map = client_sync_clone
             .account()
@@ -138,7 +138,7 @@ pub async fn attach_callbacks(
         .collect()
         .await;
 
-        log::info!("Initial room map");
+        log::debug!("Initial room map");
 
         send_event(
             &handle_clone,

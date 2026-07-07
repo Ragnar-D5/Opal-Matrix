@@ -10,6 +10,7 @@ use shared::{
     timeline::UiTimelineItem,
 };
 
+use crate::components::FloatingTile;
 use crate::{
     components::{
         chat::{messages::render_timeline_item, JumpTarget},
@@ -19,7 +20,71 @@ use crate::{
     state::{AppState, ProfileStore},
 };
 
-pub fn chat_info() -> AnyView {
+enum ChatSidebarContent {
+    Search,
+    Pins,
+    None,
+}
+
+impl ChatSidebarContent {
+    fn from_memos(search_open: Memo<bool>, pin_open: Memo<bool>) -> Self {
+        if search_open.get() {
+            ChatSidebarContent::Search
+        } else if pin_open.get() {
+            ChatSidebarContent::Pins
+        } else {
+            ChatSidebarContent::None
+        }
+    }
+
+    fn is_none(&self) -> bool {
+        matches!(self, ChatSidebarContent::None)
+    }
+}
+
+#[component]
+pub fn ChatSideBar(chat_sidebar_open: RwSignal<bool>) -> AnyView {
+    let search_parameters: RwSignal<Option<SearchParameters>> = expect_context();
+    let state: AppState = expect_context();
+    let pin_results: RwSignal<Option<Vec<UiTimelineItem>>> = expect_context();
+
+    let search_open = Memo::new(move |_| search_parameters.get().is_some());
+    let pin_open = Memo::new(move |_| pin_results.get().is_some());
+
+    let content = move || {
+        let content_type = ChatSidebarContent::from_memos(search_open, pin_open);
+
+        if content_type.is_none() && !chat_sidebar_open.get() {
+            return ().into_any();
+        }
+
+        let (width, content) = match content_type {
+            ChatSidebarContent::Search => ("w-[30rem]", chat_search()),
+            ChatSidebarContent::Pins => ("w-[30rem]", pinned_messages(pin_results)),
+            ChatSidebarContent::None => {
+                if chat_sidebar_open.get() {
+                    let dm = matches!(state.active_room.get(), Some(RoomNode::Dm(_)));
+                    let width = if dm { "w-[20rem]" } else { "w-[15rem]" };
+
+                    (width, chat_info())
+                } else {
+                    return ().into_any();
+                }
+            }
+        };
+
+        view! {
+            <div class=format!("flex-shrink-0 h-full ml-[var(--gap)] {width}")>
+                <FloatingTile class="w-full h-full">{content}</FloatingTile>
+            </div>
+        }
+        .into_any()
+    };
+
+    view! { {content} }.into_any()
+}
+
+fn chat_info() -> AnyView {
     let state: AppState = expect_context();
     let store: ProfileStore = expect_context();
 
@@ -211,7 +276,7 @@ fn member_list() -> AnyView {
         .into_any()
 }
 
-pub fn chat_search() -> AnyView {
+fn chat_search() -> AnyView {
     let state: AppState = expect_context();
 
     let search_params: RwSignal<Option<SearchParameters>> = expect_context();
@@ -228,7 +293,7 @@ pub fn chat_search() -> AnyView {
 
     let header_text = move || {
         let Some(results) = search_results.get() else {
-            return "Type at least three lettres to search".to_string();
+            return "Type at least three letters to start searching".to_string();
         };
 
         let len = results.values().filter(|v| !v.is_empty()).count();
@@ -409,6 +474,7 @@ fn message_result(
                     true,
                     true,
                     Callback::new(move |_| {}),
+                    RwSignal::new(None),
                 )
             }}
             <div
@@ -421,4 +487,46 @@ fn message_result(
         </button>
     }
     .into_any()
+}
+
+fn pinned_messages(pinned_result: RwSignal<Option<Vec<UiTimelineItem>>>) -> AnyView {
+    let state: AppState = expect_context();
+
+    let content = move || {
+        let Some(room_id) = state.active_room_id_untracked() else {
+            return view! { <div class="flex-1 flex items-center justify-center text-muted">"No pinned messages"</div> }
+            .into_any();
+        };
+
+        let Some(messages) = pinned_result.get() else {
+            return view! { <div class="flex-1 flex items-center justify-center text-muted">"No pinned messages"</div> }
+            .into_any();
+        };
+
+        if messages.is_empty() {
+            return view! { <div class="flex-1 flex items-center justify-center text-muted">"No pinned messages"</div> }
+            .into_any();
+        }
+
+        view! {
+            <div class="flex flex-col gap-(--gap) w-full h-full min-h-0 overflow-visible">
+                <div class="w-full h-(--header-height) shrink-0 text-normal flex items-center pl-[calc((var(--header-height)-1lh)/2)] border-b border-(--tile-border-color)">
+                    {format!("Pinned Messages ({})", messages.len())}
+                </div>
+                <div class="flex flex-1 min-h-0 flex-col gap-(--gap) w-full overflow-y-auto p-(--gap)">
+                    <For
+                        each=move || messages.clone()
+                        key=|msg| msg.render_key()
+                        children=move |msg| message_result(
+                            msg,
+                            room_id.clone(),
+                            Memo::new(|_| vec![]),
+                        )
+                    />
+                </div>
+            </div>
+        }.into_any()
+    };
+
+    view! { {content} }.into_any()
 }

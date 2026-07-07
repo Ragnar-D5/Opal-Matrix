@@ -91,6 +91,8 @@ pub async fn search_rooms(
                             let Some(ts) = event.timestamp else {
                                 continue;
                             };
+                            let ts: u64 = ts.as_secs().into();
+
                             let Some(event_id) = event.event_id() else {
                                 continue;
                             };
@@ -98,7 +100,6 @@ pub async fn search_rooms(
                             let Some(content) = TimelineItemContent::from_event(&room, event).await else {
                                 continue;
                             };
-                            let ts: u64 = ts.as_secs().into();
 
                             messages.push((
                                 ts,

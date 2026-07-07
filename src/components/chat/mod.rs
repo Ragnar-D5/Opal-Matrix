@@ -6,7 +6,7 @@ use std::{
 use crate::{
     app::{convertFileSrc, format_bytes},
     components::{
-        FloatingTile, TypingIndicator, chat::{calls::CallView, header::ChatHeader, info::{chat_info, chat_search}, messages::render_timeline_item}, input::{
+        FloatingTile, TypingIndicator, chat::{calls::CallView, header::ChatHeader, info::ChatSideBar, messages::render_timeline_item}, input::{
             get_active_filter, get_caret_position, handle_input, handle_keydown,
             insert_text_at_caret,
             menu::{MenuCompletionMatches, MenuType, SelectionMenu},
@@ -413,7 +413,13 @@ fn TimeLine() -> impl IntoView {
                         .unwrap_or_else(|| "disposed_fallback_key".to_string())
                 }
                 children=move |(item_sig, show_header)| {
-                    render_timeline_item(item_sig, show_header, false, scroll_to_event)
+                    render_timeline_item(
+                        item_sig,
+                        show_header,
+                        false,
+                        scroll_to_event,
+                        scroll_target,
+                    )
                 }
             />
 
@@ -1126,19 +1132,22 @@ pub fn Chat() -> impl IntoView {
     provide_context(input_info);
 
     let important_event_id: RwSignal<Option<String>> = RwSignal::new(None);
-    provide_context(important_event_id);
-
     let scroll_target: RwSignal<Option<String>> = RwSignal::new(None);
-    provide_context(ScrollTarget(scroll_target));
-
     let jump_target: RwSignal<Option<String>> = RwSignal::new(None);
+
+    provide_context(important_event_id);
+    provide_context(ScrollTarget(scroll_target));
     provide_context(JumpTarget(jump_target));
 
     let search_parameters: RwSignal<Option<SearchParameters>> = RwSignal::new(None);
-    provide_context(search_parameters);
-
     let search_results: RwSignal<Option<HashMap<String, Vec<UiTimelineItem>>>> = RwSignal::new(None);
+
+    provide_context(search_parameters);
     provide_context(search_results);
+
+    let pinned_results: RwSignal<Option<Vec<UiTimelineItem>>> = RwSignal::new(None);
+
+    provide_context(pinned_results);
 
     Effect::new(move |_| {
        let params = search_parameters.get();
@@ -1164,7 +1173,6 @@ pub fn Chat() -> impl IntoView {
     });
 
     let search_update_sig: ReadSignal<Option<SearchResultUpdate>> = use_tauri_event();
-    // Rooms the currently displayed search has already received a batch for.
     let seen_search_rooms: StoredValue<(Uuid, HashSet<String>)> =
         StoredValue::new((Uuid::nil(), HashSet::new()));
     setup_update_effect(search_update_sig, move |(result_search_id, room_id, update)| {
@@ -1287,28 +1295,7 @@ pub fn Chat() -> impl IntoView {
                         }
                     }}
                 </FloatingTile>
-                {move || {
-                    let searching = search_parameters.get().is_some();
-                    let sidebar = chat_sidebar_open.get();
-                    let dm = matches!(state.active_room.get(), Some(RoomNode::Dm(_)));
-                    if searching || sidebar {
-                        view! {
-                            <div
-                                class="flex-shrink-0 h-full ml-[var(--gap)]"
-                                class=("w-[30rem]", move || searching)
-                                class=("w-[15rem]", move || !searching && !dm)
-                                class=("w-[20rem]", move || !searching && dm)
-                            >
-                                <FloatingTile class="w-full h-full">
-                                    {if searching { chat_search() } else { chat_info() }}
-                                </FloatingTile>
-                            </div>
-                        }
-                            .into_any()
-                    } else {
-                        ().into_any()
-                    }
-                }}
+                <ChatSideBar chat_sidebar_open=chat_sidebar_open />
             </div>
         </div>
     }
