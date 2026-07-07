@@ -26,6 +26,7 @@ pub struct RoomState {
     pub attachments: Vec<Attachment>,
     pub search_parameters: Option<SearchParameters>,
     pub search_results: Option<HashMap<String, Vec<UiTimelineItem>>>,
+    pub pinned_result: Option<Vec<UiTimelineItem>>
 }
 
 #[derive(Clone, Debug, PartialEq, Default)]

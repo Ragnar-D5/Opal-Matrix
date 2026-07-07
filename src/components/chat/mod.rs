@@ -1145,18 +1145,21 @@ pub fn Chat() -> impl IntoView {
     provide_context(search_parameters);
     provide_context(search_results);
 
-    let pinned_results: RwSignal<Option<Vec<UiTimelineItem>>> = RwSignal::new(None);
+    let pinned_result: RwSignal<Option<Vec<UiTimelineItem>>> = RwSignal::new(None);
 
-    provide_context(pinned_results);
+    provide_context(pinned_result);
 
     Effect::new(move |_| {
-       let params = search_parameters.get();
-       let results = search_results.get();
+       let search_params = search_parameters.get();
+       let search_results = search_results.get();
+       let pinned_result = pinned_result.get();
 
        if let Some(active_room_id) = state.active_room_id_untracked() {
             state.room_states.update(|drafts| {
-                drafts.entry(active_room_id.clone()).or_default().search_parameters = params;
-                drafts.entry(active_room_id).or_default().search_results = results;
+                let entry = drafts.entry(active_room_id.clone()).or_default();
+                entry.search_parameters = search_params;
+                entry.search_results = search_results;
+                entry.pinned_result = pinned_result;
             });
         }
     });
@@ -1168,6 +1171,7 @@ pub fn Chat() -> impl IntoView {
             .and_then(|rid| state.room_states.with_untracked(|d| d.get(&rid).cloned()))
             .unwrap_or_default();
 
+        pinned_result.set(draft.pinned_result);
         search_parameters.set(draft.search_parameters);
         search_results.set(draft.search_results);
     });
