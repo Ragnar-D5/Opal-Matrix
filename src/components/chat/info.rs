@@ -228,7 +228,7 @@ pub fn chat_search() -> AnyView {
 
     let header_text = move || {
         let Some(results) = search_results.get() else {
-            return "Search".to_string();
+            return "Type at least three lettres to search".to_string();
         };
 
         let len = results.values().filter(|v| !v.is_empty()).count();
@@ -361,8 +361,8 @@ fn room_results(
                 if is_collapsed.get() {
                     return ().into_any();
                 }
-
                 let room_id = room_id.clone();
+
                 view! {
                     <For
                         each=move || messages.get()
@@ -370,7 +370,7 @@ fn room_results(
                         children=move |msg| message_result(msg, room_id.clone(), highlight_words)
                     />
                 }
-                .into_any()
+                    .into_any()
             }}
         </div>
     }

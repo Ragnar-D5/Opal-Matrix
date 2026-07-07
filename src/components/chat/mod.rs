@@ -26,8 +26,7 @@ use phosphor_leptos::{
 
 use leptos::{ev, html::Div, prelude::*, task::spawn_local};
 use leptos_use::{
-    UseIntersectionObserverOptions, UseIntersectionObserverReturn, use_event_listener,
-    use_intersection_observer_with_options,
+    UseIntersectionObserverOptions, UseIntersectionObserverReturn, use_event_listener, use_intersection_observer_with_options
 };
 use shared::{
     api::{FileMetadata, ScrollDirection, SearchParameters, UiAttachmentSource, events::SearchResultUpdate}, sidebar::RoomNode, timeline::{EventContent, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind},
@@ -1016,19 +1015,23 @@ fn ChatInput() -> impl IntoView {
         }
     });
 
+    let is_focused = RwSignal::new(false);
+
     view! {
         <div class="p-2 pt-0 w-full relative">
             {move || input_info_content()} {move || attachment_view()}
             <SelectionMenu menu=menu input_ref=input_ref />
             <div
-                class="text-normal w-full min-h-13 border-1 border-(--tile-border-color) rounded-b-(--ui-border-radius) bg-[rgba(0, 0, 0, 0.6)] flex flex-row bg-(--ui-floating-bg) items-center gap-3 px-3 cursor-text"
+                class="text-normal w-full min-h-13 border rounded-b-(--ui-border-radius) flex flex-row bg-(--ui-solid-bg) items-center gap-3 px-3 cursor-text duration-100"
                 class=(
                     "rounded-t-(--ui-border-radius)",
                     move || input_info.get().is_none() && attachments.get().is_empty(),
                 )
+                class=("border-(--focus-color)", move || is_focused.get())
+                class=("border-(--tile-border-color)", move || !is_focused.get())
             >
                 <button
-                    class="text-(--ui-base-color) hover:text-normal rounded-(--ui-border-radius) hover:bg-(--ui-solid-hover-bg) p-1"
+                    class="text-(--ui-base-color) hover:text-normal rounded-(--ui-border-radius) hover:bg-(--ui-solid-hover-bg) p-1 transition-colors"
                     class=("cursor-not-allowed", move || is_editing.get())
                     class=("cursor-pointer", move || !is_editing.get())
                     on:click=move |_| {
@@ -1061,10 +1064,12 @@ fn ChatInput() -> impl IntoView {
                             store.clone(),
                             (menu, selected_index, matches, is_empty, input_info, attachments),
                         )
+                        on:focus=move |_| is_focused.set(true)
+                        on:blur=move |_| is_focused.set(false)
                     ></div>
                 </div>
                 <button
-                    class="text-(--ui-base-color) hover:text-(--bright-text-color) rounded-(--ui-border-radius) hover:bg-(--ui-solid-hover-bg) p-1 cursor-pointer"
+                    class="text-(--ui-base-color) hover:text-normal rounded-(--ui-border-radius) hover:bg-(--ui-solid-hover-bg) p-1 cursor-pointer"
                     on:click=move |ev| {
                         let anchor: Element = ev.target().unwrap().unchecked_into();
                         spawn_local(async move {
@@ -1083,7 +1088,7 @@ fn ChatInput() -> impl IntoView {
                     <Icon icon=GIF weight=IconWeight::Fill size="20px" />
                 </button>
                 <button
-                    class="text-(--ui-base-color) hover:text-(--bright-text-color) rounded-(--ui-border-radius) hover:bg-(--ui-solid-hover-bg) p-1 cursor-pointer"
+                    class="text-(--ui-base-color) hover:text-normal rounded-(--ui-border-radius) hover:bg-(--ui-solid-hover-bg) p-1 cursor-pointer"
                     on:click=move |ev| {
                         let anchor: Element = ev.target().unwrap().unchecked_into();
                         spawn_local(async move {
@@ -1134,6 +1139,18 @@ pub fn Chat() -> impl IntoView {
 
     let search_results: RwSignal<Option<HashMap<String, Vec<UiTimelineItem>>>> = RwSignal::new(None);
     provide_context(search_results);
+
+    Effect::new(move |_| {
+       let params = search_parameters.get();
+       let results = search_results.get();
+
+       if let Some(active_room_id) = state.active_room_id_untracked() {
+            state.room_states.update(|drafts| {
+                drafts.entry(active_room_id.clone()).or_default().search_parameters = params;
+                drafts.entry(active_room_id).or_default().search_results = results;
+            });
+        }
+    });
 
     // Load the active room's search draft whenever the active room changes.
     Effect::new(move |_| {

@@ -1081,10 +1081,6 @@
     border-style: var(--tw-border-style);
     border-width: 1px;
   }
-  .border-1 {
-    border-style: var(--tw-border-style);
-    border-width: 1px;
-  }
   .border-2 {
     border-style: var(--tw-border-style);
     border-width: 2px;
@@ -1127,6 +1123,9 @@
   }
   .border-\(--accent-color\) {
     border-color: var(--accent-color);
+  }
+  .border-\(--focus-color\) {
+    border-color: var(--focus-color);
   }
   .border-\(--tile-border-color\) {
     border-color: var(--tile-border-color);
@@ -2085,13 +2084,6 @@
       }
     }
   }
-  .hover\:text-\(--bright-text-color\) {
-    &:hover {
-      @media (hover: hover) {
-        color: var(--bright-text-color);
-      }
-    }
-  }
   .hover\:text-bright {
     &:hover {
       @media (hover: hover) {
@@ -2256,6 +2248,7 @@
   --gap: 5px;
   --mention-color: rgb(255, 100, 100);
   --accent-color: #46aec5;
+  --focus-color: rgb(from var(--accent-color) r g b / 60%);
   --accent-bg-color: #183c43;
   --accent-text-color: #181825;
   --header-height: 50px;

@@ -1,11 +1,13 @@
 use std::collections::HashMap;
 
 use leptos::{html::Input, prelude::*, task::spawn_local};
+use leptos_use::use_active_element;
 use phosphor_leptos::{
     HASH, INFO, Icon, IconWeight, MAGNIFYING_GLASS, MATRIX_LOGO, PHONE, PHONE_DISCONNECT, SPEAKER_HIGH, USER_CIRCLE, USER_LIST, X
 };
 use shared::{api::SearchParameters, sidebar::RoomNode, timeline::UiTimelineItem};
 use uuid::Uuid;
+use web_sys::KeyboardEvent;
 
 use crate::{
     app::call_tauri,
@@ -66,23 +68,17 @@ pub fn ChatHeader(chat_sidebar_open: RwSignal<bool>) -> impl IntoView {
             search_params.set(None);
             search_results.set(None);
 
-            if let Some(room_id) = active_room_id {
-                state.room_states.update(|drafts| {
-                    let draft = drafts.entry(room_id).or_default();
-                    draft.search_parameters = None;
-                    draft.search_results = None;
-                });
-            }
+            return;
+        }
+
+        if input.len() < 3 {
+            search_results.set(None);
             return;
         }
 
         let search_id = Uuid::new_v4();
         params.search_id = search_id;
 
-        // Keep the previous results visible while the new search runs, so the
-        // list is diffed instead of rebuilt; each room's results are replaced
-        // when the new search's first batch for it arrives. Only rooms that
-        // are no longer searched at all are dropped here.
         search_results.update(|results| {
             results
                 .get_or_insert_with(HashMap::new)
@@ -90,18 +86,32 @@ pub fn ChatHeader(chat_sidebar_open: RwSignal<bool>) -> impl IntoView {
         });
         search_params.set(Some(params.clone()));
 
-        if let Some(room_id) = active_room_id {
-            state.room_states.update(|drafts| {
-                let draft = drafts.entry(room_id).or_default();
-                draft.search_parameters = Some(params.clone());
-                draft.search_results = search_results.get_untracked();
-            });
-        }
-
         search_rooms(params, search_id);
     };
 
     let search_input_ref: NodeRef<Input> = NodeRef::new();
+
+    let on_search_keydown = move |ev: KeyboardEvent| {
+        let Some(input) = search_input_ref.get() else {
+            log::warn!("Search input not found");
+            return;
+        };
+
+        match ev.key().as_str() {
+            "Escape" => {
+                search_params.set(None);
+                search_results.set(None);
+
+                input.set_value("");
+                let _ = input.blur();
+            }
+            "Enter" => {
+                let _ = input.blur();
+            }
+            _ => {}
+        }
+    };
+
     let input_empty = Memo::new(move |_| {
         search_params
             .get()
@@ -116,6 +126,17 @@ pub fn ChatHeader(chat_sidebar_open: RwSignal<bool>) -> impl IntoView {
         };
 
         view! { <Icon icon=icon size="16px" /> }
+    };
+
+    let active_element = use_active_element();
+    let search_input_focused = move || {
+        let current_active = active_element.get();
+        let input_el = search_input_ref.get();
+
+        match (current_active, input_el) {
+            (Some(active), Some(input)) => active == input.into(),
+            _ => false,
+        }
     };
 
     let store_clone = store.clone();
@@ -305,7 +326,11 @@ pub fn ChatHeader(chat_sidebar_open: RwSignal<bool>) -> impl IntoView {
                         </div>
                     </button>
                 </div>
-                <div class="bg-(--ui-solid-bg) text-sm h-7 rounded-(--ui-border-radius) px-1 border border-(--tile-border-color) w-[200px] text-dim flex">
+                <div
+                    class="bg-(--ui-solid-bg) text-sm h-7 rounded-(--ui-border-radius) px-1 border w-[200px] text-dim flex transition-colors duration-100"
+                    class=("border-(--focus-color)", search_input_focused)
+                    class=("border-(--tile-border-color)", move || !search_input_focused())
+                >
                     <input
                         node_ref=search_input_ref
                         type="text"
@@ -315,6 +340,7 @@ pub fn ChatHeader(chat_sidebar_open: RwSignal<bool>) -> impl IntoView {
                         class="text-normal placeholder:text-muted outline-none flex-1 min-w-0"
                         prop:value=move || search_params.get().map(|p| p.text).unwrap_or_default()
                         on:input=on_search_input
+                        on:keydown=on_search_keydown
                     />
                     <button
                         class=("cursor-text", move || input_empty.get())

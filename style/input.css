@@ -17,6 +17,7 @@
     --mention-color: rgb(255, 100, 100);
 
     --accent-color: #46aec5;
+    --focus-color: rgb(from var(--accent-color) r g b / 60%);
     --accent-bg-color: #183c43;
     --accent-text-color: #181825;
 
