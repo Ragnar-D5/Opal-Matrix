@@ -1,15 +1,29 @@
-use std::{collections::{HashMap, HashSet}, io::Cursor, path::PathBuf, str::FromStr};
+use std::{
+    collections::{HashMap, HashSet},
+    io::Cursor,
+    path::PathBuf,
+    str::FromStr,
+};
 
-use futures::{StreamExt};
+use futures::StreamExt;
 use image::ImageReader;
-use matrix_sdk::{Client as MatrixClient, attachment::{AttachmentInfo, BaseFileInfo, BaseImageInfo, BaseVideoInfo}, room::edit::EditedContent, ruma::{EventId, api::client::receipt::create_receipt::v3::ReceiptType, events::room::MediaSource}, };
-use matrix_sdk_ui::timeline::{AttachmentConfig, AttachmentSource, TimelineEventItemId, TimelineItemContent};
+use matrix_sdk::{
+    Client as MatrixClient,
+    attachment::{AttachmentInfo, BaseFileInfo, BaseImageInfo, BaseVideoInfo},
+    room::edit::EditedContent,
+    ruma::{
+        EventId, api::client::receipt::create_receipt::v3::ReceiptType, events::room::MediaSource,
+    },
+};
+use matrix_sdk_ui::timeline::{
+    AttachmentConfig, AttachmentSource, TimelineEventItemId, TimelineItemContent,
+};
 use mime::Mime;
 use tauri_plugin_http::reqwest;
 use tokio_util::sync::CancellationToken;
 
 use ego_tree::NodeRef;
-use log::{warn};
+use log::warn;
 use matrix_sdk::ruma::{
     OwnedEventId, OwnedUserId, RoomId,
     events::{
@@ -18,13 +32,19 @@ use matrix_sdk::ruma::{
     },
 };
 use scraper::{Html, Node};
-use shared::{api::{FileMetadata, GetTimelineResult, ScrollDirection, UiAttachmentSource}, timeline::{UiTimelineItem, coalesce_diffs}};
+use shared::{
+    api::{FileMetadata, GetTimelineResult, ScrollDirection, UiAttachmentSource},
+    timeline::{UiTimelineItem, coalesce_diffs},
+};
 use tauri::{AppHandle, State, command};
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use crate::{
-    TauriError, frontend::timeline::{timeline_diff_to_ui, timeline_item_content_to_ui, timeline_item_to_ui}, send_event, state::{MediaManager, TaskManager, TimelineManager}
+    TauriError,
+    frontend::timeline::{timeline_diff_to_ui, timeline_item_content_to_ui, timeline_item_to_ui},
+    send_event,
+    state::{MediaManager, TaskManager, TimelineManager},
 };
 
 #[command(rename_all = "snake_case")]
@@ -139,11 +159,9 @@ pub async fn send_attachment(
 
             AttachmentInfo::Video(info)
         }
-        _ => {
-            AttachmentInfo::File(BaseFileInfo {
-                size: Some(size.into()),
-            })
-        }
+        _ => AttachmentInfo::File(BaseFileInfo {
+            size: Some(size.into()),
+        }),
     };
 
     let config = AttachmentConfig {
@@ -156,11 +174,15 @@ pub async fn send_attachment(
     };
 
     let source = match file.source {
-        UiAttachmentSource::LocalFile(path) => {
-             AttachmentSource::File(PathBuf::from(path))
-        }
-        UiAttachmentSource::RawBytes(bytes) => AttachmentSource::Data { bytes, filename: file.file_name },
-        UiAttachmentSource::Url(_) => AttachmentSource::Data { bytes: raw_bytes, filename: file.file_name }
+        UiAttachmentSource::LocalFile(path) => AttachmentSource::File(PathBuf::from(path)),
+        UiAttachmentSource::RawBytes(bytes) => AttachmentSource::Data {
+            bytes,
+            filename: file.file_name,
+        },
+        UiAttachmentSource::Url(_) => AttachmentSource::Data {
+            bytes: raw_bytes,
+            filename: file.file_name,
+        },
     };
 
     timeline.send_attachment(source, mime_type, config).await?;
@@ -183,7 +205,9 @@ pub async fn edit_message(
         .ok_or("Room not found")?;
 
     let event_id = EventId::parse(event_id)?;
-    let (_, timeline) = timeline_manager.get_or_create_timeline(&room, Some(event_id.clone())).await?;
+    let (_, timeline) = timeline_manager
+        .get_or_create_timeline(&room, Some(event_id.clone()))
+        .await?;
 
     let mut mentions = Mentions::default();
 
@@ -206,10 +230,7 @@ pub async fn edit_message(
     Ok(())
 }
 
-fn process_string_to_message(
-    html: &str,
-    mentions: &mut Mentions,
-) -> (String, Option<String>) {
+fn process_string_to_message(html: &str, mentions: &mut Mentions) -> (String, Option<String>) {
     let fragment = Html::parse_fragment(html);
 
     let mut body = String::new();
@@ -330,9 +351,16 @@ pub async fn get_timeline(
     media_manager: State<'_, MediaManager>,
     handle: AppHandle,
     room_id: String,
-    event_id: Option<String>
+    event_id: Option<String>,
 ) -> Result<GetTimelineResult, TauriError> {
-    log::debug!("Fetching timeline for room {}{}", room_id, event_id.as_ref().map(|id| format!(" at event {}", id)).unwrap_or_default());
+    log::debug!(
+        "Fetching timeline for room {}{}",
+        room_id,
+        event_id
+            .as_ref()
+            .map(|id| format!(" at event {}", id))
+            .unwrap_or_default()
+    );
 
     let token = CancellationToken::new();
     task_manager
@@ -444,13 +472,12 @@ pub async fn toggle_reaction(
         .ok_or("No room found")?;
 
     let event_id = EventId::parse(event_id)?;
-    let (_, timeline) = timeline_manager.get_or_create_timeline(&room, Some(event_id.clone())).await?;
+    let (_, timeline) = timeline_manager
+        .get_or_create_timeline(&room, Some(event_id.clone()))
+        .await?;
 
     timeline
-        .toggle_reaction(
-            &TimelineEventItemId::EventId(event_id),
-            &reaction,
-        )
+        .toggle_reaction(&TimelineEventItemId::EventId(event_id), &reaction)
         .await?;
 
     Ok(())
@@ -471,7 +498,9 @@ pub async fn delete_message(
         .ok_or("No room found")?;
 
     let event_id = EventId::parse(event_id)?;
-    let (_, timeline) = timeline_manager.get_or_create_timeline(&room, Some(event_id.clone())).await?;
+    let (_, timeline) = timeline_manager
+        .get_or_create_timeline(&room, Some(event_id.clone()))
+        .await?;
 
     timeline
         .redact(&TimelineEventItemId::EventId(event_id), None)
@@ -481,7 +510,11 @@ pub async fn delete_message(
 }
 
 #[command(rename_all = "snake_case")]
-pub async fn indicate_typing(matrix_client: State<'_, RwLock<MatrixClient>>, room_id: String, is_typing: bool) -> Result<(), TauriError> {
+pub async fn indicate_typing(
+    matrix_client: State<'_, RwLock<MatrixClient>>,
+    room_id: String,
+    is_typing: bool,
+) -> Result<(), TauriError> {
     let client = matrix_client.read().await;
     let room = client
         .get_room(&RoomId::parse(&room_id)?)
@@ -503,7 +536,7 @@ pub async fn get_pinned_events(
         .get_room(&RoomId::parse(&room_id)?)
         .ok_or("Room not found")?;
 
-    let Some(pinned_event_ids) = room.load_pinned_events().await? else {
+    let Some(pinned_event_ids) = room.pinned_event_ids() else {
         return Ok(Vec::new());
     };
 
@@ -533,17 +566,8 @@ pub async fn get_pinned_events(
 
         messages.push((
             ts,
-            timeline_item_content_to_ui(
-                &content,
-                &mut media_store,
-                None,
-                &mut HashSet::new(),
-            )
-            .to_timeline_item(
-                event_id.to_string(),
-                sender.to_string(),
-                ts,
-            ),
+            timeline_item_content_to_ui(&content, &mut media_store, None, &mut HashSet::new())
+                .to_timeline_item(event_id.to_string(), sender.to_string(), ts),
         ));
     }
 

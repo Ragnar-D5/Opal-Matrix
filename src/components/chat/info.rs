@@ -13,9 +13,9 @@ use shared::{
 use crate::components::FloatingTile;
 use crate::{
     components::{
-        chat::{messages::render_timeline_item, JumpTarget},
+        chat::{JumpTarget, messages::render_timeline_item},
         presence::PresenceBadge,
-        user_profile::{render_user_profile_card, MemberProfileExt},
+        user_profile::{MemberProfileExt, render_user_profile_card},
     },
     state::{AppState, ProfileStore},
 };
@@ -509,10 +509,6 @@ fn pinned_messages(pinned_result: RwSignal<Option<Vec<UiTimelineItem>>>) -> AnyV
         }
 
         view! {
-            <div class="flex flex-col gap-(--gap) w-full h-full min-h-0 overflow-visible">
-                <div class="w-full h-(--header-height) shrink-0 text-normal flex items-center pl-[calc((var(--header-height)-1lh)/2)] border-b border-(--tile-border-color)">
-                    {format!("Pinned Messages ({})", messages.len())}
-                </div>
                 <div class="flex flex-1 min-h-0 flex-col gap-(--gap) w-full overflow-y-auto p-(--gap)">
                     <For
                         each=move || messages.clone()
@@ -524,9 +520,26 @@ fn pinned_messages(pinned_result: RwSignal<Option<Vec<UiTimelineItem>>>) -> AnyV
                         )
                     />
                 </div>
-            </div>
         }.into_any()
     };
 
-    view! { {content} }.into_any()
+    let text = move || {
+        let len = pinned_result.get().map(|r| r.len()).unwrap_or(0);
+
+        if len == 0 {
+            "No pinned messages".to_string()
+        } else {
+            format!("Pinned Messages ({})", len)
+        }
+    };
+
+    view! {
+        <div class="flex flex-col gap-(--gap) w-full h-full min-h-0 overflow-visible">
+
+        <div class="w-full h-(--header-height) shrink-0 text-normal flex items-center pl-[calc((var(--header-height)-1lh)/2)] border-b border-(--tile-border-color)">
+            {text}
+        </div>
+        {content}
+        </div>
+    }.into_any()
 }
