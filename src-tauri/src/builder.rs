@@ -20,7 +20,9 @@ use tauri::{App, Builder, Manager, Wry};
 use tauri_plugin_cli::CliExt;
 use tauri_plugin_log::{Target, TargetKind};
 
-use crate::ipc_log::{self, IpcTrafficLog};
+use crate::ipc_log;
+#[cfg(all(desktop, debug_assertions))]
+use crate::ipc_log::IpcTrafficLog;
 use crate::matrix_api::media::{
     get_direct_media, get_media_from_uuid_str, get_media_from_uuid_thmubnail_str,
     get_member_avatar, get_room_avatar, get_user_avatar,
@@ -504,7 +506,7 @@ pub fn setup_builder(builder: Builder<Wry>) -> Builder<Wry> {
 
         let start_time = Local::now().format("%H-%M-%S").to_string();
 
-        #[cfg(desktop)]
+        #[cfg(all(desktop, debug_assertions))]
         match IpcTrafficLog::init(&log_dir, &start_time) {
             Ok(ipc_traffic_log) => {
                 app.manage(ipc_traffic_log);

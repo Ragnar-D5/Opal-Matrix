@@ -1,17 +1,19 @@
 use serde::Serialize;
-use std::fs::{File, OpenOptions};
+use std::fs::File;
 use std::io::Write;
-use std::path::Path;
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager};
 
 /// Append-only JSON-lines log of frontend<->backend IPC traffic (event/call names and payload
-/// sizes in bytes). Only managed as app state on desktop, see `setup_builder`.
+/// sizes in bytes). Only managed as app state on desktop debug builds, see `setup_builder`.
 pub struct IpcTrafficLog(Mutex<File>);
 
 impl IpcTrafficLog {
-    pub fn init(log_dir: &Path, start_time: &str) -> std::io::Result<Self> {
-        let file = OpenOptions::new()
+    /// `start_time` should match the timestamp used for the main log file name, so the two
+    /// files can be correlated to the same app run.
+    #[cfg(all(desktop, debug_assertions))]
+    pub fn init(log_dir: &std::path::Path, start_time: &str) -> std::io::Result<Self> {
+        let file = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
             .open(log_dir.join(format!("ipc-traffic-{start_time}.jsonl")))?;
