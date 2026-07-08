@@ -3,7 +3,8 @@ use std::collections::HashMap;
 use leptos::{html::Input, prelude::*, task::spawn_local};
 use leptos_use::use_active_element;
 use phosphor_leptos::{
-    HASH, INFO, Icon, IconWeight, MAGNIFYING_GLASS, MATRIX_LOGO, PHONE, PHONE_DISCONNECT, PUSH_PIN, SPEAKER_HIGH, USER_CIRCLE, USER_LIST, X
+    HASH, INFO, Icon, IconWeight, MAGNIFYING_GLASS, MATRIX_LOGO, PHONE, PHONE_DISCONNECT, PUSH_PIN,
+    SPEAKER_HIGH, USER_CIRCLE, USER_LIST, X,
 };
 use shared::{api::SearchParameters, sidebar::RoomNode, timeline::UiTimelineItem};
 use uuid::Uuid;
@@ -57,7 +58,9 @@ pub fn ChatHeader(chat_sidebar_open: RwSignal<bool>) -> impl IntoView {
 
         let active_room_id = state.active_room_id();
 
-        if params.room_ids.is_empty() && let Some(room_id) = active_room_id.clone() {
+        if params.room_ids.is_empty()
+            && let Some(room_id) = active_room_id.clone()
+        {
             params.room_ids.push(room_id);
         }
 
@@ -112,7 +115,8 @@ pub fn ChatHeader(chat_sidebar_open: RwSignal<bool>) -> impl IntoView {
     let input_empty = Memo::new(move |_| {
         search_params
             .get()
-            .map(|p| p.text.is_empty()).unwrap_or(true)
+            .map(|p| p.text.is_empty())
+            .unwrap_or(true)
     });
 
     let input_icon = move || {
@@ -142,7 +146,11 @@ pub fn ChatHeader(chat_sidebar_open: RwSignal<bool>) -> impl IntoView {
         };
 
         let user_id = state.user_id.get_untracked();
-        state.get_call_members(&room_id).get().iter().any(|dev| dev.user_id == user_id)
+        state
+            .get_call_members(&room_id)
+            .get()
+            .iter()
+            .any(|dev| dev.user_id == user_id)
     };
 
     let on_call_click = move |_| {
@@ -159,26 +167,36 @@ pub fn ChatHeader(chat_sidebar_open: RwSignal<bool>) -> impl IntoView {
 
     let pinned_messages: RwSignal<Option<Vec<UiTimelineItem>>> = expect_context();
 
-    let on_pin_click = move |_| {
-        if pinned_messages.get().is_some() {
-            pinned_messages.set(None);
-        } else {
+    Effect::new(move |_| {
+        let Some(pinned) = pinned_messages.get() else {
+            return;
+        };
+
+        if pinned.is_empty() {
             let Some(room_id) = state.active_room_id() else {
                 return;
             };
 
-            pinned_messages.set(Some(Vec::new()));
-
             spawn_local(async move {
                 match get_pinned_events(&room_id).await {
                     Ok(pinned) => {
-                        pinned_messages.set(Some(pinned));
+                        if pinned_messages.get_untracked() == Some(Vec::new()) {
+                            pinned_messages.set(Some(pinned));
+                        }
                     }
                     Err(e) => {
                         log::error!("Failed to fetch pinned messages: {e}");
                     }
                 }
             });
+        }
+    });
+
+    let on_pin_click = move |_| {
+        if pinned_messages.get().is_some() {
+            pinned_messages.set(None);
+        } else {
+            pinned_messages.set(Some(Vec::new()));
         }
     };
 

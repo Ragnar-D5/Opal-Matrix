@@ -8,7 +8,9 @@ use phosphor_leptos::{
     TRASH, WARNING_CIRCLE,
 };
 use shared::{
-    profile::MemberProfile, sidebar::RoomNode, timeline::{
+    profile::MemberProfile,
+    sidebar::RoomNode,
+    timeline::{
         DetailState, EventContent, EventFlags, MessageContent, ReactionInfo, ReplyInfo,
         RichTextSpan, SystemMessage, UiCallIntent, UiMembershipChange, UiMessageType,
         UiTimelineItem, UiTimelineItemKind,
@@ -664,7 +666,7 @@ fn render_system_message(
     content: SystemMessage,
     store: ProfileStore,
     room_id: String,
-    jump_target: RwSignal<Option<String>>
+    jump_target: RwSignal<Option<String>>,
 ) -> impl IntoView {
     let sender_id_str = sender_id.clone();
 
@@ -679,6 +681,8 @@ fn render_system_message(
             <span class="mr-1">{move || name_sig.get().render_name_popup("16px")}</span>
         }
     };
+
+    let pinned_result: RwSignal<Option<Vec<UiTimelineItem>>> = expect_context();
 
     let content = match content {
         SystemMessage::MembershipChange { user_id, change } => {
@@ -829,10 +833,18 @@ fn render_system_message(
                         {user_div(&sender_id_str)} <span>"pinned "</span>
                         <span
                             class="cursor-pointer underline font-bold text-normal"
-                            on:click=move |_| { jump_target.set(pinned_events.first().cloned()) }
+                            on:click=move |_| jump_target.set(pinned_events.first().cloned())
                         >
                             "a message"
                         </span>
+                        <span>" to this room. See all "</span>
+                        <span
+                            class="cursor-pointer underline font-bold text-normal"
+                            on:click=move |_| pinned_result.set(Some(Vec::new()))
+                        >
+                            "pinned messages"
+                        </span>
+                        <span>"."</span>
                     </div>
                 }.into_any()
             }
@@ -985,7 +997,7 @@ fn render_system_message(
     };
 
     view! { <div class="flex text-dim items-center justify-center my-2">{content.into_any()}</div> }
-    .into_any()
+        .into_any()
 }
 
 #[component]
@@ -1205,7 +1217,7 @@ fn render_timeline_event(
     show_header: bool,
     preview: bool,
     scroll_to_event: Callback<String>,
-    jump_target: RwSignal<Option<String>>
+    jump_target: RwSignal<Option<String>>,
 ) -> impl IntoView {
     let hovered = RwSignal::new(false);
     let picker_open = RwSignal::new(false);
@@ -1467,7 +1479,7 @@ pub fn render_timeline_item(
     show_header: bool,
     preview: bool,
     scroll_to_event: Callback<String>,
-    jump_target: RwSignal<Option<String>>
+    jump_target: RwSignal<Option<String>>,
 ) -> AnyView {
     let state: AppState = expect_context();
     let store: ProfileStore = expect_context();
