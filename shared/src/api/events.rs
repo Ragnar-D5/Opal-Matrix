@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use macros::TauriEvent;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use uuid::Uuid;
 
 use crate::{
@@ -105,3 +105,6 @@ pub enum NotificationEvent {
 }
 
 pub type SearchResultUpdate = (Uuid, String, Vec<UiTimelineItem>);
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TauriEvent)]
+pub struct RoomPinnedUpdate(pub (String, Vec<String>));

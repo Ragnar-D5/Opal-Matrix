@@ -833,7 +833,7 @@ fn render_system_message(
                         {user_div(&sender_id_str)} <span>"pinned "</span>
                         <span
                             class="cursor-pointer underline font-bold text-normal"
-                            on:click=move |_| jump_target.set(pinned_events.first().cloned())
+                            on:click=move |_| jump_target.set(pinned_events.last().cloned())
                         >
                             "a message"
                         </span>

@@ -180,7 +180,8 @@ pub fn ChatHeader(chat_sidebar_open: RwSignal<bool>) -> impl IntoView {
             spawn_local(async move {
                 match get_pinned_events(&room_id).await {
                     Ok(pinned) => {
-                        if pinned_messages.get_untracked() == Some(Vec::new()) {
+                        if !pinned.is_empty() && pinned_messages.get_untracked() == Some(Vec::new())
+                        {
                             pinned_messages.set(Some(pinned));
                         }
                     }

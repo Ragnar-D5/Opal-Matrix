@@ -122,7 +122,7 @@ impl RichTextExt for RichTextSpan {
 
             RichTextSpan::Highlight(text) => view! {
                 <span
-                    class="text-token cursor-text text-bright rounded-sm px-[2px] py-[1px]"
+                    class="text-token cursor-text text-bright"
                     style="background-color: color-mix(in srgb, var(--result-highlight-color) 40%, transparent);"
                 >
                     {text}

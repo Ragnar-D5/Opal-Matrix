@@ -25,6 +25,7 @@ use tauri::{Manager, State};
 
 pub mod builder;
 pub(crate) mod frontend;
+pub(crate) mod ipc_log;
 pub(crate) mod matrix_api;
 pub(crate) mod settings;
 pub(crate) mod state;
@@ -96,6 +97,9 @@ fn _send_notification(handle: &AppHandle, title: String, body: String) -> Result
 }
 
 pub fn send_event<T: TauriEvent>(app_handle: &AppHandle, payload: &T) {
+    let bytes = serde_json::to_vec(payload).map(|b| b.len()).unwrap_or(0);
+    ipc_log::log_event(app_handle, T::name().as_str(), bytes);
+
     if let Err(e) = app_handle.emit(T::name().as_str(), payload) {
         error!("Failed to emit event {}: {:?}", T::name(), e);
     }

@@ -544,7 +544,7 @@ pub async fn get_pinned_events(
 
     let mut messages = Vec::new();
     for event_id in pinned_event_ids {
-        let event = match room.event(&event_id, None).await {
+        let event = match room.load_or_fetch_event(&event_id, None).await {
             Ok(ev) => ev,
             Err(e) => {
                 log::warn!("Failed to fetch pinned event {}: {:?}", event_id, e);

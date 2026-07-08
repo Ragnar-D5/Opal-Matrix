@@ -6,30 +6,40 @@ use std::{
 use crate::{
     app::{convertFileSrc, format_bytes},
     components::{
-        FloatingTile, TypingIndicator, chat::{calls::CallView, header::ChatHeader, info::ChatSideBar, messages::render_timeline_item}, input::{
+        FloatingTile, TypingIndicator,
+        chat::{
+            calls::CallView, header::ChatHeader, info::ChatSideBar, messages::render_timeline_item,
+        },
+        input::{
             get_active_filter, get_caret_position, handle_input, handle_keydown,
             insert_text_at_caret,
             menu::{MenuCompletionMatches, MenuType, SelectionMenu},
-        }, overlays::{
+        },
+        overlays::{
             emoji_picker::{EmojiPickerState, pick_emoji},
             gif_picker::{GifPickerState, pick_gif},
-        }, user_profile::MemberProfileExt
+        },
+        user_profile::MemberProfileExt,
     },
     hooks::{setup_update_effect, use_tauri_event},
     state::{AppState, CurrentSection, ProfileStore},
     tauri_functions::{get_timeline, indicate_typing, pick_files, scroll_timeline},
 };
 
-use phosphor_leptos::{
-    GIF, Icon, IconWeight, SMILEY, TRASH, UPLOAD_SIMPLE, X_CIRCLE
-};
+use phosphor_leptos::{GIF, Icon, IconWeight, SMILEY, TRASH, UPLOAD_SIMPLE, X_CIRCLE};
 
 use leptos::{ev, html::Div, prelude::*, task::spawn_local};
 use leptos_use::{
-    UseIntersectionObserverOptions, UseIntersectionObserverReturn, use_event_listener, use_intersection_observer_with_options
+    UseIntersectionObserverOptions, UseIntersectionObserverReturn, use_event_listener,
+    use_intersection_observer_with_options,
 };
 use shared::{
-    api::{FileMetadata, ScrollDirection, SearchParameters, UiAttachmentSource, events::SearchResultUpdate}, sidebar::RoomNode, timeline::{EventContent, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind},
+    api::{
+        FileMetadata, ScrollDirection, SearchParameters, UiAttachmentSource,
+        events::SearchResultUpdate,
+    },
+    sidebar::RoomNode,
+    timeline::{EventContent, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind},
 };
 use uuid::Uuid;
 use wasm_bindgen::JsCast;
@@ -40,9 +50,9 @@ use web_sys::{
 };
 
 pub(crate) mod calls;
-pub(crate) mod messages;
-pub(crate) mod info;
 pub(crate) mod header;
+pub(crate) mod info;
+pub(crate) mod messages;
 
 #[component]
 fn TimeLine() -> impl IntoView {
@@ -160,8 +170,7 @@ fn TimeLine() -> impl IntoView {
             // Check if the previous chronological item was a divider
             if prev_was_divider {
                 show_header = true;
-                if let UiTimelineItemKind::Event(event) = &item.kind
-                {
+                if let UiTimelineItemKind::Event(event) = &item.kind {
                     last_sender = Some(event.sender_id.clone());
                     last_timestamp = Some(event.timestamp);
                 }
@@ -490,8 +499,10 @@ fn TypingUserIndicator() -> impl IntoView {
 
         let names = match profiles.len() {
             0 => return None,
-            1 => view! { <span>{profiles[0].get().render_name_popup("14px")} " is typing..."</span> }
-                .into_any(),
+            1 => {
+                view! { <span>{profiles[0].get().render_name_popup("14px")} " is typing..."</span> }
+                    .into_any()
+            }
             2 => view! {
                 <span>
                     {profiles[0].get().render_name_popup("14px")} " and "
@@ -533,7 +544,6 @@ fn TypingUserIndicator() -> impl IntoView {
         </div>
     }
 }
-
 
 #[derive(Clone, Copy, Default)]
 pub struct ScrollTarget(pub RwSignal<Option<String>>);
@@ -1120,11 +1130,17 @@ fn ChatInput() -> impl IntoView {
 pub fn Chat() -> impl IntoView {
     let state: AppState = expect_context();
 
-    let chat_sidebar_open = RwSignal::new(matches!(state.active_section.get_untracked(), CurrentSection::Server(_)));
+    let chat_sidebar_open = RwSignal::new(matches!(
+        state.active_section.get_untracked(),
+        CurrentSection::Server(_)
+    ));
 
     Effect::new({
         move |_| {
-            chat_sidebar_open.set(matches!(state.active_section.get(), CurrentSection::Server(_)))
+            chat_sidebar_open.set(matches!(
+                state.active_section.get(),
+                CurrentSection::Server(_)
+            ))
         }
     });
 
@@ -1140,7 +1156,8 @@ pub fn Chat() -> impl IntoView {
     provide_context(JumpTarget(jump_target));
 
     let search_parameters: RwSignal<Option<SearchParameters>> = RwSignal::new(None);
-    let search_results: RwSignal<Option<HashMap<String, Vec<UiTimelineItem>>>> = RwSignal::new(None);
+    let search_results: RwSignal<Option<HashMap<String, Vec<UiTimelineItem>>>> =
+        RwSignal::new(None);
 
     provide_context(search_parameters);
     provide_context(search_results);
@@ -1150,11 +1167,11 @@ pub fn Chat() -> impl IntoView {
     provide_context(pinned_result);
 
     Effect::new(move |_| {
-       let search_params = search_parameters.get();
-       let search_results = search_results.get();
-       let pinned_result = pinned_result.get();
+        let search_params = search_parameters.get();
+        let search_results = search_results.get();
+        let pinned_result = pinned_result.get().is_some().then_some(Vec::new());
 
-       if let Some(active_room_id) = state.active_room_id_untracked() {
+        if let Some(active_room_id) = state.active_room_id_untracked() {
             state.room_states.update(|drafts| {
                 let entry = drafts.entry(active_room_id.clone()).or_default();
                 entry.search_parameters = search_params;
@@ -1179,39 +1196,43 @@ pub fn Chat() -> impl IntoView {
     let search_update_sig: ReadSignal<Option<SearchResultUpdate>> = use_tauri_event();
     let seen_search_rooms: StoredValue<(Uuid, HashSet<String>)> =
         StoredValue::new((Uuid::nil(), HashSet::new()));
-    setup_update_effect(search_update_sig, move |(result_search_id, room_id, update)| {
-        if let Some(SearchParameters { search_id, .. }) = search_parameters.get_untracked() && search_id ==  result_search_id {
-            // The first batch a search returns for a room replaces the room's
-            // results from the previous search, later batches extend them.
-            let first_batch = seen_search_rooms.with_value(|(id, rooms)| {
-                *id != result_search_id || !rooms.contains(&room_id)
-            });
-            seen_search_rooms.update_value(|(id, rooms)| {
-                if *id != result_search_id {
-                    *id = result_search_id;
-                    rooms.clear();
-                }
-                rooms.insert(room_id.clone());
-            });
-
-            search_results.update(|res| {
-                if let Some(res) = res {
-                    let room_results = res.entry(room_id.clone()).or_default();
-                    if first_batch {
-                        room_results.clear();
+    setup_update_effect(
+        search_update_sig,
+        move |(result_search_id, room_id, update)| {
+            if let Some(SearchParameters { search_id, .. }) = search_parameters.get_untracked()
+                && search_id == result_search_id
+            {
+                // The first batch a search returns for a room replaces the room's
+                // results from the previous search, later batches extend them.
+                let first_batch = seen_search_rooms
+                    .with_value(|(id, rooms)| *id != result_search_id || !rooms.contains(&room_id));
+                seen_search_rooms.update_value(|(id, rooms)| {
+                    if *id != result_search_id {
+                        *id = result_search_id;
+                        rooms.clear();
                     }
-                    room_results.extend(update);
-                }
-            });
-
-            if let Some(active_room_id) = state.active_room_id_untracked() {
-                state.room_states.update(|drafts| {
-                    drafts.entry(active_room_id).or_default().search_results =
-                        search_results.get_untracked();
+                    rooms.insert(room_id.clone());
                 });
+
+                search_results.update(|res| {
+                    if let Some(res) = res {
+                        let room_results = res.entry(room_id.clone()).or_default();
+                        if first_batch {
+                            room_results.clear();
+                        }
+                        room_results.extend(update);
+                    }
+                });
+
+                if let Some(active_room_id) = state.active_room_id_untracked() {
+                    state.room_states.update(|drafts| {
+                        drafts.entry(active_room_id).or_default().search_results =
+                            search_results.get_untracked();
+                    });
+                }
             }
-        }
-    });
+        },
+    );
 
     view! {
         <div class="flex-1 h-full flex gap-[var(--gap)] flex-col overflow-hidden">

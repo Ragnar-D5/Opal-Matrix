@@ -1,15 +1,15 @@
-use matrix_sdk::ruma::events::direct::DirectEventContent;
-use matrix_sdk::ruma::OwnedRoomId;
 use matrix_sdk::RoomState;
+use matrix_sdk::ruma::OwnedRoomId;
+use matrix_sdk::ruma::events::direct::DirectEventContent;
 use matrix_sdk::{
-    config::SyncSettings, ruma::presence::PresenceState, Client as MatrixClient, SessionChange,
+    Client as MatrixClient, SessionChange, config::SyncSettings, ruma::presence::PresenceState,
 };
 use shared::sidebar::{DmList, RoomMapUpdate, RoomNode, ServerList, SingleList};
 use shared::synth::ProfileAudio;
 use std::collections::{HashMap, HashSet};
 use std::pin::pin;
 use std::sync::{Arc, Mutex};
-use tauri::{async_runtime::spawn, AppHandle};
+use tauri::{AppHandle, async_runtime::spawn};
 
 use crate::frontend::profiles::handle_typing_notice;
 use crate::frontend::sidebar::{
@@ -20,17 +20,17 @@ use crate::matrix_api::matrixrtc::handle_call_member_change;
 use crate::send_event;
 use crate::settings::handle_account_data_event;
 use crate::{
+    TauriError,
     frontend::{
         presence::handle_presences,
         profiles::{on_member_update, send_all_members},
         sidebar::{extract_call_memberships, handle_room_updates},
     },
     matrix_api::{
-        keyring::{save_session, StoredSession},
+        keyring::{StoredSession, save_session},
         matrixrtc::{cleanup_ghost_calls, handle_to_device_messages},
-        profile::{client_user_profile_event_handle, send_user_to_frontend, ProfileDebounce},
+        profile::{ProfileDebounce, client_user_profile_event_handle, send_user_to_frontend},
     },
-    TauriError,
 };
 use futures_util::StreamExt;
 
@@ -129,9 +129,12 @@ pub async fn attach_callbacks(
                 .into_iter()
                 .filter(|room| !matches!(room.state(), RoomState::Banned | RoomState::Left)),
         )
-        .map(|room| async move {
-            let node = convert_room_to_node(&room).await?;
-            Some((room.room_id().to_owned(), node))
+        .map(|room| {
+            let handle = handle_clone.clone();
+            async move {
+                let node = convert_room_to_node(&room, &handle).await?;
+                Some((room.room_id().to_owned(), node))
+            }
         })
         .buffer_unordered(16)
         .filter_map(|entry| async move { entry })

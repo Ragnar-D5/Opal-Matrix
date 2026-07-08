@@ -1,11 +1,11 @@
-use crate::components::authentication::{get_stuff_after_login, Authentication};
+use crate::components::authentication::{Authentication, get_stuff_after_login};
 use crate::components::loading::Loading;
 use crate::components::previews::ImageLightbox;
 use crate::components::shader::BackgroundShader;
 use chrono::{DateTime, Local};
 use shared::api::events::{
     CallMemberUpdate, NotificationEvent, NotificationLevel, NotificationUpdate, PresenceUpdate,
-    ProfileUpdates, TypingUpdate,
+    ProfileUpdates, RoomPinnedUpdate, TypingUpdate,
 };
 use shared::api::{AudioDeviceInfos, RestoreResponse};
 use shared::sidebar::{DmList, RoomMapUpdate, ServerList, SingleList};
@@ -21,12 +21,12 @@ use wasm_bindgen::prelude::*;
 use web_sys::HtmlImageElement;
 
 use crate::components::{
+    SystemButtons,
     chat::Chat,
     overlays::emoji_picker::{EmojiPickerPortal, EmojiPickerState},
     overlays::gif_picker::{GifPickerPortal, GifPickerState},
     overlays::profile_card::{ProfileCardPortal, ProfileCardState},
     sidebar::Sidebar,
-    SystemButtons,
 };
 use crate::hooks::{setup_update_effect, use_tauri_event};
 use crate::state::{AppState, ProfileStore};
@@ -46,12 +46,48 @@ extern "C" {
     pub fn openUrl(url: &str) -> js_sys::Promise;
 }
 
+#[derive(serde::Serialize)]
+struct IpcCallLog {
+    cmd: String,
+    request_bytes: usize,
+    response_bytes: usize,
+    ok: bool,
+}
+
+fn js_value_byte_len(value: &JsValue) -> usize {
+    match js_sys::JSON::stringify(value) {
+        Ok(s) => {
+            let s: String = s.into();
+            s.len()
+        }
+        Err(_) => 0,
+    }
+}
+
 pub async fn call_tauri(cmd: &str, args: JsValue) -> Result<JsValue, JsValue> {
-    wasm_bindgen_futures::JsFuture::from(invoke(cmd, args)).await
+    let request_bytes = js_value_byte_len(&args);
+    let result = wasm_bindgen_futures::JsFuture::from(invoke(cmd, args)).await;
+
+    // Avoid recursively logging the traffic-logging call itself.
+    if cmd != "log_ipc_call" {
+        let log = IpcCallLog {
+            cmd: cmd.to_string(),
+            request_bytes,
+            response_bytes: result.as_ref().map(js_value_byte_len).unwrap_or(0),
+            ok: result.is_ok(),
+        };
+        spawn_local(async move {
+            if let Ok(args) = serde_wasm_bindgen::to_value(&log) {
+                let _ = call_tauri("log_ipc_call", args).await;
+            }
+        });
+    }
+
+    result
 }
 
 pub async fn call_tauri_no_args(cmd: &str) -> Result<JsValue, JsValue> {
-    wasm_bindgen_futures::JsFuture::from(invoke(cmd, JsValue::NULL)).await
+    call_tauri(cmd, JsValue::NULL).await
 }
 
 #[derive(Clone, Debug, Copy, PartialEq, Default)]
@@ -250,6 +286,19 @@ pub fn App() -> impl IntoView {
     setup_update_effect(single_room_list_event, move |new| {
         state.single_room_list.set(new);
     });
+
+    let pin_update: ReadSignal<Option<RoomPinnedUpdate>> = use_tauri_event();
+
+    setup_update_effect(
+        pin_update,
+        move |RoomPinnedUpdate((room_id, pinned_ids))| {
+            state.pinned_map.update(|map| {
+                if map.get(&room_id) != Some(&pinned_ids) {
+                    map.insert(room_id, pinned_ids);
+                }
+            });
+        },
+    );
 
     Effect::new(move |_| {
         if let Some(mut new_state) = server_list_event.get() {

@@ -1,4 +1,4 @@
-use std::{collections::{HashMap, HashSet}};
+use std::collections::{HashMap, HashSet};
 
 use leptos::task::spawn_local;
 use log::error;
@@ -8,15 +8,17 @@ use shared::{
     api::{AudioDeviceInfos, SearchParameters},
     profile::{CustomProperties, MemberProfile, PresenceInfo, RoomProfile, UserProfile},
     sidebar::{
-        DmList, NotificationCounts, RoomNode, ServerList, ServerRoomNode,
-        SingleList, SpaceRoomNode, UserDevice,
+        DmList, NotificationCounts, RoomNode, ServerList, ServerRoomNode, SingleList,
+        SpaceRoomNode, UserDevice,
     },
     synth::ProfileAudio,
     timeline::{UiMediaSource, UiTimelineItem},
 };
 
 use crate::{
-    app::{CurrentWindow, call_tauri}, components::{chat::Attachment, user_profile::MemberProfileExt}, tauri_functions::get_user_profile
+    app::{CurrentWindow, call_tauri},
+    components::{chat::Attachment, user_profile::MemberProfileExt},
+    tauri_functions::get_user_profile,
 };
 use leptos::prelude::*;
 
@@ -26,7 +28,7 @@ pub struct RoomState {
     pub attachments: Vec<Attachment>,
     pub search_parameters: Option<SearchParameters>,
     pub search_results: Option<HashMap<String, Vec<UiTimelineItem>>>,
-    pub pinned_result: Option<Vec<UiTimelineItem>>
+    pub pinned_result: Option<Vec<UiTimelineItem>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Default)]
@@ -34,7 +36,7 @@ pub enum CurrentSection {
     Server(String),
     #[default]
     Dms,
-    Single
+    Single,
 }
 
 impl CurrentSection {
@@ -79,6 +81,8 @@ pub struct AppState {
     pub dm_list: RwSignal<DmList>,
     pub single_room_list: RwSignal<SingleList>,
     pub server_list: RwSignal<ServerList>,
+
+    pub pinned_map: RwSignal<HashMap<String, Vec<String>>>,
 
     pub is_focused: RwSignal<bool>,
 
@@ -151,8 +155,7 @@ impl AppState {
     }
 
     pub fn active_room_name_untracked(&self) -> Option<String> {
-        self.active_room
-            .get_untracked().map(|room| room.name())
+        self.active_room.get_untracked().map(|room| room.name())
     }
 
     pub fn apply_server_order(&self) {
@@ -307,23 +310,23 @@ impl AppState {
     fn first_channel_id_for_server(&self, server_id: &str) -> Option<String> {
         let map = self.room_map.get_untracked();
 
-        let server = map
-            .get(server_id)?
-            .try_get_untracked()?;
+        let server = map.get(server_id)?.try_get_untracked()?;
 
         let res = match server {
-            RoomNode::Server(ServerRoomNode { children, .. }) | RoomNode::Space(SpaceRoomNode { children, .. }) => {
+            RoomNode::Server(ServerRoomNode { children, .. })
+            | RoomNode::Space(SpaceRoomNode { children, .. }) => {
                 for id in children {
                     if let Some(sig) = map.get(&id)
-                    && let Some(node) = sig.try_get_untracked()
-                    && !node.is_unjoined() {
+                        && let Some(node) = sig.try_get_untracked()
+                        && !node.is_unjoined()
+                    {
                         return Some(id.clone());
                     }
                 }
 
                 return None;
             }
-            _ => None
+            _ => None,
         };
 
         if res.is_none() {
@@ -384,7 +387,12 @@ impl AppState {
 
     fn room_belongs_to_section(&self, room_id: &str, section: &CurrentSection) -> bool {
         match section {
-            CurrentSection::Dms => self.dm_list.get_untracked().0.iter().any(|id| id == room_id),
+            CurrentSection::Dms => self
+                .dm_list
+                .get_untracked()
+                .0
+                .iter()
+                .any(|id| id == room_id),
             CurrentSection::Single => self
                 .single_room_list
                 .get_untracked()
@@ -411,7 +419,13 @@ impl AppState {
             return section;
         }
 
-        if self.dm_list.get_untracked().0.iter().any(|id| id == room_id) {
+        if self
+            .dm_list
+            .get_untracked()
+            .0
+            .iter()
+            .any(|id| id == room_id)
+        {
             CurrentSection::Dms
         } else if self
             .single_room_list

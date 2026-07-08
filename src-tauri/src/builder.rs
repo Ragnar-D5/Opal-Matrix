@@ -20,6 +20,7 @@ use tauri::{App, Builder, Manager, Wry};
 use tauri_plugin_cli::CliExt;
 use tauri_plugin_log::{Target, TargetKind};
 
+use crate::ipc_log::{self, IpcTrafficLog};
 use crate::matrix_api::media::{
     get_direct_media, get_media_from_uuid_str, get_media_from_uuid_thmubnail_str,
     get_member_avatar, get_room_avatar, get_user_avatar,
@@ -44,6 +45,7 @@ pub fn add_invoke_handler(builder: Builder<Wry>) -> Builder<Wry> {
         super::minimize_window,
         super::toggle_fullscreen,
         super::backend_log,
+        ipc_log::log_ipc_call,
         super::set_room_id,
         super::set_frontend_focused,
         // frontend commands
@@ -91,6 +93,7 @@ pub fn add_invoke_handler(builder: Builder<Wry>) -> Builder<Wry> {
 fn add_logging_plugin(
     app: &mut App,
     log_dir: PathBuf,
+    start_time: &str,
     log_level: LevelFilter,
     livekit_log_level: LevelFilter,
     keyring_log_level: LevelFilter,
@@ -105,7 +108,7 @@ fn add_logging_plugin(
                 Target::new(tauri_plugin_log::TargetKind::Stdout),
                 Target::new(TargetKind::Folder {
                     path: log_dir,
-                    file_name: Some(format!("{}.log", Local::now().format("%H-%M-%S"))),
+                    file_name: Some(format!("{start_time}.log")),
                 }),
             ])
             .level_for("reqwest", LevelFilter::Off)
@@ -499,7 +502,17 @@ pub fn setup_builder(builder: Builder<Wry>) -> Builder<Wry> {
         let keyring_log_level =
             cli_log_level("keyring-log-level").unwrap_or(log::LevelFilter::Off);
 
-        add_logging_plugin(app, log_dir, log_level, livekit_log_level, keyring_log_level).map_err(|e| {
+        let start_time = Local::now().format("%H-%M-%S").to_string();
+
+        #[cfg(desktop)]
+        match IpcTrafficLog::init(&log_dir, &start_time) {
+            Ok(ipc_traffic_log) => {
+                app.manage(ipc_traffic_log);
+            }
+            Err(e) => eprintln!("Failed to initialize IPC traffic log: {:?}", e),
+        }
+
+        add_logging_plugin(app, log_dir, &start_time, log_level, livekit_log_level, keyring_log_level).map_err(|e| {
             std::io::Error::other(format!("Failed to initialize logging plugin: {:?}", e))
         })?;
 
