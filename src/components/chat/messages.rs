@@ -106,26 +106,76 @@ fn MessageHeader(
     preview: bool,
     sender_profile_sig: ArcRwSignal<MemberProfile>,
     date: DateTime<Local>,
-    current_highlight: Memo<Option<String>>,
+    bar_color: Memo<Option<String>>,
+    is_pinned: Memo<bool>,
     children: Children,
 ) -> impl IntoView {
     let has_reply = reply_info.is_some();
     let name_profile_sig = sender_profile_sig.clone();
 
     view! {
-        <div class="flex gap-(--gap)">
+        <div class="flex gap-(--gap) relative">
+            <Show when=move || is_pinned.get() && !preview>
+                <div
+                    class="absolute rounded-full w-1 h-1"
+                    style="background-color: var(--idle-color); right: 0.25rem; top: 0.25rem;"
+                ></div>
+                <div
+                    class="absolute rounded-full w-1 h-1"
+                    style="background-color: var(--idle-color); right: 0.25rem; top: 50%; transform: translateY(-50%);"
+                ></div>
+                <div
+                    class="absolute rounded-full w-1 h-1"
+                    style="background-color: var(--idle-color); right: 0.25rem; bottom: 0.25rem;"
+                ></div>
+            </Show>
             {if !preview {
                 view! {
                     <div
-                        class="rounded-full w-1 m-1"
+                        class="w-1 m-1 relative"
+                        class=("rounded-full", move || !is_pinned.get())
+                        class=("flex", move || is_pinned.get())
+                        class=("flex-col", move || is_pinned.get())
+                        class=("items-center", move || is_pinned.get())
+                        class=("gap-1", move || is_pinned.get())
                         style=move || {
-                            if let Some(color) = current_highlight.get() {
+                            if is_pinned.get() {
+                                String::new()
+                            } else if let Some(color) = bar_color.get() {
                                 format!("background-color: {color}")
                             } else {
                                 "transparent".to_string()
                             }
                         }
-                    ></div>
+                    >
+                        {move || {
+                            if is_pinned.get() {
+                                let line_style = format!(
+                                    "background-color: {}",
+                                    bar_color.get().unwrap_or_else(|| "transparent".to_string()),
+                                );
+                                view! {
+                                    <div
+                                        class="rounded-full w-1 h-1"
+                                        style="background-color: var(--idle-color);"
+                                    ></div>
+                                    <div class="rounded-full flex-1 w-1" style=line_style.clone()></div>
+                                    <div
+                                        class="rounded-full w-1 h-1"
+                                        style="background-color: var(--idle-color);"
+                                    ></div>
+                                    <div class="rounded-full flex-1 w-1" style=line_style></div>
+                                    <div
+                                        class="rounded-full w-1 h-1"
+                                        style="background-color: var(--idle-color);"
+                                    ></div>
+                                }
+                                    .into_any()
+                            } else {
+                                ().into_any()
+                            }
+                        }}
+                    </div>
                 }
                     .into_any()
             } else {
@@ -1353,6 +1403,27 @@ fn render_timeline_event(
         }
     });
 
+    let state: AppState = expect_context();
+
+    let room_id_clone = room_id.clone();
+    let event_id_clone = event_id.clone();
+    let is_pinned = Memo::new(move |_| {
+        let pinned_events = state
+            .pinned_map
+            .get()
+            .get(&room_id_clone)
+            .cloned()
+            .unwrap_or_default();
+
+        if let Some(event_id) = &event_id_clone {
+            pinned_events.contains(event_id)
+        } else {
+            false
+        }
+    });
+
+    let bar_color = current_highlight;
+
     let flags = Memo::new(move |_| {
         let item = item_sig.get();
 
@@ -1392,7 +1463,7 @@ fn render_timeline_event(
         >
             {move || {
                 if hovered.get() && !show_header {
-                    let ml = if current_highlight.get().is_some() {
+                    let ml = if bar_color.get().is_some() {
                         "ml-[14px]"
                     } else {
                         "ml-[5px]"
@@ -1428,7 +1499,8 @@ fn render_timeline_event(
                 preview=preview
                 sender_profile_sig=sender_profile_sig
                 date=date
-                current_highlight=current_highlight
+                bar_color=bar_color
+                is_pinned=is_pinned
             >
                 <div>
                     <div class=(
