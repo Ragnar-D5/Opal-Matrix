@@ -117,16 +117,24 @@ fn MessageHeader(
         <div class="flex gap-(--gap) relative">
             <Show when=move || is_pinned.get() && !preview>
                 <div
-                    class="absolute rounded-full w-1 h-1"
-                    style="background-color: var(--idle-color); right: 0.25rem; top: 0.25rem;"
+                    class="absolute rounded-tl-sm w-2 h-2"
+                    style="border-top: 2px solid var(--idle-color); border-left: 2px solid var(--idle-color); top: 0.125rem; left: 0.25rem;"
+                ></div>
+                <div
+                    class="absolute rounded-tr-sm w-2 h-2"
+                    style="border-top: 2px solid var(--idle-color); border-right: 2px solid var(--idle-color); top: 0.125rem; right: 0.25rem;"
+                ></div>
+                <div
+                    class="absolute rounded-bl-sm w-2 h-2"
+                    style="border-bottom: 2px solid var(--idle-color); border-left: 2px solid var(--idle-color); bottom: 0.25rem; left: 0.25rem;"
+                ></div>
+                <div
+                    class="absolute rounded-br-sm w-2 h-2"
+                    style="border-bottom: 2px solid var(--idle-color); border-right: 2px solid var(--idle-color); bottom: 0.25rem; right: 0.25rem;"
                 ></div>
                 <div
                     class="absolute rounded-full w-1 h-1"
                     style="background-color: var(--idle-color); right: 0.25rem; top: 50%; transform: translateY(-50%);"
-                ></div>
-                <div
-                    class="absolute rounded-full w-1 h-1"
-                    style="background-color: var(--idle-color); right: 0.25rem; bottom: 0.25rem;"
                 ></div>
             </Show>
             {if !preview {
@@ -155,20 +163,12 @@ fn MessageHeader(
                                     bar_color.get().unwrap_or_else(|| "transparent".to_string()),
                                 );
                                 view! {
-                                    <div
-                                        class="rounded-full w-1 h-1"
-                                        style="background-color: var(--idle-color);"
-                                    ></div>
                                     <div class="rounded-full flex-1 w-1" style=line_style.clone()></div>
                                     <div
                                         class="rounded-full w-1 h-1"
                                         style="background-color: var(--idle-color);"
                                     ></div>
                                     <div class="rounded-full flex-1 w-1" style=line_style></div>
-                                    <div
-                                        class="rounded-full w-1 h-1"
-                                        style="background-color: var(--idle-color);"
-                                    ></div>
                                 }
                                     .into_any()
                             } else {
@@ -1463,7 +1463,7 @@ fn render_timeline_event(
         >
             {move || {
                 if hovered.get() && !show_header {
-                    let ml = if bar_color.get().is_some() {
+                    let ml = if bar_color.get().is_some() || is_pinned.get() {
                         "ml-[14px]"
                     } else {
                         "ml-[5px]"
