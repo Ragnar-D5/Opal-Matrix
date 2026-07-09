@@ -35,7 +35,7 @@ use tauri_plugin_http::reqwest;
 use tokio::sync::RwLock;
 
 use crate::state::{AudioManager, LiveKitRoomData, LiveKitRoomManager};
-use crate::{AsInfo, TauriError};
+use crate::{LogResultExt, TauriError};
 
 #[command(rename_all = "snake_case")]
 pub(crate) async fn join_matrixrtc_call(
@@ -409,7 +409,8 @@ pub(crate) async fn leave_matrixrtc_call(
     let mut data_guard = livekit_room_manager.lock().await;
     let room_data = data_guard
         .get(&room_id)
-        .ok_or("Not in a call in this room".as_info())?;
+        .ok_or("Not in a call in this room")
+        .as_info()?;
     room_data.close_event_stream().await;
     room_data.livekit_room.close().await?;
     data_guard.remove(&room_id);
@@ -716,13 +717,13 @@ pub fn setup_mic_track(audio_manager: &AudioManager) -> Result<LocalAudioTrack, 
     // Cloning the source here — if setup_global_input_handler hasn't run yet,
     // this will be the default source (48000/2) and the handler will later replace
     // it with a new object, breaking the link to this track.
-    log::debug!("setup_mic_track: cloning NativeAudioSource to create track (handler may not have replaced it yet)");
+    log::debug!(
+        "setup_mic_track: cloning NativeAudioSource to create track (handler may not have replaced it yet)"
+    );
     let source = audio_manager.native_audio_source.lock().unwrap().clone();
 
-    let track = LocalAudioTrack::create_audio_track(
-        "Microphone",
-        livekit::RtcAudioSource::Native(source),
-    );
+    let track =
+        LocalAudioTrack::create_audio_track("Microphone", livekit::RtcAudioSource::Native(source));
 
     log::debug!("setup_mic_track: track created");
     Ok(track)
@@ -803,7 +804,9 @@ async fn register_new_track(
     // Pass the consumer end to the mixer
     match sender.send(track_consumer) {
         Ok(_) => log::debug!("register_new_track: sent consumer to mixer"),
-        Err(_) => log::error!("register_new_track: mixer receiver dropped — mixer was not spawned or already shut down"),
+        Err(_) => log::error!(
+            "register_new_track: mixer receiver dropped — mixer was not spawned or already shut down"
+        ),
     }
 
     tokio::spawn(async move {
