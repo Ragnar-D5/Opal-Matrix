@@ -111,7 +111,7 @@ pub async fn attach_callbacks(
         })
         .collect();
 
-    emojies.sort_by_key(|(_, t)| *t);
+    emojies.sort_by_key(|(_, t)| std::cmp::Reverse(*t));
 
     let top = emojies
         .iter()

@@ -9,7 +9,10 @@ use crate::{send_event, MatrixClientState, TauriError};
 
 use matrix_sdk::{
     event_handler::Ctx,
-    ruma::events::{macros::EventContent, recent_emoji::RecentEmojiEvent},
+    ruma::{
+        events::{macros::EventContent, GlobalAccountDataEvent},
+        UInt,
+    },
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize, EventContent)]
@@ -88,34 +91,35 @@ pub async fn set_server_order(
     Ok(())
 }
 
-pub async fn on_recent_emoji_update(update: RecentEmojiEvent, handle: Ctx<AppHandle>) {
-    let all_by_recency = update
+#[derive(Clone, Debug, Serialize, Deserialize, EventContent)]
+#[ruma_event(type = "io.element.recent_emoji", kind = GlobalAccountData)]
+pub struct ElementRecentEmojiEventContent {
+    pub recent_emoji: Vec<(String, UInt)>,
+}
+
+pub async fn on_recent_emoji_update(
+    update: GlobalAccountDataEvent<ElementRecentEmojiEventContent>,
+    handle: Ctx<AppHandle>,
+) {
+    let all_by_recency: Vec<RecentEmoji> = update
         .content
         .recent_emoji
-        .clone()
         .iter()
-        .map(|re| RecentEmoji {
-            emoji: re.emoji.clone(),
-            total: re.total.into(),
+        .map(|(e, t)| RecentEmoji {
+            emoji: e.clone(),
+            total: (*t).into(),
         })
         .collect();
 
-    let top = update
-        .content
-        .recent_emoji_sorted_by_total()
-        .iter()
-        .take(5)
-        .map(|re| RecentEmoji {
-            emoji: re.emoji.clone(),
-            total: re.total.into(),
-        })
-        .collect();
+    let mut top = all_by_recency.clone();
+
+    top.sort_by_key(|e| std::cmp::Reverse(e.total));
 
     log::debug!("Sending recent emoji update");
     send_event(
         &handle,
         &RecentEmojies {
-            top,
+            top: top.into_iter().take(5).collect(),
             all_by_recency,
         },
     );

@@ -1172,7 +1172,7 @@ fn MesssageButtons(
     };
 
     let recent_emojies = move || {
-        let emojies: Vec<RecentEmoji> = state.recent_emojies.get().top.into_iter().take(3).collect();
+        let emojies: Vec<RecentEmoji> = state.recent_emojies.get_untracked().top.into_iter().take(3).collect();
 
         (!emojies.is_empty()).then_some(emojies)
     };
