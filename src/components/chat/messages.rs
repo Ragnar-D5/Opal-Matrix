@@ -1246,7 +1246,7 @@ fn MesssageButtons(
             </button>
             <Show when=move || { flags.get().is_deletable }>
                 <button
-                    class="hover:bg-(--delete-color) hover:text-(--ui-solid-bg) cursor-pointer p-0.5 rounded-(--gap) transition-colors duration-100"
+                    class="hover:bg-(--error-color) hover:text-(--ui-solid-bg) cursor-pointer p-0.5 rounded-(--gap) transition-colors duration-100"
                     on:click=move |_| show_delete_confirm.set(true)
                 >
                     <Icon icon=TRASH size="20px"></Icon>
@@ -1273,7 +1273,7 @@ fn MesssageButtons(
                     "Cancel"
                 </button>
                 <button
-                    class="px-4 py-1.5 rounded-(--ui-border-radius) text-(--ui-solid-bg) text-sm cursor-pointer font-semibold flex flex-grow items-center justify-center bg-(--delete-color)"
+                    class="px-4 py-1.5 rounded-(--ui-border-radius) text-(--ui-solid-bg) text-sm cursor-pointer font-semibold flex flex-grow items-center justify-center bg-(--error-color)"
                     on:click=move |_| {
                         show_delete_confirm.set(false);
                         on_delete_confirm.run(());

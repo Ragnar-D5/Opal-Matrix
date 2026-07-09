@@ -303,20 +303,15 @@ pub fn ChatHeader(chat_sidebar_open: RwSignal<bool>) -> impl IntoView {
             </div>
             <div class="self-center h-full">
                 <button
-                    class="transition-opacity h-full aspect-square text-dim hover:text-normal"
+                    class="transition-opacity h-full aspect-square text-dim"
+                    class=("hover:text-(--online-color)", move || !in_call())
+                    class=("hover:text-(--error-color)", move || in_call())
                     on:click=on_call_click
                 >
                     <div class="h-full justify-center items-center flex cursor-pointer">
                         {move || {
                             let icon = if in_call() { PHONE_DISCONNECT } else { PHONE };
-                            view! {
-                                <Icon
-                                    icon=icon
-                                    size="60%"
-                                    color="currentColor"
-                                    weight=IconWeight::Duotone
-                                />
-                            }
+                            view! { <Icon icon=icon size="60%" color="currentColor" /> }
                         }}
                     </div>
                 </button>
@@ -345,7 +340,7 @@ pub fn ChatHeader(chat_sidebar_open: RwSignal<bool>) -> impl IntoView {
             <div class="flex items-center h-full pr-[90px]">
                 <div class="self-center h-full">
                     <button
-                        class="transition-opacity h-full aspect-square text-dim hover:text-(--online-color)"
+                        class="transition-opacity h-full aspect-square text-dim hover:text-(--accent-color)"
                         on:click=move |_| chat_sidebar_open.update(|v| *v = !*v)
                     >
                         <div class="h-full justify-center items-center flex cursor-pointer">

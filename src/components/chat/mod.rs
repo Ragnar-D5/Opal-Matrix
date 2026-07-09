@@ -1257,20 +1257,14 @@ pub fn Chat() -> impl IntoView {
                                         return ().into_any();
                                     };
                                     let call_members = state.get_call_members(&room_id).get();
-                                    let call_view = if !call_members.is_empty() {
-
-                                        view! {
-                                            <div class="h-50 w-full border-(--tile-border-color) border-b">
-                                                <CallView node=node />
-                                            </div>
-                                        }
-                                            .into_any()
-                                    } else {
-                                        ().into_any()
-                                    };
+                                    let node = node.clone();
 
                                     view! {
-                                        {call_view}
+                                        <Show when=move || !call_members.is_empty()>
+                                            <div class="h-50 w-full border-(--tile-border-color) border-b">
+                                                <CallView node=node.clone() />
+                                            </div>
+                                        </Show>
                                         <TimeLine />
                                         <TypingUserIndicator />
                                         <ChatInput />

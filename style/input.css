@@ -46,7 +46,7 @@
     --offline-color: #6a6a6a;
 
     --pin-color: var(--idle-color);
-    --delete-color: var(--busy-color);
+    --error-color: var(--busy-color);
 
     --system-button-size: 14px;
     --system-button-padding: calc(

@@ -1211,8 +1211,8 @@
   .bg-\(--confirm-color\) {
     background-color: var(--confirm-color);
   }
-  .bg-\(--delete-color\) {
-    background-color: var(--delete-color);
+  .bg-\(--error-color\) {
+    background-color: var(--error-color);
   }
   .bg-\(--mention-color\) {
     background-color: var(--mention-color);
@@ -2049,10 +2049,10 @@
       }
     }
   }
-  .hover\:bg-\(--delete-color\) {
+  .hover\:bg-\(--error-color\) {
     &:hover {
       @media (hover: hover) {
-        background-color: var(--delete-color);
+        background-color: var(--error-color);
       }
     }
   }
@@ -2119,6 +2119,13 @@
     &:hover {
       @media (hover: hover) {
         color: var(--accent-color);
+      }
+    }
+  }
+  .hover\:text-\(--error-color\) {
+    &:hover {
+      @media (hover: hover) {
+        color: var(--error-color);
       }
     }
   }
@@ -2322,7 +2329,7 @@
   --busy-color: #da7d9b;
   --offline-color: #6a6a6a;
   --pin-color: var(--idle-color);
-  --delete-color: var(--busy-color);
+  --error-color: var(--busy-color);
   --system-button-size: 14px;
   --system-button-padding: calc(
         var(--header-height) / 2 - var(--system-button-size) / 2
