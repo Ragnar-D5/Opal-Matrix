@@ -1,4 +1,4 @@
-use crate::components::authentication::{get_stuff_after_login, Authentication};
+use crate::components::authentication::{Authentication, get_stuff_after_login};
 use crate::components::loading::Loading;
 use crate::components::previews::ImageLightbox;
 use crate::components::shader::BackgroundShader;
@@ -21,12 +21,12 @@ use wasm_bindgen::prelude::*;
 use web_sys::HtmlImageElement;
 
 use crate::components::{
+    SystemButtons,
     chat::Chat,
     overlays::emoji_picker::{EmojiPickerPortal, EmojiPickerState},
     overlays::gif_picker::{GifPickerPortal, GifPickerState},
     overlays::profile_card::{ProfileCardPortal, ProfileCardState},
     sidebar::Sidebar,
-    SystemButtons,
 };
 use crate::hooks::{setup_update_effect, use_tauri_event};
 use crate::state::{AppState, ProfileStore};
@@ -488,48 +488,61 @@ pub fn Notifications() -> impl IntoView {
                 each=move || active_notifications.get()
                 key=|n| n.id
                 children=move |tracked_notif| {
-                    let (title, message, bg_color, border_color) = match tracked_notif.event {
+                    let (title, message, bg_color, border_color, title_color, msg_color) = match tracked_notif.event {
                         NotificationEvent::UpdateAvailable => {
                             (
                                 "Update Available".to_string(),
                                 "A new version of the app is ready to install.".to_string(),
                                 "bg-blue-50 dark:bg-blue-950/30",
                                 "border-blue-200 dark:border-blue-900",
+                                "text-blue-800 dark:text-blue-300",
+                                "text-blue-600 dark:text-blue-400",
                             )
                         }
                         NotificationEvent::GenericNotification { title, message, level } => {
-                            let (bg, border) = match level {
+                            match level {
                                 NotificationLevel::Info => {
                                     (
-                                        "bg-green-50 dark:bg-blue-950/30",
+                                        title,
+                                        message,
+                                        "bg-green-50 dark:bg-green-950/30",
                                         "border-green-200 dark:border-green-900",
+                                        "text-green-800 dark:text-green-300",
+                                        "text-green-600 dark:text-green-400",
                                     )
                                 }
                                 NotificationLevel::Warning => {
                                     (
+                                        title,
+                                        message,
                                         "bg-yellow-50 dark:bg-yellow-950/30",
                                         "border-yellow-200 dark:border-yellow-900",
+                                        "text-yellow-800 dark:text-yellow-300",
+                                        "text-yellow-600 dark:text-yellow-400",
                                     )
                                 }
                                 NotificationLevel::Error => {
                                     (
+                                        title,
+                                        message,
                                         "bg-red-50 dark:bg-red-950/30",
                                         "border-red-200 dark:border-red-900",
+                                        "text-red-800 dark:text-red-300",
+                                        "text-red-600 dark:text-red-400",
                                     )
                                 }
-                            };
-                            (title, message, bg, border)
+                            }
                         }
                     };
 
                     view! {
                         <div class=format!(
-                            "pointer-events-auto flex flex-col border shadow-xl rounded-lg p-4 transition-all duration-300 animate-fade-in-up text-gray-900 dark:text-gray-100 {} {}",
+                            "pointer-events-auto flex flex-col border shadow-xl rounded-lg p-4 transition-all duration-300 animate-fade-in-up {} {}",
                             bg_color,
                             border_color,
                         )>
-                            <p class="text-sm font-semibold">{title}</p>
-                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{message}</p>
+                            <p class=format!("text-sm font-semibold {}", title_color)>{title}</p>
+                            <p class=format!("text-xs mt-0.5 {}", msg_color)>{message}</p>
                         </div>
                     }
                 }
