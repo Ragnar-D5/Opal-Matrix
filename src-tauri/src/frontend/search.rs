@@ -131,7 +131,7 @@ pub async fn search_rooms(
 
                         messages.sort_by_key(|msg| msg.0);
                         let messages: Vec<UiTimelineItem> =
-                            messages.into_iter().map(|(_, msg)| msg).collect();
+                            messages.into_iter().rev().map(|(_, msg)| msg).collect();
 
                         let payload: SearchResultUpdate = (search_id_clone, room_id.to_string(), messages);
 
