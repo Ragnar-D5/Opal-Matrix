@@ -4,14 +4,18 @@ use std::collections::HashMap;
 use chrono::{DateTime, Local, TimeZone};
 use leptos::{html::Div, portal::Portal, prelude::*, task::spawn_local};
 use phosphor_leptos::{
-    ARROW_BEND_UP_LEFT, ARROW_RIGHT, HASH, Icon, IconWeight, PENCIL_SIMPLE, PUSH_PIN, PUSH_PIN_SLASH, SMILEY, SPEAKER_HIGH, TRASH, WARNING_CIRCLE
+    ARROW_BEND_UP_LEFT, ARROW_RIGHT, HASH, Icon, IconWeight, PENCIL_SIMPLE, PUSH_PIN,
+    PUSH_PIN_SLASH, SMILEY, SPEAKER_HIGH, TRASH, WARNING_CIRCLE,
 };
 use shared::{
-    api::events::RecentEmoji, profile::MemberProfile, sidebar::RoomNode, timeline::{
+    api::events::RecentEmoji,
+    profile::MemberProfile,
+    sidebar::RoomNode,
+    timeline::{
         DetailState, EventContent, EventFlags, MessageContent, ReactionInfo, ReplyInfo,
         RichTextSpan, SystemMessage, UiCallIntent, UiMembershipChange, UiMessageType,
         UiTimelineItem, UiTimelineItemKind,
-    }
+    },
 };
 use wasm_bindgen::JsCast;
 use web_sys::Element;
@@ -114,35 +118,37 @@ fn MessageHeader(
         <div class="flex gap-(--gap) relative">
             <Show when=move || is_pinned.get() && !preview>
                 <div
-                    class="absolute rounded-tl-sm w-2 h-2"
-                    style="border-top: 2px solid var(--idle-color); border-left: 2px solid var(--idle-color); top: 0.125rem; left: 0.25rem;"
+                    class="absolute rounded-tl-sm rounded-bl-sm w-2.25"
+                    style="border-top: 2px solid var(--idle-color); border-left: 2px solid var(--idle-color); border-bottom: 2px solid var(--idle-color); top: 0.3125rem; bottom: 0.25rem; left: 0.25rem;"
                 ></div>
                 <div
-                    class="absolute rounded-tr-sm w-2 h-2"
-                    style="border-top: 2px solid var(--idle-color); border-right: 2px solid var(--idle-color); top: 0.125rem; right: 0.25rem;"
+                    class="absolute rounded-tr-sm rounded-br-sm w-2.25"
+                    style="border-top: 2px solid var(--idle-color); border-right: 2px solid var(--idle-color); border-bottom: 2px solid var(--idle-color); top: 0.3125rem; bottom: 0.25rem; right: 0.25rem;"
+                ></div>
+                <Show when=move || bar_color.get().is_some()>
+                    <div
+                        class="absolute w-1 rounded-full"
+                        style=move || {
+                            format!(
+                                "background-color: {}; left: 0.5rem; top: 0.5625rem; bottom: 0.5rem;",
+                                bar_color.get().unwrap_or_default(),
+                            )
+                        }
+                    ></div>
+                </Show>
+                <div
+                    class="absolute h-0.5 w-2"
+                    style="background-color: var(--idle-color); top: 0.3125rem; left: 50%; transform: translateX(-50%);"
                 ></div>
                 <div
-                    class="absolute rounded-bl-sm w-2 h-2"
-                    style="border-bottom: 2px solid var(--idle-color); border-left: 2px solid var(--idle-color); bottom: 0.25rem; left: 0.25rem;"
-                ></div>
-                <div
-                    class="absolute rounded-br-sm w-2 h-2"
-                    style="border-bottom: 2px solid var(--idle-color); border-right: 2px solid var(--idle-color); bottom: 0.25rem; right: 0.25rem;"
-                ></div>
-                <div
-                    class="absolute rounded-full w-1 h-1"
-                    style="background-color: var(--idle-color); right: 0.25rem; top: 50%; transform: translateY(-50%);"
+                    class="absolute h-0.5 w-2"
+                    style="background-color: var(--idle-color); bottom: 0.25rem; left: 50%; transform: translateX(-50%);"
                 ></div>
             </Show>
             {if !preview {
                 view! {
                     <div
-                        class="w-1 m-1 relative"
-                        class=("rounded-full", move || !is_pinned.get())
-                        class=("flex", move || is_pinned.get())
-                        class=("flex-col", move || is_pinned.get())
-                        class=("items-center", move || is_pinned.get())
-                        class=("gap-1", move || is_pinned.get())
+                        class="w-1 m-1 rounded-full"
                         style=move || {
                             if is_pinned.get() {
                                 String::new()
@@ -152,30 +158,7 @@ fn MessageHeader(
                                 "transparent".to_string()
                             }
                         }
-                    >
-                        {move || {
-                            if is_pinned.get() {
-                                let line_style = format!(
-                                    "background-color: {}",
-                                    bar_color.get().unwrap_or_else(|| "transparent".to_string()),
-                                );
-                                view! {
-                                    <div
-                                        class="rounded-full flex-1 w-1"
-                                        style=line_style.clone()
-                                    ></div>
-                                    <div
-                                        class="rounded-full w-1 h-1"
-                                        style="background-color: var(--idle-color);"
-                                    ></div>
-                                    <div class="rounded-full flex-1 w-1" style=line_style></div>
-                                }
-                                    .into_any()
-                            } else {
-                                ().into_any()
-                            }
-                        }}
-                    </div>
+                    ></div>
                 }
                     .into_any()
             } else {
@@ -1055,7 +1038,7 @@ fn MesssageButtons(
     is_pinned: Memo<bool>,
     show_delete_confirm: RwSignal<bool>,
     show_pin_confirm: RwSignal<bool>,
-    show_unpin_confirm: RwSignal<bool>
+    show_unpin_confirm: RwSignal<bool>,
 ) -> impl IntoView {
     let state: AppState = expect_context();
 
@@ -1172,7 +1155,13 @@ fn MesssageButtons(
     };
 
     let recent_emojies = move || {
-        let emojies: Vec<RecentEmoji> = state.recent_emojies.get_untracked().top.into_iter().take(3).collect();
+        let emojies: Vec<RecentEmoji> = state
+            .recent_emojies
+            .get_untracked()
+            .top
+            .into_iter()
+            .take(3)
+            .collect();
 
         (!emojies.is_empty()).then_some(emojies)
     };
@@ -1558,12 +1547,18 @@ fn render_timeline_event(
 
     let reply_room_id = room_id.clone();
 
-    let is_active = move || hovered.get() || picker_open.get() || show_delete_confirm.get() || show_pin_confirm.get() || show_unpin_confirm.get();
+    let is_active = move || {
+        hovered.get()
+            || picker_open.get()
+            || show_delete_confirm.get()
+            || show_pin_confirm.get()
+            || show_unpin_confirm.get()
+    };
 
     view! {
         <div
             node_ref=node_ref
-            class="group/msg mx-1 relative flex flex-col gap-[var(--gap)] rounded-md transform-gpu border border-transparent pt-0.75"
+            class="group/msg mx-1 relative flex flex-col gap-[var(--gap)] rounded-md transform-gpu border border-transparent"
             class=("hover:bg-black/20", !preview)
             class=("hover:border-[var(--tile-border-color)]", !preview)
             class=("mt-4", show_header && !preview)

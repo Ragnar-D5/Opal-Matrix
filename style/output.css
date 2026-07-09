@@ -584,6 +584,9 @@
   .h-0 {
     height: calc(var(--spacing) * 0);
   }
+  .h-0\.5 {
+    height: calc(var(--spacing) * 0.5);
+  }
   .h-1 {
     height: calc(var(--spacing) * 1);
   }
@@ -694,6 +697,9 @@
   }
   .w-2 {
     width: calc(var(--spacing) * 2);
+  }
+  .w-2\.25 {
+    width: calc(var(--spacing) * 2.25);
   }
   .w-3 {
     width: calc(var(--spacing) * 3);
@@ -1438,9 +1444,6 @@
   }
   .pt-0 {
     padding-top: calc(var(--spacing) * 0);
-  }
-  .pt-0\.75 {
-    padding-top: calc(var(--spacing) * 0.75);
   }
   .pt-1 {
     padding-top: calc(var(--spacing) * 1);
