@@ -1,4 +1,4 @@
-use phosphor_leptos::{Icon, IconData, IconWeight, HASH, MATRIX_LOGO, SIGN_IN, SPEAKER_HIGH};
+use phosphor_leptos::{Icon, IconData, IconWeight, BUG, HASH, MATRIX_LOGO, SIGN_IN, SPEAKER_HIGH};
 use shared::{
     profile::MemberProfile,
     sidebar::{RoomNodeInfo, ServerRoomNode, UserDevice},
@@ -11,6 +11,7 @@ use crate::{
         AudioMenu, DeafenMenu, FloatingTile, MuteMenu, SettingsIcon,
     },
     state::{AppState, CurrentSection, ProfileStore},
+    tauri_functions::open_log_window,
 };
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -725,8 +726,7 @@ pub fn Sidebar() -> impl IntoView {
             />
 
             <FloatingTile>
-                <div class="servers w-16 flex flex-col items-center pt-3 pb-3 overflow-y-auto">
-
+                <div class="servers w-16 flex flex-col items-center pt-3 pb-3 overflow-y-auto flex-grow min-h-0">
                     <div class="relative flex items-center justify-center group w-full">
                         <IndicatorPill
                             is_active=Memo::new(move |_| state.active_section.get().is_not_server())
@@ -831,6 +831,14 @@ pub fn Sidebar() -> impl IntoView {
                                 .into_any()
                         }
                     />
+                </div>
+                <div class="relative flex items-center justify-center group w-full border-t border-(--tile-border-color) pt-3 pb-3 flex-shrink-0">
+                    <div
+                        class="server-btn flex items-center justify-center w-10 h-10 rounded-[25%] cursor-pointer transition-colors bg-(--ui-solid-bg) hover:bg-(--ui-solid-hover-bg) border border-(--tile-border-color) text-(--dim-text-color) hover:text-(--accent-color)"
+                        on:click=move |_| open_log_window()
+                    >
+                        <Icon icon=BUG size="65%" weight=IconWeight::Thin />
+                    </div>
                 </div>
             </FloatingTile>
 

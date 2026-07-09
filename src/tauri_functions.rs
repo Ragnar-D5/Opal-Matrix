@@ -268,6 +268,15 @@ pub fn close_window() {
     });
 }
 
+/// Opens (or focuses) the separate live log window.
+pub fn open_log_window() {
+    spawn_local(async move {
+        if let Err(e) = call_tauri_no_args("open_log_window").await {
+            log::error!("Failed to open log window: {:?}", e);
+        }
+    });
+}
+
 pub fn minimize_window() {
     spawn_local(async move {
         if let Err(e) = call_tauri_no_args("minimize_window").await {

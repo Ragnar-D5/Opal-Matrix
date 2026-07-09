@@ -45,8 +45,13 @@
     --busy-color: #da7d9b;
     --offline-color: #6a6a6a;
 
+    --purple: #d090ff;
+    --teal: #50fbdf;
+    --blue: #5298ff;
+
     --pin-color: var(--idle-color);
     --error-color: var(--busy-color);
+    --success-color: var(--online-color);
 
     --system-button-size: 14px;
     --system-button-padding: calc(

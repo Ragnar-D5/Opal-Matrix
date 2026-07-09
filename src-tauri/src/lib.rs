@@ -21,7 +21,7 @@ use toml_edit::DocumentMut;
 use bytes::Bytes;
 use log::info;
 use tauri::{command, AppHandle, Emitter, Url};
-use tauri::{Manager, State};
+use tauri::{Manager, State, WebviewUrl, WebviewWindowBuilder};
 
 pub mod builder;
 pub(crate) mod frontend;
@@ -443,6 +443,37 @@ async fn toggle_fullscreen(app_handle: AppHandle) -> Result<(), TauriError> {
         window.set_fullscreen(true)?;
     }
     Ok(())
+}
+
+/// Opens (or focuses, if already open) a separate window showing a live view of
+/// the application logs. The window loads the same bundle with `?view=logs`, so
+/// the frontend mounts `LogView` instead of the main app.
+#[command]
+async fn open_log_window(app_handle: AppHandle) -> Result<(), TauriError> {
+    if let Some(window) = app_handle.get_webview_window("logs") {
+        window.set_focus()?;
+        return Ok(());
+    }
+
+    WebviewWindowBuilder::new(
+        &app_handle,
+        "logs",
+        WebviewUrl::App("index.html?view=logs".into()),
+    )
+    .title("Opal Logs")
+    .inner_size(1000.0, 700.0)
+    .build()?;
+
+    Ok(())
+}
+
+/// Returns the buffered log backlog (oldest first) for the log window to render
+/// on open, before it starts receiving live entries.
+#[command]
+async fn get_log_backlog(
+    buffer: State<'_, crate::state::LogBuffer>,
+) -> Result<Vec<shared::api::events::LogEntry>, TauriError> {
+    Ok(buffer.snapshot())
 }
 
 #[command]

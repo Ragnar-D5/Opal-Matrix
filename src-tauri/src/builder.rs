@@ -1,7 +1,7 @@
 use matrix_sdk::Client;
 use notify::Watcher;
 use percent_encoding::percent_decode_str;
-use shared::api::events::{NotificationEvent, NotificationLevel, SettingsUpdate};
+use shared::api::events::{LogEntry, NotificationEvent, NotificationLevel, SettingsUpdate, TauriEvent};
 use shared::synth::ProfileAudio;
 use std::collections::HashMap;
 use std::fs::{read_to_string, write};
@@ -15,7 +15,7 @@ use toml_edit::DocumentMut;
 
 use chrono::Local;
 use log::LevelFilter;
-use tauri::{App, Builder, Manager, Wry};
+use tauri::{App, Builder, Emitter, Manager, Wry};
 
 use tauri_plugin_cli::CliExt;
 use tauri_plugin_log::{Target, TargetKind};
@@ -28,7 +28,8 @@ use crate::matrix_api::media::{
     get_member_avatar, get_room_avatar, get_user_avatar,
 };
 use crate::state::{
-    AppState, AudioManager, LiveKitRoomManager, MediaManager, TaskManager, TimelineManager,
+    AppState, AudioManager, LiveKitRoomManager, LogBuffer, MediaManager, TaskManager,
+    TimelineManager,
 };
 use crate::{
     BrandColorsMap, TauriError, detect_content_type, diff_settings, send_event, send_event_logless,
@@ -47,6 +48,8 @@ pub fn add_invoke_handler(builder: Builder<Wry>) -> Builder<Wry> {
         super::minimize_window,
         super::toggle_fullscreen,
         super::backend_log,
+        super::open_log_window,
+        super::get_log_backlog,
         ipc_log::log_ipc_call,
         super::set_room_id,
         super::set_frontend_focused,
@@ -162,13 +165,29 @@ fn add_logging_plugin(
                     _ => {}
                 };
 
+                let file = record.file().unwrap_or("Unknown");
+                let line_no = record.line().unwrap_or(0);
+
+                // Buffer the line and, if the log window is open, stream it live.
+                // Buffering always happens so the window shows the full backlog
+                // whenever it is (re)opened. A raw `emit_to` is used rather than
+                // `send_event` to avoid recursing back through the logger.
+                if let Some(buffer) = handle.try_state::<LogBuffer>() {
+                    let entry = buffer.push(
+                        level.to_string(),
+                        time.clone(),
+                        file.to_string(),
+                        line_no,
+                        message.to_string(),
+                    );
+                    if handle.get_webview_window("logs").is_some() {
+                        let _ = handle.emit_to("logs", LogEntry::name().as_str(), &entry);
+                    }
+                }
+
                 out.finish(format_args!(
                     "{}|{}|{}:{}|{}",
-                    level,
-                    time,
-                    record.file().unwrap_or("Unknown"),
-                    record.line().unwrap_or(0),
-                    message
+                    level, time, file, line_no, message
                 ));
             })
             .build(),
@@ -500,7 +519,7 @@ pub fn setup_builder(builder: Builder<Wry>) -> Builder<Wry> {
             }
         };
 
-        let log_level = cli_log_level("log-level").unwrap_or(log::LevelFilter::Debug);
+        let log_level = cli_log_level("log-level").unwrap_or(log::LevelFilter::max());
         let livekit_log_level =
             cli_log_level("livekit-log-level").unwrap_or(log::LevelFilter::Off);
         let keyring_log_level =
@@ -515,6 +534,9 @@ pub fn setup_builder(builder: Builder<Wry>) -> Builder<Wry> {
             }
             Err(e) => eprintln!("Failed to initialize IPC traffic log: {:?}", e),
         }
+
+        // Managed before the logging plugin so the format closure can find it.
+        app.manage(LogBuffer::default());
 
         add_logging_plugin(app, log_dir, &start_time, log_level, livekit_log_level, keyring_log_level).map_err(|e| {
             std::io::Error::other(format!("Failed to initialize logging plugin: {:?}", e))

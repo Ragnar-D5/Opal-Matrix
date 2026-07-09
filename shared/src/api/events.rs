@@ -80,6 +80,19 @@ pub type PresenceUpdate = HashMap<String, PresenceInfo>;
 
 pub type NotificationUpdate = HashMap<String, NotificationCounts>;
 
+/// A single log line, buffered in the backend and streamed to the log window.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TauriEvent)]
+pub struct LogEntry {
+    /// Monotonic sequence number, used for ordering and de-duplication when the
+    /// live event stream and the backlog snapshot overlap.
+    pub seq: u64,
+    pub level: String,
+    pub timestamp: String,
+    pub path: String,
+    pub line: u32,
+    pub message: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TauriEvent)]
 pub struct SettingsUpdate {
     pub key: String,

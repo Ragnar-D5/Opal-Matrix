@@ -7,9 +7,14 @@ use matrix_sdk_ui::{Timeline, timeline::{
 use ringbuf::{HeapProd, HeapRb, traits::{Consumer, Observer, Split}};
 use tauri_plugin_updater::Update;
 use std::{
-    collections::{HashMap, HashSet},
-    sync::{Arc, Mutex as SyncMutex},
+    collections::{HashMap, HashSet, VecDeque},
+    sync::{
+        Arc, Mutex as SyncMutex,
+        atomic::{AtomicU64, Ordering},
+    },
 };
+
+use shared::api::events::LogEntry;
 use tauri::{AppHandle, async_runtime::{Mutex, RwLock}};
 use tokio::{sync::mpsc::{self, UnboundedReceiver, UnboundedSender}, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
@@ -22,6 +27,67 @@ pub struct AppState {
     pub frontend_current_room_id: RwLock<Option<String>>,
     pub frontend_is_focused: RwLock<bool>,
     pub update: RwLock<Option<Update>>,
+}
+
+/// In-memory ring buffer of recent log lines. Every log record is pushed here
+/// (regardless of whether the log window is open) so the window can show the
+/// full backlog as soon as it opens. See `builder::add_logging_plugin`.
+pub struct LogBuffer {
+    entries: SyncMutex<VecDeque<LogEntry>>,
+    seq: AtomicU64,
+    capacity: usize,
+}
+
+impl LogBuffer {
+    pub fn new(capacity: usize) -> Self {
+        Self {
+            entries: SyncMutex::new(VecDeque::with_capacity(capacity)),
+            seq: AtomicU64::new(0),
+            capacity,
+        }
+    }
+
+    /// Assigns the next sequence number, stores the entry (evicting the oldest
+    /// once at capacity) and returns the stored entry for emitting to the window.
+    pub fn push(
+        &self,
+        level: String,
+        timestamp: String,
+        path: String,
+        line: u32,
+        message: String,
+    ) -> LogEntry {
+        let seq = self.seq.fetch_add(1, Ordering::Relaxed);
+        let entry = LogEntry {
+            seq,
+            level,
+            timestamp,
+            path,
+            line,
+            message,
+        };
+        if let Ok(mut entries) = self.entries.lock() {
+            while entries.len() >= self.capacity {
+                entries.pop_front();
+            }
+            entries.push_back(entry.clone());
+        }
+        entry
+    }
+
+    /// Oldest-to-newest snapshot of the current buffer contents.
+    pub fn snapshot(&self) -> Vec<LogEntry> {
+        self.entries
+            .lock()
+            .map(|entries| entries.iter().cloned().collect())
+            .unwrap_or_default()
+    }
+}
+
+impl Default for LogBuffer {
+    fn default() -> Self {
+        Self::new(10_000)
+    }
 }
 
 type TimelineKey = (OwnedRoomId, Option<OwnedEventId>);
