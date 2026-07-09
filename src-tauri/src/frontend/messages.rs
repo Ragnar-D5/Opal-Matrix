@@ -456,7 +456,7 @@ pub async fn get_timeline(
 
 #[command(rename_all = "snake_case")]
 pub async fn toggle_reaction(
-    matrix_client: State<'_, RwLock<MatrixClient>>,
+    client: State<'_, RwLock<MatrixClient>>,
     timeline_manager: State<'_, TimelineManager>,
     room_id: String,
     event_id: String,
@@ -468,9 +468,9 @@ pub async fn toggle_reaction(
         event_id,
         room_id
     );
-    let room = matrix_client
-        .read()
-        .await
+    let client = client.read().await;
+
+    let room = client
         .get_room(&RoomId::parse(&room_id)?)
         .ok_or("No room found")?;
 
@@ -479,9 +479,23 @@ pub async fn toggle_reaction(
         .get_or_create_timeline(&room, Some(event_id.clone()))
         .await?;
 
+
+    let own_id = client.user_id().ok_or("No user ID found")?.to_owned();
+
+    let mut is_adding = true;
+    if let Some(item) = timeline.item_by_event_id(&event_id).await
+    && let Some(reactions) = item.content().reactions()
+    && reactions.get(&reaction).map(|r| r.contains_key(&own_id)).unwrap_or(false) {
+        is_adding = false;
+    }
+
     timeline
         .toggle_reaction(&TimelineEventItemId::EventId(event_id), &reaction)
         .await?;
+
+    if is_adding {
+        client.account().add_recent_emoji(&reaction).await?;
+    }
 
     Ok(())
 }

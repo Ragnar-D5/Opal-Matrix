@@ -111,6 +111,7 @@ pub async fn on_recent_emoji_update(update: RecentEmojiEvent, handle: Ctx<AppHan
         })
         .collect();
 
+    log::debug!("Sending recent emoji update");
     send_event(
         &handle,
         &RecentEmojies {
