@@ -1,36 +1,38 @@
-use matrix_sdk::RoomState;
-use matrix_sdk::ruma::OwnedRoomId;
 use matrix_sdk::ruma::events::direct::DirectEventContent;
+use matrix_sdk::ruma::OwnedRoomId;
+use matrix_sdk::RoomState;
 use matrix_sdk::{
-    Client as MatrixClient, SessionChange, config::SyncSettings, ruma::presence::PresenceState,
+    config::SyncSettings, ruma::presence::PresenceState, Client as MatrixClient, SessionChange,
 };
+use shared::api::events::{RecentEmoji, RecentEmojies};
 use shared::sidebar::{DmList, RoomMapUpdate, RoomNode, ServerList, SingleList};
 use shared::synth::ProfileAudio;
 use std::collections::{HashMap, HashSet};
 use std::pin::pin;
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, async_runtime::spawn};
+use tauri::{async_runtime::spawn, AppHandle};
 
 use crate::frontend::profiles::handle_typing_notice;
 use crate::frontend::sidebar::{
     compute_dm_order, compute_single_order, convert_room_to_node, get_unknown_children,
     handle_account_data, spawn_all_children_update,
 };
+use crate::matrix_api::account_data::on_recent_emoji_update;
 use crate::matrix_api::matrixrtc::handle_call_member_change;
 use crate::send_event;
 use crate::settings::handle_account_data_event;
 use crate::{
-    TauriError,
     frontend::{
         presence::handle_presences,
         profiles::{on_member_update, send_all_members},
         sidebar::{extract_call_memberships, handle_room_updates},
     },
     matrix_api::{
-        keyring::{StoredSession, save_session},
+        keyring::{save_session, StoredSession},
         matrixrtc::{cleanup_ghost_calls, handle_to_device_messages},
-        profile::{ProfileDebounce, client_user_profile_event_handle, send_user_to_frontend},
+        profile::{client_user_profile_event_handle, send_user_to_frontend, ProfileDebounce},
     },
+    TauriError,
 };
 use futures_util::StreamExt;
 
@@ -98,6 +100,35 @@ pub async fn attach_callbacks(
     if let Some(data) = extract_call_memberships(&rooms).await {
         send_event(handle, &data);
     }
+
+    let mut emojies = client.account().get_recent_emojis(false).await?;
+    let all_by_recency = emojies
+        .clone()
+        .iter()
+        .map(|(e, t)| RecentEmoji {
+            emoji: e.clone(),
+            total: (*t).into(),
+        })
+        .collect();
+
+    emojies.sort_by_key(|(_, t)| *t);
+
+    let top = emojies
+        .iter()
+        .take(5)
+        .map(|(e, t)| RecentEmoji {
+            emoji: e.clone(),
+            total: (*t).into(),
+        })
+        .collect();
+
+    send_event(
+        handle,
+        &RecentEmojies {
+            top,
+            all_by_recency,
+        },
+    );
 
     let client_sync_clone = client.clone();
     let handle_clone = handle.clone();
@@ -273,6 +304,7 @@ pub async fn attach_callbacks(
     client.add_event_handler(handle_call_member_change);
     client.add_event_handler(handle_typing_notice);
     client.add_event_handler(handle_account_data_event);
+    client.add_event_handler(on_recent_emoji_update);
 
     Ok(())
 }

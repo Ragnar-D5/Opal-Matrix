@@ -5,7 +5,7 @@ use log::error;
 use serde_json::json;
 use shared::{
     account_data::{Breadcrumbs, ServerOrder},
-    api::{AudioDeviceInfos, SearchParameters},
+    api::{AudioDeviceInfos, SearchParameters, events::RecentEmojies},
     profile::{CustomProperties, MemberProfile, PresenceInfo, RoomProfile, UserProfile},
     sidebar::{
         DmList, NotificationCounts, RoomNode, ServerList, ServerRoomNode, SingleList,
@@ -96,6 +96,8 @@ pub struct AppState {
     pub typing_users: RwSignal<HashMap<String, ArcRwSignal<Vec<String>>>>,
 
     pub audio_devices: RwSignal<AudioDeviceInfos>,
+
+    pub recent_emojies: RwSignal<RecentEmojies>
 }
 
 #[derive(Debug, Clone, PartialEq)]

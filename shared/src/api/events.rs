@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use macros::TauriEvent;
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
@@ -108,3 +108,15 @@ pub type SearchResultUpdate = (Uuid, String, Vec<UiTimelineItem>);
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TauriEvent)]
 pub struct RoomPinnedUpdate(pub (String, Vec<String>));
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct RecentEmoji {
+    pub emoji: String,
+    pub total: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TauriEvent, Default)]
+pub struct RecentEmojies {
+    pub top: Vec<RecentEmoji>,
+    pub all_by_recency: Vec<RecentEmoji>,
+}

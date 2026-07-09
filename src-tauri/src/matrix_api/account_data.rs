@@ -1,10 +1,16 @@
 use serde::{Deserialize, Serialize};
-use shared::account_data::{Breadcrumbs, ServerOrder};
-use tauri::command;
+use shared::{
+    account_data::{Breadcrumbs, ServerOrder},
+    api::events::{RecentEmoji, RecentEmojies},
+};
+use tauri::{command, AppHandle};
 
-use crate::{MatrixClientState, TauriError};
+use crate::{send_event, MatrixClientState, TauriError};
 
-use matrix_sdk::ruma::events::macros::EventContent;
+use matrix_sdk::{
+    event_handler::Ctx,
+    ruma::events::{macros::EventContent, recent_emoji::RecentEmojiEvent},
+};
 
 #[derive(Clone, Debug, Serialize, Deserialize, EventContent)]
 #[ruma_event(type = "org.opal-matrix.breadcrumbs", kind = GlobalAccountData)]
@@ -80,4 +86,36 @@ pub async fn set_server_order(
     client.account().set_account_data(content).await?;
 
     Ok(())
+}
+
+pub async fn on_recent_emoji_update(update: RecentEmojiEvent, handle: Ctx<AppHandle>) {
+    let all_by_recency = update
+        .content
+        .recent_emoji
+        .clone()
+        .iter()
+        .map(|re| RecentEmoji {
+            emoji: re.emoji.clone(),
+            total: re.total.into(),
+        })
+        .collect();
+
+    let top = update
+        .content
+        .recent_emoji_sorted_by_total()
+        .iter()
+        .take(5)
+        .map(|re| RecentEmoji {
+            emoji: re.emoji.clone(),
+            total: re.total.into(),
+        })
+        .collect();
+
+    send_event(
+        &handle,
+        &RecentEmojies {
+            top,
+            all_by_recency,
+        },
+    );
 }

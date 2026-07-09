@@ -574,6 +574,10 @@
   .aspect-video {
     aspect-ratio: var(--aspect-video);
   }
+  .size-5 {
+    width: calc(var(--spacing) * 5);
+    height: calc(var(--spacing) * 5);
+  }
   .h-\(--header-height\) {
     height: var(--header-height);
   }
@@ -732,6 +736,9 @@
   }
   .w-100 {
     width: calc(var(--spacing) * 100);
+  }
+  .w-\[1px\] {
+    width: 1px;
   }
   .w-\[2px\] {
     width: 2px;
@@ -999,6 +1006,9 @@
   }
   .self-start {
     align-self: flex-start;
+  }
+  .self-stretch {
+    align-self: stretch;
   }
   .truncate {
     overflow: hidden;

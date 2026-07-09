@@ -7,13 +7,11 @@ use phosphor_leptos::{
     ARROW_BEND_UP_LEFT, ARROW_RIGHT, HASH, Icon, IconWeight, PENCIL_SIMPLE, PUSH_PIN, PUSH_PIN_SLASH, SMILEY, SPEAKER_HIGH, TRASH, WARNING_CIRCLE
 };
 use shared::{
-    profile::MemberProfile,
-    sidebar::RoomNode,
-    timeline::{
+    api::events::RecentEmoji, profile::MemberProfile, sidebar::RoomNode, timeline::{
         DetailState, EventContent, EventFlags, MessageContent, ReactionInfo, ReplyInfo,
         RichTextSpan, SystemMessage, UiCallIntent, UiMembershipChange, UiMessageType,
         UiTimelineItem, UiTimelineItemKind,
-    },
+    }
 };
 use wasm_bindgen::JsCast;
 use web_sys::Element;
@@ -678,13 +676,7 @@ fn render_reactions(
                         };
                         let r_id = btn_room_id.clone();
                         let async_emoji = emoji.clone();
-                        leptos::task::spawn_local(async move {
-                            let _ = toggle_reaction(&r_id, &e_id, &async_emoji)
-                                .await
-                                .map_err(|e| {
-                                    log::error!("Failed to toggle reaction: {}", e);
-                                });
-                        });
+                        toggle_reaction(&r_id, &e_id, &async_emoji);
                     }
                 >
                     <span class="text-sm leading-none pl-1">{emoji.clone()}</span>
@@ -1065,26 +1057,30 @@ fn MesssageButtons(
     show_pin_confirm: RwSignal<bool>,
     show_unpin_confirm: RwSignal<bool>
 ) -> impl IntoView {
+    let state: AppState = expect_context();
+
+    let event_id = Memo::new(move |_| event_id.clone());
+    let room_id = Memo::new(move |_| room_id.clone());
+
     let no_buttons = move || {
         let f = flags.get();
-        !f.is_reactable && !f.can_be_replied_to && !f.is_editable
+        !f.is_reactable && !f.can_be_replied_to && !f.is_editable && event_id.get().is_none()
     };
 
     let important_event_id: RwSignal<Option<String>> = expect_context();
 
-    let react_event_id = event_id.clone();
-    let react_room_id = room_id.clone();
     let react = move |ev: web_sys::MouseEvent| {
         let emoji_state: EmojiPickerState = expect_context();
         let anchor: Element = ev.target().unwrap().unchecked_into();
 
-        let Some(event_id) = react_event_id.clone() else {
+        let Some(event_id) = event_id.get() else {
             return;
         };
 
-        let room_id = react_room_id.clone();
+        let room_id = room_id.get();
 
         picker_open.set(true);
+
         spawn_local(async move {
             let picked = pick_emoji(&anchor, emoji_state).await;
             picker_open.set(false);
@@ -1092,19 +1088,17 @@ fn MesssageButtons(
             let Some(emoji) = picked else {
                 return;
             };
-            if let Err(e) = toggle_reaction(&room_id, &event_id, &emoji).await {
-                log::error!("Failed to toggle reaction: {}", e);
-            }
+
+            toggle_reaction(&room_id, &event_id, &emoji);
         });
     };
 
-    let reply_event_id = event_id.clone();
     let reply = move |_| {
         let input_info: RwSignal<Option<ChatInputInfo>> = expect_context();
         let input_ref: NodeRef<Div> = expect_context();
         let sender_id = sender_id.clone();
 
-        let Some(event_id) = reply_event_id.clone() else {
+        let Some(event_id) = event_id.get() else {
             return;
         };
 
@@ -1116,8 +1110,6 @@ fn MesssageButtons(
         input_ref.get().map(|el| el.focus().ok());
     };
 
-    let edit_room_id = room_id.clone();
-    let edit_event_id = event_id.clone();
     let edit = move |_| {
         let input_info: RwSignal<Option<ChatInputInfo>> = expect_context();
         let attachments: RwSignal<Vec<Attachment>> = expect_context();
@@ -1125,7 +1117,7 @@ fn MesssageButtons(
         let store: ProfileStore = expect_context();
         let is_empty: RwSignal<bool> = expect_context();
 
-        let Some(event_id) = edit_event_id.clone() else {
+        let Some(event_id) = event_id.get() else {
             return;
         };
 
@@ -1139,7 +1131,7 @@ fn MesssageButtons(
             el.set_inner_html(&richt_text_spans_to_html(
                 &spans,
                 store.clone(),
-                edit_room_id.clone(),
+                room_id.get(),
             ));
             is_empty.set(false);
             move_caret_to_end(&el);
@@ -1148,13 +1140,11 @@ fn MesssageButtons(
 
     let interacting = move || picker_open.get() || show_delete_confirm.get();
 
-    let delete_event_id = event_id.clone();
-    let delete_room_id = room_id.clone();
     let on_delete_confirm = Callback::new(move |_| {
-        let Some(event_id) = delete_event_id.clone() else {
+        let Some(event_id) = event_id.get() else {
             return;
         };
-        let room_id = delete_room_id.clone();
+        let room_id = room_id.get();
 
         spawn_local(async move {
             if let Err(e) = delete_message(&room_id, &event_id).await {
@@ -1181,8 +1171,37 @@ fn MesssageButtons(
         }
     };
 
-    let event_id = Memo::new(move |_| event_id.clone());
-    let room_id = Memo::new(move |_| room_id.clone());
+    let recent_emojies = move || {
+        let emojies: Vec<RecentEmoji> = state.recent_emojies.get().top.into_iter().take(3).collect();
+
+        (!emojies.is_empty()).then_some(emojies)
+    };
+
+    let emopjies_view = move || {
+        recent_emojies().unwrap_or_default().into_iter().map(|re| {
+            let Some(event_id) = event_id.get() else {
+                return ().into_any();
+            };
+
+            let emoji = re.emoji;
+            let room_id = room_id.get();
+
+            view! {
+                <button
+                    class="hover:bg-(--ui-solid-hover-bg) cursor-pointer p-0.5 rounded-(--gap) hover:text-normal transition-colors duration-100"
+                    on:click=move |_| {
+                        let room_id = room_id.clone();
+                        let emoji = emoji.clone();
+                        toggle_reaction(&room_id, &event_id, &emoji);
+                    }
+                >
+                    <span class="flex items-center justify-center size-5 text-sm leading-none">
+                        {emoji.clone()}
+                    </span>
+                </button>
+            }.into_any()
+        }).collect_view()
+    };
 
     view! {
         <div
@@ -1190,10 +1209,15 @@ fn MesssageButtons(
             class=("hidden", no_buttons)
             style:opacity=move || interacting().then_some("1")
         >
+            <Show when=move || {
+                flags.get().is_reactable && recent_emojies().is_some()
+            }>
+                {emopjies_view} <div class="w-[1px] self-stretch bg-(--tile-border-color)"></div>
+            </Show>
             <Show when=move || { flags.get().is_reactable }>
                 <button
                     class="hover:bg-(--ui-solid-hover-bg) cursor-pointer p-0.5 rounded-(--gap) hover:text-normal transition-colors duration-100"
-                    on:click=react.clone()
+                    on:click=react
                 >
                     <Icon icon=SMILEY size="20px"></Icon>
                 </button>
@@ -1209,7 +1233,7 @@ fn MesssageButtons(
             <Show when=move || { flags.get().is_editable }>
                 <button
                     class="hover:bg-(--ui-solid-hover-bg) cursor-pointer p-0.5 rounded-(--gap) hover:text-normal transition-colors duration-100"
-                    on:click=edit.clone()
+                    on:click=edit
                 >
                     <Icon icon=PENCIL_SIMPLE size="20px"></Icon>
                 </button>

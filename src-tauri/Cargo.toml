@@ -44,6 +44,7 @@ matrix-sdk = {
   features = [
     "anyhow",
     "e2e-encryption",
+    "experimental-element-recent-emojis",
     "experimental-search",
     "experimental-send-custom-to-device",
     "sqlite"

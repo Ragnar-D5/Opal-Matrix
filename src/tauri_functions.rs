@@ -127,17 +127,22 @@ pub async fn scroll_timeline(
     Ok(has_more)
 }
 
-pub async fn toggle_reaction(room_id: &str, event_id: &str, reaction: &str) -> Result<(), String> {
-    let args = serde_wasm_bindgen::to_value(
+pub fn toggle_reaction(room_id: &str, event_id: &str, reaction: &str) {
+    let args = match serde_wasm_bindgen::to_value(
         &json!({ "room_id": room_id, "event_id": event_id, "reaction": reaction }),
-    )
-    .map_err(|e| format!("Failed to serialize request: {:?}", e))?;
+    ) {
+        Ok(value) => value,
+        Err(e) => {
+            log::error!("Failed to serialize request: {:?}", e);
+            return;
+        }
+    };
 
-    call_tauri("toggle_reaction", args)
-        .await
-        .map_err(|e| format!("Tauri call failed: {:?}", e))?;
-
-    Ok(())
+    spawn_local(async move {
+        if let Err(e) = call_tauri("toggle_reaction", args).await {
+            log::error!("Tauri call failed: {:?}", e);
+        }
+    });
 }
 
 pub async fn pick_files() -> Result<Vec<FileMetadata>, String> {

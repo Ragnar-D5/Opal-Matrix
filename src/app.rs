@@ -1,11 +1,11 @@
-use crate::components::authentication::{Authentication, get_stuff_after_login};
+use crate::components::authentication::{get_stuff_after_login, Authentication};
 use crate::components::loading::Loading;
 use crate::components::previews::ImageLightbox;
 use crate::components::shader::BackgroundShader;
 use chrono::{DateTime, Local};
 use shared::api::events::{
     CallMemberUpdate, NotificationEvent, NotificationLevel, NotificationUpdate, PresenceUpdate,
-    ProfileUpdates, RoomPinnedUpdate, TypingUpdate,
+    ProfileUpdates, RecentEmojies, RoomPinnedUpdate, TypingUpdate,
 };
 use shared::api::{AudioDeviceInfos, RestoreResponse};
 use shared::sidebar::{DmList, RoomMapUpdate, ServerList, SingleList};
@@ -21,12 +21,12 @@ use wasm_bindgen::prelude::*;
 use web_sys::HtmlImageElement;
 
 use crate::components::{
-    SystemButtons,
     chat::Chat,
     overlays::emoji_picker::{EmojiPickerPortal, EmojiPickerState},
     overlays::gif_picker::{GifPickerPortal, GifPickerState},
     overlays::profile_card::{ProfileCardPortal, ProfileCardState},
     sidebar::Sidebar,
+    SystemButtons,
 };
 use crate::hooks::{setup_update_effect, use_tauri_event};
 use crate::state::{AppState, ProfileStore};
@@ -245,6 +245,12 @@ pub fn App() -> impl IntoView {
 
     setup_update_effect(audio_device_update, move |update| {
         state.audio_devices.set(update);
+    });
+
+    let recent_emoji_update: ReadSignal<Option<RecentEmojies>> = use_tauri_event();
+
+    setup_update_effect(recent_emoji_update, move |update| {
+        state.recent_emojies.set(update);
     });
 
     let room_map_event: ReadSignal<Option<Vec<RoomMapUpdate>>> = use_tauri_event();
