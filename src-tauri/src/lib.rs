@@ -9,9 +9,9 @@ use matrix_sdk::search_index::SearchIndexStoreKind;
 use matrix_sdk::{
     AuthSession, Client as MatrixClient, SessionMeta, SessionTokens, SqliteStoreConfig,
 };
+use shared::api::RestoreResponse;
 use shared::api::errors::LoginError;
 use shared::api::events::TauriEvent;
-use shared::api::RestoreResponse;
 use shared::synth::ProfileAudio;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -38,7 +38,7 @@ pub const APP_NAME: &str = "opal-matrix";
 use tauri_plugin_notification::{NotificationExt, PermissionState};
 
 use crate::builder::{add_invoke_handler, register_mxc_uri, setup_builder};
-use crate::matrix_api::keyring::{self, get_or_create_store_key, init_keyring, StoredSession};
+use crate::matrix_api::keyring::{self, StoredSession, get_or_create_store_key, init_keyring};
 use crate::state::{AppState, TimelineManager};
 use crate::sync::attach_callbacks;
 
@@ -508,7 +508,7 @@ async fn set_frontend_focused(
 #[command(rename_all = "snake_case")]
 async fn backend_log(
     level: String,
-    timestamp: String,
+    _timestamp: String,
     path: String,
     line: Option<u32>,
     message: String,
@@ -522,11 +522,9 @@ async fn backend_log(
         _ => log::Level::Info,
     };
 
-    let combined_message = format!("[FE Time: {}] {}", timestamp, message);
-
     log::logger().log(
         &log::Record::builder()
-            .args(format_args!("{}", combined_message))
+            .args(format_args!("{}", message))
             .level(level)
             .target(module_path!())
             .file(Some(path.as_str()))
