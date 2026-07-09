@@ -34,7 +34,7 @@ use matrix_sdk::ruma::{
 use scraper::{Html, Node};
 use shared::{
     api::{FileMetadata, GetTimelineResult, ScrollDirection, UiAttachmentSource},
-    timeline::{UiTimelineItem, coalesce_diffs},
+    timeline::{EventContent, UiTimelineItem, coalesce_diffs},
 };
 use tauri::{AppHandle, State, command};
 use tokio::sync::RwLock;
@@ -42,7 +42,9 @@ use uuid::Uuid;
 
 use crate::{
     TauriError,
-    frontend::timeline::{timeline_diff_to_ui, timeline_item_content_to_ui, timeline_item_to_ui},
+    frontend::timeline::{
+        load_reply_info, timeline_diff_to_ui, timeline_item_content_to_ui, timeline_item_to_ui,
+    },
     send_event,
     state::{MediaManager, TaskManager, TimelineManager},
 };
@@ -560,14 +562,24 @@ pub async fn get_pinned_events(
         };
         let ts: u64 = ts.as_secs().into();
 
+        let reply_info = load_reply_info(&room, event.raw()).await;
+
         let Some(content) = TimelineItemContent::from_event(&room, event).await else {
             continue;
         };
 
+        let mut ui_content =
+            timeline_item_content_to_ui(&content, &mut media_store, None, &mut HashSet::new());
+
+        if let EventContent::MsgLike(msg) = &mut ui_content
+            && reply_info.is_some()
+        {
+            msg.in_reply_to = reply_info;
+        }
+
         messages.push((
             ts,
-            timeline_item_content_to_ui(&content, &mut media_store, None, &mut HashSet::new())
-                .to_timeline_item(event_id.to_string(), sender.to_string(), ts),
+            ui_content.to_timeline_item(event_id.to_string(), sender.to_string(), ts),
         ));
     }
 
@@ -577,4 +589,40 @@ pub async fn get_pinned_events(
     let messages = messages.into_iter().map(|(_, msg)| msg).collect();
 
     Ok(messages)
+}
+
+#[command(rename_all = "snake_case")]
+pub async fn pin_event(
+    matrix_client: State<'_, RwLock<MatrixClient>>,
+    room_id: String,
+    event_id: String,
+) -> Result<(), TauriError> {
+    let client = matrix_client.read().await;
+    let room = client
+        .get_room(&RoomId::parse(&room_id)?)
+        .ok_or("Room not found")?;
+
+    let event_id = EventId::parse(event_id)?;
+
+    room.pin_event(&event_id).await?;
+
+    Ok(())
+}
+
+#[command(rename_all = "snake_case")]
+pub async fn unpin_event(
+    matrix_client: State<'_, RwLock<MatrixClient>>,
+    room_id: String,
+    event_id: String,
+) -> Result<(), TauriError> {
+    let client = matrix_client.read().await;
+    let room = client
+        .get_room(&RoomId::parse(&room_id)?)
+        .ok_or("Room not found")?;
+
+    let event_id = EventId::parse(event_id)?;
+
+    room.unpin_event(&event_id).await?;
+
+    Ok(())
 }

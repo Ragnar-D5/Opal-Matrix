@@ -4,8 +4,7 @@ use std::collections::HashMap;
 use chrono::{DateTime, Local, TimeZone};
 use leptos::{html::Div, portal::Portal, prelude::*, task::spawn_local};
 use phosphor_leptos::{
-    ARROW_BEND_UP_LEFT, ARROW_RIGHT, HASH, Icon, IconWeight, PENCIL_SIMPLE, SMILEY, SPEAKER_HIGH,
-    TRASH, WARNING_CIRCLE,
+    ARROW_BEND_UP_LEFT, ARROW_RIGHT, HASH, Icon, IconWeight, PENCIL_SIMPLE, PUSH_PIN, PUSH_PIN_SLASH, SMILEY, SPEAKER_HIGH, TRASH, WARNING_CIRCLE
 };
 use shared::{
     profile::MemberProfile,
@@ -32,7 +31,7 @@ use crate::{
         user_profile::MemberProfileExt,
     },
     state::{AppState, LighboxImage, ProfileStore},
-    tauri_functions::{delete_message, toggle_reaction},
+    tauri_functions::{delete_message, pin_event, toggle_reaction, unpin_event},
 };
 
 #[component]
@@ -163,7 +162,10 @@ fn MessageHeader(
                                     bar_color.get().unwrap_or_else(|| "transparent".to_string()),
                                 );
                                 view! {
-                                    <div class="rounded-full flex-1 w-1" style=line_style.clone()></div>
+                                    <div
+                                        class="rounded-full flex-1 w-1"
+                                        style=line_style.clone()
+                                    ></div>
                                     <div
                                         class="rounded-full w-1 h-1"
                                         style="background-color: var(--idle-color);"
@@ -180,7 +182,8 @@ fn MessageHeader(
                     .into_any()
             } else {
                 ().into_any()
-            }} <div class="shrink-0 mr-2 w-[40px] relative flex flex-col">
+            }}
+            <div class="shrink-0 mr-2 w-[40px] relative flex flex-col">
                 <Show when=move || has_reply>
                     <div class="absolute left-[calc(50%-1px)] right-[-8px] top-2 h-4 border-l-2 border-t-2 border-white/20 rounded-tl-md -z-10"></div>
                 </Show>
@@ -196,7 +199,8 @@ fn MessageHeader(
                         ().into_any()
                     }}
                 </div>
-            </div> <div class="flex flex-col min-w-0 flex-1">
+            </div>
+            <div class="flex flex-col min-w-0 flex-1">
                 <ReplyPreview
                     reply_info=reply_info
                     active_room_id=active_room_id
@@ -886,15 +890,13 @@ fn render_system_message(
                             on:click=move |_| jump_target.set(pinned_events.last().cloned())
                         >
                             "a message"
-                        </span>
-                        <span>" to this room. See all "</span>
+                        </span> <span>" to this room. See all "</span>
                         <span
                             class="cursor-pointer underline font-bold text-normal"
                             on:click=move |_| pinned_result.set(Some(Vec::new()))
                         >
                             "pinned messages"
-                        </span>
-                        <span>"."</span>
+                        </span> <span>"."</span>
                     </div>
                 }.into_any()
             }
@@ -1058,7 +1060,10 @@ fn MesssageButtons(
     sender_id: String,
     item_sig: RwSignal<UiTimelineItem>,
     picker_open: RwSignal<bool>,
+    is_pinned: Memo<bool>,
     show_delete_confirm: RwSignal<bool>,
+    show_pin_confirm: RwSignal<bool>,
+    show_unpin_confirm: RwSignal<bool>
 ) -> impl IntoView {
     let no_buttons = move || {
         let f = flags.get();
@@ -1158,6 +1163,27 @@ fn MesssageButtons(
         });
     });
 
+    let pin_icon = move || {
+        let icon = if is_pinned.get() {
+            PUSH_PIN_SLASH
+        } else {
+            PUSH_PIN
+        };
+
+        view! { <Icon icon=icon size="20px" /> }
+    };
+
+    let on_pin_click = move |_| {
+        if is_pinned.get() {
+            show_unpin_confirm.set(true);
+        } else {
+            show_pin_confirm.set(true);
+        }
+    };
+
+    let event_id = Memo::new(move |_| event_id.clone());
+    let room_id = Memo::new(move |_| room_id.clone());
+
     view! {
         <div
             class="absolute -top-4 right-4 z-10 transform-gpu flex items-center gap-1 bg-(--ui-solid-bg) p-1 rounded-(--gap) text-muted text-xs border border-(--tile-border-color) opacity-0 group-hover/msg:opacity-100"
@@ -1166,7 +1192,7 @@ fn MesssageButtons(
         >
             <Show when=move || { flags.get().is_reactable }>
                 <button
-                    class="hover:bg-(--ui-solid-hover-bg) cursor-pointer p-0.5 rounded-(--gap) hover:text-normal"
+                    class="hover:bg-(--ui-solid-hover-bg) cursor-pointer p-0.5 rounded-(--gap) hover:text-normal transition-colors duration-100"
                     on:click=react.clone()
                 >
                     <Icon icon=SMILEY size="20px"></Icon>
@@ -1174,7 +1200,7 @@ fn MesssageButtons(
             </Show>
             <Show when=move || { flags.get().can_be_replied_to }>
                 <button
-                    class="hover:bg-(--ui-solid-hover-bg) cursor-pointer p-0.5 rounded-(--gap) hover:text-normal"
+                    class="hover:bg-(--ui-solid-hover-bg) cursor-pointer p-0.5 rounded-(--gap) hover:text-normal transition-colors duration-100"
                     on:click=reply.clone()
                 >
                     <Icon icon=ARROW_BEND_UP_LEFT size="20px"></Icon>
@@ -1182,15 +1208,21 @@ fn MesssageButtons(
             </Show>
             <Show when=move || { flags.get().is_editable }>
                 <button
-                    class="hover:bg-(--ui-solid-hover-bg) cursor-pointer p-0.5 rounded-(--gap) hover:text-normal"
+                    class="hover:bg-(--ui-solid-hover-bg) cursor-pointer p-0.5 rounded-(--gap) hover:text-normal transition-colors duration-100"
                     on:click=edit.clone()
                 >
                     <Icon icon=PENCIL_SIMPLE size="20px"></Icon>
                 </button>
             </Show>
+            <button
+                class="hover:bg-(--pin-color) hover:text(--ui-solid-bg) cursor-pointer p-0.5 rounded-(--gap) transition-colors duration-100"
+                on:click=on_pin_click
+            >
+                {pin_icon}
+            </button>
             <Show when=move || { flags.get().is_deletable }>
                 <button
-                    class="hover:bg-(--ui-solid-hover-bg) cursor-pointer p-0.5 rounded-(--gap) hover:text-red-500"
+                    class="hover:bg-(--delete-color) hover:text-(--ui-solid-bg) cursor-pointer p-0.5 rounded-(--gap) transition-colors duration-100"
                     on:click=move |_| show_delete_confirm.set(true)
                 >
                     <Icon icon=TRASH size="20px"></Icon>
@@ -1198,7 +1230,7 @@ fn MesssageButtons(
             </Show>
         </div>
         <ConfirmDialog show=show_delete_confirm class="w-100">
-            <p class="text-bright text-xl font-bold">"Delete message"</p>
+            <p class="text-normal text-xl font-bold">"Delete message"</p>
             <p class="text-muted">"Are you sure you want to delete this message?"</p>
             <div class="my-2 p-2 bg-(--ui-floating-bg) border border-(--tile-border-color) rounded-(--gap)">
                 {render_timeline_item(
@@ -1217,13 +1249,77 @@ fn MesssageButtons(
                     "Cancel"
                 </button>
                 <button
-                    class="px-4 py-1.5 rounded-(--ui-border-radius) text-sm bg-red-600 hover:bg-red-700 text-white cursor-pointer font-semibold flex flex-grow items-center justify-center"
+                    class="px-4 py-1.5 rounded-(--ui-border-radius) text-(--ui-solid-bg) text-sm cursor-pointer font-semibold flex flex-grow items-center justify-center bg-(--delete-color)"
                     on:click=move |_| {
                         show_delete_confirm.set(false);
                         on_delete_confirm.run(());
                     }
                 >
                     "Delete"
+                </button>
+            </div>
+        </ConfirmDialog>
+        <ConfirmDialog show=show_pin_confirm class="w-100">
+            <p class="text-normal text-xl font-bold">"Pin message"</p>
+            <p class="text-muted">"Are you sure you want to pin this message?"</p>
+            <div class="my-2 p-2 bg-(--ui-floating-bg) border border-(--tile-border-color) rounded-(--gap)">
+                {render_timeline_item(
+                    item_sig,
+                    true,
+                    true,
+                    Callback::new(|_| {}),
+                    RwSignal::new(None),
+                )}
+            </div>
+            <div class="flex gap-2 pt-2 justify-end w-full">
+                <button
+                    class="px-4 py-1.5 rounded-(--ui-border-radius) text-sm bg-(--ui-solid-hover-bg) hover:bg-(--ui-floating-hover-bg) text-normal cursor-pointer border border-(--tile-border-color) flex flex-grow items-center justify-center"
+                    on:click=move |_| show_pin_confirm.set(false)
+                >
+                    "Cancel"
+                </button>
+                <button
+                    class="px-4 py-1.5 rounded-(--ui-border-radius) text-sm text-(--ui-solid-bg) bg-(--pin-color) cursor-pointer font-semibold flex flex-grow items-center justify-center"
+                    on:click=move |_| {
+                        show_pin_confirm.set(false);
+                        if let Some(event_id) = event_id.get() {
+                            pin_event(&room_id.get(), &event_id);
+                        }
+                    }
+                >
+                    "Pin"
+                </button>
+            </div>
+        </ConfirmDialog>
+        <ConfirmDialog show=show_unpin_confirm class="w-100">
+            <p class="text-normal text-xl font-bold">"Unpin message"</p>
+            <p class="text-muted">"Are you sure you want to unpin this message?"</p>
+            <div class="my-2 p-2 bg-(--ui-floating-bg) border border-(--tile-border-color) rounded-(--gap)">
+                {render_timeline_item(
+                    item_sig,
+                    true,
+                    true,
+                    Callback::new(|_| {}),
+                    RwSignal::new(None),
+                )}
+            </div>
+            <div class="flex gap-2 pt-2 justify-end w-full">
+                <button
+                    class="px-4 py-1.5 rounded-(--ui-border-radius) text-sm bg-(--ui-solid-hover-bg) hover:bg-(--ui-floating-hover-bg) text-normal cursor-pointer border border-(--tile-border-color) flex flex-grow items-center justify-center"
+                    on:click=move |_| show_unpin_confirm.set(false)
+                >
+                    "Cancel"
+                </button>
+                <button
+                    class="px-4 py-1.5 rounded-(--ui-border-radius) text-sm bg-(--pin-color) text-(--ui-solid-bg) hover:bg-(--accent-hover-bg) cursor-pointer font-semibold flex flex-grow items-center justify-center"
+                    on:click=move |_| {
+                        show_unpin_confirm.set(false);
+                        if let Some(event_id) = event_id.get() {
+                            unpin_event(&room_id.get(), &event_id);
+                        }
+                    }
+                >
+                    "Unpin"
                 </button>
             </div>
         </ConfirmDialog>
@@ -1259,6 +1355,7 @@ fn ConfirmDialog(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_timeline_event(
     store: ProfileStore,
     room_id: &str,
@@ -1271,7 +1368,10 @@ fn render_timeline_event(
 ) -> impl IntoView {
     let hovered = RwSignal::new(false);
     let picker_open = RwSignal::new(false);
+
     let show_delete_confirm = RwSignal::new(false);
+    let show_pin_confirm = RwSignal::new(false);
+    let show_unpin_confirm = RwSignal::new(false);
 
     let scroll_target = use_context::<super::ScrollTarget>().unwrap_or_default().0;
     let node_ref = NodeRef::<Div>::new();
@@ -1434,7 +1534,7 @@ fn render_timeline_event(
 
     let reply_room_id = room_id.clone();
 
-    let is_active = move || hovered.get() || picker_open.get() || show_delete_confirm.get();
+    let is_active = move || hovered.get() || picker_open.get() || show_delete_confirm.get() || show_pin_confirm.get() || show_unpin_confirm.get();
 
     view! {
         <div
@@ -1487,7 +1587,10 @@ fn render_timeline_event(
                     sender_id=sender_id.clone()
                     item_sig=item_sig
                     picker_open=picker_open
+                    is_pinned=is_pinned
                     show_delete_confirm=show_delete_confirm
+                    show_pin_confirm=show_pin_confirm
+                    show_unpin_confirm=show_unpin_confirm
                 />
             </Show>
 

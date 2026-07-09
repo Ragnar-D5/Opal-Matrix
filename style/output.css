@@ -11,7 +11,6 @@
     --color-red-300: oklch(80.8% 0.114 19.571);
     --color-red-500: oklch(63.7% 0.237 25.331);
     --color-red-600: oklch(57.7% 0.245 27.325);
-    --color-red-700: oklch(50.5% 0.213 27.518);
     --color-red-900: oklch(39.6% 0.141 25.723);
     --color-red-950: oklch(25.8% 0.092 26.042);
     --color-yellow-50: oklch(98.7% 0.026 102.212);
@@ -1202,6 +1201,9 @@
   .bg-\(--confirm-color\) {
     background-color: var(--confirm-color);
   }
+  .bg-\(--delete-color\) {
+    background-color: var(--delete-color);
+  }
   .bg-\(--mention-color\) {
     background-color: var(--mention-color);
   }
@@ -1216,6 +1218,9 @@
   }
   .bg-\(--overlay-bg-color\) {
     background-color: var(--overlay-bg-color);
+  }
+  .bg-\(--pin-color\) {
+    background-color: var(--pin-color);
   }
   .bg-\(--text-bright\) {
     background-color: var(--text-bright);
@@ -1291,9 +1296,6 @@
   }
   .bg-red-50 {
     background-color: var(--color-red-50);
-  }
-  .bg-red-600 {
-    background-color: var(--color-red-600);
   }
   .bg-transparent {
     background-color: transparent;
@@ -1642,6 +1644,9 @@
   }
   .text-\(--ui-hover-color\) {
     color: var(--ui-hover-color);
+  }
+  .text-\(--ui-solid-bg\) {
+    color: var(--ui-solid-bg);
   }
   .text-\[\#dbdee1\] {
     color: #dbdee1;
@@ -2013,6 +2018,13 @@
       }
     }
   }
+  .hover\:bg-\(--accent-hover-bg\) {
+    &:hover {
+      @media (hover: hover) {
+        background-color: var(--accent-hover-bg);
+      }
+    }
+  }
   .hover\:bg-\(--color-item-hover\) {
     &:hover {
       @media (hover: hover) {
@@ -2027,10 +2039,24 @@
       }
     }
   }
+  .hover\:bg-\(--delete-color\) {
+    &:hover {
+      @media (hover: hover) {
+        background-color: var(--delete-color);
+      }
+    }
+  }
   .hover\:bg-\(--overlay-bg-color\) {
     &:hover {
       @media (hover: hover) {
         background-color: var(--overlay-bg-color);
+      }
+    }
+  }
+  .hover\:bg-\(--pin-color\) {
+    &:hover {
+      @media (hover: hover) {
+        background-color: var(--pin-color);
       }
     }
   }
@@ -2079,17 +2105,31 @@
       }
     }
   }
-  .hover\:bg-red-700 {
-    &:hover {
-      @media (hover: hover) {
-        background-color: var(--color-red-700);
-      }
-    }
-  }
   .hover\:text-\(--accent-color\) {
     &:hover {
       @media (hover: hover) {
         color: var(--accent-color);
+      }
+    }
+  }
+  .hover\:text-\(--online-color\) {
+    &:hover {
+      @media (hover: hover) {
+        color: var(--online-color);
+      }
+    }
+  }
+  .hover\:text-\(--pin-color\) {
+    &:hover {
+      @media (hover: hover) {
+        color: var(--pin-color);
+      }
+    }
+  }
+  .hover\:text-\(--ui-solid-bg\) {
+    &:hover {
+      @media (hover: hover) {
+        color: var(--ui-solid-bg);
       }
     }
   }
@@ -2111,13 +2151,6 @@
     &:hover {
       @media (hover: hover) {
         color: var(--text-color, #f2f3f5);
-      }
-    }
-  }
-  .hover\:text-red-500 {
-    &:hover {
-      @media (hover: hover) {
-        color: var(--color-red-500);
       }
     }
   }
@@ -2278,6 +2311,8 @@
   --idle-color: #f9e2af;
   --busy-color: #da7d9b;
   --offline-color: #6a6a6a;
+  --pin-color: var(--idle-color);
+  --delete-color: var(--busy-color);
   --system-button-size: 14px;
   --system-button-padding: calc(
         var(--header-height) / 2 - var(--system-button-size) / 2

@@ -309,7 +309,7 @@ pub async fn handle_room_updates(
         }
 
         let is_new = !known_room_map.contains_key(&room_id);
-        let Some(node) = convert_room_to_node(&room, &handle).await else {
+        let Some(node) = convert_room_to_node(&room, handle).await else {
             continue;
         };
 

@@ -3,20 +3,25 @@ use std::{
     sync::Arc,
 };
 
-use matrix_sdk::ruma::{
-    events::{
-        poll::start::PollKind,
-        room::{
-            guest_access::GuestAccess,
-            history_visibility::HistoryVisibility,
-            message::{MessageFormat, MessageType},
-            MediaSource,
+use matrix_sdk::{
+    ruma::{
+        events::{
+            poll::start::PollKind,
+            room::{
+                guest_access::GuestAccess,
+                history_visibility::HistoryVisibility,
+                message::{MessageFormat, MessageType, Relation},
+                MediaSource,
+            },
+            rtc::notification::CallIntent,
+            AnySyncMessageLikeEvent, AnySyncTimelineEvent, StateEventContentChange, StateEventType,
+            SyncMessageLikeEvent,
         },
-        rtc::notification::CallIntent,
-        StateEventContentChange, StateEventType,
+        room::JoinRule,
+        serde::Raw,
+        EventId, MilliSecondsSinceUnixEpoch, OwnedEventId,
     },
-    room::JoinRule,
-    EventId, MilliSecondsSinceUnixEpoch, OwnedEventId,
+    Room,
 };
 use matrix_sdk_ui::{
     eyeball_im::VectorDiff,
@@ -62,7 +67,14 @@ fn membership_change_to_ui(value: MembershipChange) -> UiMembershipChange {
 }
 
 fn from_embedded_event_to_ui(value: &EmbeddedEvent) -> ReplyPreview {
-    let content = match value.content.clone() {
+    ReplyPreview {
+        sender_id: value.sender.to_string(),
+        content: reply_preview_spans(&value.content),
+    }
+}
+
+fn reply_preview_spans(content: &TimelineItemContent) -> Vec<RichTextSpan> {
+    match content.clone() {
         TimelineItemContent::CallInvite => vec![RichTextSpan::Plain("Call invite".to_string())],
         TimelineItemContent::FailedToParseMessageLike { event_type, error } => {
             vec![RichTextSpan::Plain(format!(
@@ -171,11 +183,57 @@ fn from_embedded_event_to_ui(value: &EmbeddedEvent) -> ReplyPreview {
                 intent_str, declined_by_str
             ))]
         }
+    }
+}
+
+pub async fn load_reply_info(room: &Room, raw: &Raw<AnySyncTimelineEvent>) -> Option<ReplyInfo> {
+    let AnySyncTimelineEvent::MessageLike(AnySyncMessageLikeEvent::RoomMessage(
+        SyncMessageLikeEvent::Original(message),
+    )) = raw.deserialize().ok()?
+    else {
+        return None;
     };
 
-    let sender_id = value.sender.to_string();
+    let reply_event_id = match message.content.relates_to? {
+        Relation::Reply(in_reply_to) => in_reply_to.in_reply_to.event_id,
+        Relation::Thread(thread) => {
+            if thread.is_falling_back {
+                return None;
+            }
+            thread.in_reply_to?.event_id
+        }
+        _ => return None,
+    };
 
-    ReplyPreview { sender_id, content }
+    let unavailable = |event_id: &EventId| {
+        Some(ReplyInfo {
+            event_id: event_id.to_string(),
+            event: DetailState::Unavailable,
+        })
+    };
+
+    let replied = match room.event(&reply_event_id, None).await {
+        Ok(event) => event,
+        Err(e) => {
+            log::warn!("Failed to fetch replied-to event {reply_event_id}: {e:?}");
+            return unavailable(&reply_event_id);
+        }
+    };
+
+    let Some(sender_id) = replied.sender().map(|id| id.to_string()) else {
+        return unavailable(&reply_event_id);
+    };
+    let Some(content) = TimelineItemContent::from_event(room, replied).await else {
+        return unavailable(&reply_event_id);
+    };
+
+    Some(ReplyInfo {
+        event_id: reply_event_id.to_string(),
+        event: DetailState::Ready(ReplyPreview {
+            sender_id,
+            content: reply_preview_spans(&content),
+        }),
+    })
 }
 
 fn in_reply_to_details_to_ui(

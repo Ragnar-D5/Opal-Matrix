@@ -7,7 +7,7 @@ use matrix_sdk::{ruma::OwnedRoomId, Client};
 use matrix_sdk_ui::timeline::TimelineItemContent;
 use shared::{
     api::{events::SearchResultUpdate, SearchParameters},
-    timeline::UiTimelineItem,
+    timeline::{EventContent, UiTimelineItem},
 };
 use tauri::{async_runtime::spawn, command, AppHandle, State};
 use tokio::sync::RwLock;
@@ -15,7 +15,10 @@ use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use crate::{
-    frontend::timeline::timeline_item_content_to_ui, send_event, state::TaskManager, TauriError,
+    frontend::timeline::{load_reply_info, timeline_item_content_to_ui},
+    send_event,
+    state::TaskManager,
+    TauriError,
 };
 
 const SEARCH_BATCH_SIZE: usize = 20;
@@ -97,19 +100,28 @@ pub async fn search_rooms(
                                 continue;
                             };
 
+                            let reply_info = load_reply_info(&room, event.raw()).await;
+
                             let Some(content) = TimelineItemContent::from_event(&room, event).await else {
                                 continue;
                             };
 
+                            let mut ui_content = timeline_item_content_to_ui(
+                                &content,
+                                &mut HashMap::new(),
+                                None,
+                                &mut HashSet::new(),
+                            );
+
+                            if let EventContent::MsgLike(msg) = &mut ui_content
+                                && reply_info.is_some()
+                            {
+                                msg.in_reply_to = reply_info;
+                            }
+
                             messages.push((
                                 ts,
-                                timeline_item_content_to_ui(
-                                    &content,
-                                    &mut HashMap::new(),
-                                    None,
-                                    &mut HashSet::new(),
-                                )
-                                .to_timeline_item(
+                                ui_content.to_timeline_item(
                                     event_id.to_string(),
                                     sender.to_string(),
                                     ts,

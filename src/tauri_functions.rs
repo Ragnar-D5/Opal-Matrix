@@ -417,3 +417,37 @@ pub async fn get_pinned_events(room_id: &str) -> Result<Vec<UiTimelineItem>, Str
     serde_json::from_str(&json_string)
         .map_err(|e| format!("Failed to parse JSON response: {:?}", e))
 }
+
+pub fn pin_event(room_id: &str, event_id: &str) {
+    let args =
+        match serde_wasm_bindgen::to_value(&json!({ "room_id": room_id, "event_id": event_id })) {
+            Ok(value) => value,
+            Err(e) => {
+                log::error!("Failed to serialize request: {:?}", e);
+                return;
+            }
+        };
+
+    spawn_local(async move {
+        if let Err(e) = call_tauri("pin_event", args).await {
+            log::error!("Tauri call failed: {:?}", e);
+        }
+    });
+}
+
+pub fn unpin_event(room_id: &str, event_id: &str) {
+    let args =
+        match serde_wasm_bindgen::to_value(&json!({ "room_id": room_id, "event_id": event_id })) {
+            Ok(value) => value,
+            Err(e) => {
+                log::error!("Failed to serialize request: {:?}", e);
+                return;
+            }
+        };
+
+    spawn_local(async move {
+        if let Err(e) = call_tauri("unpin_event", args).await {
+            log::error!("Tauri call failed: {:?}", e);
+        }
+    });
+}
