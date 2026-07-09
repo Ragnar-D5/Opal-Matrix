@@ -410,6 +410,7 @@ pub async fn get_timeline(
                             media_for_stream.sources.write().await.extend(new_sources);
                         }
 
+                        log::debug!("Sending timeline update");
                         send_event(&handle, &diffs);
 
                         for event_id in unknown_reply_event_ids {
