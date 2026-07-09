@@ -1,5 +1,5 @@
 use leptos::{prelude::*, task::spawn_local};
-use phosphor_leptos::{Icon, IconWeight, DOWNLOAD_SIMPLE, X};
+use phosphor_leptos::{DOWNLOAD_SIMPLE, Icon, IconWeight, X};
 use shared::timeline::RichTextSpan;
 use shared::timeline::UiMediaSource;
 use wasm_bindgen::JsCast;
@@ -22,7 +22,7 @@ pub fn render_link(span: RichTextSpan) -> impl IntoView {
         async move {
             fetch_preview_data(fetch_url.clone())
                 .await
-                .map_err(|e| log::error!("Error fetching preview for URL {}: {:?}", fetch_url, e))
+                .map_err(|e| log::debug!("Error fetching preview for URL {}: {:?}", fetch_url, e))
                 .ok()
         }
     });

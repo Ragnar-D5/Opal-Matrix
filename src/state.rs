@@ -97,7 +97,7 @@ pub struct AppState {
 
     pub audio_devices: RwSignal<AudioDeviceInfos>,
 
-    pub recent_emojies: RwSignal<RecentEmojies>
+    pub recent_emojies: RwSignal<RecentEmojies>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -229,6 +229,11 @@ impl AppState {
     }
 
     pub fn set_active_room_with_id(&self, room_id: Option<String>) {
+        log::debug!(
+            "Changing active room to {}",
+            room_id.clone().unwrap_or("no room".into())
+        );
+
         let active_room = if let Some(room_id) = &room_id {
             let node = self.room_map.get_untracked().get(room_id).cloned();
 
