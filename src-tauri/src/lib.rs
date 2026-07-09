@@ -20,7 +20,7 @@ use toml_edit::DocumentMut;
 
 use bytes::Bytes;
 use log::info;
-use tauri::{command, AppHandle, Emitter, Url};
+use tauri::{AppHandle, Emitter, Url, command};
 use tauri::{Manager, State, WebviewUrl, WebviewWindowBuilder};
 
 pub mod builder;
@@ -500,6 +500,7 @@ async fn open_log_window(app_handle: AppHandle) -> Result<(), TauriError> {
         WebviewUrl::App("index.html?view=logs".into()),
     )
     .title("Opal Logs")
+    .decorations(false)
     .inner_size(1000.0, 700.0)
     .build()?;
 
