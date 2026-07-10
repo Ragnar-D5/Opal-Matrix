@@ -21,7 +21,7 @@ use toml_edit::DocumentMut;
 
 use bytes::Bytes;
 use log::info;
-use tauri::{command, AppHandle, Emitter, Url};
+use tauri::{AppHandle, Emitter, Url, command};
 use tauri::{Manager, State, WebviewUrl, WebviewWindowBuilder};
 
 pub mod builder;
@@ -116,38 +116,9 @@ pub enum TauriError {
     Wrap(String),
 }
 
-pub trait AsInfo {
-    fn as_info(&self) -> TauriError;
-}
-
-impl<T> AsInfo for T
-where
-    T: ToString,
-{
-    fn as_info(&self) -> TauriError {
-        TauriError::as_info(self.to_string())
-    }
-}
-
 impl TauriError {
     pub fn silent() -> Self {
         Self::Wrap("No error occurred".to_string())
-    }
-
-    pub fn as_info<T: ToString>(value: T) -> Self {
-        let val = value.to_string();
-        let location = std::panic::Location::caller();
-
-        log::logger().log(
-            &log::Record::builder()
-                .args(format_args!("{}", val))
-                .level(log::Level::Info)
-                .target(module_path!())
-                .file(Some(location.file()))
-                .line(Some(location.line()))
-                .build(),
-        );
-        Self::Wrap(val)
     }
 }
 
@@ -179,6 +150,74 @@ where
         );
 
         Self::Wrap(val)
+    }
+}
+
+pub trait LogResultExt<T> {
+    fn as_warn(self) -> Result<T, TauriError>;
+    fn as_info(self) -> Result<T, TauriError>;
+    fn as_debug(self) -> Result<T, TauriError>;
+}
+
+impl<T, E> LogResultExt<T> for Result<T, E>
+where
+    E: ToString,
+{
+    #[track_caller]
+    fn as_warn(self) -> Result<T, TauriError> {
+        self.map_err(|e| {
+            let val = e.to_string();
+            let location = std::panic::Location::caller();
+
+            log::logger().log(
+                &log::Record::builder()
+                    .args(format_args!("{}", val))
+                    .level(log::Level::Warn)
+                    .target(module_path!())
+                    .file(Some(location.file()))
+                    .line(Some(location.line()))
+                    .build(),
+            );
+            TauriError::Wrap(val)
+        })
+    }
+
+    #[track_caller]
+    fn as_info(self) -> Result<T, TauriError> {
+        self.map_err(|e| {
+            let val = e.to_string();
+            let location = std::panic::Location::caller();
+
+            log::logger().log(
+                &log::Record::builder()
+                    .args(format_args!("{}", val))
+                    .level(log::Level::Info)
+                    .target(module_path!())
+                    .file(Some(location.file()))
+                    .line(Some(location.line()))
+                    .build(),
+            );
+            TauriError::Wrap(val)
+        })
+    }
+
+    #[track_caller]
+    fn as_debug(self) -> Result<T, TauriError> {
+        self.map_err(|e| {
+            let val = e.to_string();
+            let location = std::panic::Location::caller();
+
+            log::logger().log(
+                &log::Record::builder()
+                    .args(format_args!("{}", val))
+                    .level(log::Level::Debug)
+                    .target(module_path!())
+                    .file(Some(location.file()))
+                    .line(Some(location.line()))
+                    .build(),
+            );
+            TauriError::Wrap(val)
+        })
     }
 }
 
@@ -462,6 +501,7 @@ async fn open_log_window(app_handle: AppHandle) -> Result<(), TauriError> {
         WebviewUrl::App("index.html?view=logs".into()),
     )
     .title("Opal Logs")
+    .decorations(false)
     .inner_size(1000.0, 700.0)
     .build()?;
 

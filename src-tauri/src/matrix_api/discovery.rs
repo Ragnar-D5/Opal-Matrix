@@ -14,7 +14,7 @@ use tauri_plugin_http::reqwest::{self, Client};
 use tokio::sync::RwLock;
 use url::Url;
 
-use crate::{AsInfo, TauriError, reqwest_response_to_http_response};
+use crate::{LogResultExt, TauriError, reqwest_response_to_http_response};
 
 #[derive(Debug, Deserialize)]
 pub struct WellKnown {
@@ -55,7 +55,8 @@ pub async fn choose_home_server(
         .get(format!("https://{url}/.well-known/matrix/client"))
         .send()
         .await
-        .map_err(|e| format!("Failed to get .well_known: {e}").as_info())?;
+        .map_err(|e| format!("Failed to get .well_known: {e}"))
+        .as_info()?;
 
     if res.status().is_success() {
         let well_known: WellKnown = res.json().await.map_err(|e| {
@@ -65,17 +66,19 @@ pub async fn choose_home_server(
         *matrix_client.write().await = MatrixClient::builder()
             .homeserver_url(
                 Url::parse(&well_known.homeserver.base_url)
-                    .map_err(|e| format!("Failed to parse homeserver URL: {e}").as_info())?,
+                    .map_err(|e| format!("Failed to parse homeserver URL: {e}"))
+                    .as_info()?,
             )
             .handle_refresh_tokens()
             .build()
             .await
-            .map_err(|e| format!("Failed to build Matrix client: {e}").as_info())?;
+            .map_err(|e| format!("Failed to build Matrix client: {e}"))
+            .as_info()?;
 
         let _ = fetch_supported_versions(&well_known.homeserver.base_url).await?;
         Ok(url)
     } else {
-        Err(format!("Failed to get .well_known: {}", res.status()).as_info())
+        Err(format!("Failed to get .well_known: {}", res.status())).as_info()
     }
 }
 
