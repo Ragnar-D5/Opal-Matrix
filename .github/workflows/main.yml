@@ -89,12 +89,6 @@ jobs:
             # bundled copies the host's own libwayland is loaded, which any
             # system able to run webkit2gtk ships anyway. Stripping at bundle
             # time (before signing) keeps the updater signature valid.
-            #
-            # The real plugin must NOT be stored under a linuxdeploy-plugin-*
-            # name: linuxdeploy registers every executable in this directory
-            # matching ^linuxdeploy-plugin-([^\s.-]+)(-[^.]+)?(\..+)?$ and the
-            # first hit per name wins, so e.g. linuxdeploy-plugin-gtk-real.sh
-            # would also register as plugin "gtk" and shadow the wrapper.
             - name: Strip bundled wayland libs from AppImage (Ubuntu only)
               if: matrix.platform == 'ubuntu-22.04'
               shell: bash
@@ -119,27 +113,12 @@ jobs:
                   if [ -n "$appdir" ]; then
                       echo "Removing bundled libwayland from $appdir so the host's copy is used"
                       rm -fv "$appdir"/usr/lib/libwayland-*
-                      # The plugin's generated AppRun hook forces GDK_BACKEND=x11
-                      # (workaround for tauri-apps/tauri#8541). Under a scaled
-                      # Wayland desktop that means XWayland upscaling: blurry
-                      # output and wrong effective DPI. The app runs fine on
-                      # native Wayland (verified with webkit 2.50 + host
-                      # libwayland), so let GDK pick the backend itself.
                       sed -i '/export GDK_BACKEND=x11/d' "$appdir"/apprun-hooks/linuxdeploy-plugin-gtk.sh
                   fi
                   EOF
                   chmod +x ~/.cache/tauri/linuxdeploy-plugin-gtk.sh ~/.cache/tauri/gtk-plugin-real.sh
 
             # 8. Run the Tauri Action
-            # Builds and drafts the release on the GitHub mirror (where this
-            # workflow runs). tauri-action can't upload assets straight to
-            # Codeberg: its Gitea compatibility mode only covers release
-            # create/list calls, while Octokit's uploadReleaseAsset endpoint is
-            # hardcoded to https://uploads.github.com regardless of
-            # githubBaseUrl (see tauri-apps/tauri-action#1272, never fixed and
-            # later dropped entirely in v1). The mirror-to-codeberg job below
-            # copies the finished draft over to Codeberg with plain REST calls
-            # and removes it from the mirror afterwards.
             - id: tauri
               uses: tauri-apps/tauri-action@v0.6.2
               env:
@@ -166,9 +145,6 @@ jobs:
             CODEBERG_TOKEN: ${{ secrets.CODEBERG_TOKEN }}
             VERSION: ${{ needs.publish-tauri.outputs.appVersion }}
         steps:
-            # gh cli refuses to run outside a git repository, even for pure
-            # API calls with GH_TOKEN/--repo set (cli/cli#7556), so it needs
-            # a checkout even though nothing here touches the working tree.
             - uses: actions/checkout@v4
 
             - name: Copy release assets from the GitHub mirror to Codeberg
@@ -181,6 +157,7 @@ jobs:
                   CB_REPO="opal-matrix"
                   CB_API="https://codeberg.org/api/v1/repos/${CB_OWNER}/${CB_REPO}"
 
+                  # Updated API Helper function that strips harmful line endings/whitespaces
                   api() {
                       local method="$1" path="$2"
                       shift 2
@@ -254,7 +231,7 @@ jobs:
                   sync_to_codeberg "$TAG" "App v${VERSION}" "true"
 
                   # 2. Update/Create the static public LATEST release
-                  sync_to_codeberg "latest" "Latest Stable Release" "false"
+                  sync_to_codeberg "latest" "Latest Stable Release" "true"
 
                   echo "Cleaning up the temporary draft on the GitHub mirror..."
                   gh release delete "$TAG" --yes
