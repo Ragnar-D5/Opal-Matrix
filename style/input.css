@@ -40,8 +40,8 @@
     --confirm-hover-color: #184890;
     --confirm-text-color: #ffffff;
 
-    --online-color: #23a55a;
-    --idle-color: #f9e2af;
+    --online-color: #63d17a;
+    --idle-color: #f9e2a3;
     --busy-color: #da7d9b;
     --offline-color: #6a6a6a;
 
@@ -50,8 +50,10 @@
     --blue: #5298ff;
 
     --pin-color: var(--idle-color);
-    --error-color: var(--busy-color);
+
     --success-color: var(--online-color);
+    --warning-color: var(--idle-color);
+    --error-color: var(--busy-color);
 
     --system-button-size: 14px;
     --system-button-padding: calc(

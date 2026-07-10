@@ -285,6 +285,9 @@
   .inset-0 {
     inset: calc(var(--spacing) * 0);
   }
+  .inset-y-0 {
+    inset-block: calc(var(--spacing) * 0);
+  }
   .start {
     inset-inline-start: var(--spacing);
   }
@@ -384,6 +387,9 @@
   .left-4 {
     left: calc(var(--spacing) * 4);
   }
+  .left-24 {
+    left: calc(var(--spacing) * 24);
+  }
   .left-\[calc\(50\%-1px\)\] {
     left: calc(50% - 1px);
   }
@@ -449,6 +455,9 @@
   }
   .mx-2 {
     margin-inline: calc(var(--spacing) * 2);
+  }
+  .my-1 {
+    margin-block: calc(var(--spacing) * 1);
   }
   .my-2 {
     margin-block: calc(var(--spacing) * 2);
@@ -1047,9 +1056,6 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .overflow-auto {
-    overflow: auto;
-  }
   .overflow-hidden {
     overflow: hidden;
   }
@@ -1253,9 +1259,6 @@
   .border-r-\[\#00ffff\] {
     border-right-color: #00ffff;
   }
-  .\!bg-\(--opaque-tile-bg-color\) {
-    background-color: var(--opaque-tile-bg-color) !important;
-  }
   .bg {
     background-color: var(--bg-color, #1e1e2e);
   }
@@ -1403,6 +1406,12 @@
       background-color: color-mix(in oklab, var(--color-white) 8%, transparent);
     }
   }
+  .bg-white\/15 {
+    background-color: color-mix(in srgb, #fff 15%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      background-color: color-mix(in oklab, var(--color-white) 15%, transparent);
+    }
+  }
   .bg-yellow-50 {
     background-color: var(--color-yellow-50);
   }
@@ -1531,9 +1540,6 @@
   }
   .pt-3 {
     padding-top: calc(var(--spacing) * 3);
-  }
-  .pt-5 {
-    padding-top: calc(var(--spacing) * 5);
   }
   .pt-9 {
     padding-top: calc(var(--spacing) * 9);
@@ -1723,6 +1729,9 @@
   .break-words {
     overflow-wrap: break-word;
   }
+  .whitespace-nowrap {
+    white-space: nowrap;
+  }
   .whitespace-pre {
     white-space: pre;
   }
@@ -1908,6 +1917,10 @@
   }
   .shadow-\[0_0_15px_3px_rgba\(255\,255\,255\,0\.3\)\] {
     --tw-shadow: 0 0 15px 3px var(--tw-shadow-color, rgba(255,255,255,0.3));
+    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
+  }
+  .shadow-\[0_4px_0_0_rgba\(0\,0\,0\,0\.35\)\] {
+    --tw-shadow: 0 4px 0 0 var(--tw-shadow-color, rgba(0,0,0,0.35));
     box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
   }
   .shadow-lg {
@@ -2380,9 +2393,21 @@
       background-color: var(--ui-floating-hover-bg);
     }
   }
+  .active\:translate-y-\[3px\] {
+    &:active {
+      --tw-translate-y: 3px;
+      translate: var(--tw-translate-x) var(--tw-translate-y);
+    }
+  }
   .active\:cursor-grabbing {
     &:active {
       cursor: grabbing;
+    }
+  }
+  .active\:shadow-\[0_1px_0_0_rgba\(0\,0\,0\,0\.35\)\] {
+    &:active {
+      --tw-shadow: 0 1px 0 0 var(--tw-shadow-color, rgba(0,0,0,0.35));
+      box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
     }
   }
   .md\:max-w-md {
@@ -2524,16 +2549,17 @@
   --confirm-color: #2b7fff;
   --confirm-hover-color: #184890;
   --confirm-text-color: #ffffff;
-  --online-color: #23a55a;
-  --idle-color: #f9e2af;
+  --online-color: #63d17a;
+  --idle-color: #f9e2a3;
   --busy-color: #da7d9b;
   --offline-color: #6a6a6a;
   --purple: #d090ff;
   --teal: #50fbdf;
   --blue: #5298ff;
   --pin-color: var(--idle-color);
-  --error-color: var(--busy-color);
   --success-color: var(--online-color);
+  --warning-color: var(--idle-color);
+  --error-color: var(--busy-color);
   --system-button-size: 14px;
   --system-button-padding: calc(
         var(--header-height) / 2 - var(--system-button-size) / 2

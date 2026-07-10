@@ -1,18 +1,26 @@
+use std::collections::HashMap;
+
 use icondata as i;
 use leptos::portal::Portal;
 use leptos::prelude::*;
+use leptos::task::spawn_local;
 use leptos_icons::Icon as LIcon;
 use phosphor_leptos::{
-    Icon, IconWeight, IconWeightData, CAMERA, CARET_DOWN, PAINT_BRUSH, PENCIL_SIMPLE,
+    Icon, IconWeight, IconWeightData, CAMERA, CARET_DOWN, CHECK_CIRCLE, DOWNLOAD, INFO,
+    PAINT_BRUSH, PENCIL_SIMPLE, SPINNER, WARNING, WARNING_DIAMOND,
 };
 use serde_json::json;
+use shared::api::{UpdateDownloadProgress, UpdateInfo, UpdateStatus};
 use web_sys::{HtmlButtonElement, KeyboardEvent};
 
 use shared::get_color;
 
-use crate::tauri_functions::{save_banner_color, save_displayname, save_name_color};
+use crate::tauri_functions::{
+    check_for_update, download_update, install_update, recheck_update, save_banner_color,
+    save_displayname, save_name_color,
+};
 
-use crate::app::call_tauri;
+use crate::app::{call_tauri, format_bytes};
 use crate::components::presence::PresenceBadge;
 use crate::components::user_profile::{render_url_icon, MemberProfileExt};
 use crate::components::{CloseButton, FloatingTile};
@@ -22,6 +30,13 @@ use crate::state::{AppState, ProfileSignal, ProfileStore};
 enum SettingsIcon {
     IconData(i::Icon),
     Phosphor(&'static IconWeightData),
+}
+
+#[derive(Clone)]
+enum SectionStatus {
+    None,
+    Warning,
+    Urgent,
 }
 
 #[derive(Clone)]
@@ -38,8 +53,23 @@ impl PartialEq for SettingsSection {
     }
 }
 
-const SETTINGS_SECTIONS: &[SettingsSection] = &[
-    SettingsSection {
+#[derive(Clone)]
+enum SettingsItem {
+    Section(SettingsSection),
+    Divider { id: &'static str },
+}
+
+impl SettingsItem {
+    fn id(&self) -> &'static str {
+        match self {
+            SettingsItem::Section(section) => section.id,
+            SettingsItem::Divider { id } => id,
+        }
+    }
+}
+
+const SETTINGS_SECTIONS: &[SettingsItem] = &[
+    SettingsItem::Section(SettingsSection {
         title: "Appearance",
         id: "appearance",
         icon: SettingsIcon::IconData(i::BsPalette),
@@ -88,25 +118,32 @@ const SETTINGS_SECTIONS: &[SettingsSection] = &[
                 </div>
             }.into_any()
         },
-    },
-    SettingsSection {
+    }),
+    SettingsItem::Section(SettingsSection {
         title: "Audio",
         id: "audio",
         icon: SettingsIcon::Phosphor(phosphor_leptos::HEADPHONES),
         render_fn: || ().into_any(),
-    },
-    SettingsSection {
+    }),
+    SettingsItem::Section(SettingsSection {
         title: "Input",
         id: "input",
         icon: SettingsIcon::Phosphor(phosphor_leptos::MICROPHONE),
         render_fn: || ().into_any(),
-    },
-    SettingsSection {
+    }),
+    SettingsItem::Section(SettingsSection {
         title: "About",
         id: "about",
         icon: SettingsIcon::Phosphor(phosphor_leptos::X),
         render_fn: || ().into_any(),
-    },
+    }),
+    SettingsItem::Divider { id: "divider-1" },
+    SettingsItem::Section(SettingsSection {
+        title: "Updates",
+        id: "updates",
+        icon: SettingsIcon::Phosphor(phosphor_leptos::ARROWS_CLOCKWISE),
+        render_fn: render_update_section,
+    }),
 ];
 
 const PROFILE_SECTION: SettingsSection = SettingsSection {
@@ -121,16 +158,47 @@ pub fn SettingsIcon(#[prop(into, optional)] class: String) -> impl IntoView {
     let state: AppState = expect_context();
     let store: ProfileStore = expect_context();
 
-    let sections_dict = SETTINGS_SECTIONS
+    let sections_dict: HashMap<&str, SettingsSection> = SETTINGS_SECTIONS
         .iter()
-        .map(|section| (section.id, section.clone()))
-        .collect::<std::collections::HashMap<_, _>>();
+        .filter_map(|item| {
+            if let SettingsItem::Section(section) = item {
+                Some((section.id, section.clone()))
+            } else {
+                None
+            }
+        })
+        .collect();
 
     let (is_open, set_is_open) = signal(false);
 
     window_event_listener(leptos::ev::keydown, move |ev: KeyboardEvent| {
         if is_open.try_get_untracked().unwrap_or(false) && ev.key() == "Escape" {
             set_is_open.set(false);
+        }
+    });
+
+    let statuses: StoredValue<HashMap<&str, RwSignal<SectionStatus>>> = StoredValue::new(
+        SETTINGS_SECTIONS
+            .iter()
+            .filter_map(|item| {
+                if let SettingsItem::Section(section) = item {
+                    Some((section.id, RwSignal::new(SectionStatus::None)))
+                } else {
+                    None
+                }
+            })
+            .collect(),
+    );
+
+    let update_sig = statuses.get_value()["updates"];
+
+    Effect::new(move |_| match state.update_status.get() {
+        UpdateStatus::UpdateAvailable(_)
+        | UpdateStatus::Downloading(_)
+        | UpdateStatus::ReadyToInstall(_) => update_sig.set(SectionStatus::Warning),
+        UpdateStatus::Error { .. } => update_sig.set(SectionStatus::Urgent),
+        UpdateStatus::UpToDate | UpdateStatus::CheckingForUpdates => {
+            update_sig.set(SectionStatus::None)
         }
     });
 
@@ -147,6 +215,45 @@ pub fn SettingsIcon(#[prop(into, optional)] class: String) -> impl IntoView {
             .unwrap_or(&PROFILE_SECTION)
             .clone()
     });
+
+    let section_bar_view = move |section: SettingsItem| match section {
+        SettingsItem::Divider { .. } => {
+            view! { <div class="border-t border-(--tile-border-color) my-1" /> }.into_any()
+        }
+        SettingsItem::Section(section) => {
+            let status_sig = *statuses.get_value().get(section.id).unwrap();
+
+            let status_color = move || match status_sig.get() {
+                SectionStatus::None => "transparent",
+                SectionStatus::Warning => "var(--warning-color)",
+                SectionStatus::Urgent => "var(--error-color)",
+            };
+
+            view! {
+                <button
+                    class="flex flex-0 items-center gap-3 text-left text-dim hover:text-normal mx-2 rounded-[10px] cursor-pointer px-2 py-1 border border-transparent hover:border-(--tile-border-color)"
+                    class=("bg-(--ui-solid-hover-bg)", move || section.id == selected_section.get())
+                    class=("text-normal", move || section.id == selected_section.get())
+                    on:click=move |_| selected_section.set(section.id)
+                >
+                    {match section.icon {
+                        SettingsIcon::IconData(icon_data) => {
+                            view! { <LIcon icon=icon_data height="18px" /> }.into_any()
+                        }
+                        SettingsIcon::Phosphor(phosphor_icon) => {
+                            view! {
+                                <Icon icon=phosphor_icon size="18px" weight=IconWeight::Fill />
+                            }
+                                .into_any()
+                        }
+                    }}
+                    <span>{section.title}</span>
+                    <div class="w-2 h-2 rounded-full" style:background=status_color />
+                </button>
+            }
+                    .into_any()
+        }
+    };
 
     view! {
         <button
@@ -167,7 +274,7 @@ pub fn SettingsIcon(#[prop(into, optional)] class: String) -> impl IntoView {
                 >
                     <FloatingTile
                         on:click=move |e| e.stop_propagation()
-                        class="opacity-100 text-bright max-w-300 w-[80vw] h-full max-h-[95vh] min-h-[50vh] flex flex-row overflow-hidden z-50 !bg-(--opaque-tile-bg-color)"
+                        class="opacity-100 text-bright max-w-300 w-[80vw] h-full max-h-[95vh] min-h-[50vh] flex flex-row overflow-hidden z-50 bg-(--ui-solid-bg)"
                     >
                         <div class="border-r border-(--tile-border-color) w-50 h-full flex flex-col gap-1">
                             <div
@@ -207,44 +314,12 @@ pub fn SettingsIcon(#[prop(into, optional)] class: String) -> impl IntoView {
                             </div>
                             <For
                                 each=move || SETTINGS_SECTIONS.iter().cloned()
-                                key=|s| s.id
-                                children=move |section| {
-                                    view! {
-                                        <button
-                                            class="flex flex-0 items-center gap-3 text-left text-dim hover:text-normal mx-2 rounded-[10px] cursor-pointer px-2 py-1 border border-transparent hover:border-(--tile-border-color)"
-                                            class=(
-                                                "bg-(--ui-solid-hover-bg)",
-                                                move || section.id == selected_section.get(),
-                                            )
-                                            class=(
-                                                "text-normal",
-                                                move || section.id == selected_section.get(),
-                                            )
-                                            on:click=move |_| selected_section.set(section.id)
-                                        >
-                                            {match section.icon {
-                                                SettingsIcon::IconData(icon_data) => {
-                                                    view! { <LIcon icon=icon_data height="18px" /> }.into_any()
-                                                }
-                                                SettingsIcon::Phosphor(phosphor_icon) => {
-                                                    view! {
-                                                        <Icon
-                                                            icon=phosphor_icon
-                                                            size="18px"
-                                                            weight=IconWeight::Fill
-                                                        />
-                                                    }
-                                                        .into_any()
-                                                }
-                                            }}
-                                            <span>{section.title}</span>
-                                        </button>
-                                    }
-                                }
+                                key=|s| s.id()
+                                children=move |section| section_bar_view(section)
                             />
                         </div>
                         <div class="w-full h-full flex flex-col">
-                            <div class="w-full h-(--header-height) shrink-0">
+                            <div class="w-full">
                                 <span class="text-xl font-bold text-normal p-4 block border-b border-(--tile-border-color)">
                                     {move || current_section.get().title}
                                 </span>
@@ -254,7 +329,7 @@ pub fn SettingsIcon(#[prop(into, optional)] class: String) -> impl IntoView {
                                     inset="12px"
                                 />
                             </div>
-                            <div class="p-4 flex-1 min-h-0 overflow-auto">
+                            <div class="p-4 w-full h-full overflow-y-auto">
                                 {move || current_section.get().render_fn}
                             </div>
                         </div>
@@ -535,7 +610,7 @@ fn render_profile_section() -> AnyView {
 
     view! {
         <div class="flex flex-col h-full">
-            <div class="relative flex flex-row w-full gap-5 px-5 pt-5">
+            <div class="relative flex flex-row w-full gap-5 px-5">
                 <button
                     node_ref=global_btn
                     class="font-medium hover:text-normal cursor-pointer"
@@ -828,4 +903,318 @@ fn render_profile_section() -> AnyView {
         </div>
     }
     .into_any()
+}
+
+fn render_update_section() -> AnyView {
+    let state: AppState = expect_context();
+
+    let status = Memo::new(move |_| state.update_status.get());
+
+    let button_color = move || match status.get() {
+        UpdateStatus::UpdateAvailable(_) => "--success-color".to_string(),
+        UpdateStatus::Error { .. } => "--error-color".to_string(),
+        UpdateStatus::ReadyToInstall(_) => "--purple".to_string(),
+        UpdateStatus::UpToDate => "--accent-color".to_string(),
+        UpdateStatus::CheckingForUpdates => "--offline-color".to_string(),
+        UpdateStatus::Downloading(_) => "--success-color".to_string(),
+    };
+
+    let header_view = move || {
+        let status = status.get();
+        let progress = state.update_progress.get();
+        let app_version = state.app_version.get();
+
+        let color = format!("var({})", button_color());
+
+        let (text, icon) = match status {
+            UpdateStatus::UpToDate => (format!("Up to date ({})", app_version), INFO),
+            UpdateStatus::UpdateAvailable(info) => (
+                format!(
+                    "Update available ({} ⟶ {})",
+                    info.current_version, info.version
+                ),
+                WARNING,
+            ),
+            UpdateStatus::Downloading(info) => {
+                let text = match progress {
+                    UpdateDownloadProgress::Finished => {
+                        format!("Downloaded version {}", info.version)
+                    }
+                    UpdateDownloadProgress::InProgress { progress, total } => {
+                        let percentage = if let Some(total) = total {
+                            (progress as f64 / total as f64 * 100.0).round()
+                        } else {
+                            0.0
+                        };
+
+                        format!("Downloading version {} ({}%)", info.version, percentage)
+                    }
+                    UpdateDownloadProgress::Started => {
+                        format!("Downloading version {}", info.version)
+                    }
+                };
+
+                (text, DOWNLOAD)
+            }
+            UpdateStatus::ReadyToInstall(info) => (
+                format!(
+                    "Ready to install ({} ⟶ {})",
+                    info.current_version, info.version
+                ),
+                CHECK_CIRCLE,
+            ),
+            UpdateStatus::Error { short, .. } => {
+                (format!("Update error: {short}"), WARNING_DIAMOND)
+            }
+            UpdateStatus::CheckingForUpdates => ("Checking for updates...".to_string(), SPINNER),
+        };
+
+        let bg_color = format!("rgb(from {color} r g b / 20%)");
+
+        view! {
+            <div
+                class="px-4 py-2 rounded-(--ui-border-radius) text-sm font-medium border border-(--tile-border-color) flex flex-row items-center gap-2"
+                style=format!("background-color: {bg_color}; color: {color};")
+            >
+                <Icon icon=icon size="20px" />
+                <span>{text}</span>
+            </div>
+        }
+    };
+
+    let test_step = RwSignal::new(0usize);
+    const TEST_STEP_COUNT: usize = 10;
+
+    let dummy_info = || UpdateInfo {
+        version: "1.2.3".to_string(),
+        current_version: "1.0.0".to_string(),
+        body: Some("- Fixed a bug\n- Added a feature".to_string()),
+        date: None,
+    };
+
+    let cycle_test_state = move |_| {
+        match test_step.get_untracked() {
+            0 => state.update_status.set(UpdateStatus::UpToDate),
+            1 => state
+                .update_status
+                .set(UpdateStatus::UpdateAvailable(dummy_info())),
+            2 => {
+                state
+                    .update_status
+                    .set(UpdateStatus::Downloading(dummy_info()));
+                state.update_progress.set(UpdateDownloadProgress::Started)
+            }
+            3 => state
+                .update_progress
+                .set(UpdateDownloadProgress::InProgress {
+                    progress: 250_000,
+                    total: Some(1_000_000),
+                }),
+            4 => state
+                .update_progress
+                .set(UpdateDownloadProgress::InProgress {
+                    progress: 500_000,
+                    total: Some(1_000_000),
+                }),
+            5 => state
+                .update_progress
+                .set(UpdateDownloadProgress::InProgress {
+                    progress: 750_000,
+                    total: None,
+                }),
+            6 => state
+                .update_progress
+                .set(UpdateDownloadProgress::InProgress {
+                    progress: 750_000,
+                    total: Some(1_000_000),
+                }),
+            7 => state.update_progress.set(UpdateDownloadProgress::Finished),
+            8 => {
+                state.update_progress.set(UpdateDownloadProgress::Finished);
+                state
+                    .update_status
+                    .set(UpdateStatus::ReadyToInstall(dummy_info()));
+            }
+            9 => state.update_status.set(UpdateStatus::CheckingForUpdates),
+            _ => state.update_status.set(UpdateStatus::Error {
+                short: "Simulated update error for testing".to_string(),
+                long: "This is a simulated error message for testing purposes. It does not represent a real error.".to_string(),
+            }),
+        }
+
+        test_step.update(|i| *i = (*i + 1) % TEST_STEP_COUNT);
+    };
+
+    let is_downloading = move || matches!(status.get(), UpdateStatus::Downloading(_));
+
+    let progress_percent = move || -> f64 {
+        match state.update_progress.get() {
+            UpdateDownloadProgress::InProgress { progress, total } => total
+                .map(|total| (progress as f64 / total as f64 * 100.0).clamp(0.0, 100.0))
+                .unwrap_or(100.0),
+            UpdateDownloadProgress::Finished => 100.0,
+            UpdateDownloadProgress::Started => 0.0,
+        }
+    };
+
+    let on_button_click = move |_| match status.get() {
+        UpdateStatus::UpdateAvailable(_) => {
+            state
+                .update_status
+                .set(UpdateStatus::Downloading(dummy_info()));
+            state.update_progress.set(UpdateDownloadProgress::Started);
+            spawn_local(async move {
+                match download_update().await {
+                    Ok(status) => state.update_status.set(status),
+                    Err(e) => log::error!("Error while downloading update: {e}"),
+                }
+            });
+        }
+        UpdateStatus::Error { .. } => {
+            state.update_status.set(UpdateStatus::CheckingForUpdates);
+            spawn_local(async move {
+                match recheck_update().await {
+                    Ok(status) => state.update_status.set(status),
+                    Err(e) => log::error!("Error while checking for updates: {e}"),
+                }
+            });
+        }
+        UpdateStatus::ReadyToInstall(_) => {
+            state.update_status.set(UpdateStatus::CheckingForUpdates);
+            spawn_local(async move {
+                if let Err(e) = install_update().await {
+                    state.update_status.set(UpdateStatus::Error {
+                        short: "Failed to install update".to_string(),
+                        long: format!("Error while installing update: {e}"),
+                    });
+                }
+            });
+        }
+        UpdateStatus::UpToDate => {
+            state.update_status.set(UpdateStatus::CheckingForUpdates);
+            spawn_local(async move {
+                match check_for_update().await {
+                    Ok(status) => state.update_status.set(status),
+                    Err(e) => log::error!("Error while checking for updates: {e}"),
+                }
+            });
+        }
+        _ => (),
+    };
+
+    let button_label = move || match status.get() {
+        UpdateStatus::UpdateAvailable(_) => "Download",
+        UpdateStatus::Error { .. } => "Retry",
+        UpdateStatus::ReadyToInstall(_) => "Install",
+        UpdateStatus::UpToDate => "Check for updates",
+        UpdateStatus::CheckingForUpdates => "Waiting for update to download...",
+        UpdateStatus::Downloading(_) => "Downloading...",
+    };
+
+    let button_content = move || {
+        if is_downloading() {
+            let text = move || match state.update_progress.get() {
+                UpdateDownloadProgress::InProgress { progress, total } => {
+                    if let Some(total) = total {
+                        format!(
+                            "Downloading... ({}/{})",
+                            format_bytes(progress as u64),
+                            format_bytes(total)
+                        )
+                    } else {
+                        format!("Downloading... ({})", format_bytes(progress as u64))
+                    }
+                }
+                UpdateDownloadProgress::Finished => "Downloaded".to_string(),
+                UpdateDownloadProgress::Started => "Starting download...".to_string(),
+            };
+
+            return view! {
+                <div class="flex flex-col items-center justify-center gap-1.5 w-full px-4">
+                    <span class="relative z-10 text-xs">{text}</span>
+                    <div class="relative w-full h-1 rounded-full bg-white/15 overflow-hidden">
+                        <div
+                            class="absolute inset-y-0 left-0 rounded-full bg-(--accent-color) animate-shimmer transition-[width] duration-300 ease-out"
+                            style=move || format!("width: {}%;", progress_percent())
+                        />
+                    </div>
+                </div>
+            }
+            .into_any();
+        }
+
+        let icon = match status.get() {
+            UpdateStatus::UpdateAvailable(_) => DOWNLOAD,
+            UpdateStatus::Error { .. } => WARNING_DIAMOND,
+            UpdateStatus::ReadyToInstall(_) => CHECK_CIRCLE,
+            UpdateStatus::UpToDate => INFO,
+            _ => SPINNER,
+        };
+
+        view! { <Icon icon=icon size="40px" weight=IconWeight::Bold color="var(--ui-solid-bg)" /> }
+            .into_any()
+    };
+
+    view! {
+        <div class="flex flex-col gap-4">
+            {header_view} <div class="relative h-20">
+                <div
+                    class=move || {
+                        let base = "relative shrink-0 flex items-center justify-center overflow-hidden text-white transition-all duration-300 ease-in-out h-20 border border-(--tile-border-color)";
+                        if is_downloading() {
+                            let color = if matches!(
+                                state.update_status.get(),
+                                UpdateStatus::Downloading(_)
+                            ) {
+                                "--ui-solid-hover-bg".to_string()
+                            } else {
+                                button_color()
+                            };
+                            format!("{base} w-100 bg-({})", color)
+                        } else {
+                            format!(
+                                "{base} w-20 shadow-[0_4px_0_0_rgba(0,0,0,0.35)] active:shadow-[0_1px_0_0_rgba(0,0,0,0.35)] active:translate-y-[3px] bg-({})",
+                                button_color(),
+                            )
+                        }
+                    }
+                    style:border-radius=move || {
+                        if is_downloading() {
+                            "var(--ui-border-radius)".to_string()
+                        } else {
+                            "40px".to_string()
+                        }
+                    }
+                >
+                    {button_content}
+                </div>
+                <button
+                    class=move || {
+                        let base = format!(
+                            "absolute left-24 top-1/2 -translate-y-1/2 whitespace-nowrap text-sm transition-opacity duration-300 ease-in-out border border-(--tile-border-color) px-3 py-1 rounded-(--ui-border-radius) bg-(--overlay-bg-color) cursor-pointer hover:bg-(--ui-solid-hover-bg) text-({})",
+                            button_color(),
+                        );
+                        if is_downloading() {
+                            format!("{base} opacity-0 pointer-events-none")
+                        } else {
+                            format!("{base} opacity-100")
+                        }
+                    }
+                    class=("opacity-0", is_downloading)
+                    class=("opacity-100", move || !is_downloading())
+                    disabled=is_downloading
+                    on:click=on_button_click
+                >
+                    {button_label}
+                </button>
+            </div>
+            <button
+                class="self-start px-3 py-1 text-sm border border-(--tile-border-color) text-muted rounded-(--ui-border-radius) hover:text-normal cursor-pointer"
+                on:click=cycle_test_state
+            >
+                "Cycle test state"
+            </button>
+        </div>
+    }
+        .into_any()
 }

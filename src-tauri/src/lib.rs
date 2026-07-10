@@ -9,12 +9,13 @@ use matrix_sdk::search_index::SearchIndexStoreKind;
 use matrix_sdk::{
     AuthSession, Client as MatrixClient, SessionMeta, SessionTokens, SqliteStoreConfig,
 };
-use shared::api::RestoreResponse;
 use shared::api::errors::LoginError;
 use shared::api::events::TauriEvent;
+use shared::api::{RestoreResponse, UpdateDownloadProgress, UpdateInfo, UpdateStatus};
 use shared::synth::ProfileAudio;
 use std::collections::HashMap;
 use std::sync::Arc;
+use tauri_plugin_updater::{Update, UpdaterExt};
 use tokio::sync::RwLock;
 use toml_edit::DocumentMut;
 
@@ -38,7 +39,7 @@ pub const APP_NAME: &str = "opal-matrix";
 use tauri_plugin_notification::{NotificationExt, PermissionState};
 
 use crate::builder::{add_invoke_handler, register_mxc_uri, setup_builder};
-use crate::matrix_api::keyring::{self, StoredSession, get_or_create_store_key, init_keyring};
+use crate::matrix_api::keyring::{self, get_or_create_store_key, init_keyring, StoredSession};
 use crate::state::{AppState, TimelineManager};
 use crate::sync::attach_callbacks;
 
@@ -569,6 +570,165 @@ fn diff_settings(old: &DocumentMut, new: &DocumentMut) -> Vec<String> {
         }
     }
     changed
+}
+
+#[command]
+async fn get_app_version(handle: AppHandle) -> Result<String, TauriError> {
+    let version = handle.package_info().version.to_string();
+    Ok(version)
+}
+
+fn info_from_update(update: &Update) -> UpdateInfo {
+    UpdateInfo {
+        version: update.version.clone(),
+        current_version: update.current_version.clone(),
+        body: update.body.clone(),
+        date: update.date.map(|d| d.millisecond()),
+    }
+}
+
+#[command]
+async fn get_update_status(state: State<'_, Arc<AppState>>) -> Result<UpdateStatus, ()> {
+    let status = state.update_status.read().await.clone();
+
+    Ok(status)
+}
+
+#[command]
+async fn check_for_update(
+    state: State<'_, Arc<AppState>>,
+    handle: AppHandle,
+) -> Result<UpdateStatus, TauriError> {
+    let current_status = state.update_status.read().await.clone();
+    if !current_status.needs_update_download() {
+        return Ok(current_status);
+    }
+
+    let update = handle.updater()?.check().await?;
+
+    state.update.write().await.clone_from(&update);
+
+    let new_status = if let Some(update) = &update {
+        UpdateStatus::UpdateAvailable(info_from_update(update))
+    } else {
+        UpdateStatus::UpToDate
+    };
+
+    *state.update_status.write().await = new_status.clone();
+    Ok(new_status)
+}
+
+#[command]
+async fn download_update(
+    state: State<'_, Arc<AppState>>,
+    handle: AppHandle,
+) -> Result<UpdateStatus, TauriError> {
+    let update_handle = handle.clone();
+
+    let Some(update) = state.update.read().await.clone() else {
+        log::warn!("Update not downloaded yet");
+        return Ok(UpdateStatus::Error {
+            short: "Download the update first".to_string(),
+            long: "If you are seeing this, something went wrong, please create a ticket"
+                .to_string(),
+        });
+    };
+
+    let info = info_from_update(&update);
+
+    *state.update_status.write().await = UpdateStatus::Downloading(info.clone());
+    send_event(&update_handle, &UpdateDownloadProgress::Started);
+
+    let download_info = info.clone();
+    let download_state = state.clone();
+
+    let finished_info = info.clone();
+    let finished_state = state.clone();
+
+    let bytes = match update
+        .download(
+            move |progress, total| {
+                *download_state.update_status.blocking_write() =
+                    UpdateStatus::Downloading(download_info.clone());
+                send_event(
+                    &update_handle,
+                    &UpdateDownloadProgress::InProgress { progress, total },
+                );
+            },
+            move || {
+                *finished_state.update_status.blocking_write() =
+                    UpdateStatus::ReadyToInstall(finished_info);
+                send_event(&handle, &UpdateDownloadProgress::Finished);
+            },
+        )
+        .await
+    {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            log::error!("Failed to download update: {:?}", e);
+            *state.update_status.write().await = UpdateStatus::Error {
+                short: "Failed to download update".to_string(),
+                long: format!("Failed to download update: {:?}", e),
+            };
+            return Ok(UpdateStatus::Error {
+                short: "Failed to download update".to_string(),
+                long: format!("Failed to download update: {:?}", e),
+            });
+        }
+    };
+
+    state.update_bytes.write().await.clone_from(&Some(bytes));
+
+    Ok(UpdateStatus::ReadyToInstall(info))
+}
+
+#[command]
+async fn install_update(state: State<'_, Arc<AppState>>) -> Result<(), TauriError> {
+    let update = state
+        .update
+        .read()
+        .await
+        .clone()
+        .ok_or("No update available")?;
+
+    let bytes = state
+        .update_bytes
+        .read()
+        .await
+        .clone()
+        .ok_or("Update not downloaded")?;
+
+    update.install(bytes)?;
+    Ok(())
+}
+
+#[command]
+async fn recheck_update(
+    state: State<'_, Arc<AppState>>,
+    handle: AppHandle,
+) -> Result<UpdateStatus, TauriError> {
+    let update = match handle.updater()?.check().await {
+        Ok(Some(update)) => update,
+        Ok(None) => {
+            *state.update.write().await = None;
+            *state.update_status.write().await = UpdateStatus::UpToDate;
+            return Ok(UpdateStatus::UpToDate);
+        }
+        Err(e) => {
+            log::error!("Failed to check for update: {e}");
+            return Ok(UpdateStatus::Error {
+                short: "Failed to check for update".to_string(),
+                long: format!("Failed to check for update: {e}"),
+            });
+        }
+    };
+
+    *state.update.write().await = Some(update.clone());
+
+    let info = info_from_update(&update);
+    *state.update_status.write().await = UpdateStatus::UpdateAvailable(info.clone());
+
+    Ok(UpdateStatus::UpdateAvailable(info))
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

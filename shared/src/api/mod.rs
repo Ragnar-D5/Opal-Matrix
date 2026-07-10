@@ -212,3 +212,45 @@ impl SearchParameters {
                 && !self.has_link
     }
 }
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
+pub struct UpdateInfo {
+    pub version: String,
+    pub current_version: String,
+    pub body: Option<String>,
+    pub date: Option<u16>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, TauriEvent)]
+pub enum UpdateDownloadProgress {
+    #[default]
+    Started,
+    InProgress {
+        progress: usize,
+        total: Option<u64>,
+    },
+    Finished,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, TauriEvent)]
+pub enum UpdateStatus {
+    #[default]
+    UpToDate,
+    UpdateAvailable(UpdateInfo),
+    Downloading(UpdateInfo),
+    ReadyToInstall(UpdateInfo),
+    Error {
+        short: String,
+        long: String,
+    },
+    CheckingForUpdates,
+}
+
+impl UpdateStatus {
+    pub fn needs_update_download(&self) -> bool {
+        !matches!(
+            self,
+            UpdateStatus::UpdateAvailable(_) | UpdateStatus::Downloading(_)
+        )
+    }
+}

@@ -110,6 +110,7 @@ pub enum NotificationLevel {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TauriEvent)]
 pub enum NotificationEvent {
     UpdateAvailable,
+    UpdateDownloaded,
     GenericNotification {
         title: String,
         message: String,

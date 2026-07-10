@@ -1,4 +1,4 @@
-use crate::components::authentication::{Authentication, get_stuff_after_login};
+use crate::components::authentication::{get_stuff_after_login, Authentication};
 use crate::components::loading::Loading;
 use crate::components::previews::ImageLightbox;
 use crate::components::shader::BackgroundShader;
@@ -7,7 +7,7 @@ use shared::api::events::{
     CallMemberUpdate, NotificationEvent, NotificationLevel, NotificationUpdate, PresenceUpdate,
     ProfileUpdates, RecentEmojies, RoomPinnedUpdate, TypingUpdate,
 };
-use shared::api::{AudioDeviceInfos, RestoreResponse};
+use shared::api::{AudioDeviceInfos, RestoreResponse, UpdateDownloadProgress};
 use shared::sidebar::{DmList, RoomMapUpdate, ServerList, SingleList};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -21,16 +21,18 @@ use wasm_bindgen::prelude::*;
 use web_sys::HtmlImageElement;
 
 use crate::components::{
-    SystemButtons,
     chat::Chat,
     overlays::emoji_picker::{EmojiPickerPortal, EmojiPickerState},
     overlays::gif_picker::{GifPickerPortal, GifPickerState},
     overlays::profile_card::{ProfileCardPortal, ProfileCardState},
     sidebar::Sidebar,
+    SystemButtons,
 };
 use crate::hooks::{setup_update_effect, use_tauri_event};
 use crate::state::{AppState, ProfileStore};
-use crate::tauri_functions::{set_backend_room_id, set_focused_in_backend};
+use crate::tauri_functions::{
+    get_app_version, get_update_status, set_backend_room_id, set_focused_in_backend,
+};
 
 use macros::matrix_settings;
 
@@ -251,6 +253,26 @@ pub fn App() -> impl IntoView {
 
     setup_update_effect(recent_emoji_update, move |update| {
         state.recent_emojies.set(update);
+    });
+
+    let settings_download_update: ReadSignal<Option<UpdateDownloadProgress>> = use_tauri_event();
+
+    setup_update_effect(settings_download_update, move |update| {
+        state.update_progress.set(update);
+    });
+
+    spawn_local(async move {
+        match get_update_status().await {
+            Ok(status) => state.update_status.set(status),
+            Err(e) => log::error!("Failed to get update status: {e}"),
+        }
+    });
+
+    spawn_local(async move {
+        match get_app_version().await {
+            Ok(ver) => state.app_version.set(ver),
+            Err(e) => log::error!("Failed to get version: {e}"),
+        }
     });
 
     let room_map_event: ReadSignal<Option<Vec<RoomMapUpdate>>> = use_tauri_event();
@@ -488,11 +510,25 @@ pub fn Notifications() -> impl IntoView {
                 each=move || active_notifications.get()
                 key=|n| n.id
                 children=move |tracked_notif| {
-                    let (title, message, bg_color, border_color, title_color, msg_color) = match tracked_notif.event {
+                    let (title, message, bg_color, border_color, title_color, msg_color) = match tracked_notif
+                        .event
+                    {
                         NotificationEvent::UpdateAvailable => {
                             (
                                 "Update Available".to_string(),
-                                "A new version of the app is ready to install.".to_string(),
+                                "A new version of the app is ready to install, check the settings."
+                                    .to_string(),
+                                "bg-blue-50 dark:bg-blue-950/30",
+                                "border-blue-200 dark:border-blue-900",
+                                "text-blue-800 dark:text-blue-300",
+                                "text-blue-600 dark:text-blue-400",
+                            )
+                        }
+                        NotificationEvent::UpdateDownloaded => {
+                            (
+                                "Update Downloaded".to_string(),
+                                "The new version has been downloaded and is ready to install."
+                                    .to_string(),
                                 "bg-blue-50 dark:bg-blue-950/30",
                                 "border-blue-200 dark:border-blue-900",
                                 "text-blue-800 dark:text-blue-300",

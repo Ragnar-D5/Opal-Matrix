@@ -5,7 +5,7 @@ use log::error;
 use serde_json::json;
 use shared::{
     account_data::{Breadcrumbs, ServerOrder},
-    api::{AudioDeviceInfos, SearchParameters, events::RecentEmojies},
+    api::{AudioDeviceInfos, SearchParameters, UpdateDownloadProgress, UpdateStatus, events::RecentEmojies},
     profile::{CustomProperties, MemberProfile, PresenceInfo, RoomProfile, UserProfile},
     sidebar::{
         DmList, NotificationCounts, RoomNode, ServerList, ServerRoomNode, SingleList,
@@ -97,7 +97,12 @@ pub struct AppState {
 
     pub audio_devices: RwSignal<AudioDeviceInfos>,
 
-    pub recent_emojies: RwSignal<RecentEmojies>
+    pub recent_emojies: RwSignal<RecentEmojies>,
+
+    pub update_progress: RwSignal<UpdateDownloadProgress>,
+    pub update_status: RwSignal<UpdateStatus>,
+
+    pub app_version: RwSignal<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -762,6 +767,13 @@ impl ProfileSignal {
         match self {
             ProfileSignal::User(sig) => sig.get().render_name_popup(font_size_str).into_any(),
             ProfileSignal::Member(sig) => sig.get().render_name_popup(font_size_str).into_any(),
+        }
+    }
+
+    pub fn name_no_popup(self, font_size_str: String) -> impl IntoView {
+        match self {
+            ProfileSignal::User(sig) => sig.get().render_name_no_popup(font_size_str).into_any(),
+            ProfileSignal::Member(sig) => sig.get().render_name_no_popup(font_size_str).into_any(),
         }
     }
 }

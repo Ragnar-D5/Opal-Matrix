@@ -117,13 +117,10 @@ pub fn ProfileCardPortal() -> impl IntoView {
         let profile_icon = move || icon_sig.clone().icon(format!("{icon_size}px"));
 
         let name_sig = signal.clone();
-        let profile_name = move || name_sig.clone().name("14px".to_string());
+        let profile_name = move || name_sig.clone().name_no_popup("14px".to_string());
 
         view! {
-            <audio
-                src=move || audio().joined
-                autoplay=true
-            />
+            <audio src=move || audio().joined autoplay=true />
             <div class="relative flex flex-col w-full">
                 <div
                     class="w-full"

@@ -14,7 +14,7 @@ use std::{
     },
 };
 
-use shared::api::events::LogEntry;
+use shared::api::{UpdateStatus, events::LogEntry};
 use tauri::{AppHandle, async_runtime::{Mutex, RwLock}};
 use tokio::{sync::mpsc::{self, UnboundedReceiver, UnboundedSender}, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
@@ -27,6 +27,8 @@ pub struct AppState {
     pub frontend_current_room_id: RwLock<Option<String>>,
     pub frontend_is_focused: RwLock<bool>,
     pub update: RwLock<Option<Update>>,
+    pub update_bytes: RwLock<Option<Vec<u8>>>,
+    pub update_status: RwLock<UpdateStatus>,
 }
 
 /// In-memory ring buffer of recent log lines. Every log record is pushed here

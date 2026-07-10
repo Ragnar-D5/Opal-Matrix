@@ -1,6 +1,7 @@
 use matrix_sdk::Client;
 use notify::Watcher;
 use percent_encoding::percent_decode_str;
+use shared::api::UpdateStatus;
 use shared::api::events::{LogEntry, NotificationEvent, NotificationLevel, SettingsUpdate, TauriEvent};
 use shared::synth::ProfileAudio;
 use std::collections::HashMap;
@@ -20,7 +21,7 @@ use tauri::{App, Builder, Emitter, Manager, Wry};
 use tauri_plugin_cli::CliExt;
 use tauri_plugin_log::{Target, TargetKind};
 
-use crate::ipc_log;
+use crate::{info_from_update, ipc_log};
 #[cfg(all(desktop, debug_assertions))]
 use crate::ipc_log::IpcTrafficLog;
 use crate::matrix_api::media::{
@@ -53,6 +54,13 @@ pub fn add_invoke_handler(builder: Builder<Wry>) -> Builder<Wry> {
         ipc_log::log_ipc_call,
         super::set_room_id,
         super::set_frontend_focused,
+        // updates
+        super::check_for_update,
+        super::get_update_status,
+        super::download_update,
+        super::install_update,
+        super::get_app_version,
+        super::recheck_update,
         // frontend commands
         frontend::messages::commit_message,
         frontend::messages::send_attachment,
@@ -376,8 +384,10 @@ pub fn setup_builder(builder: Builder<Wry>) -> Builder<Wry> {
                 send_event(&clone, &NotificationEvent::UpdateAvailable);
 
                 *update_state.update.write().await = Some(update.clone());
+                *update_state.update_status.write().await = UpdateStatus::UpdateAvailable(info_from_update(&update));
             } else {
                 log::info!("No update available");
+                *update_state.update_status.write().await = UpdateStatus::UpToDate;
             }
         });
         app.manage(state);
@@ -519,7 +529,7 @@ pub fn setup_builder(builder: Builder<Wry>) -> Builder<Wry> {
             }
         };
 
-        let log_level = cli_log_level("log-level").unwrap_or(log::LevelFilter::max());
+        let log_level = cli_log_level("log-level").unwrap_or(log::LevelFilter::Debug);
         let livekit_log_level =
             cli_log_level("livekit-log-level").unwrap_or(log::LevelFilter::Off);
         let keyring_log_level =
