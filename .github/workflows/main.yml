@@ -184,9 +184,13 @@ jobs:
                   api() {
                       local method="$1" path="$2"
                       shift 2
+                      
+                      local clean_token=$(echo "${CODEBERG_TOKEN}" | tr -d '\r\n ')
+                      local clean_url=$(echo "${CB_API}${path}" | tr -d '\r\n ')
+
                       curl -sS -w '\n%{http_code}' -X "$method" \
-                          -H "Authorization: token ${CODEBERG_TOKEN}" \
-                          "$@" "${CB_API}${path}"
+                          -H "Authorization: token ${clean_token}" \
+                          "$@" "${clean_url}"
                   }
 
                   mkdir -p assets
@@ -195,48 +199,62 @@ jobs:
                   # Point the updater manifest at the Codeberg copies of the assets.
                   sed -i "s#https://github.com/${GITHUB_REPOSITORY}/releases/download/#https://codeberg.org/${CB_OWNER}/${CB_REPO}/releases/download/#g" assets/latest.json
 
-                  echo "Looking for an existing release with tag ${TAG} on Codeberg..."
-                  resp=$(api GET "/releases/tags/${TAG}")
-                  code=$(tail -n1 <<<"$resp")
-                  body=$(sed '$d' <<<"$resp")
-                  if [ "$code" == "200" ]; then
-                      RELEASE_ID=$(jq -r '.id' <<<"$body")
-                  elif [ "$code" == "404" ]; then
-                      RELEASE_ID=""
-                  else
-                      echo "$body"; exit 1
-                  fi
+                  sync_to_codeberg() {
+                      local target_tag="$1"
+                      local release_name="$2"
+                      local is_draft="$3" 
+                      local RELEASE_ID=""
 
-                  if [ -z "${RELEASE_ID:-}" ]; then
-                      echo "None found, creating a new draft release..."
-                      payload=$(jq -n --arg tag "$TAG" --arg name "App v${VERSION}" \
-                          '{tag_name:$tag,name:$name,body:"See the assets to download this version and install.",draft:true,prerelease:false}')
-                      resp=$(api POST "/releases" -H "Content-Type: application/json" -d "$payload")
+                      echo "Syncing to Codeberg tag: ${target_tag}..."
+                      resp=$(api GET "/releases/tags/${target_tag}")
                       code=$(tail -n1 <<<"$resp")
                       body=$(sed '$d' <<<"$resp")
-                      if [ "$code" != "201" ]; then echo "$body"; exit 1; fi
-                      RELEASE_ID=$(jq -r '.id' <<<"$body")
-                  fi
-                  echo "Codeberg release id: ${RELEASE_ID}"
 
-                  resp=$(api GET "/releases/${RELEASE_ID}/assets")
-                  code=$(tail -n1 <<<"$resp")
-                  existing_assets=$(sed '$d' <<<"$resp")
-                  if [ "$code" != "200" ]; then echo "$existing_assets"; exit 1; fi
-
-                  for f in assets/*; do
-                      name=$(basename "$f")
-                      existing_id=$(jq -r --arg N "$name" '.[] | select(.name==$N) | .id' <<<"$existing_assets")
-                      if [ -n "$existing_id" ]; then
-                          echo "Replacing existing asset ${name}..."
-                          curl -sS -f -X DELETE -H "Authorization: token ${CODEBERG_TOKEN}" \
-                              "${CB_API}/releases/${RELEASE_ID}/assets/${existing_id}"
+                      if [ "$code" == "200" ]; then
+                          RELEASE_ID=$(jq -r '.id' <<<"$body")
+                          echo "Found existing release ${RELEASE_ID}. Moving target to current commit..."
+                          payload=$(jq -n --arg sha "${GITHUB_SHA}" --arg name "$release_name" --argjson draft "$is_draft" \
+                              '{target_commitish:$sha,name:$name,draft:$draft}')
+                          api PATCH "/releases/${RELEASE_ID}" -H "Content-Type: application/json" -d "$payload" > /dev/null
+                      elif [ "$code" == "404" ]; then
+                          echo "Release not found, creating a new one..."
+                          payload=$(jq -n --arg tag "$target_tag" --arg name "$release_name" --arg sha "${GITHUB_SHA}" --argjson draft "$is_draft" \
+                              '{tag_name:$tag,target_commitish:$sha,name:$name,body:"See the assets to download this version and install.",draft:$draft,prerelease:false}')
+                          resp=$(api POST "/releases" -H "Content-Type: application/json" -d "$payload")
+                          code=$(tail -n1 <<<"$resp")
+                          body=$(sed '$d' <<<"$resp")
+                          if [ "$code" != "201" ]; then echo "$body"; exit 1; fi
+                          RELEASE_ID=$(jq -r '.id' <<<"$body")
+                      else
+                          echo "$body"; exit 1
                       fi
-                      echo "Uploading ${name}..."
-                      curl -sS -f -X POST -H "Authorization: token ${CODEBERG_TOKEN}" \
-                          -F "attachment=@${f};filename=${name}" \
-                          "${CB_API}/releases/${RELEASE_ID}/assets?name=${name}"
-                  done
+
+                      # Fetch existing assets to wipe them clean before re-uploading
+                      resp=$(api GET "/releases/${RELEASE_ID}/assets")
+                      code=$(tail -n1 <<<"$resp")
+                      existing_assets=$(sed '$d' <<<"$resp")
+                      if [ "$code" != "200" ]; then echo "$existing_assets"; exit 1; fi
+
+                      for f in assets/*; do
+                          name=$(basename "$f")
+                          existing_id=$(jq -r --arg N "$name" '.[] | select(.name==$N) | .id' <<<"$existing_assets")
+                          if [ -n "$existing_id" ]; then
+                              echo "Clearing old asset ${name}..."
+                              curl -sS -f -X DELETE -H "Authorization: token ${CODEBERG_TOKEN}" \
+                                  "${CB_API}/releases/${RELEASE_ID}/assets/${existing_id}"
+                          fi
+                          echo "Uploading ${name} to ${target_tag}..."
+                          curl -sS -f -X POST -H "Authorization: token ${CODEBERG_TOKEN}" \
+                              -F "attachment=@${f};filename=${name}" \
+                              "${CB_API}/releases/${RELEASE_ID}/assets?name=${name}"
+                      done
+                  }
+
+                  # 1. Update/Create the specific versioned DRAFT release
+                  sync_to_codeberg "$TAG" "App v${VERSION}" "true"
+
+                  # 2. Update/Create the static public LATEST release
+                  sync_to_codeberg "latest" "Latest Stable Release" "false"
 
                   echo "Cleaning up the temporary draft on the GitHub mirror..."
                   gh release delete "$TAG" --yes
