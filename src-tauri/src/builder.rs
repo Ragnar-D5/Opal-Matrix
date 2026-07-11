@@ -397,12 +397,12 @@ pub fn setup_builder(builder: Builder<Wry>) -> Builder<Wry> {
 
         let settings_doc = match read_to_string(&settings_file_path) {
             Ok(content) => match DocumentMut::from_str(&content) {
-                Ok(doc) => doc,
-                Err(e) => {
-                    log::warn!("Failed to parse settings file, starting with empty settings: {:?}", e);
-                    DocumentMut::new()
-                }
-            },
+                    Ok(doc) => doc,
+                    Err(e) => {
+                        log::warn!("Failed to parse settings file, starting with empty settings: {:?}", e);
+                        DocumentMut::new()
+                    }
+                },
             Err(e) => {
                 log::warn!("Failed to read settings file, starting with empty settings: {:?}", e);
                 DocumentMut::new()
@@ -460,6 +460,7 @@ pub fn setup_builder(builder: Builder<Wry>) -> Builder<Wry> {
                             key: key.clone(),
                             value: json_str.clone(),
                             cloud: false,
+                            skip_cloud_upload: false,
                         });
                     };
                 }

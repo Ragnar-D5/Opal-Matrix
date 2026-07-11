@@ -98,6 +98,9 @@ pub struct SettingsUpdate {
     pub key: String,
     pub value: String,
     pub cloud: bool,
+    /// When true the frontend should not re-upload to cloud; the backend
+    /// already handled the cloud write (set_setting with to_cloud=true).
+    pub skip_cloud_upload: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

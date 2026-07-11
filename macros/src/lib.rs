@@ -172,16 +172,21 @@ fn convert_settings(mut item: ItemStruct) -> TokenStream {
         .map(|(type_name, field_name, uses_cloud)| {
             let upload = if *uses_cloud {
                 quote! {
-                    let key_c = new.key.clone();
-                    let val_c = new.value.clone();
-                    ::leptos::task::spawn_local(async move {
-                        let args = ::serde_wasm_bindgen::to_value(
-                            &::serde_json::json!({ "key": key_c, "value": val_c })
-                        ).expect("Failed to serialize cloud-upload args");
-                        if let Err(e) = call_tauri("set_setting_cloud", args).await {
-                            ::log::error!("Failed to upload '{}' to cloud: {:?}", key_c, e);
-                        }
-                    });
+                    // Don't re-upload to cloud when the backend already handled it
+                    // (skip_cloud_upload=true) or when the event itself came from the cloud.
+                    // Only upload for genuine local-file changes detected by the watcher.
+                    if new.value != "null" && !new.skip_cloud_upload && !new.cloud {
+                        let key_c = new.key.clone();
+                        let val_c = new.value.clone();
+                        ::leptos::task::spawn_local(async move {
+                            let args = ::serde_wasm_bindgen::to_value(
+                                &::serde_json::json!({ "key": key_c, "value": val_c })
+                            ).expect("Failed to serialize cloud-upload args");
+                            if let Err(e) = call_tauri("set_setting_cloud", args).await {
+                                ::log::error!("Failed to upload '{}' to cloud: {:?}", key_c, e);
+                            }
+                        });
+                    }
                 }
             } else {
                 quote! {}
@@ -189,8 +194,12 @@ fn convert_settings(mut item: ItemStruct) -> TokenStream {
             quote! {
                 #type_name => {
                     match ::serde_json::from_str(&new.value) {
-                        Ok(parsed) => #field_name.set(parsed),
-                        Err(e) => ::log::warn!("Failed to deserialize field '{}': {:?}", stringify!(#field_name), e)
+                        Ok(parsed) => {
+                            if #field_name.get_untracked() != parsed {
+                                #field_name.set(parsed);
+                            }
+                        }
+                        Err(e) => ::log::warn!("Failed to deserialize field '{}' (value: {:?}): {:?}", stringify!(#field_name), new.value, e)
                     }
                     #upload
                 }
@@ -204,8 +213,12 @@ fn convert_settings(mut item: ItemStruct) -> TokenStream {
         .map(|(type_name, field_name, _)| {
             quote! {
                 #type_name => match ::serde_json::from_str(&new.value) {
-                    Ok(parsed) => #field_name.set(parsed),
-                    Err(e) => ::log::warn!("Failed to deserialize field '{}': {:?}", stringify!(#field_name), e)
+                    Ok(parsed) => {
+                        if #field_name.get_untracked() != parsed {
+                            #field_name.set(parsed);
+                        }
+                    }
+                    Err(e) => ::log::warn!("Failed to deserialize field '{}' (value: {:?}): {:?}", stringify!(#field_name), new.value, e)
                 }
             }
         })
