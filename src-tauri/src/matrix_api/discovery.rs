@@ -2,11 +2,11 @@ use matrix_sdk::Client as MatrixClient;
 
 use log::trace;
 use matrix_sdk::ruma::api::{
-    IncomingResponse, OutgoingRequest, SupportedVersions,
     auth_scheme::SendAccessToken,
     client::discovery::get_supported_versions::{
         Request as VersionsRequest, Response as VersionsResponse,
     },
+    IncomingResponse, OutgoingRequest, SupportedVersions,
 };
 use serde::Deserialize;
 use tauri::State;
@@ -14,7 +14,7 @@ use tauri_plugin_http::reqwest::{self, Client};
 use tokio::sync::RwLock;
 use url::Url;
 
-use crate::{LogResultExt, TauriError, reqwest_response_to_http_response};
+use crate::{reqwest_response_to_http_response, LogResultExt, TauriError};
 
 #[derive(Debug, Deserialize)]
 pub struct WellKnown {
@@ -56,7 +56,7 @@ pub async fn choose_home_server(
         .send()
         .await
         .map_err(|e| format!("Failed to get .well_known: {e}"))
-        .as_info()?;
+        .log_as_info()?;
 
     if res.status().is_success() {
         let well_known: WellKnown = res.json().await.map_err(|e| {
@@ -67,18 +67,18 @@ pub async fn choose_home_server(
             .homeserver_url(
                 Url::parse(&well_known.homeserver.base_url)
                     .map_err(|e| format!("Failed to parse homeserver URL: {e}"))
-                    .as_info()?,
+                    .log_as_info()?,
             )
             .handle_refresh_tokens()
             .build()
             .await
             .map_err(|e| format!("Failed to build Matrix client: {e}"))
-            .as_info()?;
+            .log_as_info()?;
 
         let _ = fetch_supported_versions(&well_known.homeserver.base_url).await?;
         Ok(url)
     } else {
-        Err(format!("Failed to get .well_known: {}", res.status())).as_info()
+        Err(format!("Failed to get .well_known: {}", res.status())).log_as_info()
     }
 }
 

@@ -1,4 +1,5 @@
 use leptos::{portal::Portal, prelude::*};
+use shared::synth::{signature_audio_src, SignatureEvent};
 use web_sys::{Element, KeyboardEvent};
 
 use crate::{components::presence::PresenceBadge, state::ProfileStore};
@@ -111,7 +112,7 @@ pub fn ProfileCardPortal() -> impl IntoView {
         let banner_color = move || banner_sig.banner_color();
 
         let sonic_sig = signal.clone();
-        let audio = move || sonic_sig.audio();
+        let audio_src = move || signature_audio_src(&sonic_sig.signature(), SignatureEvent::Joined);
 
         let icon_sig = signal.clone();
         let profile_icon = move || icon_sig.clone().icon(format!("{icon_size}px"));
@@ -120,7 +121,7 @@ pub fn ProfileCardPortal() -> impl IntoView {
         let profile_name = move || name_sig.clone().name_no_popup("14px".to_string());
 
         view! {
-            <audio src=move || audio().joined autoplay=true />
+            <audio src=audio_src autoplay=true />
             <div class="relative flex flex-col w-full">
                 <div
                     class="w-full"

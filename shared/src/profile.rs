@@ -3,7 +3,7 @@ use macros::TauriEvent;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::synth::ProfileAudio;
+use crate::synth::SonicSignature;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub enum PresenceStatus {
@@ -85,8 +85,8 @@ impl UserProfile {
         format!("mxc://user/{}/room/{room_id}", self.user_id)
     }
 
-    pub fn get_audio(&self) -> ProfileAudio {
-        self.custom_properties.audio.clone()
+    pub fn get_signature(&self) -> SonicSignature {
+        self.custom_properties.sonic_signature.clone()
     }
 
     pub fn name_color(&self) -> Color {
@@ -117,8 +117,8 @@ impl MemberProfile {
         &self.profile.user_id
     }
 
-    pub fn get_audio(&self) -> ProfileAudio {
-        self.profile.get_audio()
+    pub fn get_signature(&self) -> SonicSignature {
+        self.profile.get_signature()
     }
 
     pub fn name_color(&self) -> Color {
@@ -153,11 +153,11 @@ impl RoomProfile {
 pub struct CustomProperties {
     pub banner_color: Color,
     pub name_color: Color,
-    pub audio: ProfileAudio,
+    pub sonic_signature: SonicSignature,
 }
 
 impl CustomProperties {
-    pub fn from_user_id(user_id: &str, default_audio: ProfileAudio) -> Self {
+    pub fn from_user_id(user_id: &str) -> Self {
         let hash = Sha256::digest(user_id.as_bytes());
         let h = hash[0] as f32 / 255.0 * 360.0;
         let color = Color::from_hsla(h, 0.9, 0.7, 1.0);
@@ -165,7 +165,7 @@ impl CustomProperties {
         Self {
             banner_color: color.clone(),
             name_color: color,
-            audio: default_audio,
+            sonic_signature: SonicSignature::from_user_id(user_id),
         }
     }
 }

@@ -616,6 +616,7 @@ impl EventContent {
                 sender_id: sender,
                 event_id: Some(id),
                 content: self,
+                receipts: Vec::new()
             })),
         }
     }
@@ -635,6 +636,8 @@ pub struct TimelineEvent {
     pub timestamp: u64,
     pub flags: EventFlags,
     pub sender_id: String,
+
+    pub receipts: Vec<String>,
 
     pub event_id: Option<String>,
 

@@ -11,7 +11,7 @@ use shared::{
         DmList, NotificationCounts, RoomNode, ServerList, ServerRoomNode, SingleList,
         SpaceRoomNode, UserDevice,
     },
-    synth::ProfileAudio,
+    synth::SonicSignature,
     timeline::{UiMediaSource, UiTimelineItem},
 };
 
@@ -606,7 +606,6 @@ pub struct ProfileStore {
     pub presences: RwSignal<HashMap<String, ArcRwSignal<PresenceInfo>>>,
 
     pub user_profiles: ArcRwSignal<HashMap<String, ArcRwSignal<UserProfile>>>,
-    default_profile_audio: ProfileAudio,
 }
 
 impl ProfileStore {
@@ -617,10 +616,7 @@ impl ProfileStore {
                 user_id: room_id.to_string(),
                 display_name: Some("room".to_string()),
                 has_avatar: false,
-                custom_properties: CustomProperties::from_user_id(
-                    room_id,
-                    self.default_profile_audio.clone(),
-                ),
+                custom_properties: CustomProperties::from_user_id(room_id),
             },
         }
     }
@@ -647,10 +643,7 @@ impl ProfileStore {
                 user_id: user_id.to_string(),
                 display_name: None,
                 has_avatar: false,
-                custom_properties: CustomProperties::from_user_id(
-                    user_id,
-                    self.default_profile_audio.clone(),
-                ),
+                custom_properties: CustomProperties::from_user_id(user_id),
             },
         });
 
@@ -693,10 +686,7 @@ impl ProfileStore {
             user_id: user_id.to_string(),
             display_name: None,
             has_avatar: false,
-            custom_properties: CustomProperties::from_user_id(
-                user_id,
-                self.default_profile_audio.clone(),
-            ),
+            custom_properties: CustomProperties::from_user_id(user_id),
         });
 
         self.user_profiles.update(|profiles| {
@@ -754,10 +744,10 @@ impl ProfileSignal {
         }
     }
 
-    pub fn audio(&self) -> ProfileAudio {
+    pub fn signature(&self) -> SonicSignature {
         match self {
-            ProfileSignal::User(sig) => sig.get().get_audio(),
-            ProfileSignal::Member(sig) => sig.get().get_audio(),
+            ProfileSignal::User(sig) => sig.get().get_signature(),
+            ProfileSignal::Member(sig) => sig.get().get_signature(),
         }
     }
 

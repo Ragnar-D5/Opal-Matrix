@@ -7,6 +7,7 @@ use matrix_sdk::{
     ruma::{
         events::{
             poll::start::PollKind,
+            receipt::ReceiptThread,
             room::{
                 guest_access::GuestAccess,
                 history_visibility::HistoryVisibility,
@@ -835,6 +836,21 @@ fn event_timeline_item_to_ui(
 ) -> TimelineEvent {
     let sender_id = item.sender();
 
+    let receipts = item
+        .read_receipts()
+        .iter()
+        .filter_map(|(user_id, receipt)| {
+            if matches!(
+                receipt.thread,
+                ReceiptThread::Main | ReceiptThread::Unthreaded
+            ) {
+                Some(user_id.to_string())
+            } else {
+                None
+            }
+        })
+        .collect();
+
     let mut event = TimelineEvent {
         state: item.send_state().map(event_send_state_to_ui),
         timestamp: item.timestamp().as_secs().into(),
@@ -848,6 +864,8 @@ fn event_timeline_item_to_ui(
         },
 
         event_id: item.event_id().map(|e| e.to_string()),
+
+        receipts,
 
         sender_id: sender_id.to_string(),
 

@@ -556,26 +556,3 @@ fn encode_wav_stereo(left: &[f32], right: &[f32]) -> Vec<u8> {
     }
     buf
 }
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
-pub struct ProfileAudio {
-    pub joined: String,
-    pub left: String,
-    pub muted: String,
-    pub unmuted: String,
-    pub deafened: String,
-    pub undeafened: String,
-}
-
-impl ProfileAudio {
-    pub fn new(sig: SonicSignature) -> Self {
-        Self {
-            joined: signature_audio_src(&sig, SignatureEvent::Joined),
-            left: signature_audio_src(&sig, SignatureEvent::Left),
-            muted: signature_audio_src(&sig, SignatureEvent::Muted),
-            unmuted: signature_audio_src(&sig, SignatureEvent::Unmuted),
-            deafened: signature_audio_src(&sig, SignatureEvent::Deafened),
-            undeafened: signature_audio_src(&sig, SignatureEvent::Undeafened),
-        }
-    }
-}

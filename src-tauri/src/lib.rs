@@ -12,7 +12,6 @@ use matrix_sdk::{
 use shared::api::errors::LoginError;
 use shared::api::events::TauriEvent;
 use shared::api::{RestoreResponse, UpdateDownloadProgress, UpdateInfo, UpdateStatus};
-use shared::synth::ProfileAudio;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tauri_plugin_updater::{Update, UpdaterExt};
@@ -21,7 +20,7 @@ use toml_edit::DocumentMut;
 
 use bytes::Bytes;
 use log::info;
-use tauri::{AppHandle, Emitter, Url, command};
+use tauri::{command, AppHandle, Emitter, Url};
 use tauri::{Manager, State, WebviewUrl, WebviewWindowBuilder};
 
 pub mod builder;
@@ -154,9 +153,9 @@ where
 }
 
 pub trait LogResultExt<T> {
-    fn as_warn(self) -> Result<T, TauriError>;
-    fn as_info(self) -> Result<T, TauriError>;
-    fn as_debug(self) -> Result<T, TauriError>;
+    fn log_as_warn(self) -> Result<T, TauriError>;
+    fn log_as_info(self) -> Result<T, TauriError>;
+    fn log_as_debug(self) -> Result<T, TauriError>;
 }
 
 impl<T, E> LogResultExt<T> for Result<T, E>
@@ -164,7 +163,7 @@ where
     E: ToString,
 {
     #[track_caller]
-    fn as_warn(self) -> Result<T, TauriError> {
+    fn log_as_warn(self) -> Result<T, TauriError> {
         self.map_err(|e| {
             let val = e.to_string();
             let location = std::panic::Location::caller();
@@ -183,7 +182,7 @@ where
     }
 
     #[track_caller]
-    fn as_info(self) -> Result<T, TauriError> {
+    fn log_as_info(self) -> Result<T, TauriError> {
         self.map_err(|e| {
             let val = e.to_string();
             let location = std::panic::Location::caller();
@@ -202,7 +201,7 @@ where
     }
 
     #[track_caller]
-    fn as_debug(self) -> Result<T, TauriError> {
+    fn log_as_debug(self) -> Result<T, TauriError> {
         self.map_err(|e| {
             let val = e.to_string();
             let location = std::panic::Location::caller();
@@ -225,7 +224,6 @@ where
 async fn try_restore(
     app_handle: AppHandle,
     matrix_client: State<'_, RwLock<MatrixClient>>,
-    default_audio: State<'_, ProfileAudio>,
 ) -> Result<RestoreResponse, TauriError> {
     let session_result = tokio::task::spawn_blocking(keyring::get_last_active_session)
         .await
@@ -287,7 +285,7 @@ async fn try_restore(
     });
     new_client.restore_session(session).await?;
 
-    attach_callbacks(&new_client, &app_handle, default_audio.inner()).await?;
+    attach_callbacks(&new_client, &app_handle).await?;
 
     let user_id = new_client.user_id().unwrap().to_string();
 
@@ -303,7 +301,6 @@ async fn login(
     recovery_key: String,
     app_handle: AppHandle,
     matrix_client: State<'_, RwLock<MatrixClient>>,
-    default_audio: State<'_, ProfileAudio>,
     handle: AppHandle,
 ) -> Result<String, LoginError> {
     info!("Logging in new");
@@ -423,12 +420,10 @@ async fn login(
         })?;
     log::debug!("Device verified, starting sync loop");
 
-    attach_callbacks(&new_client, &handle, default_audio.inner())
-        .await
-        .map_err(|e| {
-            error!("Failed to start sync loop: {:?}", e);
-            LoginError::BackendError
-        })?;
+    attach_callbacks(&new_client, &handle).await.map_err(|e| {
+        error!("Failed to start sync loop: {:?}", e);
+        LoginError::BackendError
+    })?;
     log::debug!("Sync loop started");
 
     let user_id = new_client.user_id().unwrap().to_string();

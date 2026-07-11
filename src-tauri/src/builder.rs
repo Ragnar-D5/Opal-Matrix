@@ -3,7 +3,6 @@ use notify::Watcher;
 use percent_encoding::percent_decode_str;
 use shared::api::UpdateStatus;
 use shared::api::events::{LogEntry, NotificationEvent, NotificationLevel, SettingsUpdate, TauriEvent};
-use shared::synth::ProfileAudio;
 use std::collections::HashMap;
 use std::fs::{read_to_string, write};
 use std::path::PathBuf;
@@ -567,7 +566,6 @@ pub fn setup_builder(builder: Builder<Wry>) -> Builder<Wry> {
         app.manage(MediaManager::default());
         app.manage(LiveKitRoomManager::default());
         app.manage(AudioManager::new(app.handle().clone()));
-        app.manage(ProfileAudio::default());
 
         #[cfg(not(target_os = "android"))]
         let main_window = app

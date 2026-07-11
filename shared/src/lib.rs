@@ -6,6 +6,7 @@ pub mod api;
 pub mod commands;
 pub mod parsing;
 pub mod profile;
+pub mod settings;
 pub mod sidebar;
 pub mod synth;
 pub mod timeline;

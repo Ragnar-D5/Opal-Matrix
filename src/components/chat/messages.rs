@@ -683,6 +683,54 @@ fn render_reactions(
     view! { <div class="flex flex-wrap gap-1 mt-1 mb-2">{content}</div> }.into_any()
 }
 
+fn render_read_receipts(
+    receipts: Vec<String>,
+    store: ProfileStore,
+    room_id: String,
+) -> AnyView {
+    if receipts.is_empty() {
+        return ().into_any();
+    }
+
+    const MAX_SHOWN: usize = 5;
+
+    let pics = receipts
+        .iter()
+        .take(MAX_SHOWN)
+        .map(|user_id| {
+            let profile = store.get_member_profile(&room_id, user_id).get();
+            let name = profile.get_name();
+            let icon = profile.render_icon("16px");
+
+            view! {
+                <div
+                    class="rounded-full ring-2 ring-(--ui-solid-bg) shrink-0 -ml-1.5 first:ml-0"
+                    title=name
+                >
+                    {icon}
+                </div>
+            }
+        })
+        .collect_view();
+
+    let overflow = (receipts.len() > MAX_SHOWN).then(|| {
+        TextCircle(
+            TextCircleProps::builder()
+                .text(format!("+{}", receipts.len() - MAX_SHOWN))
+                .class("-ml-1.5 w-[16px] h-[16px] rounded-full text-[8px]")
+                .color(Color::from_hsla(0.0, 0.0, 0.6, 1.0))
+                .build(),
+        )
+    });
+
+    view! {
+        <div class="absolute top-1/2 -translate-y-1/2 right-4 z-0 flex items-center">
+            {pics} {overflow}
+        </div>
+    }
+        .into_any()
+}
+
 fn get_date_from_ts(ts: i64) -> DateTime<Local> {
     Local
         .timestamp_opt(ts, 0)
@@ -1483,6 +1531,10 @@ fn render_timeline_event(
     let own_user_id = own_user_id.to_string();
     let reactions_room_id = room_id.clone();
 
+    let store_for_receipts = store.clone();
+    let receipts_room_id = room_id.clone();
+    let own_user_id_for_receipts = own_user_id.clone();
+
     let reactions_view = move || {
         render_reactions(
             item_sig.with(|i| {
@@ -1497,6 +1549,22 @@ fn render_timeline_event(
             own_user_id.clone(),
             event_id_clone.clone(),
         )
+    };
+
+    let receipts_view = move || {
+        let receipts = item_sig.with(|i| {
+            if let UiTimelineItemKind::Event(e) = &i.kind {
+                e.receipts
+                    .iter()
+                    .filter(|id| **id != own_user_id_for_receipts)
+                    .cloned()
+                    .collect()
+            } else {
+                Vec::new()
+            }
+        });
+
+        render_read_receipts(receipts, store_for_receipts.clone(), receipts_room_id.clone())
     };
 
     let important_event_id: RwSignal<Option<String>> = expect_context();
@@ -1612,6 +1680,8 @@ fn render_timeline_event(
                     show_unpin_confirm=show_unpin_confirm
                 />
             </Show>
+
+            {move || if preview { ().into_any() } else { receipts_view() }}
 
             <MessageHeader
                 reply_info=reply_info

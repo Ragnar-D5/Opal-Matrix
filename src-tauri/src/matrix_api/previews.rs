@@ -1,17 +1,17 @@
-use matrix_sdk::Client as MatrixClient;
 use matrix_sdk::ruma::OwnedMxcUri;
 use matrix_sdk::ruma::{
     api::client::authenticated_media::get_media_preview::v1::Request as GetMediaPreviewRequest,
     events::room::MediaSource,
 };
+use matrix_sdk::Client as MatrixClient;
 use regex::Regex;
 use shared::api::LinkPreviewResponse;
-use tauri::{State, command};
+use tauri::{command, State};
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use crate::LogResultExt;
-use crate::{BrandColorsMap, TauriError, state::MediaManager};
+use crate::{state::MediaManager, BrandColorsMap, TauriError};
 
 /// Tauri command to get a URL preview for a given URL.
 #[command]
@@ -28,7 +28,7 @@ pub async fn get_url_preview(
     let matrix_client = matrix_client.read().await;
 
     let request = GetMediaPreviewRequest::new(url.to_string());
-    let response = matrix_client.send(request).await.as_debug()?;
+    let response = matrix_client.send(request).await.log_as_debug()?;
 
     let Some(data) = response.data else {
         return Err("No data in response".into());

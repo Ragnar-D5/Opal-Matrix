@@ -6,7 +6,6 @@ use matrix_sdk::{
 };
 use shared::api::events::{RecentEmoji, RecentEmojies};
 use shared::sidebar::{DmList, RoomMapUpdate, RoomNode, ServerList, SingleList};
-use shared::synth::ProfileAudio;
 use std::collections::{HashMap, HashSet};
 use std::pin::pin;
 use std::sync::{Arc, Mutex};
@@ -36,11 +35,7 @@ use crate::{
 };
 use futures_util::StreamExt;
 
-pub async fn attach_callbacks(
-    client: &MatrixClient,
-    handle: &AppHandle,
-    default_audio: &ProfileAudio,
-) -> Result<(), TauriError> {
+pub async fn attach_callbacks(client: &MatrixClient, handle: &AppHandle) -> Result<(), TauriError> {
     client.event_cache().subscribe()?;
 
     let mut session_subscriber = client.subscribe_to_session_changes();
@@ -78,21 +73,13 @@ pub async fn attach_callbacks(
 
     let rooms = client.rooms();
 
-    send_user_to_frontend(handle, client, default_audio).await?;
+    send_user_to_frontend(handle, client).await?;
 
     let members_client = client.clone();
     let members_handle = handle.clone();
     let members_rooms = rooms.clone();
-    let audio_clone = default_audio.clone();
     spawn(async move {
-        if let Err(e) = send_all_members(
-            &members_client,
-            &members_handle,
-            &members_rooms,
-            &audio_clone,
-        )
-        .await
-        {
+        if let Err(e) = send_all_members(&members_client, &members_handle, &members_rooms).await {
             log::error!("Failed to send all members: {:?}", e);
         }
     });
@@ -294,7 +281,6 @@ pub async fn attach_callbacks(
     });
 
     client.add_event_handler_context(handle.clone());
-    client.add_event_handler_context(default_audio.clone());
 
     let debounce = Arc::new(Mutex::new(ProfileDebounce::default()));
     client.add_event_handler_context(debounce);

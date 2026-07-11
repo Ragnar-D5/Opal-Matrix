@@ -410,7 +410,7 @@ pub(crate) async fn leave_matrixrtc_call(
     let room_data = data_guard
         .get(&room_id)
         .ok_or("Not in a call in this room")
-        .as_info()?;
+        .log_as_info()?;
     room_data.close_event_stream().await;
     room_data.livekit_room.close().await?;
     data_guard.remove(&room_id);

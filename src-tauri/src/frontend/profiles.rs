@@ -14,9 +14,8 @@ use matrix_sdk::{
 use shared::{
     api::events::TypingUpdate,
     profile::{CustomProperties, MemberProfile, UserProfile},
-    synth::ProfileAudio,
 };
-use tauri::{async_runtime::spawn_blocking, command, AppHandle, State};
+use tauri::{command, AppHandle, State};
 use tokio::sync::RwLock;
 
 use crate::{matrix_api::profile::get_custom_fields, send_event, TauriError};
@@ -25,12 +24,10 @@ pub async fn on_member_update(
     event: OriginalSyncRoomMemberEvent,
     room: Room,
     app_handle: Ctx<AppHandle>,
-    default_audio: Ctx<ProfileAudio>,
 ) {
     let content = event.content;
 
-    let (custom_properties, sonic_signature) =
-        get_custom_fields(&room.client(), event.state_key.clone(), &default_audio).await;
+    let custom_properties = get_custom_fields(&room.client(), event.state_key.clone()).await;
 
     let profile = MemberProfile {
         room_id: room.room_id().to_string(),
@@ -43,19 +40,8 @@ pub async fn on_member_update(
         },
     };
 
-    let payload = HashMap::from([(room.room_id().to_string(), vec![profile.clone()])]);
+    let payload = HashMap::from([(room.room_id().to_string(), vec![profile])]);
     send_event(&app_handle, &payload);
-
-    let handle = app_handle.clone();
-    let mut profile = profile.clone();
-
-    spawn_blocking(move || {
-        let audio = ProfileAudio::new(sonic_signature);
-
-        profile.profile.custom_properties.audio = audio;
-        let payload = HashMap::from([(room.room_id().to_string(), vec![profile])]);
-        send_event(&handle, &payload);
-    });
 }
 
 type RoomMembershipsType = Vec<(String, Vec<(OwnedUserId, bool, Option<String>)>)>;
@@ -64,48 +50,41 @@ pub async fn send_all_members(
     client: &Client,
     handle: &AppHandle,
     rooms: &[Room],
-    default_audio: &ProfileAudio,
 ) -> Result<(), TauriError> {
     let room_memberships: RoomMembershipsType = futures_util::stream::iter(rooms.iter().cloned())
-        .map(|room| {
-            let default_audio = default_audio.clone();
-            async move {
-                let room_id = room.room_id().to_string();
-                let members = match room.members(RoomMemberships::all()).await {
-                    Ok(members) => members,
-                    Err(e) => {
-                        log::error!("Failed to get members for room {}: {:?}", room_id, e);
-                        return None;
+        .map(|room| async move {
+            let room_id = room.room_id().to_string();
+            let members = match room.members(RoomMemberships::all()).await {
+                Ok(members) => members,
+                Err(e) => {
+                    log::error!("Failed to get members for room {}: {:?}", room_id, e);
+                    return None;
+                }
+            };
+
+            let mut memberships = Vec::with_capacity(members.len());
+            let profiles: Vec<MemberProfile> = members
+                .into_iter()
+                .map(|member| {
+                    let user_id = member.user_id().to_owned();
+                    let has_avatar = member.avatar_url().is_some();
+                    let display_name = member.display_name().map(|s| s.to_string());
+
+                    memberships.push((user_id.clone(), has_avatar, display_name.clone()));
+
+                    MemberProfile {
+                        room_id: room_id.clone(),
+                        profile: UserProfile {
+                            user_id: user_id.to_string(),
+                            display_name,
+                            has_avatar,
+                            custom_properties: CustomProperties::from_user_id(user_id.as_str()),
+                        },
                     }
-                };
+                })
+                .collect();
 
-                let mut memberships = Vec::with_capacity(members.len());
-                let profiles: Vec<MemberProfile> = members
-                    .into_iter()
-                    .map(|member| {
-                        let user_id = member.user_id().to_owned();
-                        let has_avatar = member.avatar_url().is_some();
-                        let display_name = member.display_name().map(|s| s.to_string());
-
-                        memberships.push((user_id.clone(), has_avatar, display_name.clone()));
-
-                        MemberProfile {
-                            room_id: room_id.clone(),
-                            profile: UserProfile {
-                                user_id: user_id.to_string(),
-                                display_name,
-                                has_avatar,
-                                custom_properties: CustomProperties::from_user_id(
-                                    user_id.as_str(),
-                                    default_audio.clone(),
-                                ),
-                            },
-                        }
-                    })
-                    .collect();
-
-                Some((room_id, profiles, memberships))
-            }
+            Some((room_id, profiles, memberships))
         })
         .buffer_unordered(16)
         .filter_map(|entry| async move { entry })
@@ -134,7 +113,7 @@ pub async fn send_all_members(
         .map(|user_id| {
             let client = client.clone();
             async move {
-                let props = get_custom_fields(&client, user_id.clone(), default_audio).await;
+                let props = get_custom_fields(&client, user_id.clone()).await;
                 (user_id, props)
             }
         })
@@ -143,8 +122,8 @@ pub async fn send_all_members(
     let results = join_all(futs).await;
 
     let mut update_payload: HashMap<String, Vec<MemberProfile>> = HashMap::new();
-    for (user_id, (custom_properties, _)) in &results {
-        for (room_id, has_avatar, display_name) in &user_memberships[user_id] {
+    for (user_id, custom_properties) in results {
+        for (room_id, has_avatar, display_name) in &user_memberships[&user_id] {
             update_payload
                 .entry(room_id.clone())
                 .or_default()
@@ -162,35 +141,6 @@ pub async fn send_all_members(
 
     send_event(handle, &update_payload);
 
-    let update_payload = spawn_blocking(move || {
-        let mut update_payload: HashMap<String, Vec<MemberProfile>> = HashMap::new();
-        for (user_id, (custom_properties, sonic_signature)) in results {
-            let custom_properties = CustomProperties {
-                audio: ProfileAudio::new(sonic_signature),
-                ..custom_properties
-            };
-            for (room_id, has_avatar, display_name) in &user_memberships[&user_id] {
-                update_payload
-                    .entry(room_id.clone())
-                    .or_default()
-                    .push(MemberProfile {
-                        room_id: room_id.clone(),
-                        profile: UserProfile {
-                            user_id: user_id.to_string(),
-                            display_name: display_name.clone(),
-                            has_avatar: *has_avatar,
-                            custom_properties: custom_properties.clone(),
-                        },
-                    });
-            }
-        }
-        update_payload
-    })
-    .await
-    .expect("audio render task panicked");
-
-    send_event(handle, &update_payload);
-
     Ok(())
 }
 
@@ -198,8 +148,6 @@ pub async fn send_all_members(
 pub async fn get_user_profile(
     user_id: String,
     client: State<'_, RwLock<Client>>,
-    default_audio: State<'_, ProfileAudio>,
-    handle: AppHandle,
 ) -> Result<UserProfile, TauriError> {
     let client = client.read().await;
 
@@ -217,8 +165,7 @@ pub async fn get_user_profile(
         .await?
         .is_some();
 
-    let (custom_properties, sonic_signature) =
-        get_custom_fields(&client, user_id.clone(), &default_audio).await;
+    let custom_properties = get_custom_fields(&client, user_id.clone()).await;
 
     let profile = UserProfile {
         user_id: user_id.to_string(),
@@ -226,19 +173,6 @@ pub async fn get_user_profile(
         has_avatar,
         custom_properties,
     };
-
-    {
-        let handle = handle.clone();
-        let mut profile = profile.clone();
-
-        spawn_blocking(move || {
-            let audio = ProfileAudio::new(sonic_signature);
-
-            profile.custom_properties.audio = audio;
-
-            send_event(&handle, &profile);
-        });
-    }
 
     Ok(profile)
 }
