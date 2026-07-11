@@ -81,10 +81,9 @@ async fn load_setting_from_cloud(client: &Client, key: &str) -> Result<Option<St
     if let Some(event) = event_opt {
         let content_json: Value = serde_json::from_str(event.json().get())?;
 
-        if let Some(val) = content_json.get("value") {
-            if !val.is_null() {
-                return Ok(Some(val.to_string()));
-            }
+        if let Some(val) = content_json.get("value")
+        && !val.is_null() {
+            return Ok(Some(val.to_string()));
         }
     }
 

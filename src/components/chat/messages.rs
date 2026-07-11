@@ -94,7 +94,7 @@ fn ReplyPreview(
 #[component]
 fn MessageHeader(
     reply_info: Option<ReplyInfo>,
-    active_room_id: String,
+    room_id: String,
     scroll_to_item: Callback<String>,
     show_header: bool,
     preview: bool,
@@ -177,7 +177,7 @@ fn MessageHeader(
             <div class="flex flex-col min-w-0 flex-1">
                 <ReplyPreview
                     reply_info=reply_info
-                    active_room_id=active_room_id
+                    active_room_id=room_id
                     scroll_to_item=scroll_to_item
                 />
 
@@ -909,7 +909,13 @@ fn render_system_message(
                         </span> <span>" to this room. See all "</span>
                         <span
                             class="cursor-pointer underline font-bold text-normal"
-                            on:click=move |_| pinned_result.set(Some(Vec::new()))
+                            on:click=move |_| {
+                                if pinned_result.get_untracked().is_some() {
+                                    pinned_result.set(None);
+                                } else {
+                                    pinned_result.set(Some(Vec::new()));
+                                }
+                            }
                         >
                             "pinned messages"
                         </span> <span>"."</span>
@@ -1071,8 +1077,8 @@ fn render_system_message(
 #[component]
 fn MesssageButtons(
     flags: Memo<EventFlags>,
-    room_id: String,
-    event_id: Option<String>,
+    room_id: StoredValue<String>,
+    event_id: StoredValue<Option<String>>,
     sender_id: String,
     item_sig: RwSignal<UiTimelineItem>,
     picker_open: RwSignal<bool>,
@@ -1080,15 +1086,12 @@ fn MesssageButtons(
     show_delete_confirm: RwSignal<bool>,
     show_pin_confirm: RwSignal<bool>,
     show_unpin_confirm: RwSignal<bool>,
-) -> impl IntoView {
+) -> AnyView {
     let state: AppState = expect_context();
-
-    let event_id = Memo::new(move |_| event_id.clone());
-    let room_id = Memo::new(move |_| room_id.clone());
 
     let no_buttons = move || {
         let f = flags.get();
-        !f.is_reactable && !f.can_be_replied_to && !f.is_editable && event_id.get().is_none()
+        !f.is_reactable && !f.can_be_replied_to && !f.is_editable && event_id.get_value().is_none()
     };
 
     let important_event_id: RwSignal<Option<String>> = expect_context();
@@ -1097,11 +1100,11 @@ fn MesssageButtons(
         let emoji_state: EmojiPickerState = expect_context();
         let anchor: Element = ev.target().unwrap().unchecked_into();
 
-        let Some(event_id) = event_id.get() else {
+        let Some(event_id) = event_id.get_value() else {
             return;
         };
 
-        let room_id = room_id.get();
+        let room_id = room_id.get_value();
 
         picker_open.set(true);
 
@@ -1122,7 +1125,7 @@ fn MesssageButtons(
         let input_ref: NodeRef<Div> = expect_context();
         let sender_id = sender_id.clone();
 
-        let Some(event_id) = event_id.get() else {
+        let Some(event_id) = event_id.get_value() else {
             return;
         };
 
@@ -1141,7 +1144,7 @@ fn MesssageButtons(
         let store: ProfileStore = expect_context();
         let is_empty: RwSignal<bool> = expect_context();
 
-        let Some(event_id) = event_id.get() else {
+        let Some(event_id) = event_id.get_value() else {
             return;
         };
 
@@ -1155,7 +1158,7 @@ fn MesssageButtons(
             el.set_inner_html(&richt_text_spans_to_html(
                 &spans,
                 store.clone(),
-                room_id.get(),
+                room_id.get_value(),
             ));
             is_empty.set(false);
             move_caret_to_end(&el);
@@ -1165,10 +1168,10 @@ fn MesssageButtons(
     let interacting = move || picker_open.get() || show_delete_confirm.get();
 
     let on_delete_confirm = Callback::new(move |_| {
-        let Some(event_id) = event_id.get() else {
+        let Some(event_id) = event_id.get_value() else {
             return;
         };
-        let room_id = room_id.get();
+        let room_id = room_id.get_value();
 
         spawn_local(async move {
             if let Err(e) = delete_message(&room_id, &event_id).await {
@@ -1209,12 +1212,12 @@ fn MesssageButtons(
 
     let emopjies_view = move || {
         recent_emojies().unwrap_or_default().into_iter().map(|re| {
-            let Some(event_id) = event_id.get() else {
+            let Some(event_id) = event_id.get_value() else {
                 return ().into_any();
             };
 
             let emoji = re.emoji;
-            let room_id = room_id.get();
+            let room_id = room_id.get_value();
 
             view! {
                 <button
@@ -1336,8 +1339,8 @@ fn MesssageButtons(
                     class="px-4 py-1.5 rounded-(--ui-border-radius) text-sm text-(--ui-solid-bg) bg-(--pin-color) cursor-pointer font-semibold flex flex-grow items-center justify-center"
                     on:click=move |_| {
                         show_pin_confirm.set(false);
-                        if let Some(event_id) = event_id.get() {
-                            pin_event(&room_id.get(), &event_id);
+                        if let Some(event_id) = event_id.get_value() {
+                            pin_event(&room_id.get_value(), &event_id);
                         }
                     }
                 >
@@ -1368,8 +1371,8 @@ fn MesssageButtons(
                     class="px-4 py-1.5 rounded-(--ui-border-radius) text-sm bg-(--pin-color) text-(--ui-solid-bg) hover:bg-(--accent-hover-bg) cursor-pointer font-semibold flex flex-grow items-center justify-center"
                     on:click=move |_| {
                         show_unpin_confirm.set(false);
-                        if let Some(event_id) = event_id.get() {
-                            unpin_event(&room_id.get(), &event_id);
+                        if let Some(event_id) = event_id.get_value() {
+                            unpin_event(&room_id.get_value(), &event_id);
                         }
                     }
                 >
@@ -1377,7 +1380,7 @@ fn MesssageButtons(
                 </button>
             </div>
         </ConfirmDialog>
-    }
+    }.into_any()
 }
 
 #[component]
@@ -1412,8 +1415,8 @@ fn ConfirmDialog(
 #[allow(clippy::too_many_arguments)]
 fn render_timeline_event(
     store: ProfileStore,
-    room_id: &str,
-    own_user_id: &str,
+    room_id: StoredValue<String>,
+    own_user_id: StoredValue<String>,
     item_sig: RwSignal<UiTimelineItem>,
     show_header: bool,
     preview: bool,
@@ -1438,14 +1441,13 @@ fn render_timeline_event(
                 get_date_from_ts(event.timestamp as i64),
                 sender_id,
                 event.in_reply_to(),
-                event.event_id.clone(),
+                StoredValue::new(event.event_id.clone()),
             )
         } else {
             unreachable!("Must be an event")
         }
     });
 
-    let this_event_id = event_id.clone();
     Effect::new(move |_| {
         if preview {
             return;
@@ -1454,7 +1456,7 @@ fn render_timeline_event(
         let Some(target) = scroll_target.get() else {
             return;
         };
-        if Some(&target) == this_event_id.as_ref() {
+        if Some(&target) == event_id.get_value().as_ref() {
             scroll_target.set(None);
             let options = web_sys::ScrollIntoViewOptions::new();
             options.set_behavior(web_sys::ScrollBehavior::Smooth);
@@ -1473,7 +1475,6 @@ fn render_timeline_event(
         }
     });
 
-    let room_id_for_content = room_id.to_string();
     let store_for_content = store.clone();
 
     let content_for_render = Memo::new(move |_| {
@@ -1498,7 +1499,7 @@ fn render_timeline_event(
             EventContent::MsgLike(ev) => render_message_content(
                 *ev,
                 store_for_content.clone(),
-                room_id_for_content.clone(),
+                room_id.get_value(),
                 sender_id,
                 timestamp,
             ).into_any(),
@@ -1512,21 +1513,15 @@ fn render_timeline_event(
                 sender_id,
                 ev,
                 store_for_content.clone(),
-                room_id_for_content.clone(),
+                room_id.get_value(),
                 jump_target
             ).into_any(),
         }
     };
 
     let store_clone = store.clone();
-    let event_id_clone = event_id.clone();
-    let room_id = room_id.to_string();
-    let own_user_id = own_user_id.to_string();
-    let reactions_room_id = room_id.clone();
 
     let store_for_receipts = store.clone();
-    let receipts_room_id = room_id.clone();
-    let own_user_id_for_receipts = own_user_id.clone();
 
     let reactions_view = move || {
         render_reactions(
@@ -1538,9 +1533,9 @@ fn render_timeline_event(
                 }
             }),
             store_clone.clone(),
-            reactions_room_id.clone(),
-            own_user_id.clone(),
-            event_id_clone.clone(),
+            room_id.get_value(),
+            own_user_id.get_value(),
+            event_id.get_value(),
         )
     };
 
@@ -1554,7 +1549,7 @@ fn render_timeline_event(
             if let UiTimelineItemKind::Event(e) = &i.kind {
                 e.receipts
                     .iter()
-                    .filter(|id| **id != own_user_id_for_receipts)
+                    .filter(|id| **id != own_user_id.get_value())
                     .cloned()
                     .collect()
             } else {
@@ -1562,15 +1557,14 @@ fn render_timeline_event(
             }
         });
 
-        render_read_receipts(receipts, store_for_receipts.clone(), receipts_room_id.clone())
+        render_read_receipts(receipts, store_for_receipts.clone(), room_id.get_value())
     };
 
     let important_event_id: RwSignal<Option<String>> = expect_context();
-    let color_event_id = event_id.clone();
 
     let current_highlight = Memo::new(move |_| {
         if let Some(important_id) = important_event_id.get()
-            && let Some(event_id) = &color_event_id
+            && let Some(event_id) = &event_id.get_value()
             && important_id == *event_id
         {
             log::info!("Highlighting event {important_id}");
@@ -1583,18 +1577,21 @@ fn render_timeline_event(
     });
 
     let state: AppState = expect_context();
+    let settings: Settings = expect_context();
 
-    let room_id_clone = room_id.clone();
-    let event_id_clone = event_id.clone();
     let is_pinned = Memo::new(move |_| {
+        if !settings.mark_pinned_messages.signal().get() {
+            return false;
+        }
+
         let pinned_events = state
             .pinned_map
             .get()
-            .get(&room_id_clone)
+            .get(&room_id.get_value())
             .cloned()
             .unwrap_or_default();
 
-        if let Some(event_id) = &event_id_clone {
+        if let Some(event_id) = &event_id.get_value() {
             pinned_events.contains(event_id)
         } else {
             false
@@ -1609,9 +1606,7 @@ fn render_timeline_event(
         item.flags()
     });
 
-    let sender_profile_sig = store.get_member_profile(&room_id, &sender_id.clone());
-
-    let reply_room_id = room_id.clone();
+    let sender_profile_sig = store.get_member_profile(&room_id.get_value(), &sender_id.clone());
 
     let is_active = move || {
         hovered.get()
@@ -1667,8 +1662,8 @@ fn render_timeline_event(
             <Show when=move || !preview>
                 <MesssageButtons
                     flags=flags
-                    room_id=room_id.clone()
-                    event_id=event_id.clone()
+                    room_id=room_id
+                    event_id=event_id
                     sender_id=sender_id.clone()
                     item_sig=item_sig
                     picker_open=picker_open
@@ -1683,7 +1678,7 @@ fn render_timeline_event(
 
             <MessageHeader
                 reply_info=reply_info
-                active_room_id=reply_room_id
+                room_id=room_id.get_value()
                 scroll_to_item=scroll_to_event
                 show_header=show_header
                 preview=preview
@@ -1837,6 +1832,6 @@ pub fn render_timeline_item(
             }
             .into_any()
         }
-        UiTimelineItemKind::Event(_) => render_timeline_event(store, &room_id, &user_id, item_sig, show_header, preview, scroll_to_event, jump_target).into_any()
+        UiTimelineItemKind::Event(_) => render_timeline_event(store, StoredValue::new(room_id), StoredValue::new(user_id), item_sig, show_header, preview, scroll_to_event, jump_target).into_any()
     }.into_any()
 }

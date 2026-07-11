@@ -113,6 +113,13 @@ pub struct Settings {
     )]
     pub show_read_markers: bool,
     #[setting(
+        "Send read markers",
+        "Whether to send read markers to the server",
+        true,
+        default = true
+    )]
+    pub send_read_markers: bool,
+    #[setting(
         "Show typing indicators",
         "Whether to show typing indicators in the chat",
         true,
@@ -161,4 +168,11 @@ pub struct Settings {
         default = DayOfWeek::Monday
     )]
     pub first_day_of_week: DayOfWeek,
+    #[setting(
+        "Mark pinned messages",
+        "Whether to mark pinned messages visually in the chat",
+        true,
+        default = true
+    )]
+    pub mark_pinned_messages: bool,
 }
