@@ -468,6 +468,8 @@ pub struct Settings {
     pub url_previews_default: bool,
     #[setting("Show image border", false, default = true)]
     pub show_image_border: bool,
+    #[setting("Automatically download updates", true, default = false)]
+    pub auto_download_update: bool,
 }
 
 #[component]

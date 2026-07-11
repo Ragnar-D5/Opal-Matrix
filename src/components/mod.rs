@@ -4,8 +4,6 @@ use phosphor_leptos::{Icon, IconWeight, CARET_DOWN, CARET_UP, HEADPHONES, MICROP
 use shared::ColorExt;
 use web_sys::MouseEvent;
 
-pub use overlays::settings::SettingsIcon;
-
 use crate::{
     components::overlays::audi_menu::audio_device_popup,
     tauri_functions::{close_window, get_audio_devices, minimize_window, toggle_fullscreen},
@@ -20,6 +18,7 @@ pub(crate) mod log_view;
 pub(crate) mod overlays;
 pub(crate) mod presence;
 pub(crate) mod previews;
+pub(crate) mod settings;
 pub(crate) mod shader;
 pub(crate) mod sidebar;
 pub(crate) mod text;

@@ -115,7 +115,7 @@ fn MessageHeader(
     let name_profile_sig = sender_profile_sig.clone();
 
     view! {
-        <div class="flex gap-(--gap) relative">
+        <div class="flex gap-(--gap) relative" class=("mt-1", show_header)>
             <Show when=move || is_pinned.get() && !preview>
                 <div
                     class="absolute rounded-tl-sm rounded-bl-sm w-2.25"
@@ -1629,7 +1629,7 @@ fn render_timeline_event(
             class="group/msg mx-1 relative flex flex-col gap-[var(--gap)] rounded-md transform-gpu border border-transparent"
             class=("hover:bg-black/20", !preview)
             class=("hover:border-[var(--tile-border-color)]", !preview)
-            class=("mt-4", show_header && !preview)
+            class=("mt-2", show_header && !preview)
             class=("[&_*]:pointer-events-none", preview)
             class=("bg-black/20", move || picker_open.get() || show_delete_confirm.get())
             id=move || { if preview { String::new() } else { item_sig.get().render_key() } }
@@ -1778,7 +1778,7 @@ pub fn render_timeline_item(
             };
 
             view! {
-                <div class="flex items-center gap-2 mt-4 drop-shadow">
+                <div class="flex items-center gap-2 my-2 drop-shadow">
                     <div class="flex-1 border-t-1 border-(--tile-border-color) bdf"></div>
                     <span class="text-muted text-sm bdf-text">{label}</span>
                     <div class="flex-1 border-t-1 border-(--tile-border-color) bdf"></div>

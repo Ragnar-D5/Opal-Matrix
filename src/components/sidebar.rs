@@ -7,8 +7,9 @@ use shared::{
 use crate::{
     components::{
         presence::PresenceBadge,
+        settings::SettingsIcon,
         user_profile::{render_url_icon, MemberProfileExt, RoomNodeExt},
-        AudioMenu, DeafenMenu, FloatingTile, MuteMenu, SettingsIcon,
+        AudioMenu, DeafenMenu, FloatingTile, MuteMenu,
     },
     state::{AppState, CurrentSection, ProfileStore},
     tauri_functions::open_log_window,
