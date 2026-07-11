@@ -112,18 +112,18 @@ fn MessageHeader(
             <Show when=move || is_pinned.get() && !preview>
                 <div
                     class="absolute rounded-tl-sm rounded-bl-sm w-2.25"
-                    style="border-top: 2px solid var(--idle-color); border-left: 2px solid var(--idle-color); border-bottom: 2px solid var(--idle-color); top: 0.3125rem; bottom: 0.25rem; left: 0.25rem;"
+                    style="border-top: 2px solid var(--idle-color); border-left: 2px solid var(--idle-color); border-bottom: 2px solid var(--idle-color); top: 0.0625rem; bottom: 0.25rem; left: 0.25rem;"
                 ></div>
                 <div
                     class="absolute rounded-tr-sm rounded-br-sm w-2.25"
-                    style="border-top: 2px solid var(--idle-color); border-right: 2px solid var(--idle-color); border-bottom: 2px solid var(--idle-color); top: 0.3125rem; bottom: 0.25rem; right: 0.25rem;"
+                    style="border-top: 2px solid var(--idle-color); border-right: 2px solid var(--idle-color); border-bottom: 2px solid var(--idle-color); top: 0.0625rem; bottom: 0.25rem; right: 0.25rem;"
                 ></div>
                 <Show when=move || bar_color.get().is_some()>
                     <div
                         class="absolute w-1 rounded-full"
                         style=move || {
                             format!(
-                                "background-color: {}; left: 0.5rem; top: 0.5625rem; bottom: 0.5rem;",
+                                "background-color: {}; left: 0.5rem; top: 0.3125rem; bottom: 0.5rem;",
                                 bar_color.get().unwrap_or_default(),
                             )
                         }
@@ -131,7 +131,7 @@ fn MessageHeader(
                 </Show>
                 <div
                     class="absolute h-0.5 w-2"
-                    style="background-color: var(--idle-color); top: 0.3125rem; left: 50%; transform: translateX(-50%);"
+                    style="background-color: var(--idle-color); top: 0.0625rem; left: 50%; transform: translateX(-50%);"
                 ></div>
                 <div
                     class="absolute h-0.5 w-2"
@@ -141,7 +141,7 @@ fn MessageHeader(
             {if !preview {
                 view! {
                     <div
-                        class="w-1 m-1 rounded-full"
+                        class="w-1 mx-1 mb-1 rounded-full"
                         style=move || {
                             if is_pinned.get() {
                                 String::new()
