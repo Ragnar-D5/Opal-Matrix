@@ -874,6 +874,9 @@
   .min-w-0 {
     min-width: calc(var(--spacing) * 0);
   }
+  .min-w-50 {
+    min-width: calc(var(--spacing) * 50);
+  }
   .min-w-100 {
     min-width: calc(var(--spacing) * 100);
   }
@@ -1564,6 +1567,9 @@
   }
   .pt-30 {
     padding-top: calc(var(--spacing) * 30);
+  }
+  .pr-\(--gap\) {
+    padding-right: var(--gap);
   }
   .pr-1 {
     padding-right: calc(var(--spacing) * 1);

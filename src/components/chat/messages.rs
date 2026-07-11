@@ -21,16 +21,9 @@ use wasm_bindgen::JsCast;
 use web_sys::Element;
 
 use crate::{
-    app::{Settings, format_date},
+    app::{format_date, format_time},
     components::{
-        CloseButton, TextCircle, TextCircleProps,
-        blurhash::Blurhash,
-        chat::{Attachment, ChatInputInfo},
-        input::move_caret_to_end,
-        overlays::emoji_picker::{EmojiPickerState, pick_emoji},
-        previews::render_link,
-        text::{RichTextExt, richt_text_spans_to_html},
-        user_profile::MemberProfileExt,
+        CloseButton, TextCircle, TextCircleProps, blurhash::Blurhash, chat::{Attachment, ChatInputInfo}, input::move_caret_to_end, overlays::emoji_picker::{EmojiPickerState, pick_emoji}, previews::render_link, settings::Settings, text::{RichTextExt, richt_text_spans_to_html}, user_profile::MemberProfileExt
     },
     state::{AppState, LighboxImage, ProfileStore},
     tauri_functions::{delete_message, pin_event, toggle_reaction, unpin_event},
@@ -1663,7 +1656,7 @@ fn render_timeline_event(
                     view! {
                         <div class=format!(
                             "absolute text-xs text-muted mt-[5px] {ml}",
-                        )>{date.format("%H:%M").to_string()}</div>
+                        )>{format_time(date)}</div>
                     }
                         .into_any()
                 } else {
@@ -1764,23 +1757,30 @@ pub fn render_timeline_item(
     match kind {
         UiTimelineItemKind::DateDivider(date)=> {
             let date = get_date_from_ts(date as i64);
+            let settings: Settings = expect_context();
+            let timezone_sig = settings.timezone.signal();
 
-            let is_today = date.date_naive() == Local::now().date_naive();
-            let is_yesterday = date.date_naive()
-                == (Local::now().date_naive() - chrono::Duration::days(1));
-            let is_week_ago = date > Local::now() - chrono::Duration::days(7);
+            let label = Memo::new(move |_| {
+                let timezone = timezone_sig.get();
+                let date = date.with_timezone(&timezone);
+                let now = Local::now().with_timezone(&timezone);
 
-            let label = if is_today {
-                "Today".to_string()
-            } else if is_yesterday {
-                "Yesterday".to_string()
-            } else {
-                date.format(&format!("{}%d %B %Y", if is_week_ago {
-                    "%a "
+                let is_today = date.date_naive() == now.date_naive();
+                let is_yesterday = date.date_naive() == now.date_naive() - chrono::Duration::days(1);
+                let is_week_ago = date > now - chrono::Duration::days(7);
+
+                if is_today {
+                    "Today".to_string()
+                } else if is_yesterday {
+                    "Yesterday".to_string()
                 } else {
-                    ""
-                })).to_string()
-            };
+                    date.format(&format!("{}%d %B %Y", if is_week_ago {
+                        "%a "
+                    } else {
+                        ""
+                    })).to_string()
+                }
+            });
 
             view! {
                 <div class="flex items-center gap-2 my-2 drop-shadow">

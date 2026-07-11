@@ -6,9 +6,10 @@ use phosphor_leptos::{
 use shared::api::{UpdateDownloadProgress, UpdateInfo, UpdateStatus};
 
 use crate::components::settings::sections::Toggle;
+use crate::components::settings::Settings;
 use crate::tauri_functions::{check_for_update, download_update, install_update, recheck_update};
 
-use crate::app::{format_bytes, Settings};
+use crate::app::format_bytes;
 use crate::state::AppState;
 
 pub fn render_update_section() -> AnyView {
@@ -264,7 +265,7 @@ pub fn render_update_section() -> AnyView {
     let settings: Settings = expect_context();
 
     view! {
-        <div class="flex flex-col gap-4">
+        <div class="flex flex-col gap-4 mb-4">
             {header_view} <div class="relative h-20">
                 <div
                     class=move || {
@@ -321,9 +322,10 @@ pub fn render_update_section() -> AnyView {
                 on:click=cycle_test_state
             >
                 "Cycle test state"
-            </button> <Toggle field=settings.auto_download_update />
-            <Toggle field=settings.notify_update />
+            </button>
         </div>
+        <Toggle field=settings.auto_download_update />
+        <Toggle field=settings.notify_update />
     }
         .into_any()
 }

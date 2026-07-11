@@ -1,24 +1,31 @@
 use std::collections::HashMap;
 
 use icondata as i;
-use leptos::portal::Portal;
-use leptos::prelude::*;
+use leptos::{portal::Portal, prelude::*};
 use leptos_icons::Icon as LIcon;
 use phosphor_leptos::{Icon, IconWeight, IconWeightData, PENCIL_SIMPLE};
 use shared::api::UpdateStatus;
 use web_sys::KeyboardEvent;
 
-use crate::components::settings::sections::appearance::render_appearance_section;
-use crate::components::settings::sections::chats::render_chats_section;
-use crate::components::settings::sections::profiles::render_profile_section;
-use crate::components::settings::sections::updates::render_update_section;
+use crate::{
+    components::{
+        settings::sections::{
+            appearance::render_appearance_section, chats::render_chats_section,
+            general::render_general_section, profiles::render_profile_section,
+            updates::render_update_section,
+        },
+        user_profile::MemberProfileExt,
+        CloseButton, FloatingTile,
+    },
+    state::{AppState, ProfileStore},
+};
 
-use crate::app::Settings;
-use crate::components::user_profile::MemberProfileExt;
-use crate::components::{CloseButton, FloatingTile};
-use crate::state::{AppState, ProfileStore};
-
+pub mod definition;
 pub mod sections;
+
+pub use definition::EnumVariants;
+pub use definition::MatrixSettingField;
+pub use definition::Settings;
 
 #[derive(Clone, PartialEq)]
 enum SettingsIcon {
@@ -64,6 +71,12 @@ impl SettingsItem {
 
 const SETTINGS_SECTIONS: &[SettingsItem] = &[
     SettingsItem::Section(SettingsSection {
+        title: "General",
+        id: "general",
+        icon: SettingsIcon::Phosphor(phosphor_leptos::SLIDERS),
+        render_fn: render_general_section,
+    }),
+    SettingsItem::Section(SettingsSection {
         title: "Appearance",
         id: "appearance",
         icon: SettingsIcon::IconData(i::BsPalette),
@@ -80,12 +93,6 @@ const SETTINGS_SECTIONS: &[SettingsItem] = &[
         id: "chats",
         icon: SettingsIcon::Phosphor(phosphor_leptos::CHATS),
         render_fn: render_chats_section,
-    }),
-    SettingsItem::Section(SettingsSection {
-        title: "About",
-        id: "about",
-        icon: SettingsIcon::Phosphor(phosphor_leptos::X),
-        render_fn: || ().into_any(),
     }),
     SettingsItem::Divider { id: "divider-1" },
     SettingsItem::Section(SettingsSection {

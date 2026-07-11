@@ -19,6 +19,52 @@ pub fn derive_tauri_event(input: TokenStream) -> TokenStream {
     .into()
 }
 
+#[proc_macro_derive(EnumVariants)]
+pub fn derive_enum_variants(input: TokenStream) -> TokenStream {
+    let input = syn::parse_macro_input!(input as DeriveInput);
+    let ident = &input.ident;
+
+    let syn::Data::Enum(data) = &input.data else {
+        panic!("EnumVariants can only be derived for enums");
+    };
+
+    let entries = data.variants.iter().map(|variant| {
+        assert!(
+            matches!(variant.fields, Fields::Unit),
+            "EnumVariants only supports fieldless variants, but `{}` has fields",
+            variant.ident
+        );
+
+        let variant_ident = &variant.ident;
+
+        // Mirrors serde's `#[serde(rename = "...")]`, falling back to the
+        // variant's own name, so the string matches what serde_json produces.
+        let mut name = variant_ident.to_string();
+        for attr in &variant.attrs {
+            if !attr.path().is_ident("serde") {
+                continue;
+            }
+            let _ = attr.parse_nested_meta(|meta| {
+                if meta.path.is_ident("rename") {
+                    name = meta.value()?.parse::<syn::LitStr>()?.value();
+                }
+                Ok(())
+            });
+        }
+
+        quote! { (#ident::#variant_ident, #name) }
+    });
+
+    quote! {
+        impl crate::components::settings::definition::EnumVariants for #ident {
+            fn variants() -> impl Iterator<Item = (#ident, &'static str)> {
+                [#(#entries),*].into_iter()
+            }
+        }
+    }
+    .into()
+}
+
 #[proc_macro_attribute]
 pub fn matrix_settings(_attr: TokenStream, item: TokenStream) -> TokenStream {
     assert!(_attr.is_empty());

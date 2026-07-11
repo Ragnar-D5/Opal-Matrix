@@ -1,8 +1,8 @@
 use leptos::prelude::*;
 
-use crate::{
-    app::Settings,
-    components::settings::sections::{SubSection, Toggle},
+use crate::components::settings::{
+    sections::{SubSection, Toggle},
+    Settings,
 };
 
 pub fn render_chats_section() -> AnyView {

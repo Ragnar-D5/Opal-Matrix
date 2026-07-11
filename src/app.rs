@@ -1,6 +1,8 @@
 use crate::components::authentication::{get_stuff_after_login, Authentication};
 use crate::components::loading::Loading;
 use crate::components::previews::ImageLightbox;
+use crate::components::settings::definition::{DataSizeUnit, DateFormat, TimeFormat};
+use crate::components::settings::Settings;
 use crate::components::shader::BackgroundShader;
 use chrono::{DateTime, Local};
 use shared::api::events::{
@@ -33,8 +35,6 @@ use crate::state::{AppState, ProfileStore};
 use crate::tauri_functions::{
     get_app_version, get_update_status, set_backend_room_id, set_focused_in_backend,
 };
-
-use macros::matrix_settings;
 
 #[wasm_bindgen]
 extern "C" {
@@ -101,29 +101,76 @@ pub enum CurrentWindow {
     Loading,
 }
 
-pub fn format_date(date: DateTime<Local>) -> String {
-    match (date.date_naive() - Local::now().date_naive()).num_days() {
-        0 => date.format("Today, %H:%M").to_string(),
-        -1 => date.format("Yesterday, %H:%M").to_string(),
-        -6..-1 => date.format("%a %d/%m/%Y, %H:%M").to_string(),
-        _ => date.format("%d/%m/%Y, %H:%M").to_string(),
-    }
+pub fn format_date(date: DateTime<Local>) -> Memo<String> {
+    let settings: Settings = expect_context();
+    let timezone_sig = settings.timezone.signal();
+    let hour_format_sig = settings.hour_format.signal();
+    let date_format_sig = settings.date_format.signal();
+
+    Memo::new(move |_| {
+        let timezone = timezone_sig.get();
+        let date = date.with_timezone(&timezone);
+        let now = Local::now().with_timezone(&timezone);
+
+        let hour_str = match hour_format_sig.get() {
+            TimeFormat::TwelveHour => "%I:%M %p",
+            TimeFormat::TwentyFourHour => "%H:%M",
+        };
+        let date_str = match date_format_sig.get() {
+            DateFormat::DayMonthYear => "%d/%m/%Y",
+            DateFormat::MonthDayYear => "%m/%d/%Y",
+            DateFormat::YearMonthDay => "%Y/%m/%d",
+        };
+
+        match (date.date_naive() - now.date_naive()).num_days() {
+            0 => date.format(&format!("Today, {}", hour_str)).to_string(),
+            -1 => date.format(&format!("Yesterday, {}", hour_str)).to_string(),
+            -6..-1 => date
+                .format(&format!("%a {}, {}", date_str, hour_str))
+                .to_string(),
+            _ => date
+                .format(&format!("{}, {}", date_str, hour_str))
+                .to_string(),
+        }
+    })
+}
+
+pub fn format_time(date: DateTime<Local>) -> Memo<String> {
+    let settings: Settings = expect_context();
+    let timezone_sig = settings.timezone.signal();
+    let hour_format_sig = settings.hour_format.signal();
+
+    Memo::new(move |_| {
+        let date = date.with_timezone(&timezone_sig.get());
+        let hour_str = match hour_format_sig.get() {
+            TimeFormat::TwelveHour => "%I:%M %p",
+            TimeFormat::TwentyFourHour => "%H:%M",
+        };
+        date.format(hour_str).to_string()
+    })
 }
 
 pub fn format_bytes(bytes: u64) -> String {
-    const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
-    let mut size = bytes as f64;
+    let settings: Settings = expect_context();
+
+    let (size, units): (f64, [&str; 5]) = match settings.data_size_unit.signal().get() {
+        DataSizeUnit::Bytes => (bytes as f64, ["B", "KB", "MB", "GB", "TB"]),
+        DataSizeUnit::Mibibytes => (bytes as f64, ["B", "KiB", "MiB", "GiB", "TiB"]),
+        DataSizeUnit::Bits => (bytes as f64 * 8.0, ["b", "Kb", "Mb", "Gb", "Tb"]),
+    };
+
+    let mut size = size;
     let mut unit_index = 0;
 
-    while size >= 1024.0 && unit_index < UNITS.len() - 1 {
+    while size >= 1024.0 && unit_index < units.len() - 1 {
         size /= 1024.0;
         unit_index += 1;
     }
 
     if unit_index == 0 {
-        format!("{} {}", size as u64, UNITS[unit_index])
+        format!("{} {}", size as u64, units[unit_index])
     } else {
-        format!("{:.2} {}", size, UNITS[unit_index])
+        format!("{:.2} {}", size, units[unit_index])
     }
 }
 
@@ -456,72 +503,6 @@ fn HomePage() -> impl IntoView {
             <ProfileCardPortal />
         </div>
     }
-}
-
-#[matrix_settings]
-pub struct Settings {
-    #[setting(
-        "Scaling",
-        "The scaling factor for the application",
-        false,
-        default = 1.0
-    )]
-    pub scaling: f64,
-    #[setting(
-        "Url Previews per room",
-        "The number of URL previews to show per room",
-        true
-    )]
-    pub url_previews: HashMap<String, bool>,
-    #[setting(
-        "Show url perviews by default",
-        "The default number of URL previews to show per room",
-        true,
-        default = false
-    )]
-    pub url_previews_default: bool,
-    #[setting(
-        "Show image border",
-        "Whether to show the image border",
-        false,
-        default = true
-    )]
-    pub show_image_border: bool,
-    #[setting(
-        "Automatically download updates",
-        "Whether to automatically download updates when a new version is available",
-        true,
-        default = false
-    )]
-    pub auto_download_update: bool,
-    #[setting(
-        "Notify when an update is available",
-        "Whether to notify the user when an update is available",
-        true,
-        default = true
-    )]
-    pub notify_update: bool,
-    #[setting(
-        "Show read markers",
-        "Whether to show read markers in the chat",
-        true,
-        default = true
-    )]
-    pub show_read_markers: bool,
-    #[setting(
-        "Show typing indicators",
-        "Whether to show typing indicators in the chat",
-        true,
-        default = true
-    )]
-    pub show_typing_indicators: bool,
-    #[setting(
-        "Send typing indicators",
-        "Whether to send typing indicators to the server",
-        true,
-        default = true
-    )]
-    pub send_typing_indicators: bool,
 }
 
 #[component]

@@ -4,22 +4,18 @@ use std::{
 };
 
 use crate::{
-    app::{Settings, convertFileSrc, format_bytes},
+    app::{convertFileSrc, format_bytes},
     components::{
-        FloatingTile, TypingIndicator,
-        chat::{
+        FloatingTile, TypingIndicator, chat::{
             calls::CallView, header::ChatHeader, info::ChatSideBar, messages::render_timeline_item,
-        },
-        input::{
+        }, input::{
             get_active_filter, get_caret_position, handle_input, handle_keydown,
             insert_text_at_caret,
             menu::{MenuCompletionMatches, MenuType, SelectionMenu},
-        },
-        overlays::{
+        }, overlays::{
             emoji_picker::{EmojiPickerState, pick_emoji},
             gif_picker::{GifPickerState, pick_gif},
-        },
-        user_profile::MemberProfileExt,
+        }, settings::Settings, user_profile::MemberProfileExt
     },
     hooks::{setup_update_effect, use_tauri_event},
     state::{AppState, CurrentSection, ProfileStore},
@@ -984,7 +980,13 @@ fn ChatInput() -> impl IntoView {
     let is_typing = RwSignal::new(false);
     let timing_timeout: StoredValue<Option<TimeoutHandle>> = StoredValue::new(None);
 
+    let settings: Settings = expect_context();
+
     let on_type = move || {
+        if !settings.send_typing_indicators.signal().get() {
+            return;
+        }
+
         let Some(room_id) = state.active_room_id() else {
             return;
         };
