@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 
 use crate::components::settings::{
-    sections::{Dropdown, SubSection},
+    sections::{Dropdown, Spacer, SubSection},
     Settings,
 };
 
@@ -13,6 +13,7 @@ pub fn render_general_section() -> AnyView {
             <Dropdown field=settings.hour_format />
             <Dropdown field=settings.date_format />
             <Dropdown field=settings.first_day_of_week />
+            <Spacer />
             <Dropdown field=settings.timezone />
         </SubSection>
         <SubSection title="Units">

@@ -1,7 +1,7 @@
 use crate::components::authentication::{get_stuff_after_login, Authentication};
 use crate::components::loading::Loading;
 use crate::components::previews::ImageLightbox;
-use crate::components::settings::definition::{DataSizeUnit, DateFormat, TimeFormat};
+use crate::components::settings::definition::{DataSizeUnit, DateFormat, HourFormat};
 use crate::components::settings::Settings;
 use crate::components::shader::BackgroundShader;
 use chrono::{DateTime, Local};
@@ -113,8 +113,8 @@ pub fn format_date(date: DateTime<Local>) -> Memo<String> {
         let now = Local::now().with_timezone(&timezone);
 
         let hour_str = match hour_format_sig.get() {
-            TimeFormat::TwelveHour => "%I:%M %p",
-            TimeFormat::TwentyFourHour => "%H:%M",
+            HourFormat::TwelveHour => "%I:%M %p",
+            HourFormat::TwentyFourHour => "%H:%M",
         };
         let date_str = match date_format_sig.get() {
             DateFormat::DayMonthYear => "%d/%m/%Y",
@@ -143,8 +143,8 @@ pub fn format_time(date: DateTime<Local>) -> Memo<String> {
     Memo::new(move |_| {
         let date = date.with_timezone(&timezone_sig.get());
         let hour_str = match hour_format_sig.get() {
-            TimeFormat::TwelveHour => "%I:%M %p",
-            TimeFormat::TwentyFourHour => "%H:%M",
+            HourFormat::TwelveHour => "%I:%M %p",
+            HourFormat::TwentyFourHour => "%H:%M",
         };
         date.format(hour_str).to_string()
     })

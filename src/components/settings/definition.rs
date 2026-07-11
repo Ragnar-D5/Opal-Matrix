@@ -14,7 +14,7 @@ pub trait EnumVariants: Sized + Serialize + DeserializeOwned {
 }
 
 #[derive(Clone, PartialEq, Deserialize, Serialize, EnumVariants)]
-pub enum TimeFormat {
+pub enum HourFormat {
     #[serde(rename = "12-hour")]
     TwelveHour,
     #[serde(rename = "24-hour")]
@@ -141,12 +141,12 @@ pub struct Settings {
     )]
     pub data_size_unit: DataSizeUnit,
     #[setting(
-        "Time format",
-        "The time format to use for timestamps",
+        "Hour format",
+        "The hour format to use for timestamps",
         true,
-        default = TimeFormat::TwentyFourHour
+        default = HourFormat::TwentyFourHour
     )]
-    pub hour_format: TimeFormat,
+    pub hour_format: HourFormat,
     #[setting(
         "Date format",
         "The date format to use for timestamps",

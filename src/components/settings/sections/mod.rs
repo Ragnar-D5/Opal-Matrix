@@ -384,7 +384,7 @@ pub fn Dropdown<T: EnumVariants + Clone + PartialEq + Send + Sync + 'static>(
 
 #[component]
 pub fn Spacer() -> AnyView {
-    view! { <div class="h-4"></div> }.into_any()
+    view! { <div class="h-8"></div> }.into_any()
 }
 
 // #[component]
