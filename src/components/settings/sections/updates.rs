@@ -49,12 +49,12 @@ pub fn render_update_section() -> AnyView {
                     }
                     UpdateDownloadProgress::InProgress { progress, total } => {
                         let percentage = if let Some(total) = total {
-                            (progress as f64 / total as f64 * 100.0).round()
+                            format!(" ({}%)", (progress as f64 / total as f64 * 100.0).round())
                         } else {
-                            0.0
+                            "".to_string()
                         };
 
-                        format!("Downloading version {} ({}%)", info.version, percentage)
+                        format!("Downloading version {} {}", info.version, percentage)
                     }
                     UpdateDownloadProgress::Started => {
                         format!("Downloading version {}", info.version)
@@ -238,10 +238,10 @@ pub fn render_update_section() -> AnyView {
 
             return view! {
                 <div class="flex flex-col items-center justify-center gap-1.5 w-full px-4">
-                    <span class="relative z-10 text-xs">{text}</span>
-                    <div class="relative w-full h-1 rounded-full bg-white/15 overflow-hidden">
+                    <span class="relative z-10 text-normal">{text}</span>
+                    <div class="relative w-full h-2 rounded-full bg-white/15 overflow-hidden">
                         <div
-                            class="absolute inset-y-0 left-0 rounded-full bg-(--accent-color) animate-shimmer transition-[width] duration-300 ease-out"
+                            class="absolute inset-y-0 left-0 rounded-full bg-(--success-color) animate-shimmer transition-[width] duration-300 ease-out"
                             style=move || format!("width: {}%;", progress_percent())
                         />
                     </div>
@@ -300,8 +300,13 @@ pub fn render_update_section() -> AnyView {
                 <button
                     class=move || {
                         let base = format!(
-                            "absolute left-24 top-1/2 -translate-y-1/2 whitespace-nowrap text-sm transition-opacity duration-300 ease-in-out border border-(--tile-border-color) px-3 py-1 rounded-(--ui-border-radius) bg-(--overlay-bg-color) cursor-pointer hover:bg-(--ui-solid-hover-bg) text-({})",
+                            "absolute left-24 top-1/2 -translate-y-1/2 whitespace-nowrap text-sm transition-opacity duration-300 ease-in-out border border-(--tile-border-color) px-3 py-1 rounded-(--ui-border-radius) bg-(--overlay-bg-color) cursor-pointer hover:bg-(--ui-solid-hover-bg) text-({}) select-none {}",
                             button_color(),
+                            if status.get() == UpdateStatus::CheckingForUpdates {
+                                "pointer-events-none"
+                            } else {
+                                ""
+                            },
                         );
                         if is_downloading() {
                             format!("{base} opacity-0 pointer-events-none")

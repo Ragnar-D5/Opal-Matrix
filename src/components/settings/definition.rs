@@ -78,8 +78,8 @@ pub struct Settings {
     )]
     pub url_previews: HashMap<String, bool>,
     #[setting(
-        "Show url perviews by default",
-        "The default number of URL previews to show per room",
+        "Show url previews by default",
+        "Whether to show URL previews by default when not specified per room",
         true,
         default = false
     )]
