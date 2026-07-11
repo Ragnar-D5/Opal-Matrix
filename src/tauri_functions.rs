@@ -549,3 +549,19 @@ pub async fn install_update() -> Result<(), String> {
 
     Ok(())
 }
+
+pub fn change_screen_scaling(scale_factor: f64) {
+    let args = match serde_wasm_bindgen::to_value(&json!({ "scale_factor": scale_factor })) {
+        Ok(value) => value,
+        Err(e) => {
+            log::error!("Failed to serialize request: {:?}", e);
+            return;
+        }
+    };
+
+    spawn_local(async move {
+        if let Err(e) = call_tauri("change_screen_scaling", args).await {
+            log::error!("Tauri call failed: {:?}", e);
+        }
+    });
+}

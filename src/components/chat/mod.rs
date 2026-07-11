@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::{
-    app::{convertFileSrc, format_bytes},
+    app::{Settings, convertFileSrc, format_bytes},
     components::{
         FloatingTile, TypingIndicator,
         chat::{
@@ -1234,6 +1234,9 @@ pub fn Chat() -> impl IntoView {
         },
     );
 
+    let settings: Settings = expect_context();
+    let has_typing = move || settings.show_typing_indicators.signal().get();
+
     view! {
         <div class="flex-1 h-full flex gap-[var(--gap)] flex-col overflow-hidden">
             <ChatHeader chat_sidebar_open=chat_sidebar_open />
@@ -1266,7 +1269,9 @@ pub fn Chat() -> impl IntoView {
                                             </div>
                                         </Show>
                                         <TimeLine />
-                                        <TypingUserIndicator />
+                                        <Show when=has_typing>
+                                            <TypingUserIndicator />
+                                        </Show>
                                         <ChatInput />
                                     }
                                         .into_any()
@@ -1279,7 +1284,9 @@ pub fn Chat() -> impl IntoView {
                                             </div>
                                             <div class="flex flex-col h-full min-h-0 w-100">
                                                 <TimeLine />
-                                                <TypingUserIndicator />
+                                                <Show when=has_typing>
+                                                    <TypingUserIndicator />
+                                                </Show>
                                                 <ChatInput />
                                             </div>
                                         </div>

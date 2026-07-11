@@ -742,6 +742,9 @@
   .w-10 {
     width: calc(var(--spacing) * 10);
   }
+  .w-11 {
+    width: calc(var(--spacing) * 11);
+  }
   .w-16 {
     width: calc(var(--spacing) * 16);
   }
@@ -904,6 +907,9 @@
   }
   .-rotate-90 {
     rotate: calc(90deg * -1);
+  }
+  .rotate-180 {
+    rotate: 180deg;
   }
   .\[transform\:translateZ\(0\)\] {
     transform: translateZ(0);
@@ -2121,6 +2127,13 @@
       }
     }
   }
+  .group-hover\:text-normal {
+    &:is(:where(.group):hover *) {
+      @media (hover: hover) {
+        color: var(--text-color, #f2f3f5);
+      }
+    }
+  }
   .group-hover\:underline {
     &:is(:where(.group):hover *) {
       @media (hover: hover) {
@@ -2163,6 +2176,17 @@
       }
     }
   }
+  .peer-checked\:translate-x-6 {
+    &:is(:where(.peer):checked ~ *) {
+      --tw-translate-x: calc(var(--spacing) * 6);
+      translate: var(--tw-translate-x) var(--tw-translate-y);
+    }
+  }
+  .peer-checked\:bg-\(--success-color\) {
+    &:is(:where(.peer):checked ~ *) {
+      background-color: var(--success-color);
+    }
+  }
   .placeholder\:text-muted {
     &::placeholder {
       color: var(--muted-text-color, #a2aeff);
@@ -2178,6 +2202,11 @@
       &:first-child {
         margin-top: calc(var(--spacing) * 1);
       }
+    }
+  }
+  .checked\:bg-\(--muted-text-color\) {
+    &:checked {
+      background-color: var(--muted-text-color);
     }
   }
   .hover\:rotate-\[90deg\] {
@@ -2247,6 +2276,13 @@
     &:hover {
       @media (hover: hover) {
         background-color: var(--pin-color);
+      }
+    }
+  }
+  .hover\:bg-\(--tile-hover-color\) {
+    &:hover {
+      @media (hover: hover) {
+        background-color: var(--tile-hover-color);
       }
     }
   }

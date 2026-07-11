@@ -2,7 +2,7 @@
 target = "./index.html"
 
 [watch]
-ignore = ["./src-tauri", "./Cargo.lock"]
+ignore = ["./src-tauri", "./Cargo.lock", "./style/output.css", "./dist"]
 
 [[hooks]]
 stage = "pre_build"

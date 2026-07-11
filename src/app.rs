@@ -460,16 +460,68 @@ fn HomePage() -> impl IntoView {
 
 #[matrix_settings]
 pub struct Settings {
-    #[setting("Scaling", false, default = 1.0)]
+    #[setting(
+        "Scaling",
+        "The scaling factor for the application",
+        false,
+        default = 1.0
+    )]
     pub scaling: f64,
-    #[setting("Url Previews per room", true)]
+    #[setting(
+        "Url Previews per room",
+        "The number of URL previews to show per room",
+        true
+    )]
     pub url_previews: HashMap<String, bool>,
-    #[setting("Show url perviews default", false)]
+    #[setting(
+        "Show url perviews by default",
+        "The default number of URL previews to show per room",
+        true,
+        default = false
+    )]
     pub url_previews_default: bool,
-    #[setting("Show image border", false, default = true)]
+    #[setting(
+        "Show image border",
+        "Whether to show the image border",
+        false,
+        default = true
+    )]
     pub show_image_border: bool,
-    #[setting("Automatically download updates", true, default = false)]
+    #[setting(
+        "Automatically download updates",
+        "Whether to automatically download updates when a new version is available",
+        true,
+        default = false
+    )]
     pub auto_download_update: bool,
+    #[setting(
+        "Notify when an update is available",
+        "Whether to notify the user when an update is available",
+        true,
+        default = true
+    )]
+    pub notify_update: bool,
+    #[setting(
+        "Show read markers",
+        "Whether to show read markers in the chat",
+        true,
+        default = true
+    )]
+    pub show_read_markers: bool,
+    #[setting(
+        "Show typing indicators",
+        "Whether to show typing indicators in the chat",
+        true,
+        default = true
+    )]
+    pub show_typing_indicators: bool,
+    #[setting(
+        "Send typing indicators",
+        "Whether to send typing indicators to the server",
+        true,
+        default = true
+    )]
+    pub send_typing_indicators: bool,
 }
 
 #[component]

@@ -1,5 +1,5 @@
 use proc_macro::TokenStream;
-use quote::{format_ident, quote};
+use quote::quote;
 use syn::punctuated::Punctuated;
 use syn::{DeriveInput, Expr, ExprLit, Fields, ItemStruct, Lit, Token};
 
@@ -54,6 +54,14 @@ fn convert_settings(mut item: ItemStruct) -> TokenStream {
                             _ => panic!("Must be a string literal"),
                         };
 
+                        let description = match iter.next() {
+                            Some(Expr::Lit(ExprLit {
+                                lit: Lit::Str(lit_str),
+                                ..
+                            })) => lit_str.value(),
+                            _ => panic!("Must be a string literal"),
+                        };
+
                         let uses_cloud = match iter.next() {
                             Some(Expr::Lit(ExprLit {
                                 lit: Lit::Bool(lit_bool),
@@ -71,7 +79,7 @@ fn convert_settings(mut item: ItemStruct) -> TokenStream {
                             default_expr = quote! { #right };
                         }
 
-                        setting_meta = Some((human_readable, uses_cloud, default_expr));
+                        setting_meta = Some((human_readable, description, uses_cloud, default_expr));
                     }
                     false
                 } else {
@@ -79,7 +87,7 @@ fn convert_settings(mut item: ItemStruct) -> TokenStream {
                 }
             });
 
-            if let Some((human_readable, uses_cloud, default_expr)) = setting_meta {
+            if let Some((human_readable, description, uses_cloud, default_expr)) = setting_meta {
                 let type_name_str = format!("com.opal.{}", field_name);
 
                 field.ty = syn::parse2(quote! { MatrixSettingField<#original_type> }).unwrap();
@@ -89,15 +97,11 @@ fn convert_settings(mut item: ItemStruct) -> TokenStream {
                         val: ::leptos::prelude::RwSignal::new(#default_expr),
                         type_name: #type_name_str,
                         human_readable: #human_readable,
-                        uses_cloud: #uses_cloud
+                        uses_cloud: #uses_cloud,
+                        description: #description,
                     }
                 });
-                type_name_string_collector.push((
-                    type_name_str.clone(),
-                    field_name,
-                    original_type,
-                    uses_cloud,
-                ));
+                type_name_string_collector.push((type_name_str.clone(), field_name, uses_cloud));
             } else {
                 default_field_initializers.push(quote! {
                     #field_name: Default::default()
@@ -110,7 +114,7 @@ fn convert_settings(mut item: ItemStruct) -> TokenStream {
 
     let signal_bindings = type_name_string_collector
         .iter()
-        .map(|(_, field_name, _, _)| {
+        .map(|(_, field_name, _)| {
             quote! {
                 let #field_name = self.#field_name.val;
             }
@@ -119,7 +123,7 @@ fn convert_settings(mut item: ItemStruct) -> TokenStream {
     // File event: update signal; for cloud fields also push the new value up.
     let match_arms_file: Vec<_> = type_name_string_collector
         .iter()
-        .map(|(type_name, field_name, _, uses_cloud)| {
+        .map(|(type_name, field_name, uses_cloud)| {
             let upload = if *uses_cloud {
                 quote! {
                     let key_c = new.key.clone();
@@ -151,7 +155,7 @@ fn convert_settings(mut item: ItemStruct) -> TokenStream {
     // Cloud event: just update the signal (value already came from the cloud).
     let match_arms_cloud: Vec<_> = type_name_string_collector
         .iter()
-        .map(|(type_name, field_name, _, _)| {
+        .map(|(type_name, field_name, _)| {
             quote! {
                 #type_name => match ::serde_json::from_str(&new.value) {
                     Ok(parsed) => #field_name.set(parsed),
@@ -163,60 +167,8 @@ fn convert_settings(mut item: ItemStruct) -> TokenStream {
 
     let get_all_calls = type_name_string_collector
         .iter()
-        .map(|(_, field_name, _, _)| {
-            let get_fn = format_ident!("get_{}", field_name);
-            quote! { self.#get_fn().await?; }
-        });
-
-    let accessor_methods = type_name_string_collector
-        .iter()
-        .map(|(type_name, field_name, original_type, uses_cloud)| {
-            let get_fn = format_ident!("get_{}", field_name);
-            let set_fn = format_ident!("set_{}", field_name);
-            quote! {
-                pub fn #set_fn(&self, val: #original_type) {
-                    let serialized = match ::serde_json::to_string(&val) {
-                        Ok(s) => s,
-                        Err(e) => { ::log::error!("Failed to serialize {}: {:?}", stringify!(#field_name), e); return; }
-                    };
-                    self.#field_name.val.set(val);
-                    let args = ::serde_wasm_bindgen::to_value(
-                        &::serde_json::json!({ "key": #type_name, "value": serialized, "to_cloud": #uses_cloud })
-                    ).expect("Failed to serialize args");
-                    ::leptos::task::spawn_local(async move {
-                        if let Err(e) = call_tauri("set_setting", args).await {
-                            ::log::error!("Failed to save setting {}: {:?}", stringify!(#field_name), e);
-                        }
-                    });
-                }
-
-                pub async fn #get_fn(&self) -> Result<(), String> {
-                    let signal = self.#field_name.val;
-                    let args = ::serde_wasm_bindgen::to_value(
-                        &::serde_json::json!({ "key": #type_name, "from_cloud": #uses_cloud })
-                    ).map_err(|e| format!("Failed to serialize args: {:?}", e))?;
-                    let res = call_tauri("get_setting", args)
-                        .await
-                        .map_err(|e| format!("Tauri call failed: {:?}", e))?;
-                    let json_str: Option<String> = ::serde_wasm_bindgen::from_value(res)
-                        .map_err(|e| format!("Failed to deserialize response: {:?}", e))?;
-                    if let Some(s) = json_str {
-                        let val: #original_type = ::serde_json::from_str(&s)
-                            .map_err(|e| format!("Failed to parse value: {:?}", e))?;
-                        signal.set(val);
-                    } else {
-                        let serialized = ::serde_json::to_string(&signal.get_untracked())
-                            .map_err(|e| format!("Failed to serialize default: {:?}", e))?;
-                        let set_args = ::serde_wasm_bindgen::to_value(
-                            &::serde_json::json!({ "key": #type_name, "value": serialized, "to_cloud": #uses_cloud })
-                        ).map_err(|e| format!("Failed to serialize set args: {:?}", e))?;
-                        if let Err(e) = call_tauri("set_setting", set_args).await {
-                            ::log::warn!("Failed to persist default for {}: {:?}", stringify!(#field_name), e);
-                        }
-                    }
-                    Ok(())
-                }
-            }
+        .map(|(_, field_name, _)| {
+            quote! { self.#field_name.fetch().await?; }
         });
 
     let expanded = quote! {
@@ -226,6 +178,7 @@ fn convert_settings(mut item: ItemStruct) -> TokenStream {
             pub type_name: &'static str,
             pub human_readable: &'static str,
             pub uses_cloud: bool,
+            pub description: &'static str,
         }
 
         impl<T: 'static> Copy for MatrixSettingField<T> {}
@@ -236,6 +189,65 @@ fn convert_settings(mut item: ItemStruct) -> TokenStream {
         impl<T: 'static> MatrixSettingField<T> {
             pub fn signal(&self) -> ::leptos::prelude::RwSignal<T> {
                 self.val
+            }
+        }
+
+        impl<T> MatrixSettingField<T>
+        where
+            T: 'static + Send + Sync + Clone + ::serde::Serialize + ::serde::de::DeserializeOwned,
+        {
+            /// Updates the signal and persists the new value to the backend
+            /// (and cloud, if `uses_cloud`).
+            pub fn set(&self, val: T) {
+                let serialized = match ::serde_json::to_string(&val) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        ::log::error!("Failed to serialize {}: {:?}", self.type_name, e);
+                        return;
+                    }
+                };
+                self.val.set(val);
+                let type_name = self.type_name;
+                let uses_cloud = self.uses_cloud;
+                ::leptos::task::spawn_local(async move {
+                    let args = ::serde_wasm_bindgen::to_value(
+                        &::serde_json::json!({ "key": type_name, "value": serialized, "to_cloud": uses_cloud })
+                    ).expect("Failed to serialize args");
+                    if let Err(e) = call_tauri("set_setting", args).await {
+                        ::log::error!("Failed to save setting {}: {:?}", type_name, e);
+                    }
+                });
+            }
+
+            /// Fetches the value from the backend (or cloud, if `uses_cloud`)
+            /// and updates the signal, persisting the current default if unset.
+            pub async fn fetch(&self) -> Result<(), String> {
+                let signal = self.val;
+                let type_name = self.type_name;
+                let uses_cloud = self.uses_cloud;
+                let args = ::serde_wasm_bindgen::to_value(
+                    &::serde_json::json!({ "key": type_name, "from_cloud": uses_cloud })
+                ).map_err(|e| format!("Failed to serialize args: {:?}", e))?;
+                let res = call_tauri("get_setting", args)
+                    .await
+                    .map_err(|e| format!("Tauri call failed: {:?}", e))?;
+                let json_str: Option<String> = ::serde_wasm_bindgen::from_value(res)
+                    .map_err(|e| format!("Failed to deserialize response: {:?}", e))?;
+                if let Some(s) = json_str {
+                    let val: T = ::serde_json::from_str(&s)
+                        .map_err(|e| format!("Failed to parse value: {:?}", e))?;
+                    signal.set(val);
+                } else {
+                    let serialized = ::serde_json::to_string(&signal.get_untracked())
+                        .map_err(|e| format!("Failed to serialize default: {:?}", e))?;
+                    let set_args = ::serde_wasm_bindgen::to_value(
+                        &::serde_json::json!({ "key": type_name, "value": serialized, "to_cloud": uses_cloud })
+                    ).map_err(|e| format!("Failed to serialize set args: {:?}", e))?;
+                    if let Err(e) = call_tauri("set_setting", set_args).await {
+                        ::log::warn!("Failed to persist default for {}: {:?}", type_name, e);
+                    }
+                }
+                Ok(())
             }
         }
 
@@ -251,8 +263,6 @@ fn convert_settings(mut item: ItemStruct) -> TokenStream {
         }
 
         impl #struct_name {
-            #(#accessor_methods)*
-
             pub async fn get_all(&self) -> Result<(), String> {
                 ::log::debug!("Getting all settings");
                 #(#get_all_calls)*

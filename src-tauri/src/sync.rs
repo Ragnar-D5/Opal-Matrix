@@ -9,7 +9,7 @@ use shared::sidebar::{DmList, RoomMapUpdate, RoomNode, ServerList, SingleList};
 use std::collections::{HashMap, HashSet};
 use std::pin::pin;
 use std::sync::{Arc, Mutex};
-use tauri::{async_runtime::spawn, AppHandle};
+use tauri::{async_runtime::spawn, AppHandle, Manager};
 
 use crate::frontend::profiles::handle_typing_notice;
 use crate::frontend::sidebar::{
@@ -20,6 +20,7 @@ use crate::matrix_api::account_data::on_recent_emoji_update;
 use crate::matrix_api::matrixrtc::handle_call_member_change;
 use crate::send_event;
 use crate::settings::handle_account_data_event;
+use crate::state::AppState;
 use crate::{
     frontend::{
         presence::handle_presences,
@@ -46,7 +47,7 @@ pub async fn attach_callbacks(client: &MatrixClient, handle: &AppHandle) -> Resu
         cleanup_ghost_calls(&cleanup_client).await;
     });
 
-    spawn(async move {
+    let session_refresh_task = tokio::spawn(async move {
         while let Ok(change) = session_subscriber.recv().await {
             if let SessionChange::TokensRefreshed = change {
                 let Some(session) = client_clone.session() else {
@@ -119,7 +120,7 @@ pub async fn attach_callbacks(client: &MatrixClient, handle: &AppHandle) -> Resu
 
     let client_sync_clone = client.clone();
     let handle_clone = handle.clone();
-    spawn(async move {
+    let sync_task = tokio::spawn(async move {
         let sync_settings = SyncSettings::default()
             .set_presence(PresenceState::Online)
             .timeout(std::time::Duration::from_secs(30));
@@ -279,6 +280,11 @@ pub async fn attach_callbacks(client: &MatrixClient, handle: &AppHandle) -> Resu
             }
         }
     });
+
+    handle
+        .state::<Arc<AppState>>()
+        .replace_sync_tasks(session_refresh_task, sync_task)
+        .await;
 
     client.add_event_handler_context(handle.clone());
 

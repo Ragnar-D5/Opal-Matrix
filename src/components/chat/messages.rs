@@ -1551,7 +1551,12 @@ fn render_timeline_event(
         )
     };
 
+    let settings: Settings = expect_context();
     let receipts_view = move || {
+        if !settings.show_read_markers.signal().get() {
+            return ().into_any();
+        }
+
         let receipts = item_sig.with(|i| {
             if let UiTimelineItemKind::Event(e) = &i.kind {
                 e.receipts

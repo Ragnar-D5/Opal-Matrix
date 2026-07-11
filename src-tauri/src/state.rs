@@ -29,6 +29,30 @@ pub struct AppState {
     pub update: RwLock<Option<Update>>,
     pub update_bytes: RwLock<Option<Vec<u8>>>,
     pub update_status: RwLock<UpdateStatus>,
+    pub session_refresh_task: Mutex<Option<JoinHandle<()>>>,
+    pub sync_task: Mutex<Option<JoinHandle<()>>>,
+}
+
+impl AppState {
+    /// Aborts and replaces the previously tracked session-refresh/sync tasks.
+    /// Called when `attach_callbacks` restarts the sync loop (e.g. `try_restore`
+    /// running again on a frontend reload) so the old client's tasks are torn
+    /// down instead of being orphaned, which would otherwise keep its sqlite
+    /// and search-index stores open and deadlock the next client build.
+    pub async fn replace_sync_tasks(
+        &self,
+        session_refresh: JoinHandle<()>,
+        sync: JoinHandle<()>,
+    ) {
+        if let Some(old) = self.session_refresh_task.lock().await.replace(session_refresh) {
+            old.abort();
+            let _ = old.await;
+        }
+        if let Some(old) = self.sync_task.lock().await.replace(sync) {
+            old.abort();
+            let _ = old.await;
+        }
+    }
 }
 
 /// In-memory ring buffer of recent log lines. Every log record is pushed here
