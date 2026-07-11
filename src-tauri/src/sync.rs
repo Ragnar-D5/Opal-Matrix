@@ -11,6 +11,7 @@ use std::pin::pin;
 use std::sync::{Arc, Mutex};
 use tauri::{async_runtime::spawn, AppHandle, Manager};
 
+use crate::frontend::notifications::on_message;
 use crate::frontend::profiles::handle_typing_notice;
 use crate::frontend::sidebar::{
     compute_dm_order, compute_single_order, convert_room_to_node, get_unknown_children,
@@ -36,7 +37,11 @@ use crate::{
 };
 use futures_util::StreamExt;
 
-pub async fn attach_callbacks(client: &MatrixClient, handle: &AppHandle) -> Result<(), TauriError> {
+pub async fn attach_callbacks(
+    client: &MatrixClient,
+    handle: &AppHandle,
+    state: &Arc<AppState>,
+) -> Result<(), TauriError> {
     client.event_cache().subscribe()?;
 
     let mut session_subscriber = client.subscribe_to_session_changes();
@@ -287,6 +292,7 @@ pub async fn attach_callbacks(client: &MatrixClient, handle: &AppHandle) -> Resu
         .await;
 
     client.add_event_handler_context(handle.clone());
+    client.add_event_handler_context(state.clone());
 
     let debounce = Arc::new(Mutex::new(ProfileDebounce::default()));
     client.add_event_handler_context(debounce);
@@ -297,6 +303,7 @@ pub async fn attach_callbacks(client: &MatrixClient, handle: &AppHandle) -> Resu
     client.add_event_handler(handle_typing_notice);
     client.add_event_handler(handle_account_data_event);
     client.add_event_handler(on_recent_emoji_update);
+    client.add_event_handler(on_message);
 
     Ok(())
 }

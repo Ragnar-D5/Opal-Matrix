@@ -70,6 +70,7 @@ impl SettingsItem {
 }
 
 const SETTINGS_SECTIONS: &[SettingsItem] = &[
+    SettingsItem::Divider { id: "divider-0" },
     SettingsItem::Section(SettingsSection {
         title: "General",
         id: "general",
@@ -241,7 +242,7 @@ pub fn SettingsIcon(#[prop(into, optional)] class: String) -> impl IntoView {
                     >
                         <div class="border-r border-(--tile-border-color) w-50 h-full flex flex-col gap-1">
                             <div
-                                class="flex items-center p-2 border-b border-(--tile-border-color) gap-2 cursor-pointer group"
+                                class="flex items-center p-2 pb-0 gap-2 cursor-pointer group"
                                 on:click=move |_| selected_section.set(PROFILE_SECTION.id)
                             >
                                 <div

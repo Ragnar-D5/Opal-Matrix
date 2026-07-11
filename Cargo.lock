@@ -6801,6 +6801,7 @@ dependencies = [
  "mime",
  "mime_guess",
  "notify",
+ "notify-rust",
  "percent-encoding",
  "regex",
  "ringbuf",

@@ -83,17 +83,54 @@ async fn reqwest_response_to_http_response(
 }
 
 /// Sends a notification with the apphandle if the user has granted permission.
-fn _send_notification(handle: &AppHandle, title: String, body: String) -> Result<(), TauriError> {
+///
+/// `icon` is a path to an image file (or platform icon name) to show alongside the
+/// notification; not all platforms honor per-notification icons (e.g. macOS always
+/// shows the app icon).
+pub(crate) async fn send_notification(
+    handle: &AppHandle,
+    title: String,
+    body: String,
+    icon: Option<String>,
+) -> Result<(), TauriError> {
     if handle.notification().permission_state()? != PermissionState::Granted {
         trace!("Notification permission not granted, skipping notification");
         return Ok(());
     }
 
-    let notification = handle.notification().builder().title(title).body(body);
+    // tauri-plugin-notification's `show()` hands notify-rust's *synchronous* show() (which
+    // does a blocking `zbus::block_on` under the hood) to `tauri::async_runtime::spawn`,
+    // which panics with "Cannot start a runtime from within a runtime" because it's already
+    // running on a tokio worker thread. Call notify-rust's async API directly on Linux
+    // instead, which awaits the D-Bus call properly rather than blocking on it.
+    #[cfg(target_os = "linux")]
+    {
+        let mut notification = notify_rust::Notification::new();
+        notification.summary(&title).body(&body);
+        if let Some(icon) = &icon {
+            notification.icon(icon);
+        } else {
+            notification.auto_icon();
+        }
 
-    notification
-        .show()
-        .map_err(|e| format!("Failed to show notification: {}", e).into())
+        return notification
+            .show_async()
+            .await
+            .map(|_| ())
+            .map_err(|e| format!("Failed to show notification: {}", e).into());
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        let mut notification = handle.notification().builder().title(title).body(body);
+        if let Some(icon) = icon {
+            notification = notification.icon(icon);
+        }
+
+        notification
+            .show()
+            .map_err(|e| format!("Failed to show notification: {}", e).into())
+    }
 }
 
 pub fn send_event<T: TauriEvent>(app_handle: &AppHandle, payload: &T) {
@@ -224,6 +261,7 @@ where
 async fn try_restore(
     app_handle: AppHandle,
     matrix_client: State<'_, RwLock<MatrixClient>>,
+    state: State<'_, Arc<AppState>>,
 ) -> Result<RestoreResponse, TauriError> {
     let session_result = tokio::task::spawn_blocking(keyring::get_last_active_session)
         .await
@@ -285,7 +323,8 @@ async fn try_restore(
     });
     new_client.restore_session(session).await?;
 
-    attach_callbacks(&new_client, &app_handle).await?;
+    let state: &Arc<AppState> = state.inner();
+    attach_callbacks(&new_client, &app_handle, state).await?;
 
     let user_id = new_client.user_id().unwrap().to_string();
 
@@ -301,6 +340,7 @@ async fn login(
     recovery_key: String,
     app_handle: AppHandle,
     matrix_client: State<'_, RwLock<MatrixClient>>,
+    state: State<'_, Arc<AppState>>,
     handle: AppHandle,
 ) -> Result<String, LoginError> {
     info!("Logging in new");
@@ -420,10 +460,13 @@ async fn login(
         })?;
     log::debug!("Device verified, starting sync loop");
 
-    attach_callbacks(&new_client, &handle).await.map_err(|e| {
-        error!("Failed to start sync loop: {:?}", e);
-        LoginError::BackendError
-    })?;
+    let state: &Arc<AppState> = state.inner();
+    attach_callbacks(&new_client, &handle, state)
+        .await
+        .map_err(|e| {
+            error!("Failed to start sync loop: {:?}", e);
+            LoginError::BackendError
+        })?;
     log::debug!("Sync loop started");
 
     let user_id = new_client.user_id().unwrap().to_string();
