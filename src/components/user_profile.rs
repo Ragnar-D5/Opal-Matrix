@@ -1,8 +1,9 @@
 use csscolorparser::Color;
 use leptos::prelude::*;
+use phosphor_leptos::{Icon, IconWeight, HASH, MATRIX_LOGO, SIGN_IN, SPEAKER_HIGH};
 use shared::{
     profile::{MemberProfile, RoomProfile, UserProfile},
-    sidebar::RoomNodeInfo,
+    sidebar::RoomNode,
     timeline::{RichTextSpan, RoomIdFormat},
     unknown_color,
 };
@@ -123,16 +124,30 @@ pub fn render_unknown_name<T: AsRef<str>>(font_size_str: T) -> impl IntoView {
 }
 
 pub trait RoomNodeExt {
-    fn render_icon<T: AsRef<str>>(&self, size_str: T) -> AnyView;
+    fn render_url_icon<T: AsRef<str>>(&self, size_str: T) -> AnyView;
+    fn render_simple_icon<T: AsRef<str>>(&self, size_str: T) -> AnyView;
 }
 
-impl RoomNodeExt for RoomNodeInfo {
-    fn render_icon<T: AsRef<str>>(&self, size_str: T) -> AnyView {
+impl RoomNodeExt for RoomNode {
+    fn render_url_icon<T: AsRef<str>>(&self, size_str: T) -> AnyView {
         if let Some(url) = self.avatar_url() {
-            render_url_icon(Some(url), &self.name, size_str, self.color.clone(), "full")
+            render_url_icon(Some(url), self.name(), size_str, self.color(), "full")
         } else {
-            render_url_icon(None, &self.name, size_str, self.color.clone(), "full")
+            render_url_icon(None, self.name(), size_str, self.color(), "full")
         }
+    }
+
+    fn render_simple_icon<T: AsRef<str>>(&self, size_str: T) -> AnyView {
+        let (icon, weight) = match self {
+            RoomNode::Dm(_) | RoomNode::TextChannel(_) | RoomNode::Single(_) => {
+                (HASH, IconWeight::Light)
+            }
+            RoomNode::VoiceChannel(_) => (SPEAKER_HIGH, IconWeight::Fill),
+            RoomNode::Unjoined(_) => (SIGN_IN, IconWeight::Light),
+            _ => (MATRIX_LOGO, IconWeight::Light),
+        };
+
+        view! { <Icon icon=icon weight=weight size=size_str.as_ref().to_string() /> }.into_any()
     }
 }
 

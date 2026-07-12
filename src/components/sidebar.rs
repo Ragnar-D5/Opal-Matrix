@@ -1,7 +1,7 @@
-use phosphor_leptos::{Icon, IconData, IconWeight, BUG, HASH, MATRIX_LOGO, SIGN_IN, SPEAKER_HIGH};
+use phosphor_leptos::{Icon, IconData, IconWeight, BUG, SPEAKER_HIGH};
 use shared::{
     profile::MemberProfile,
-    sidebar::{RoomNodeInfo, ServerRoomNode, UserDevice},
+    sidebar::{ServerRoomNode, UserDevice},
 };
 
 use crate::{
@@ -37,28 +37,25 @@ fn render_server_avatar<T: AsRef<str> + 'static>(
     render_url_icon(url, name, size_str, color, rounding)
 }
 
-fn render_full_room(info: RoomNodeInfo, other_user_id: Option<String>) -> impl IntoView {
+fn render_full_room(node: RoomNode, other_user_id: StoredValue<Option<String>>) -> AnyView {
     let state: AppState = expect_context();
     let store: ProfileStore = expect_context();
 
-    let id = info.room_id.clone();
+    let room_id = StoredValue::new(node.room_id());
 
-    let is_active = Memo::new(move |_| state.active_room_id() == Some(id.clone()));
+    let is_active = Memo::new(move |_| state.active_room_id() == Some(room_id.get_value()));
 
-    let call_room_id = info.room_id.clone();
-
-    let notification_room_id = info.room_id.clone();
     let notifications = move || {
         state
             .notification_counts
             .get()
-            .get(&notification_room_id)
+            .get(&room_id.get_value())
             .cloned()
             .unwrap_or_default()
     };
 
     let call_icon = move || {
-        let members_in_call = state.get_call_members(&call_room_id).get();
+        let members_in_call = state.get_call_members(&room_id.get_value()).get();
         if !members_in_call.is_empty() {
             let user_in_call = members_in_call
                 .iter()
@@ -87,66 +84,58 @@ fn render_full_room(info: RoomNodeInfo, other_user_id: Option<String>) -> impl I
     };
 
     let store_clone = store.clone();
-    let other_id_clone = other_user_id.clone();
-    let info_clone = info.clone();
-    let info_clone_clone = info.clone();
-    let click_id = info.room_id.clone();
+    let node_clone = node.clone();
     view! {
         <div
-            class="group flex flex-row w-full cursor-pointer px-2"
-            on:click=move |_| { state.set_active_room_with_id(Some(click_id.clone())) }
+            class="flex flex-row flex-grow items-center p-1 rounded-(--ui-border-radius) cursor-pointer hover:text-normal border hover:border-(--tile-border-color)"
+            class=("bg-(--ui-solid-hover-bg)", move || is_active.get())
+            class=("border-(--tile-border-color)", move || is_active.get())
+            class=("border-transparent", move || !is_active.get())
+            class=("text-normal", move || is_active.get())
+            class=("text-dim", move || !is_active.get())
+            on:click=move |_| { state.set_active_room_with_id(Some(room_id.get_value())) }
         >
-            <div class="transition-[width] duration-300 ease-out shrink-0 w-0 group-hover:w-3"></div>
-            <div
-                class="flex flex-row flex-grow items-center p-1 pl-2 rounded-[10px] cursor-pointer hover:text-normal"
-                class=("bg-(--color-item-selected)", move || is_active.get())
-                class=("text-normal", move || is_active.get())
-                class=("hover:bg-[var(--color-item-hover)]", move || !is_active.get())
-                class=("text-dim", move || !is_active.get())
-            >
-                {move || {
-                    if let Some(user_id) = &other_id_clone {
-                        let profile = store_clone.get_member_profile(&info_clone.room_id, user_id);
-                        let presence = store_clone.get_presence(user_id);
+            {move || {
+                if let Some(user_id) = &other_user_id.get_value() {
+                    let profile = store_clone.get_member_profile(&room_id.get_value(), user_id);
+                    let presence = store_clone.get_presence(user_id);
 
-                        view! {
-                            <PresenceBadge presence=presence>
-                                {move || profile.get().render_icon("32px")}
-                            </PresenceBadge>
-                        }
-                            .into_any()
-                    } else {
-                        info_clone.render_icon("32px")
+                    view! {
+                        <PresenceBadge presence=presence>
+                            {move || profile.get().render_icon("32px")}
+                        </PresenceBadge>
                     }
-                }}
-                <span class="inline-block align-center pl-2">
-                    {move || {
-                        if let Some(user_id) = &other_user_id {
-                            let profile = store
-                                .get_member_profile(&info_clone_clone.room_id, user_id);
-                            profile.get().get_name()
-                        } else {
-                            info.name.clone()
-                        }
-                    }}
-                </span>
-                {call_icon}
+                        .into_any()
+                } else {
+                    node.render_url_icon("32px")
+                }
+            }}
+            <span class="inline-block align-center pl-2">
                 {move || {
-                    let notifications = notifications().notification_count;
-                    if notifications > 0 {
-                        view! {
-                            <div class="ml-auto bg-[var(--mention-color)] text-white text-xs font-bold px-1.5 py-0.5 rounded-full">
-                                {notifications}
-                            </div>
-                        }
-                            .into_any()
+                    if let Some(user_id) = &other_user_id.get_value() {
+                        let profile = store.get_member_profile(&room_id.get_value(), user_id);
+                        profile.get().get_name()
                     } else {
-                        view! { <div></div> }.into_any()
+                        node_clone.name()
                     }
                 }}
-            </div>
+            </span>
+            {call_icon}
+            {move || {
+                let notifications = notifications().notification_count;
+                if notifications > 0 {
+                    view! {
+                        <div class="ml-auto bg-[var(--mention-color)] text-white text-xs font-bold px-1.5 py-0.5 rounded-full">
+                            {notifications}
+                        </div>
+                    }
+                        .into_any()
+                } else {
+                    view! { <div></div> }.into_any()
+                }
+            }}
         </div>
-    }
+    }.into_any()
 }
 
 #[component]
@@ -346,7 +335,7 @@ fn render_room_preview(room: RoomNode, members: Option<Vec<UserDevice>>) -> impl
                         let profile = store.get_member_profile(&room.room_id(), &dm.other_user_id);
                         profile.get().render_icon("40px")
                     } else {
-                        room.info().render_icon("40px")
+                        room.render_url_icon("40px")
                     }}
                 </div>
             </CutoutBadge>
@@ -449,152 +438,96 @@ pub fn ServerIcon(server: ServerRoomNode) -> impl IntoView {
             .into_any()
 }
 
-pub fn render_server_channel(child: RoomNode) -> impl IntoView {
+pub fn render_server_channel(child: RoomNode) -> AnyView {
     let state: AppState = expect_context();
     let store: ProfileStore = expect_context();
-
-    let channel_icon = match &child {
-        RoomNode::Dm(_) => HASH,
-        RoomNode::TextChannel(_) => HASH,
-        RoomNode::VoiceChannel(_) => SPEAKER_HIGH,
-        RoomNode::Unjoined(_) => SIGN_IN,
-        _ => MATRIX_LOGO,
-    };
-
-    let avatar_url = child.avatar_url();
-    let avatar_name = child.name();
-    let avatar_color = child.color();
-    let avatar_rounding = if matches!(child, RoomNode::Dm(_) | RoomNode::Single(_)) {
-        "full"
-    } else {
-        "[25%]"
-    };
 
     let click_id = child.room_id();
     let check_id = click_id.clone();
     let is_active = Memo::new(move |_| state.active_room_id() == Some(check_id.clone()));
 
-    let room_id = child.room_id();
+    let room_id = StoredValue::new(child.room_id());
 
-    let call_participants_sig = state.get_call_members(&room_id);
-
-    let empty_sig = call_participants_sig.clone();
-    let call_empty = move || empty_sig.get().is_empty();
-
-    let room_id_for_count = child.room_id();
     let highlight_count = move || {
         let counts = state
             .notification_counts
             .get()
-            .get(&room_id_for_count)
+            .get(&room_id.get_value())
             .cloned()
             .unwrap_or_default();
         counts.highlight_count
     };
 
-    let room_id_for_not = child.room_id();
     let has_notifications = Memo::new(move |_| {
         let counts = state
             .notification_counts
             .get()
-            .get(&room_id_for_not)
+            .get(&room_id.get_value())
             .cloned()
             .unwrap_or_default();
         counts.notification_count > 0 || counts.highlight_count > 0
     });
 
-    let participants = Memo::new(move |_| call_participants_sig.get());
+    let participants = Memo::new(move |_| state.get_call_members(&room_id.get_value()).get());
     let name = child.name();
 
-    let child_memo = Memo::new(move |_| child.clone());
+    let child = StoredValue::new(child);
 
     let call_preview = move || {
-        if let RoomNode::VoiceChannel(_) = &child_memo.get() {
-            let participants = participants.get();
+        if !matches!(child.get_value(), RoomNode::VoiceChannel(_)) {
+            return ().into_any();
+        }
+        let participants = participants.get();
 
-            let views = participants.iter().map(|device| {
-                    let profile = store.get_member_profile(&child_memo.get().room_id(), &device.user_id);
+        if participants.is_empty() {
+            return ().into_any();
+        }
+
+        let views = participants.iter().map(|device| {
+                    let profile = store.get_member_profile(&child.get_value().room_id(), &device.user_id);
                     let clone = profile.clone();
 
                     view! {
-                        <div class="hover:bg-(--color-item-hover) rounded-[10px] p-1 flex items-center gap-2 flex flex-grow cursor-pointer">
+                        <div class="hover:border-(--tile-border-color) border border-transparent rounded-[10px] p-1 flex items-center gap-2 flex flex-grow cursor-pointer">
                             {move || profile.get().render_icon("22px")}
                             {move || clone.get().render_name_popup("14px")}
                         </div>
                     }
                 });
 
-            Some(view! { <div class="flex pl-8 flex-col gap-1">{views.collect_view()}</div> })
-        } else {
-            None
-        }
+        view! { <div class="flex pl-8 flex-col gap-1">{views.collect_view()}</div> }.into_any()
     };
 
     view! {
         <div class="group relative flex flex-row w-full cursor-pointer">
-
-            {move || {
-                has_notifications
-                    .get()
-                    .then(|| {
-                        view! {
-                            <div class="absolute top-1/2 -translate-y-1/2 -left-1 group-hover:left-1.5 transition-[left] duration-300 ease-out w-2 h-2 bg-(--text-bright) rounded-full z-10 pointer-events-none"></div>
-                        }
-                    })
-            }}
-            <div class="transition-[width] duration-300 ease-out shrink-0 w-2 group-hover:w-5"></div>
-
             <div
-                class="flex flex-row flex-grow items-center p-1 rounded-[10px] cursor-pointer transition-colors"
-                class=("hover:bg-(--color-item-hover)", move || !is_active.get())
-                class=("hover:text-normal", move || !child_memo.get().is_unjoined())
-                class=("hover:text-dim", move || child_memo.get().is_unjoined())
+                class="flex flex-row flex-grow items-center p-1 rounded-(--ui-border-radius) cursor-pointer border hover:border-(--tile-border-color)"
+                class=("hover:text-normal", move || !child.get_value().is_unjoined())
+                class=("hover:text-dim", move || child.get_value().is_unjoined())
                 class=(
                     "text-dim",
                     move || {
                         !is_active.get() && !has_notifications.get()
-                            && !child_memo.get().is_unjoined()
+                            && !child.get_value().is_unjoined()
                     },
                 )
                 class=(
                     "text-muted",
                     move || {
                         !is_active.get() && !has_notifications.get()
-                            && child_memo.get().is_unjoined()
+                            && child.get_value().is_unjoined()
                     },
                 )
-                class=(
-                    "text-normal",
-                    move || { !is_active.get() && has_notifications.get() || is_active.get() },
-                )
-                class=("bg-(--color-item-selected)", move || is_active.get())
+                class=("text-normal", move || { has_notifications.get() || is_active.get() })
+                class=("bg-(--ui-solid-hover-bg)", move || is_active.get())
+                class=("border-transparent", move || !is_active.get())
+                class=("border-(--tile-border-color)", move || is_active.get())
                 on:click=move |_| { state.set_active_room_with_id(Some(click_id.clone())) }
             >
-                {if avatar_url.is_some() {
-                    view! {
-                        <div class="w-5 h-5 shrink-0">
-                            {render_url_icon(
-                                avatar_url,
-                                avatar_name,
-                                "20px",
-                                avatar_color,
-                                avatar_rounding,
-                            )}
-                        </div>
-                    }
-                        .into_any()
-                } else {
-                    view! {
-                        <Icon
-                            icon=channel_icon
-                            size="20px"
-                            color=move || {
-                                if call_empty() { "currentColor" } else { "var(--online-color)" }
-                            }
-                        />
-                    }
-                        .into_any()
-                }}
+                <div class=(
+                    "text-(--online-color)",
+                    move || !participants.get().is_empty(),
+                )>{child.get_value().render_simple_icon("20px")}</div>
                 <div class="w-1"></div>
                 {name}
                 {if highlight_count() > 0 {
@@ -610,30 +543,18 @@ pub fn render_server_channel(child: RoomNode) -> impl IntoView {
             </div>
         </div>
         {call_preview}
-        <div class="h-[1px]"></div>
     }
     .into_any()
 }
 
-#[component]
-pub fn ServerItems(active_server: ServerRoomNode) -> impl IntoView {
-    let name = active_server.name();
-    let state: AppState = expect_context();
-
-    view! {
-        <div class="header border-b border-(--tile-border-color) p-3 font-bold text-normal w-full">
-            {name}
-        </div>
-        <div class="list pr-2 w-full pt-1">
-            <For
-                each=move || active_server.children.clone()
-                key=|room_id| room_id.clone()
-                children=move |room_id| {
-                    let node = state.get_room(&room_id)?;
-                    Some(render_server_channel(node).into_any())
-                }
-            />
-        </div>
+fn render_room(room: RoomNode) -> AnyView {
+    match &room {
+        RoomNode::Dm(dm) => render_full_room(
+            room.clone(),
+            StoredValue::new(Some(dm.other_user_id.clone())),
+        ),
+        RoomNode::Single(_) => render_full_room(room, StoredValue::new(None)),
+        _ => render_server_channel(room),
     }
 }
 
@@ -718,6 +639,12 @@ pub fn Sidebar() -> impl IntoView {
             .collect::<Vec<_>>()
     });
 
+    let rooms_to_show = Memo::new(move |_| match state.active_section.get() {
+        CurrentSection::Dms => state.get_dms(),
+        CurrentSection::Single => state.get_single_rooms(),
+        CurrentSection::Server(id) => state.get_server_rooms(&id),
+    });
+
     view! {
         <div class="flex h-full gap-[var(--gap)] select-none z-10">
             // Empty image used for drag ghost to avoid default semi-transparent preview
@@ -736,7 +663,7 @@ pub fn Sidebar() -> impl IntoView {
                         />
 
                         <div
-                            class="server-btn flex items-center justify-center w-10 h-10 bg-gray-700 text-white rounded-[25%] cursor-pointer transition-colors border"
+                            class="server-btn flex items-center justify-center w-10 h-10 rounded-[25%] cursor-pointer transition-colors border"
                             class=(
                                 "border-(--accent-color)",
                                 move || state.active_section.get().is_not_server(),
@@ -750,7 +677,7 @@ pub fn Sidebar() -> impl IntoView {
                                 move || state.active_section.get().is_not_server(),
                             )
                             class=(
-                                "bg-(--color-item-hover)",
+                                "bg-(--ui-solid-bg)",
                                 move || !state.active_section.get().is_not_server(),
                             )
 
@@ -839,13 +766,12 @@ pub fn Sidebar() -> impl IntoView {
             </FloatingTile>
 
             <div class="flex flex-col gap-(--gap) w-70">
-                // <FloatingTile class="h-(--header-height)">"Search stuff"</FloatingTile>
                 <FloatingTile class="flex-grow">
-                    {move || {
-                        match state.active_section.get() {
-                            CurrentSection::Dms | CurrentSection::Single => {
-                                view! {
-                                    <div class="relative header border-b border-(--tile-border-color) font-bold text-normal p-3 flex flex-row gap-3 w-full">
+                    <div class="relative header border-b border-(--tile-border-color) font-bold text-normal p-3 flex flex-row gap-3 w-full">
+                        {move || {
+                            match state.active_section.get() {
+                                CurrentSection::Dms | CurrentSection::Single => {
+                                    view! {
                                         <button
                                             node_ref=dms_btn
                                             class="font-medium hover:text-normal cursor-pointer"
@@ -888,66 +814,33 @@ pub fn Sidebar() -> impl IntoView {
                                             class=("ease-in-out", move || has_measured.get())
                                             style=pill_style
                                         />
-                                    </div>
-                                    <div class="py-1 gap-1 flex flex-col w-full">
-                                        {move || {
-                                            match state.active_section.get() {
-                                                CurrentSection::Single => {
-                                                    view! {
-                                                        <For
-                                                            each=move || state.single_room_list.get().0
-                                                            key=|room_id| room_id.clone()
-                                                            children=move |room_id| {
-                                                                let room = state
-                                                                    .get_room(&room_id)
-                                                                    .and_then(|r| r.as_single())?;
-                                                                Some(render_full_room(room.info, None))
-                                                            }
-                                                        />
-                                                    }
-                                                        .into_any()
-                                                }
-                                                _ => {
-                                                    view! {
-                                                        <For
-                                                            each=move || state.dm_list.get().0.clone()
-                                                            key=|dm_id| dm_id.clone()
-                                                            children=move |dm_id| {
-                                                                let dm = state.get_room(&dm_id).and_then(|r| r.as_dm())?;
-                                                                Some(render_full_room(dm.info, Some(dm.other_user_id)))
-                                                            }
-                                                        />
-                                                    }
-                                                        .into_any()
-                                                }
-                                            }
-                                        }}
-                                    </div>
+                                    }
+                                        .into_any()
                                 }
-                                    .into_any()
+                                CurrentSection::Server(server_id) => {
+                                    view! {
+                                        <span>
+                                            {move || {
+                                                state
+                                                    .get_room(&server_id)
+                                                    .map(|r| r.name())
+                                                    .unwrap_or_default()
+                                            }}
+                                        </span>
+                                    }
+                                        .into_any()
+                                }
                             }
-                            CurrentSection::Server(active_id) => {
-                                let Some(active_server_id) = state
-                                    .server_list
-                                    .get()
-                                    .0
-                                    .into_iter()
-                                    .find(|s_id| s_id == &active_id) else {
-                                    return view! { <div class="item p-4">"Not found"</div> }
-                                        .into_any();
-                                };
-                                let Some(active_server) = state
-                                    .get_room(&active_server_id)
-                                    .and_then(|r| r.as_server()) else {
-                                    return view! { <div class="item p-4">"Loading..."</div> }
-                                        .into_any();
-                                };
+                        }}
+                    </div>
 
-                                view! { <ServerItems active_server=active_server></ServerItems> }
-                                    .into_any()
-                            }
-                        }
-                    }}
+                    <div class="p-(--gap) gap-(--gap) flex flex-col w-full">
+                        <For
+                            each=move || rooms_to_show.get()
+                            key=|room| room.room_id()
+                            children=move |room| render_room(room)
+                        />
+                    </div>
                 </FloatingTile>
 
                 <FloatingTile class="h-(--header-height) w-full" style="overflow: visible;">

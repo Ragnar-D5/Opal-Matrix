@@ -591,7 +591,32 @@ impl AppState {
         self.room_map
             .get_untracked()
             .get(room_id)
-            .and_then(|sig| sig.try_get())
+            .and_then(|sig| sig.try_get_untracked())
+    }
+
+    pub fn get_dms(&self) -> Vec<RoomNode> {
+        self.dm_list
+            .get()
+            .0
+            .iter()
+            .filter_map(|room_id| self.get_room(room_id))
+            .collect()
+    }
+
+    pub fn get_single_rooms(&self) -> Vec<RoomNode> {
+        self.single_room_list
+            .get()
+            .0
+            .iter()
+            .filter_map(|room_id| self.get_room(room_id))
+            .collect()
+    }
+
+    pub fn get_server_rooms(&self, server_id: &str) -> Vec<RoomNode> {
+        let Some(server) = self.get_room(server_id).and_then(|s| s.as_server()) else {
+            return vec![];
+        };
+        server.children.iter().filter_map(|room_id| self.get_room(room_id)).collect()
     }
 }
 
