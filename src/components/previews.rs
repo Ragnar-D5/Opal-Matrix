@@ -376,7 +376,7 @@ fn LightboxHeader(
                         <Icon icon=DOWNLOAD_SIMPLE weight=IconWeight::Bold size="20px" />
                     </button>
                     <button
-                        class="text-dim hover:text-bright p-1.5 pr-0 rounded hover:bg-(--ui-hover-bg) cursor-pointer"
+                        class="text-dim hover:text-bright p-1.5 rounded hover:bg-(--ui-hover-bg) cursor-pointer"
                         title="Close (Esc)"
                         on:click=move |e| {
                             e.stop_propagation();
@@ -387,7 +387,7 @@ fn LightboxHeader(
                     </button>
                 </div>
             </div>
-            <div class="h-6 w-[2px] mx-2 bg-(--tile-border-color) rounded" />
+            <div class="h-6 w-[2px] mr-2 ml-1 bg-(--tile-border-color) rounded" />
             <SystemButtons active=false />
         </FloatingTile>
     }

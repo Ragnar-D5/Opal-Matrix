@@ -587,15 +587,12 @@ impl AppState {
             .and_then(|sig| sig.try_get())
     }
 
-    // pub fn get_room_untracked(&self, room_id: &str) -> Option<RoomNode> {
-    //     let sidebar_state = self.sidebar_state.get_untracked();
-
-    //     sidebar_state
-    //         .server_rooms
-    //         .get(room_id)
-    //         .cloned()
-    //         .or_else(|| sidebar_state.dms.iter().find(|dm| dm.room_id == room_id).cloned())
-    // }
+    pub fn get_room_untracked(&self, room_id: &str) -> Option<RoomNode> {
+        self.room_map
+            .get_untracked()
+            .get(room_id)
+            .and_then(|sig| sig.try_get())
+    }
 }
 
 type MemberStoreRoomEntry = HashMap<String, ArcRwSignal<MemberProfile>>;

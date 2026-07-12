@@ -767,11 +767,11 @@
   .w-48 {
     width: calc(var(--spacing) * 48);
   }
-  .w-50 {
-    width: calc(var(--spacing) * 50);
-  }
   .w-56 {
     width: calc(var(--spacing) * 56);
+  }
+  .w-60 {
+    width: calc(var(--spacing) * 60);
   }
   .w-70 {
     width: calc(var(--spacing) * 70);
@@ -1564,9 +1564,6 @@
   }
   .pr-\(--system-button-padding\) {
     padding-right: var(--system-button-padding);
-  }
-  .pr-0 {
-    padding-right: calc(var(--spacing) * 0);
   }
   .pr-1 {
     padding-right: calc(var(--spacing) * 1);
@@ -2645,6 +2642,12 @@ video::-webkit-media-controls-timeline, video::-webkit-media-controls-volume-sli
 }
 video::-webkit-media-controls-current-time-display, video::-webkit-media-controls-time-remaining-display {
   color: var(--tile-border-color);
+}
+.redacted {
+  background-color: var(--warning-color);
+  color: transparent;
+  border-radius: 2px;
+  user-select: none;
 }
 @property --tw-translate-x {
   syntax: "*";

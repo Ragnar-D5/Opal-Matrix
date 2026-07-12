@@ -59,6 +59,7 @@ web-sys = {
     "MediaError",
     "Navigator",
     "Node",
+    "NodeFilter",
     "OffscreenCanvas",
     "Performance",
     "Range",

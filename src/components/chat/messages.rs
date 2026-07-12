@@ -1093,6 +1093,11 @@ fn MesssageButtons(
 
     let important_event_id: RwSignal<Option<String>> = expect_context();
 
+    let Some(node) = state.get_room_untracked(&room_id.get_value()) else {
+        return ().into_any();
+    };
+    let info = node.info();
+
     let react = move |ev: web_sys::MouseEvent| {
         let emoji_state: EmojiPickerState = expect_context();
         let anchor: Element = ev.target().unwrap().unchecked_into();
@@ -1268,12 +1273,14 @@ fn MesssageButtons(
                     <Icon icon=PENCIL_SIMPLE size="20px"></Icon>
                 </button>
             </Show>
-            <button
-                class="hover:bg-(--pin-color) hover:text(--ui-solid-bg) cursor-pointer p-0.5 rounded-(--gap) transition-colors duration-100"
-                on:click=on_pin_click
-            >
-                {pin_icon}
-            </button>
+            <Show when=move || is_pinned.get() && info.rights.pin_messages>
+                <button
+                    class="hover:bg-(--pin-color) hover:text(--ui-solid-bg) cursor-pointer p-0.5 rounded-(--gap) transition-colors duration-100"
+                    on:click=on_pin_click
+                >
+                    {pin_icon}
+                </button>
+            </Show>
             <Show when=move || { flags.get().is_deletable }>
                 <button
                     class="hover:bg-(--error-color) hover:text-(--ui-solid-bg) cursor-pointer p-0.5 rounded-(--gap) transition-colors duration-100"

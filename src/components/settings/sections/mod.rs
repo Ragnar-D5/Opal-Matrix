@@ -9,7 +9,7 @@ use web_sys::{KeyboardEvent, ScrollBehavior, ScrollIntoViewOptions, ScrollLogica
 
 use phosphor_leptos::{Icon, CARET_DOWN, CHECK, QUESTION};
 
-use crate::{components::settings::MatrixSettingField, tauri_functions::change_screen_scaling};
+use crate::components::settings::MatrixSettingField;
 
 pub mod appearance;
 pub mod chats;
@@ -575,8 +575,7 @@ pub fn Slider(field: MatrixSettingField<f32>, min: f32, max: f32) -> AnyView {
 
                         on:input=move |ev| {
                             let val = event_target_value(&ev).parse::<f32>().unwrap_or(half);
-                            signal.set(val);
-                            change_screen_scaling(val);
+                            field.set(val);
                         }
                         class="w-full h-2 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
                     />

@@ -32,6 +32,7 @@ use crate::components::{
     SystemButtons,
 };
 use crate::hooks::{setup_update_effect, use_tauri_event};
+use crate::redact_mode::{self, REDACTION_ROOT_SELECTOR};
 use crate::state::{AppState, ProfileStore};
 use crate::tauri_functions::{
     get_app_version, get_update_status, set_backend_room_id, set_focused_in_backend,
@@ -207,6 +208,14 @@ pub fn App() -> impl IntoView {
                 error!("Error setting backend room id: {:?}", e);
             };
         });
+    });
+
+    Effect::new(move |_| {
+        let _ = state.active_room_id();
+        redact_mode::set_redaction_mode(
+            settings.epstein_mode.signal().get(),
+            REDACTION_ROOT_SELECTOR,
+        );
     });
 
     Effect::new(move |_| {

@@ -185,4 +185,12 @@ pub struct Settings {
         default = false
     )]
     pub minimize_to_tray: bool,
+    #[setting(
+        name = "Epstein ratio",
+        description = "The ratio of messages to mark as spam using the Epstein algorithm",
+        section = SettingsSection::General,
+        uses_cloud = true,
+        default = 0.0
+    )]
+    pub epstein_mode: f32,
 }

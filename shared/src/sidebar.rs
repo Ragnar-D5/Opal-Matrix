@@ -150,15 +150,15 @@ impl RoomNodeInfo {
 }
 
 impl RoomNode {
-    pub fn info(&self) -> &RoomNodeInfo {
+    pub fn info(&self) -> RoomNodeInfo {
         match self {
-            RoomNode::Space(node) => &node.info,
-            RoomNode::TextChannel(node) => &node.info,
-            RoomNode::VoiceChannel(node) => &node.info,
-            RoomNode::Dm(node) => &node.info,
-            RoomNode::Server(node) => &node.info,
-            RoomNode::Single(node) => &node.info,
-            RoomNode::Unjoined(node) => &node.info,
+            RoomNode::Space(node) => node.info.clone(),
+            RoomNode::TextChannel(node) => node.info.clone(),
+            RoomNode::VoiceChannel(node) => node.info.clone(),
+            RoomNode::Dm(node) => node.info.clone(),
+            RoomNode::Server(node) => node.info.clone(),
+            RoomNode::Single(node) => node.info.clone(),
+            RoomNode::Unjoined(node) => node.info.clone(),
         }
     }
 

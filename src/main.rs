@@ -2,6 +2,7 @@ mod app;
 mod components;
 mod hooks;
 mod logger;
+mod redact_mode;
 mod state;
 mod tauri_functions;
 

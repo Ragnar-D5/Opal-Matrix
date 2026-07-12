@@ -32,7 +32,7 @@ pub async fn get_media(
 
     let media = client
         .media()
-        .get_media_content(&params, false)
+        .get_media_content(&params, true)
         .await
         .map_err(|e| format!("Failed to fetch media for {:?}: {:?}", source, e))?;
     Ok(media)

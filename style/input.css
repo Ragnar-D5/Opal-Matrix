@@ -196,3 +196,10 @@ video::-webkit-media-controls-current-time-display,
 video::-webkit-media-controls-time-remaining-display {
     color: var(--tile-border-color);
 }
+
+.redacted {
+    background-color: var(--warning-color);
+    color: transparent;
+    border-radius: 2px;
+    user-select: none;
+}
