@@ -23,7 +23,7 @@ thread_local! {
 // `set_redaction_mode`. Read fresh by the periodic re-run so a slider change
 // takes effect without restarting the interval.
 thread_local! {
-    static CURRENT_PERCENTAGE: Cell<f32> = const { Cell::new(0.0) };
+    static CURRENT_PERCENTAGE: Cell<f64> = const { Cell::new(0.0) };
 }
 
 /// Redacts every piece of text in the document (script/style/input/textarea
@@ -47,7 +47,7 @@ thread_local! {
 /// (`0.0` redacts nothing, clearing any existing redactions). Redacts
 /// immediately, deterministically, and keeps re-redacting every 2 seconds to
 /// cover newly rendered content.
-pub fn set_redaction_mode(percentage: f32, container_selector: &'static str) {
+pub fn set_redaction_mode(percentage: f64, container_selector: &'static str) {
     CURRENT_PERCENTAGE.with(|p| p.set(percentage));
     redact_now(container_selector);
     start_periodic_redaction(container_selector);
@@ -179,7 +179,7 @@ fn split_preserving_whitespace(text: &str) -> Vec<String> {
 /// Deterministically decides whether a word gets redacted, keyed by the parent
 /// element's stable id and the word's position within it — never by the word's
 /// own text. Words shorter than 3 chars are never candidates.
-fn should_redact(element_id: u32, word_idx: usize, word: &str, percentage: f32) -> bool {
+fn should_redact(element_id: u32, word_idx: usize, word: &str, percentage: f64) -> bool {
     if word.trim().chars().count() <= 2 {
         return false;
     }

@@ -35,7 +35,8 @@ use crate::hooks::{setup_update_effect, use_tauri_event};
 use crate::redact_mode::{self, REDACTION_ROOT_SELECTOR};
 use crate::state::{AppState, ProfileStore};
 use crate::tauri_functions::{
-    get_app_version, get_update_status, set_backend_room_id, set_focused_in_backend,
+    change_screen_scaling, get_app_version, get_update_status, set_backend_room_id,
+    set_focused_in_backend,
 };
 
 #[wasm_bindgen]
@@ -188,6 +189,12 @@ pub fn App() -> impl IntoView {
 
     let settings = Settings::default();
     settings.setup_backend_hook();
+
+    let scaling_sig = settings.scaling.signal();
+
+    Effect::new(move |_| {
+        change_screen_scaling(scaling_sig.get());
+    });
 
     provide_context(settings);
 

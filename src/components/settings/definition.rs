@@ -46,9 +46,9 @@ pub struct Settings {
         description = "The scaling factor for the application",
         section = SettingsSection::Appearance,
         uses_cloud = false,
-        default = 1.0
+        default = 100.0
     )]
-    pub scaling: f32,
+    pub scaling: f64,
     #[setting(
         name = "Enable Url Previews per room",
         description = "Whether to show URL previews per room",
@@ -192,5 +192,5 @@ pub struct Settings {
         uses_cloud = true,
         default = 0.0
     )]
-    pub epstein_mode: f32,
+    pub epstein_mode: f64,
 }

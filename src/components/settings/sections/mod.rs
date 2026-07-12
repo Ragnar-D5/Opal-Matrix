@@ -545,7 +545,7 @@ where
 }
 
 #[component]
-pub fn Slider(field: MatrixSettingField<f32>, min: f32, max: f32) -> AnyView {
+pub fn Slider(field: MatrixSettingField<f64>, min: f64, max: f64) -> AnyView {
     let uses_cloud = field.uses_cloud;
     let (cloud_icon, cloud_color, cloud_tooltip) = get_cloud_stuff(uses_cloud);
 
@@ -569,12 +569,12 @@ pub fn Slider(field: MatrixSettingField<f32>, min: f32, max: f32) -> AnyView {
                     <input
                         id="scaling-slider"
                         type="range"
-                        min="0"
-                        max="100"
+                        min=min
+                        max=max
                         prop:value=move || signal.get()
 
                         on:input=move |ev| {
-                            let val = event_target_value(&ev).parse::<f32>().unwrap_or(half);
+                            let val = event_target_value(&ev).parse::<f64>().unwrap_or(half);
                             field.set(val);
                         }
                         class="w-full h-2 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
