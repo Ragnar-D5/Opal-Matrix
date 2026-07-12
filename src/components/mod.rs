@@ -15,6 +15,7 @@ pub(crate) mod chat;
 pub(crate) mod input;
 pub(crate) mod loading;
 pub(crate) mod log_view;
+pub(crate) mod logo;
 pub(crate) mod overlays;
 pub(crate) mod presence;
 pub(crate) mod previews;

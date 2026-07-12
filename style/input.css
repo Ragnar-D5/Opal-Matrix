@@ -3,6 +3,7 @@
 :root {
     --color-item-hover: rgba(200, 200, 255, 0.05);
     --color-item-selected: rgba(255, 255, 255, 0.1);
+    --color-item: var(--text-color);
     --bg-color: #1e1e2e;
     --tile-bg-color: rgba(0, 0, 0, 0.3);
     --opaque-tile-bg-color: rgba(20, 20, 30, 0.7);

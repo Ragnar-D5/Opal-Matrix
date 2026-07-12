@@ -6,6 +6,7 @@ use shared::{
 
 use crate::{
     components::{
+        logo::Logo,
         presence::PresenceBadge,
         settings::SettingsIcon,
         user_profile::{render_url_icon, MemberProfileExt, RoomNodeExt},
@@ -735,14 +736,24 @@ pub fn Sidebar() -> impl IntoView {
                         />
 
                         <div
-                            class="server-btn flex items-center justify-center w-10 h-10 bg-gray-700 text-white rounded-[25%] cursor-pointer transition-colors"
-                            style:background-color=move || {
-                                if state.active_section.get().is_not_server() {
-                                    "var(--accent-color)".to_string()
-                                } else {
-                                    "var(--color-item-hover)".to_string()
-                                }
-                            }
+                            class="server-btn flex items-center justify-center w-10 h-10 bg-gray-700 text-white rounded-[25%] cursor-pointer transition-colors border"
+                            class=(
+                                "border-(--accent-color)",
+                                move || state.active_section.get().is_not_server(),
+                            )
+                            class=(
+                                "border-(--tile-border-color)",
+                                move || !state.active_section.get().is_not_server(),
+                            )
+                            class=(
+                                "bg-(--ui-solid-hover-bg)",
+                                move || state.active_section.get().is_not_server(),
+                            )
+                            class=(
+                                "bg-(--color-item-hover)",
+                                move || !state.active_section.get().is_not_server(),
+                            )
+
                             on:click=move |_| {
                                 let section = if state.breadcrums.get_untracked().dms_last {
                                     CurrentSection::Dms
@@ -752,23 +763,7 @@ pub fn Sidebar() -> impl IntoView {
                                 state.set_active_section(section);
                             }
                         >
-                            <div
-                                class="transition-colors w-full h-full flex items-center justify-center"
-                                style:color=move || {
-                                    if state.active_section.get().is_not_server() {
-                                        "var(--color-item)".to_string()
-                                    } else {
-                                        "var(--accent-color)".to_string()
-                                    }
-                                }
-                            >
-                                <Icon
-                                    icon=MATRIX_LOGO
-                                    size="85%"
-                                    color="currentColor"
-                                    weight=IconWeight::Bold
-                                />
-                            </div>
+                            <Logo size="85%" inherit_color=false />
                         </div>
                     </div>
 
