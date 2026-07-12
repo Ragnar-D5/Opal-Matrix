@@ -41,13 +41,13 @@ pub struct EventFlags {
     pub contains_only_emojis: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct Change<T> {
     pub old: T,
     pub new: T,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub enum UiMembershipChange {
     None,
     Error,
@@ -398,7 +398,7 @@ pub struct MessageContent {
     pub msg_type: UiMessageType,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct ProfileChange {
     pub user_id: String,
     pub display_name_change: Option<Change<Option<String>>>,
@@ -438,7 +438,7 @@ impl ProfileChange {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub enum UiCallIntent {
     Audio,
     Video,
@@ -455,7 +455,7 @@ impl std::fmt::Display for UiCallIntent {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub enum UiGuestAccess {
     CanJoin,
     Forbidden,
@@ -472,7 +472,7 @@ impl std::fmt::Display for UiGuestAccess {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub enum UiHistoryVisibility {
     Invited,
     Joined,
@@ -493,7 +493,7 @@ impl std::fmt::Display for UiHistoryVisibility {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub enum UiJoinRule {
     Public,
     Knock,
@@ -518,7 +518,7 @@ impl std::fmt::Display for UiJoinRule {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, EnumHashMap)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, EnumHashMap, Eq)]
 pub enum SystemMessage {
     MembershipChange {
         user_id: String,

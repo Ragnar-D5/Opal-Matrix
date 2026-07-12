@@ -100,6 +100,8 @@ pub fn derive_enum_hash_map(input: TokenStream) -> TokenStream {
         quote! { (#dataless_ident::#variant_ident, #name) }
     });
 
+    let variant_idents = data.variants.iter().map(|variant| &variant.ident);
+
     quote! {
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, ::serde::Serialize, ::serde::Deserialize)]
         #vis enum #dataless_ident {
@@ -115,7 +117,17 @@ pub fn derive_enum_hash_map(input: TokenStream) -> TokenStream {
                 }
             }
 
+            fn all_variants() -> &'static [Self::Dataless] {
+                &[#(#dataless_ident::#variant_idents),*]
+            }
+
             fn dataless_variants() -> impl Iterator<Item = (#dataless_ident, &'static str)> {
+                <#dataless_ident as crate::settings::EnumVariants>::variants()
+            }
+        }
+
+        impl crate::settings::EnumVariants for #dataless_ident {
+            fn variants() -> impl Iterator<Item = (#dataless_ident, &'static str)> {
                 [#(#entries),*].into_iter()
             }
         }

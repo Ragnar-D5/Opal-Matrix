@@ -9,7 +9,7 @@ pub trait EnumVariants: Sized + Serialize + DeserializeOwned {
     fn variants() -> impl Iterator<Item = (Self, &'static str)>;
 }
 
-pub trait EnumHashMap {
+pub trait EnumHashMap: Sized + Serialize + DeserializeOwned + PartialEq + Eq {
     /// Mirror of this enum with the same variants but no data.
     type Dataless: Copy + Eq + std::hash::Hash + 'static;
 
@@ -20,6 +20,8 @@ pub trait EnumHashMap {
     fn is_valid(&self, valid_map: &HashMap<Self::Dataless, bool>) -> bool {
         valid_map.get(&self.dataless()).copied().unwrap_or(false)
     }
+
+    fn all_variants() -> &'static [Self::Dataless];
 
     /// All dataless variants paired with their display names.
     fn dataless_variants() -> impl Iterator<Item = (Self::Dataless, &'static str)>;

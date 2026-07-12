@@ -1,7 +1,8 @@
 use leptos::prelude::*;
 
 use crate::components::settings::{
-    sections::{Spacer, SubSection, Toggle},
+    definition::system_message_modes,
+    sections::{EnumToggle, Spacer, SubSection, Toggle},
     Settings,
 };
 
@@ -19,6 +20,11 @@ pub fn render_chats_section() -> AnyView {
         <SubSection title="Messages">
             <Toggle field=settings.url_previews_default />
             <Toggle field=settings.mark_pinned_messages />
+            <Spacer />
+            <EnumToggle
+                field=settings.system_messages_to_show
+                modes=system_message_modes().to_vec()
+            />
         </SubSection>
     }
     .into_any()

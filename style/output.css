@@ -637,6 +637,9 @@
   .h-8 {
     height: calc(var(--spacing) * 8);
   }
+  .h-9 {
+    height: calc(var(--spacing) * 9);
+  }
   .h-10 {
     height: calc(var(--spacing) * 10);
   }
@@ -956,6 +959,9 @@
   }
   .grid-cols-8 {
     grid-template-columns: repeat(8, minmax(0, 1fr));
+  }
+  .grid-cols-\[repeat\(auto-fill\,minmax\(140px\,1fr\)\)\] {
+    grid-template-columns: repeat(auto-fill,minmax(140px,1fr));
   }
   .flex-col {
     flex-direction: column;
@@ -1318,6 +1324,9 @@
   }
   .bg-\(--purple\) {
     background-color: var(--purple);
+  }
+  .bg-\(--success-bg-color\) {
+    background-color: var(--success-bg-color);
   }
   .bg-\(--success-color\) {
     background-color: var(--success-color);
@@ -2605,8 +2614,11 @@
   --blue: #5298ff;
   --pin-color: var(--idle-color);
   --success-color: var(--online-color);
+  --success-bg-color: rgb(from var(--success-color) r g b / 0.1);
   --warning-color: var(--idle-color);
+  --warning-bg-color: rgb(from var(--warning-color) r g b / 0.1);
   --error-color: var(--busy-color);
+  --error-bg-color: rgb(from var(--error-color) r g b / 0.1);
   --system-button-size: 14px;
   --system-button-padding: calc(
         var(--header-height) / 2 - var(--system-button-size) / 2

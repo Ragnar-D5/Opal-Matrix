@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use icondata as i;
 use leptos::{html::Button, portal::Portal, prelude::*};
 use leptos_icons::Icon as LIcon;
@@ -31,12 +33,14 @@ fn get_cloud_stuff(uses_cloud: bool) -> (i::Icon, &'static str, &'static str) {
     }
 }
 
-pub fn render_toggle(field: MatrixSettingField<bool>) -> AnyView {
-    let signal = field.signal();
-    let name = field.human_readable;
-    let description = field.description;
-
-    let (cloud_icon, cloud_color, cloud_tooltip) = get_cloud_stuff(field.uses_cloud);
+pub fn render_toggle(
+    on_toggle: impl Fn(bool) + 'static,
+    signal: RwSignal<bool>,
+    name: &str,
+    description: &str,
+    uses_cloud: Option<bool>,
+) -> AnyView {
+    let (cloud_icon, cloud_color, cloud_tooltip) = get_cloud_stuff(uses_cloud.unwrap_or(false));
 
     view! {
         <label class="flex justify-between gap-2 cursor-pointer border-transparent hover:border-(--tile-border-color) border transition-colors duration-100 rounded-lg p-(--gap) items-center hover:bg-(--tile-hover-color) text-dim hover:text-normal">
@@ -51,14 +55,16 @@ pub fn render_toggle(field: MatrixSettingField<bool>) -> AnyView {
                     <input
                         type="checkbox"
                         prop:checked=move || signal.get()
-                        on:change=move |ev| field.set(event_target_checked(&ev))
+                        on:change=move |ev| on_toggle(event_target_checked(&ev))
                         class="peer appearance-none w-11 h-5 rounded-full checked:bg-(--muted-text-color) cursor-pointer transition-colors duration-300 focus:border-(--accent-color) border-(--tile-border-color) border"
                     />
                     <span class="absolute top-0 left-0 w-5 h-5 bg-(--error-color) peer-checked:bg-(--success-color) rounded-full transition-transform duration-300 peer-checked:translate-x-6 pointer-events-none border border-(--tile-border-color)"></span>
                 </div>
-                <div title=cloud_tooltip>
-                    <LIcon icon=cloud_icon style=cloud_color height="18px" />
-                </div>
+                <Show when=move || uses_cloud.is_some()>
+                    <div title=cloud_tooltip>
+                        <LIcon icon=cloud_icon style=cloud_color height="18px" />
+                    </div>
+                </Show>
             </span>
         </label>
     }
@@ -370,7 +376,17 @@ pub fn SubSection<'a>(title: &'a str, children: Children) -> AnyView {
 
 #[component]
 pub fn Toggle(field: MatrixSettingField<bool>) -> AnyView {
-    render_toggle(field)
+    let signal = field.signal();
+    let name = field.human_readable;
+    let description = field.description;
+
+    render_toggle(
+        move |v| field.set(v),
+        signal,
+        name,
+        description,
+        Some(field.uses_cloud),
+    )
 }
 
 #[component]
@@ -386,6 +402,137 @@ pub fn Dropdown<T: EnumVariants + Clone + PartialEq + Send + Sync + 'static>(
 #[component]
 pub fn Spacer() -> AnyView {
     view! { <div class="h-8"></div> }.into_any()
+}
+
+#[component]
+pub fn EnumToggle<D>(
+    field: MatrixSettingField<HashMap<D, bool>>,
+    #[prop(optional)] modes: Vec<(&'static str, &'static [D])>,
+) -> AnyView
+where
+    D: EnumVariants + Copy + Eq + std::hash::Hash + Send + Sync + 'static,
+{
+    let variants = D::variants().collect();
+    render_enum_toggle_from_options(field, variants, modes)
+}
+
+fn render_enum_toggle_from_options<D>(
+    field: MatrixSettingField<HashMap<D, bool>>,
+    variants: Vec<(D, &'static str)>,
+    modes: Vec<(&'static str, &'static [D])>,
+) -> AnyView
+where
+    D: Copy + Eq + std::hash::Hash + Send + Sync + Serialize + DeserializeOwned + 'static,
+{
+    let signal = field.signal();
+    let variants = StoredValue::new(variants);
+    let modes = StoredValue::new(modes);
+    let name = field.human_readable;
+    let description = field.description;
+
+    let toggle_variant = move |variant: D| {
+        let mut map = signal.get_untracked();
+        let entry = map.entry(variant).or_insert(false);
+        *entry = !*entry;
+        field.set(map);
+    };
+
+    let apply_mode = move |mode_variants: &'static [D]| {
+        let map = variants.with_value(|vs| {
+            vs.iter()
+                .map(|(variant, _)| (*variant, mode_variants.contains(variant)))
+                .collect()
+        });
+        field.set(map);
+    };
+
+    let (cloud_icon, cloud_color, cloud_tooltip) = get_cloud_stuff(field.uses_cloud);
+
+    let variants_selected = move |variants: &[D]| {
+        signal
+            .get()
+            .iter()
+            .all(|(var, enabled)| variants.contains(var) == *enabled)
+    };
+
+    view! {
+        <div class="flex flex-col gap-2 rounded-lg p-(--gap)">
+            <div class="flex flex-row gap-2">
+                <div class="flex gap-2 items-center">
+                    <span class="inline-flex items-center gap-2">
+                        <span class="select-none text-normal">{name}</span>
+                        <div title=description class="flex items-center">
+                            <Icon icon=QUESTION size="14px" color="var(--dim-text-color)" />
+                        </div>
+                    </span>
+                </div>
+
+                <Show when=move || modes.with_value(|m| !m.is_empty())>
+                    <div class="flex flex-wrap gap-2">
+                        {move || {
+                            modes
+                                .get_value()
+                                .into_iter()
+                                .map(|(label, mode_variants)| {
+                                    view! {
+                                        <button
+                                            type="button"
+                                            on:click=move |_| apply_mode(mode_variants)
+                                            class="px-2 py-1 rounded-lg border border-(--tile-border-color) text-dim hover:text-normal hover:border-(--accent-color) text-xs cursor-pointer transition-colors duration-100"
+                                            class=(
+                                                "bg-(--ui-solid-hover-bg)",
+                                                move || variants_selected(mode_variants),
+                                            )
+                                            class=(
+                                                "text-normal",
+                                                move || variants_selected(mode_variants),
+                                            )
+                                        >
+                                            {label}
+                                        </button>
+                                    }
+                                        .into_any()
+                                })
+                                .collect_view()
+                        }}
+                    </div>
+                </Show>
+                <div class="flex-1" />
+                <div title=cloud_tooltip>
+                    <LIcon icon=cloud_icon style=cloud_color height="18px" />
+                </div>
+            </div>
+
+            <div class="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-2">
+                {move || {
+                    variants
+                        .get_value()
+                        .into_iter()
+                        .map(|(variant, label)| {
+                            let is_enabled = move || {
+                                signal.with(|map| map.get(&variant).copied().unwrap_or(false))
+                            };
+
+                            view! {
+                                <button
+                                    type="button"
+                                    on:click=move |_| toggle_variant(variant)
+                                    class="h-9 px-2 flex items-center justify-center rounded-lg border text-sm truncate cursor-pointer transition-colors duration-200 border-(--tile-border-color) hover:border-(--accent-color)"
+                                    class=("text-(--success-color)", is_enabled)
+                                    class=("bg-(--success-bg-color)", is_enabled)
+                                    class=("text-dim", move || !is_enabled())
+                                >
+                                    {label}
+                                </button>
+                            }
+                                .into_any()
+                        })
+                        .collect_view()
+                }}
+            </div>
+        </div>
+    }
+    .into_any()
 }
 
 // #[component]

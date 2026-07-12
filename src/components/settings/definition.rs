@@ -12,6 +12,33 @@ use crate::{
 use leptos::prelude::*;
 use macros::matrix_settings;
 
+const DEFAULT_SYSTEM_MESSAGES: &[SystemMessageDataless] = &[
+    SystemMessageDataless::MembershipChange,
+    SystemMessageDataless::RoomCreate,
+    SystemMessageDataless::RoomEncryption,
+    SystemMessageDataless::RoomPinnedEvents,
+    SystemMessageDataless::SpaceChild,
+    SystemMessageDataless::SpaceParent,
+    SystemMessageDataless::Redacted,
+    SystemMessageDataless::Unknown,
+    SystemMessageDataless::RoomImagePack,
+];
+
+pub fn system_message_modes() -> [(&'static str, &'static [SystemMessageDataless]); 2] {
+    [
+        ("Default", DEFAULT_SYSTEM_MESSAGES),
+        ("Full", SystemMessage::all_variants()),
+    ]
+}
+
+fn default_system_messages_to_show() -> HashMap<SystemMessageDataless, bool> {
+    let mut map = SystemMessage::init_map();
+    for message in DEFAULT_SYSTEM_MESSAGES {
+        map.insert(message.clone(), true);
+    }
+    map
+}
+
 #[matrix_settings]
 pub struct Settings {
     #[setting(
@@ -129,7 +156,7 @@ pub struct Settings {
         "Which system messages to show",
         "Which system messages to show in the chat",
         true,
-        default = SystemMessage::init_map()
+        default = default_system_messages_to_show()
     )]
     pub system_messages_to_show: HashMap<SystemMessageDataless, bool>,
 }

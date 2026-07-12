@@ -52,8 +52,11 @@
     --pin-color: var(--idle-color);
 
     --success-color: var(--online-color);
+    --success-bg-color: rgb(from var(--success-color) r g b / 0.1);
     --warning-color: var(--idle-color);
+    --warning-bg-color: rgb(from var(--warning-color) r g b / 0.1);
     --error-color: var(--busy-color);
+    --error-bg-color: rgb(from var(--error-color) r g b / 0.1);
 
     --system-button-size: 14px;
     --system-button-padding: calc(

@@ -12,7 +12,7 @@ use serde_json::{json, Value};
 use shared::api::events::SettingsUpdate;
 use tauri::{AppHandle, State, command};
 use tokio::sync::RwLock;
-use toml_edit::{value, Array, DocumentMut, InlineTable, Item};
+use toml_edit::{value, Array, DocumentMut, InlineTable, Item, Table};
 
 use crate::{TauriError, send_event};
 
@@ -61,7 +61,18 @@ async fn save_setting_to_file(
 
     let json_value: Value = serde_json::from_str(value)?;
 
-    if let Some(toml_item) = json_to_toml_item(json_value) {
+    // Top-level objects (e.g. enum-keyed maps) are written as a full `[key]`
+    // table rather than an inline `{ ... }` one, so they read as a list of
+    // lines instead of one long line.
+    if let Value::Object(obj) = json_value {
+        let mut table = Table::new();
+        for (k, v) in obj {
+            if let Some(item) = json_to_toml_item(v) {
+                table.insert(&k, item);
+            }
+        }
+        cashed_settings.insert(key, Item::Table(table));
+    } else if let Some(toml_item) = json_to_toml_item(json_value) {
         cashed_settings.insert(key, toml_item);
     } else {
         cashed_settings.remove(key);
