@@ -9,7 +9,7 @@ use web_sys::{KeyboardEvent, ScrollBehavior, ScrollIntoViewOptions, ScrollLogica
 
 use phosphor_leptos::{Icon, CARET_DOWN, CHECK, QUESTION};
 
-use crate::components::settings::MatrixSettingField;
+use crate::{components::settings::MatrixSettingField, tauri_functions::change_screen_scaling};
 
 pub mod appearance;
 pub mod chats;
@@ -39,11 +39,15 @@ pub fn render_toggle(
     name: &str,
     description: &str,
     uses_cloud: Option<bool>,
+    type_name: &str,
 ) -> AnyView {
     let (cloud_icon, cloud_color, cloud_tooltip) = get_cloud_stuff(uses_cloud.unwrap_or(false));
 
     view! {
-        <label class="flex justify-between gap-2 cursor-pointer border-transparent hover:border-(--tile-border-color) border transition-colors duration-100 rounded-lg p-(--gap) items-center hover:bg-(--tile-hover-color) text-dim hover:text-normal">
+        <label
+            data-field=type_name
+            class="flex justify-between gap-2 cursor-pointer border-transparent hover:border-(--tile-border-color) border transition-colors duration-100 rounded-lg p-(--gap) items-center hover:bg-(--tile-hover-color) text-dim hover:text-normal"
+        >
             <span class="inline-flex items-center gap-2">
                 <span class="select-none">{name}</span>
                 <div title=description class="flex items-center">
@@ -242,7 +246,7 @@ where
     let (cloud_icon, cloud_color, cloud_tooltip) = get_cloud_stuff(field.uses_cloud);
 
     view! {
-        <div style="display: contents;">
+        <div data-field=field.type_name style="display: contents;">
             <label class="flex justify-between gap-2 cursor-pointer border-transparent hover:border-(--tile-border-color) border transition-colors duration-100 rounded-lg p-(--gap) items-center hover:bg-(--tile-hover-color) text-dim hover:text-normal">
                 <span class="inline-flex items-center gap-2">
                     <span class="select-none">{name}</span>
@@ -386,6 +390,7 @@ pub fn Toggle(field: MatrixSettingField<bool>) -> AnyView {
         name,
         description,
         Some(field.uses_cloud),
+        field.type_name,
     )
 }
 
@@ -456,7 +461,10 @@ where
     };
 
     view! {
-        <div class="flex flex-col gap-2 rounded-lg p-(--gap) group border-transparent border transition-colors duration-200 hover:border-(--tile-border-color)">
+        <div
+            data-field=field.type_name
+            class="flex flex-col gap-2 rounded-lg p-(--gap) group border-transparent border transition-colors duration-200 hover:border-(--tile-border-color)"
+        >
             <div class="flex flex-row gap-2">
                 <div class="flex gap-2 items-center">
                     <span class="inline-flex items-center gap-2">
@@ -534,6 +542,51 @@ where
         </div>
     }
     .into_any()
+}
+
+#[component]
+pub fn Slider(field: MatrixSettingField<f32>, min: f32, max: f32) -> AnyView {
+    let uses_cloud = field.uses_cloud;
+    let (cloud_icon, cloud_color, cloud_tooltip) = get_cloud_stuff(uses_cloud);
+
+    let signal = field.signal();
+
+    let half = (max - min) / 2.0;
+
+    view! {
+        <label
+            data-field=field.type_name
+            class="flex justify-between gap-2 cursor-pointer border-transparent hover:border-(--tile-border-color) border transition-colors duration-100 rounded-lg p-(--gap) items-center hover:bg-(--tile-hover-color) text-dim hover:text-normal"
+        >
+            <span class="inline-flex items-center gap-2">
+                <span class="select-none">{field.human_readable}</span>
+                <div title=field.description class="flex items-center">
+                    <Icon icon=QUESTION size="14px" color="var(--dim-text-color)" />
+                </div>
+            </span>
+            <span class="inline-flex items-center gap-3">
+                <div class="w-full max-w-xs md:max-w-md">
+                    <input
+                        id="scaling-slider"
+                        type="range"
+                        min="0"
+                        max="100"
+                        prop:value=move || signal.get()
+
+                        on:input=move |ev| {
+                            let val = event_target_value(&ev).parse::<f32>().unwrap_or(half);
+                            signal.set(val);
+                            change_screen_scaling(val);
+                        }
+                        class="w-full h-2 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                    />
+                </div>
+                <div title=cloud_tooltip>
+                    <LIcon icon=cloud_icon style=cloud_color height="18px" />
+                </div>
+            </span>
+        </label>
+    }.into_any()
 }
 
 // #[component]

@@ -160,42 +160,85 @@ fn convert_settings(mut item: ItemStruct) -> TokenStream {
                     if let Ok(exprs) =
                         attr.parse_args_with(Punctuated::<Expr, Token![,]>::parse_terminated)
                     {
-                        let mut iter = exprs.iter();
-
-                        let human_readable = match iter.next() {
-                            Some(Expr::Lit(ExprLit {
-                                lit: Lit::Str(lit_str),
-                                ..
-                            })) => lit_str.value(),
-                            _ => panic!("Must be a string literal"),
-                        };
-
-                        let description = match iter.next() {
-                            Some(Expr::Lit(ExprLit {
-                                lit: Lit::Str(lit_str),
-                                ..
-                            })) => lit_str.value(),
-                            _ => panic!("Must be a string literal"),
-                        };
-
-                        let uses_cloud = match iter.next() {
-                            Some(Expr::Lit(ExprLit {
-                                lit: Lit::Bool(lit_bool),
-                                ..
-                            })) => lit_bool.value,
-                            _ => false,
-                        };
-
+                        let mut human_readable: Option<String> = None;
+                        let mut description: Option<String> = None;
+                        let mut uses_cloud = false;
+                        let mut section_expr: Option<Expr> = None;
                         let mut default_expr = quote! { Default::default() };
-                        if let Some(Expr::Assign(expr_assign)) = iter.next()
-                            && let Expr::Path(ref expr_path) = *expr_assign.left
-                            && expr_path.path.is_ident("default")
-                        {
-                            let right = &expr_assign.right;
-                            default_expr = quote! { #right };
+
+                        for expr in exprs.iter() {
+                            let Expr::Assign(assign) = expr else {
+                                panic!(
+                                    "Each `setting` argument must be `key = value`, found `{}`",
+                                    quote!(#expr)
+                                );
+                            };
+                            let Expr::Path(key_path) = assign.left.as_ref() else {
+                                panic!("`setting` argument keys must be plain identifiers");
+                            };
+                            let key = key_path
+                                .path
+                                .get_ident()
+                                .expect("`setting` argument keys must be plain identifiers")
+                                .to_string();
+                            let value = assign.right.as_ref();
+
+                            match key.as_str() {
+                                "name" => {
+                                    let Expr::Lit(ExprLit {
+                                        lit: Lit::Str(lit_str),
+                                        ..
+                                    }) = value
+                                    else {
+                                        panic!("`name` must be a string literal");
+                                    };
+                                    human_readable = Some(lit_str.value());
+                                }
+                                "description" => {
+                                    let Expr::Lit(ExprLit {
+                                        lit: Lit::Str(lit_str),
+                                        ..
+                                    }) = value
+                                    else {
+                                        panic!("`description` must be a string literal");
+                                    };
+                                    description = Some(lit_str.value());
+                                }
+                                "uses_cloud" => {
+                                    let Expr::Lit(ExprLit {
+                                        lit: Lit::Bool(lit_bool),
+                                        ..
+                                    }) = value
+                                    else {
+                                        panic!("`uses_cloud` must be a bool literal");
+                                    };
+                                    uses_cloud = lit_bool.value;
+                                }
+                                "section" => {
+                                    section_expr = Some(value.clone());
+                                }
+                                "default" => {
+                                    default_expr = quote! { #value };
+                                }
+                                other => panic!("Unknown `setting` argument `{other}`"),
+                            }
                         }
 
-                        setting_meta = Some((human_readable, description, uses_cloud, default_expr));
+                        let human_readable = human_readable
+                            .unwrap_or_else(|| panic!("`setting` requires `name = \"...\"`"));
+                        let description = description.unwrap_or_else(|| {
+                            panic!("`setting` requires `description = \"...\"`")
+                        });
+                        let section_expr = section_expr
+                            .unwrap_or_else(|| panic!("`setting` requires `section = ...`"));
+
+                        setting_meta = Some((
+                            human_readable,
+                            description,
+                            uses_cloud,
+                            section_expr,
+                            default_expr,
+                        ));
                     }
                     false
                 } else {
@@ -203,7 +246,9 @@ fn convert_settings(mut item: ItemStruct) -> TokenStream {
                 }
             });
 
-            if let Some((human_readable, description, uses_cloud, default_expr)) = setting_meta {
+            if let Some((human_readable, description, uses_cloud, section_expr, default_expr)) =
+                setting_meta
+            {
                 let type_name_str = format!("com.opal.{}", field_name);
 
                 field.ty = syn::parse2(quote! { MatrixSettingField<#original_type> }).unwrap();
@@ -215,9 +260,16 @@ fn convert_settings(mut item: ItemStruct) -> TokenStream {
                         human_readable: #human_readable,
                         uses_cloud: #uses_cloud,
                         description: #description,
+                        section: #section_expr,
                     }
                 });
-                type_name_string_collector.push((type_name_str.clone(), field_name, uses_cloud));
+                type_name_string_collector.push((
+                    type_name_str.clone(),
+                    field_name,
+                    uses_cloud,
+                    human_readable,
+                    description,
+                ));
             } else {
                 default_field_initializers.push(quote! {
                     #field_name: Default::default()
@@ -230,7 +282,7 @@ fn convert_settings(mut item: ItemStruct) -> TokenStream {
 
     let signal_bindings = type_name_string_collector
         .iter()
-        .map(|(_, field_name, _)| {
+        .map(|(_, field_name, _, _, _)| {
             quote! {
                 let #field_name = self.#field_name.val;
             }
@@ -239,7 +291,7 @@ fn convert_settings(mut item: ItemStruct) -> TokenStream {
     // File event: update signal; for cloud fields also push the new value up.
     let match_arms_file: Vec<_> = type_name_string_collector
         .iter()
-        .map(|(type_name, field_name, uses_cloud)| {
+        .map(|(type_name, field_name, uses_cloud, _, _)| {
             let upload = if *uses_cloud {
                 quote! {
                     // Don't re-upload to cloud when the backend already handled it
@@ -280,7 +332,7 @@ fn convert_settings(mut item: ItemStruct) -> TokenStream {
     // Cloud event: just update the signal (value already came from the cloud).
     let match_arms_cloud: Vec<_> = type_name_string_collector
         .iter()
-        .map(|(type_name, field_name, _)| {
+        .map(|(type_name, field_name, _, _, _)| {
             quote! {
                 #type_name => match ::serde_json::from_str(&new.value) {
                     Ok(parsed) => {
@@ -296,9 +348,29 @@ fn convert_settings(mut item: ItemStruct) -> TokenStream {
 
     let get_all_calls = type_name_string_collector
         .iter()
-        .map(|(_, field_name, _)| {
+        .map(|(_, field_name, _, _, _)| {
             quote! { self.#field_name.fetch().await?; }
         });
+
+    let search_pushes = type_name_string_collector.iter().map(
+        |(type_name, field_name, _, human_readable, description)| {
+            quote! {
+                if #human_readable.to_lowercase().contains(&query)
+                    || #description.to_lowercase().contains(&query)
+                    || self.#field_name.section.id().contains(&query)
+                {
+                    results.push((
+                        self.#field_name.section,
+                        Setting {
+                            type_name: #type_name,
+                            human_readable: #human_readable,
+                            description: #description,
+                        },
+                    ));
+                }
+            }
+        },
+    );
 
     let expanded = quote! {
         #[derive(Debug)]
@@ -307,6 +379,14 @@ fn convert_settings(mut item: ItemStruct) -> TokenStream {
             pub type_name: &'static str,
             pub human_readable: &'static str,
             pub uses_cloud: bool,
+            pub description: &'static str,
+            pub section: ::shared::settings::SettingsSection,
+        }
+
+        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        pub struct Setting {
+            pub type_name: &'static str,
+            pub human_readable: &'static str,
             pub description: &'static str,
         }
 
@@ -396,6 +476,16 @@ fn convert_settings(mut item: ItemStruct) -> TokenStream {
                 ::log::debug!("Getting all settings");
                 #(#get_all_calls)*
                 Ok(())
+            }
+
+            /// Case-insensitive substring search over each setting's name and
+            /// description, returning the section it lives in alongside its
+            /// static metadata.
+            pub fn search(&self, query: &str) -> Vec<(::shared::settings::SettingsSection, Setting)> {
+                let query = query.to_lowercase();
+                let mut results = Vec::new();
+                #(#search_pushes)*
+                results
             }
 
             pub fn setup_backend_hook(&self) {

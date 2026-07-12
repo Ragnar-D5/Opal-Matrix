@@ -1,6 +1,6 @@
 use chrono_tz::Tz as TimeZone;
 use shared::{
-    settings::{DataSizeUnit, DateFormat, DayOfWeek, EnumHashMap, HourFormat},
+    settings::{DataSizeUnit, DateFormat, DayOfWeek, EnumHashMap, HourFormat, SettingsSection},
     timeline::{SystemMessage, SystemMessageDataless},
 };
 use std::collections::HashMap;
@@ -42,127 +42,146 @@ fn default_system_messages_to_show() -> HashMap<SystemMessageDataless, bool> {
 #[matrix_settings]
 pub struct Settings {
     #[setting(
-        "Scaling",
-        "The scaling factor for the application",
-        false,
+        name = "Scaling",
+        description = "The scaling factor for the application",
+        section = SettingsSection::Appearance,
+        uses_cloud = false,
         default = 1.0
     )]
-    pub scaling: f64,
+    pub scaling: f32,
     #[setting(
-        "Enable Url Previews per room",
-        "Whether to show URL previews per room",
-        true
+        name = "Enable Url Previews per room",
+        description = "Whether to show URL previews per room",
+        section = SettingsSection::Chats,
+        uses_cloud = true,
+        default = HashMap::new()
     )]
     pub url_previews: HashMap<String, bool>,
     #[setting(
-        "Show url previews by default",
-        "Whether to show URL previews by default when not specified per room",
-        true,
+        name = "Show url previews by default",
+        description = "Whether to show URL previews by default when not specified per room",
+        section = SettingsSection::Chats,
+        uses_cloud = true,
         default = false
     )]
     pub url_previews_default: bool,
     #[setting(
-        "Show image border",
-        "Whether to show the image border",
-        false,
+        name = "Show image border",
+        description = "Whether to show the image border",
+        section = SettingsSection::Appearance,
+        uses_cloud = true,
         default = true
     )]
     pub show_image_border: bool,
     #[setting(
-        "Automatically download updates",
-        "Whether to automatically download updates when a new version is available",
-        true,
+        name = "Automatically download updates",
+        description = "Whether to automatically download updates when a new version is available",
+        section = SettingsSection::Updates,
+        uses_cloud = true,
         default = false
     )]
     pub auto_download_update: bool,
     #[setting(
-        "Notify when an update is available",
-        "Whether to notify the user when an update is available",
-        true,
+        name = "Notify when an update is available",
+        description = "Whether to notify the user when an update is available",
+        section = SettingsSection::Updates,
+        uses_cloud = true,
         default = true
     )]
     pub notify_update: bool,
     #[setting(
-        "Show read markers",
-        "Whether to show read markers in the chat",
-        true,
+        name = "Show read markers",
+        description = "Whether to show read markers in the chat",
+        section = SettingsSection::Chats,
+        uses_cloud = true,
         default = true
     )]
     pub show_read_markers: bool,
     #[setting(
-        "Send read markers",
-        "Whether to send read markers to the server",
-        true,
+        name = "Send read markers",
+        description = "Whether to send read markers to the server",
+        section = SettingsSection::Chats,
+        uses_cloud = true,
         default = true
     )]
     pub send_read_markers: bool,
     #[setting(
-        "Show typing indicators",
-        "Whether to show typing indicators in the chat",
-        true,
+        name = "Show typing indicators",
+        description = "Whether to show typing indicators in the chat",
+        section = SettingsSection::Chats,
+        uses_cloud = true,
         default = true
     )]
     pub show_typing_indicators: bool,
     #[setting(
-        "Send typing indicators",
-        "Whether to send typing indicators to the server",
-        true,
+        name = "Send typing indicators",
+        description = "Whether to send typing indicators to the server",
+        section = SettingsSection::Chats,
+        uses_cloud = true,
         default = true
     )]
     pub send_typing_indicators: bool,
     #[setting(
-        "Timezone",
-        "The timezone to use for the chat",
-        false,
+        name = "Timezone",
+        description = "The timezone to use for the chat",
+        section = SettingsSection::General,
+        uses_cloud = true,
         default = chrono_tz::Tz::UTC
     )]
     pub timezone: TimeZone,
     #[setting(
-        "Data size unit",
-        "The unit to use for data size",
-        true,
+        name = "Data size unit",
+        description = "The unit to use for data size",
+        section = SettingsSection::General,
+        uses_cloud = true,
         default = DataSizeUnit::Mibibytes
     )]
     pub data_size_unit: DataSizeUnit,
     #[setting(
-        "Hour format",
-        "The hour format to use for timestamps",
-        true,
+        name = "Hour format",
+        description = "The hour format to use for timestamps",
+        section = SettingsSection::General,
+        uses_cloud = true,
         default = HourFormat::TwentyFourHour
     )]
     pub hour_format: HourFormat,
     #[setting(
-        "Date format",
-        "The date format to use for timestamps",
-        true,
+        name = "Date format",
+        description = "The date format to use for timestamps",
+        section = SettingsSection::General,
+        uses_cloud = true,
         default = DateFormat::DayMonthYear
     )]
     pub date_format: DateFormat,
     #[setting(
-        "First day of week",
-        "The first day of the week",
-        true,
+        name = "First day of week",
+        description = "The first day of the week",
+        section = SettingsSection::General,
+        uses_cloud = true,
         default = DayOfWeek::Monday
     )]
     pub first_day_of_week: DayOfWeek,
     #[setting(
-        "Mark pinned messages",
-        "Whether to mark pinned messages visually in the chat",
-        true,
+        name = "Mark pinned messages",
+        description = "Whether to mark pinned messages visually in the chat",
+        section = SettingsSection::Chats,
+        uses_cloud = true,
         default = true
     )]
     pub mark_pinned_messages: bool,
     #[setting(
-        "Which system messages to show",
-        "Which system messages to show in the chat",
-        true,
+        name = "Which system messages to show",
+        description = "Which system messages to show in the chat",
+        section = SettingsSection::Chats,
+        uses_cloud = true,
         default = default_system_messages_to_show()
     )]
     pub system_messages_to_show: HashMap<SystemMessageDataless, bool>,
     #[setting(
-        "Minimize to tray",
-        "Whether to minimize the window to the system tray",
-        true,
+        name = "Minimize to tray",
+        description = "Whether to minimize the window to the system tray",
+        section = SettingsSection::Chats,
+        uses_cloud = true,
         default = false
     )]
     pub minimize_to_tray: bool,

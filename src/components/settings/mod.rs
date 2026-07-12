@@ -3,9 +3,11 @@ use std::collections::HashMap;
 use icondata as i;
 use leptos::{portal::Portal, prelude::*};
 use leptos_icons::Icon as LIcon;
-use phosphor_leptos::{Icon, IconWeight, IconWeightData, PENCIL_SIMPLE};
-use shared::api::UpdateStatus;
-use web_sys::KeyboardEvent;
+use phosphor_leptos::{
+    Icon, IconWeight, IconWeightData, CARET_DOUBLE_RIGHT, MAGNIFYING_GLASS, PENCIL_SIMPLE, QUESTION,
+};
+use shared::{api::UpdateStatus, settings::SettingsSection};
+use web_sys::{KeyboardEvent, ScrollBehavior, ScrollIntoViewOptions, ScrollLogicalPosition};
 
 use crate::{
     components::{
@@ -40,14 +42,14 @@ enum SectionStatus {
 }
 
 #[derive(Clone)]
-struct SettingsSection {
+struct UiSettingsSection {
     title: &'static str,
-    id: &'static str,
+    id: SettingsSection,
     icon: SettingsIcon,
     render_fn: fn() -> AnyView,
 }
 
-impl PartialEq for SettingsSection {
+impl PartialEq for UiSettingsSection {
     fn eq(&self, other: &Self) -> bool {
         self.id == other.id
     }
@@ -55,67 +57,89 @@ impl PartialEq for SettingsSection {
 
 #[derive(Clone)]
 enum SettingsItem {
-    Section(SettingsSection),
-    Divider { id: &'static str },
+    Section(UiSettingsSection),
+    Divider,
 }
 
 impl SettingsItem {
-    fn id(&self) -> &'static str {
+    fn id(&self) -> SettingsSection {
         match self {
             SettingsItem::Section(section) => section.id,
-            SettingsItem::Divider { id } => id,
+            SettingsItem::Divider => SettingsSection::Divider,
         }
     }
 }
 
 const SETTINGS_SECTIONS: &[SettingsItem] = &[
-    SettingsItem::Divider { id: "divider-0" },
-    SettingsItem::Section(SettingsSection {
+    SettingsItem::Divider,
+    SettingsItem::Section(UiSettingsSection {
         title: "General",
-        id: "general",
+        id: SettingsSection::General,
         icon: SettingsIcon::Phosphor(phosphor_leptos::SLIDERS),
         render_fn: render_general_section,
     }),
-    SettingsItem::Section(SettingsSection {
+    SettingsItem::Section(UiSettingsSection {
         title: "Appearance",
-        id: "appearance",
+        id: SettingsSection::Appearance,
         icon: SettingsIcon::IconData(i::BsPalette),
         render_fn: render_appearance_section,
     }),
-    SettingsItem::Section(SettingsSection {
+    SettingsItem::Section(UiSettingsSection {
         title: "Audio",
-        id: "audio",
+        id: SettingsSection::Audio,
         icon: SettingsIcon::Phosphor(phosphor_leptos::HEADPHONES),
         render_fn: || ().into_any(),
     }),
-    SettingsItem::Section(SettingsSection {
+    SettingsItem::Section(UiSettingsSection {
         title: "Chats",
-        id: "chats",
+        id: SettingsSection::Chats,
         icon: SettingsIcon::Phosphor(phosphor_leptos::CHATS),
         render_fn: render_chats_section,
     }),
-    SettingsItem::Divider { id: "divider-1" },
-    SettingsItem::Section(SettingsSection {
+    SettingsItem::Divider,
+    SettingsItem::Section(UiSettingsSection {
         title: "Updates",
-        id: "updates",
+        id: SettingsSection::Updates,
         icon: SettingsIcon::Phosphor(phosphor_leptos::ARROWS_CLOCKWISE),
         render_fn: render_update_section,
     }),
 ];
 
-const PROFILE_SECTION: SettingsSection = SettingsSection {
+const PROFILE_SECTION: UiSettingsSection = UiSettingsSection {
     title: "Profile",
-    id: "profile",
+    id: SettingsSection::Profile,
     icon: SettingsIcon::Phosphor(PENCIL_SIMPLE),
     render_fn: render_profile_section,
 };
+
+fn scroll_to_setting(type_name: &'static str) {
+    let selector = format!("[data-field=\"{type_name}\"]");
+    let Some(el) = document().query_selector(&selector).ok().flatten() else {
+        return;
+    };
+
+    let options = ScrollIntoViewOptions::new();
+    options.set_behavior(ScrollBehavior::Smooth);
+    options.set_block(ScrollLogicalPosition::Center);
+    el.scroll_into_view_with_scroll_into_view_options(&options);
+
+    el.class_list().add_1("animate-highlight").ok();
+    set_timeout(
+        move || {
+            if let Some(el) = document().query_selector(&selector).ok().flatten() {
+                el.class_list().remove_1("animate-highlight").ok();
+            }
+        },
+        std::time::Duration::from_secs(4),
+    );
+}
 
 #[component]
 pub fn SettingsIcon(#[prop(into, optional)] class: String) -> impl IntoView {
     let state: AppState = expect_context();
     let store: ProfileStore = expect_context();
 
-    let sections_dict: HashMap<&str, SettingsSection> = SETTINGS_SECTIONS
+    let sections_dict: HashMap<SettingsSection, UiSettingsSection> = SETTINGS_SECTIONS
         .iter()
         .filter_map(|item| {
             if let SettingsItem::Section(section) = item {
@@ -134,7 +158,7 @@ pub fn SettingsIcon(#[prop(into, optional)] class: String) -> impl IntoView {
         }
     });
 
-    let statuses: StoredValue<HashMap<&str, RwSignal<SectionStatus>>> = StoredValue::new(
+    let statuses: StoredValue<HashMap<SettingsSection, RwSignal<SectionStatus>>> = StoredValue::new(
         SETTINGS_SECTIONS
             .iter()
             .filter_map(|item| {
@@ -147,30 +171,42 @@ pub fn SettingsIcon(#[prop(into, optional)] class: String) -> impl IntoView {
             .collect(),
     );
 
-    let update_sig = statuses.get_value()["updates"];
+    let update_sig = statuses.get_value()[&SettingsSection::Updates];
 
     let settings: Settings = expect_context();
 
     Effect::new(move |_| {
+        let status = state.update_status.get();
+        if matches!(status, UpdateStatus::Error { .. }) {
+            update_sig.set(SectionStatus::Urgent);
+            return;
+        }
+
         if settings.notify_update.signal().get() {
             match state.update_status.get() {
                 UpdateStatus::UpdateAvailable(_)
                 | UpdateStatus::Downloading(_)
                 | UpdateStatus::ReadyToInstall(_) => update_sig.set(SectionStatus::Warning),
-                UpdateStatus::Error { .. } => update_sig.set(SectionStatus::Urgent),
                 UpdateStatus::UpToDate | UpdateStatus::CheckingForUpdates => {
                     update_sig.set(SectionStatus::None)
                 }
+                _ => (),
             }
+        } else {
+            update_sig.set(SectionStatus::None)
         }
     });
 
     let selected_section = RwSignal::new(PROFILE_SECTION.id);
+    let search_query = RwSignal::new(String::new());
 
     let user_sig = Memo::new(move |_| {
         let user_id = state.user_id.get();
         store.get_user_profile(&user_id)
     });
+
+    let sections_dict_for_search: StoredValue<HashMap<SettingsSection, UiSettingsSection>> =
+        StoredValue::new(sections_dict.clone());
 
     let current_section = Memo::new(move |_| {
         sections_dict
@@ -179,12 +215,22 @@ pub fn SettingsIcon(#[prop(into, optional)] class: String) -> impl IntoView {
             .clone()
     });
 
+    let search_results = Memo::new(move |_| {
+        let query = search_query.get();
+        let trimmed = query.trim();
+        if trimmed.is_empty() {
+            Vec::new()
+        } else {
+            settings.search(trimmed)
+        }
+    });
+
     let section_bar_view = move |section: SettingsItem| match section {
-        SettingsItem::Divider { .. } => {
+        SettingsItem::Divider => {
             view! { <div class="border-t border-(--tile-border-color) my-1" /> }.into_any()
         }
         SettingsItem::Section(section) => {
-            let status_sig = *statuses.get_value().get(section.id).unwrap();
+            let status_sig = *statuses.get_value().get(&section.id).unwrap();
 
             let status_color = move || match status_sig.get() {
                 SectionStatus::None => "transparent",
@@ -275,6 +321,24 @@ pub fn SettingsIcon(#[prop(into, optional)] class: String) -> impl IntoView {
                                     </div>
                                 </div>
                             </div>
+                            <div class="px-2 pb-1">
+                                <div class="relative flex items-center">
+                                    <div class="absolute left-2 flex items-center pointer-events-none text-muted">
+                                        <Icon
+                                            icon=MAGNIFYING_GLASS
+                                            weight=IconWeight::Bold
+                                            size="14px"
+                                        />
+                                    </div>
+                                    <input
+                                        type="text"
+                                        placeholder="Search settings..."
+                                        class="w-full bg-(--ui-solid-bg) border border-(--tile-border-color) rounded-(--ui-border-radius) pl-7 pr-2 py-1 text-sm text-normal outline-none placeholder:text-muted"
+                                        prop:value=move || search_query.get()
+                                        on:input=move |ev| search_query.set(event_target_value(&ev))
+                                    />
+                                </div>
+                            </div>
                             <For
                                 each=move || SETTINGS_SECTIONS.iter().cloned()
                                 key=|s| s.id()
@@ -284,7 +348,13 @@ pub fn SettingsIcon(#[prop(into, optional)] class: String) -> impl IntoView {
                         <div class="w-full h-full flex flex-col">
                             <div class="w-full">
                                 <span class="text-xl font-bold text-normal p-4 block border-b border-(--tile-border-color)">
-                                    {move || current_section.get().title}
+                                    {move || {
+                                        if search_query.get().trim().is_empty() {
+                                            current_section.get().title
+                                        } else {
+                                            "Search results"
+                                        }
+                                    }}
                                 </span>
                                 <CloseButton
                                     on_click=move |_| set_is_open.set(false)
@@ -293,7 +363,57 @@ pub fn SettingsIcon(#[prop(into, optional)] class: String) -> impl IntoView {
                                 />
                             </div>
                             <div class="p-4 w-full h-full overflow-y-auto">
-                                {move || current_section.get().render_fn}
+                                {move || {
+                                    if search_query.get().trim().is_empty() {
+                                        (current_section.get().render_fn)()
+                                    } else {
+                                        let results = search_results.get();
+                                        if results.is_empty() {
+                                            view! {
+                                                <div class="text-dim text-sm italic p-2">
+                                                    "No settings found."
+                                                </div>
+                                            }
+                                                .into_any()
+                                        } else {
+                                            results
+                                                .into_iter()
+                                                .map(|(section, setting)| {
+                                                    let section_title = sections_dict_for_search
+                                                        .with_value(|d| { d.get(&section).map(|s| s.title) })
+                                                        .unwrap_or(PROFILE_SECTION.title);
+                                                    view! {
+                                                        <button
+                                                            type="button"
+                                                            class="flex flex-row gap-0.5 w-full text-left px-3 py-2 rounded-lg border border-transparent hover:border-(--tile-border-color) hover:bg-(--tile-hover-color) items-center cursor-pointer text-normal"
+                                                            on:click=move |_| {
+                                                                selected_section.set(section);
+                                                                search_query.set(String::new());
+                                                                let type_name = setting.type_name;
+                                                                request_animation_frame(move || {
+                                                                    scroll_to_setting(type_name);
+                                                                });
+                                                            }
+                                                        >
+                                                            <h2 class="text-lg font-semibold">{section_title}</h2>
+                                                            <Icon icon=CARET_DOUBLE_RIGHT size="20px" />
+                                                            <span class="text-dim">{setting.human_readable}</span>
+                                                            <div title=setting.description class="flex items-center">
+                                                                <Icon
+                                                                    icon=QUESTION
+                                                                    size="14px"
+                                                                    color="var(--dim-text-color)"
+                                                                />
+                                                            </div>
+                                                        </button>
+                                                    }
+                                                        .into_any()
+                                                })
+                                                .collect_view()
+                                                .into_any()
+                                        }
+                                    }
+                                }}
                             </div>
                         </div>
                     </FloatingTile>

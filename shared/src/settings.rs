@@ -82,3 +82,28 @@ pub enum DataSizeUnit {
     Bits,
     Mibibytes,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SettingsSection {
+    Profile,
+    General,
+    Appearance,
+    Audio,
+    Chats,
+    Updates,
+    Divider,
+}
+
+impl SettingsSection {
+    pub fn id(&self) -> &'static str {
+        match self {
+            SettingsSection::Profile => "profile",
+            SettingsSection::General => "general",
+            SettingsSection::Appearance => "appearance",
+            SettingsSection::Audio => "audio",
+            SettingsSection::Chats => "chats",
+            SettingsSection::Updates => "updates",
+            SettingsSection::Divider => "divider",
+        }
+    }
+}

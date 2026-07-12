@@ -1,5 +1,5 @@
 use leptos::{prelude::*, task::spawn_local};
-use phosphor_leptos::{DOWNLOAD_SIMPLE, Icon, IconWeight, X};
+use phosphor_leptos::{Icon, IconWeight, DOWNLOAD_SIMPLE, X};
 use shared::timeline::RichTextSpan;
 use shared::timeline::UiMediaSource;
 use wasm_bindgen::JsCast;
@@ -346,8 +346,8 @@ fn LightboxHeader(
 
     view! {
         <div
-            class="grid grid-cols-3 items-center"
-            style="background: var(--tile-bg-color); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border-bottom: 1px solid var(--tile-border-color)"
+            class="grid grid-cols-3 items-center bg-(--ui-solid-bg)"
+            style="backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border-bottom: 1px solid var(--tile-border-color)"
             on:click=move |e| e.stop_propagation()
         >
             // Left: avatar + name + timestamp
