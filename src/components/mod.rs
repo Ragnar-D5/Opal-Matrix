@@ -246,16 +246,8 @@ pub fn DeafenMenu(
     }
 }
 
-/// An empty strip spanning the top of the window, in the same spot as
-/// `SystemButtons` but behind it (lower z-index), so the window can be
-/// dragged from anywhere in the header that isn't a button.
 #[component]
-pub fn HeaderDragRegion() -> impl IntoView {
-    view! { <div data-tauri-drag-region class="absolute top-0 left-0 right-0 h-3 z-50"></div> }
-}
-
-#[component]
-pub fn SystemButtons(active: bool) -> impl IntoView {
+pub fn SystemButtons(active: bool, #[prop(into, optional)] class: String) -> impl IntoView {
     let settings: Option<Settings> = use_context();
 
     let btns: Vec<(&str, Callback<()>)> = vec![
@@ -283,10 +275,9 @@ pub fn SystemButtons(active: bool) -> impl IntoView {
 
     view! {
         <div
-            class="flex flex-row gap-3 z-9999 items-center h-(--header-height) pr-(--system-button-padding) pl-(--gap)"
-            class=("absolute", active)
-            class=("top-[var(--gap)]", active)
-            class=("right-[var(--gap)]", active)
+            class=format!(
+                "flex flex-row gap-3 z-9999 items-center h-(--header-height) pr-(--system-button-padding) {class}",
+            )
             class=("invisible", !active)
         >
             {btns
@@ -312,5 +303,14 @@ pub fn SystemButtons(active: bool) -> impl IntoView {
                 })
                 .collect_view()}
         </div>
+    }
+}
+
+#[component]
+pub fn SystemButtonsInTile() -> impl IntoView {
+    view! {
+        <FloatingTile class="fixed top-(--gap) right-(--gap) pl-(--system-button-padding)">
+            <SystemButtons active=true />
+        </FloatingTile>
     }
 }

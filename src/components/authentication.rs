@@ -1,6 +1,8 @@
 use crate::{
     app::{call_tauri, call_tauri_no_args, CurrentWindow},
-    components::{input::move_caret_to_end, settings::Settings, SingleFloatingTile},
+    components::{
+        input::move_caret_to_end, settings::Settings, SingleFloatingTile, SystemButtonsInTile,
+    },
     state::AppState,
     tauri_functions::get_server_order,
 };
@@ -414,6 +416,7 @@ pub fn Authentication() -> impl IntoView {
     let window = state.current_window;
 
     view! {
+        <SystemButtonsInTile />
         <SingleFloatingTile class="p-5">
             <div class="min-w-100 flex flex-col">
                 {move || match window.get() {

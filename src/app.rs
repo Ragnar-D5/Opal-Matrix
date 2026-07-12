@@ -508,7 +508,7 @@ fn HomePage() -> impl IntoView {
             style=root_css_vars
         >
             <div data-tauri-drag-region class="absolute top-0 left-0 right-0 h-3 z-50"></div>
-            <SystemButtons active=true />
+            <SystemButtons active=true class="absolute top-[var(--gap)] right-[var(--gap)]" />
             <Sidebar />
             <Chat />
             <ImageLightbox />

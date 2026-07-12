@@ -400,7 +400,7 @@ pub fn ChatHeader(chat_sidebar_open: RwSignal<bool>) -> impl IntoView {
                         {input_icon}
                     </button>
                 </div>
-                <div class="h-6 w-[2px] ml-2 mx-1 bg-(--tile-border-color) rounded" />
+                <div class="h-6 w-[2px] mx-2 bg-(--tile-border-color) rounded" />
                 <SystemButtons active=false />
             </div>
         </FloatingTile>
