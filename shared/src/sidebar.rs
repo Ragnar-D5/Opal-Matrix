@@ -108,12 +108,33 @@ pub enum RoomNode {
     Unjoined(UnjoinedRoomNode),
 }
 
+#[derive(Debug, Serialize, Clone, Deserialize, PartialEq, Default)]
+pub struct RoomRights {
+    pub send_messages: bool,
+    pub send_reactions: bool,
+    pub mention_everyone: bool,
+
+    pub pin_messages: bool,
+    pub delete_messages: bool,
+    pub kick_users: bool,
+    pub ban_users: bool,
+    pub invite_users: bool,
+
+    pub change_name_and_avatar: bool,
+    pub change_topic: bool,
+    pub manage_permissions: bool,
+
+    pub manage_children: bool,
+}
+
 #[derive(Debug, Serialize, Clone, Deserialize, PartialEq)]
 pub struct RoomNodeInfo {
     pub room_id: String,
     pub name: String,
     pub topic: Option<String>,
     pub has_avatar: bool,
+
+    pub rights: RoomRights,
 
     pub color: Color,
 

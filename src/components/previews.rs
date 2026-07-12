@@ -6,6 +6,8 @@ use wasm_bindgen::JsCast;
 
 use crate::app::format_bytes;
 use crate::components::user_profile::MemberProfileExt;
+use crate::components::FloatingTile;
+use crate::components::SystemButtons;
 use crate::{
     state::{AppState, ProfileStore},
     tauri_functions::{fetch_preview_data, save_file_to_picked_dest},
@@ -327,7 +329,7 @@ fn LightboxHeader(
 
     let store: ProfileStore = expect_context();
     let state: AppState = expect_context();
-    let room_id = state.active_room_id().unwrap_or_default();
+    let room_id = state.active_room_id_untracked().unwrap_or_default();
     let profile_sig = store.get_member_profile(&room_id, &sender_id);
     let name_sig = profile_sig.clone();
 
@@ -345,48 +347,48 @@ fn LightboxHeader(
     };
 
     view! {
-        <div
-            class="grid grid-cols-3 items-center bg-(--ui-solid-bg)"
-            style="backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border-bottom: 1px solid var(--tile-border-color)"
-            on:click=move |e| e.stop_propagation()
-        >
-            // Left: avatar + name + timestamp
-            <div class="flex items-center gap-2 p-3">
-                {move || profile_sig.get().render_icon("35px")}
-                <div class="flex flex-col min-w-0">
-                    {move || name_sig.get().render_name_popup("16px")}
-                    <span class="text-dim text-xs">{timestamp_str.clone()}</span>
+        <FloatingTile class="flex flex-row items-center h-(--header-height) m-(--gap)">
+            <div
+                class="grid grid-cols-3 items-center w-full"
+                on:click=move |e| e.stop_propagation()
+            >
+                <div class="flex items-center gap-2 p-3">
+                    {move || profile_sig.get().render_icon("35px")}
+                    <div class="flex flex-col min-w-0">
+                        {move || name_sig.get().render_name_popup("16px")}
+                        <span class="text-dim text-xs">{timestamp_str.clone()}</span>
+                    </div>
+                </div>
+
+                <div class="flex items-center justify-center gap-1 min-w-0">
+                    <span class="text-normal text-sm truncate">{filename}</span>
+                    <span class="text-dim text-xs shrink-0">
+                        {move || size.map(|s| format!("({})", format_bytes(s).get()))}
+                    </span>
+                </div>
+
+                <div class="flex items-center justify-end gap-1">
+                    <button
+                        class="text-dim hover:text-bright p-1.5 rounded hover:bg-(--ui-hover-bg) cursor-pointer"
+                        title="Download"
+                        on:click=on_download
+                    >
+                        <Icon icon=DOWNLOAD_SIMPLE weight=IconWeight::Bold size="20px" />
+                    </button>
+                    <button
+                        class="text-dim hover:text-bright p-1.5 pr-0 rounded hover:bg-(--ui-hover-bg) cursor-pointer"
+                        title="Close (Esc)"
+                        on:click=move |e| {
+                            e.stop_propagation();
+                            on_close.run(());
+                        }
+                    >
+                        <Icon icon=X weight=IconWeight::Bold size="20px" />
+                    </button>
                 </div>
             </div>
-
-            // Center: filename + size (truly centered via grid)
-            <div class="flex items-center justify-center gap-1 min-w-0">
-                <span class="text-normal text-sm truncate">{filename}</span>
-                <span class="text-dim text-xs shrink-0">
-                    {size.map(|s| format!("({})", format_bytes(s)))}
-                </span>
-            </div>
-
-            // Right: download + close
-            <div class="flex items-center justify-end gap-1 pr-3">
-                <button
-                    class="text-dim hover:text-bright p-1.5 rounded hover:bg-(--ui-hover-bg) cursor-pointer"
-                    title="Download"
-                    on:click=on_download
-                >
-                    <Icon icon=DOWNLOAD_SIMPLE weight=IconWeight::Bold size="20px" />
-                </button>
-                <button
-                    class="text-dim hover:text-bright p-1.5 rounded hover:bg-(--ui-hover-bg) cursor-pointer"
-                    title="Close (Esc)"
-                    on:click=move |e| {
-                        e.stop_propagation();
-                        on_close.run(());
-                    }
-                >
-                    <Icon icon=X weight=IconWeight::Bold size="20px" />
-                </button>
-            </div>
-        </div>
+            <div class="h-6 w-[2px] ml-2 mx-1 bg-(--tile-border-color) rounded" />
+            <SystemButtons active=false />
+        </FloatingTile>
     }
 }

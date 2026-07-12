@@ -246,8 +246,16 @@ pub fn DeafenMenu(
     }
 }
 
+/// An empty strip spanning the top of the window, in the same spot as
+/// `SystemButtons` but behind it (lower z-index), so the window can be
+/// dragged from anywhere in the header that isn't a button.
 #[component]
-pub fn SystemButtons() -> impl IntoView {
+pub fn HeaderDragRegion() -> impl IntoView {
+    view! { <div data-tauri-drag-region class="absolute top-0 left-0 right-0 h-3 z-50"></div> }
+}
+
+#[component]
+pub fn SystemButtons(active: bool) -> impl IntoView {
     let settings: Option<Settings> = use_context();
 
     let btns: Vec<(&str, Callback<()>)> = vec![
@@ -274,7 +282,13 @@ pub fn SystemButtons() -> impl IntoView {
     ];
 
     view! {
-        <div class="flex flex-row gap-3 z-9999">
+        <div
+            class="flex flex-row gap-3 z-9999 items-center h-(--header-height) pr-(--system-button-padding) pl-(--gap)"
+            class=("absolute", active)
+            class=("top-[var(--gap)]", active)
+            class=("right-[var(--gap)]", active)
+            class=("invisible", !active)
+        >
             {btns
                 .into_iter()
                 .map(|(color, callback)| {
@@ -284,7 +298,11 @@ pub fn SystemButtons() -> impl IntoView {
                         <button
                             class="h-3.5 w-3.5 rounded-full hover:brightness-[60%] transition-transform duration-75 z-9999 cursor-pointer"
                             style=format!("background-color: {color};")
-                            on:click=move |_| callback.run(())
+                            on:click=move |_| {
+                                if active {
+                                    callback.run(())
+                                }
+                            }
                             class=("scale-75", move || btn_pressed.get())
                             on:mousedown=move |_| btn_pressed.set(true)
                             on:mouseup=move |_| btn_pressed.set(false)

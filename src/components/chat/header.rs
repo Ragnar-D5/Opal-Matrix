@@ -11,7 +11,7 @@ use uuid::Uuid;
 use web_sys::KeyboardEvent;
 
 use crate::{
-    components::{FloatingTile, presence::PresenceBadge, user_profile::MemberProfileExt},
+    components::{FloatingTile, SystemButtons, presence::PresenceBadge, user_profile::MemberProfileExt},
     state::{AppState, CurrentSection, ProfileStore},
     tauri_functions::{get_pinned_events, join_call, leave_call, search_rooms},
 };
@@ -337,7 +337,7 @@ pub fn ChatHeader(chat_sidebar_open: RwSignal<bool>) -> impl IntoView {
                     </div>
                 </button>
             </div>
-            <div class="flex items-center h-full pr-[90px]">
+            <div class="flex items-center h-full">
                 <div class="self-center h-full">
                     <button
                         class="transition-opacity h-full aspect-square text-dim hover:text-(--accent-color)"
@@ -401,6 +401,7 @@ pub fn ChatHeader(chat_sidebar_open: RwSignal<bool>) -> impl IntoView {
                     </button>
                 </div>
                 <div class="h-6 w-[2px] ml-2 mx-1 bg-(--tile-border-color) rounded" />
+                <SystemButtons active=false />
             </div>
         </FloatingTile>
     }

@@ -151,28 +151,30 @@ pub fn format_time(date: DateTime<Local>) -> Memo<String> {
     })
 }
 
-pub fn format_bytes(bytes: u64) -> String {
+pub fn format_bytes(bytes: u64) -> Memo<String> {
     let settings: Settings = expect_context();
 
-    let (size, units): (f64, [&str; 5]) = match settings.data_size_unit.signal().get() {
-        DataSizeUnit::Bytes => (bytes as f64, ["B", "KB", "MB", "GB", "TB"]),
-        DataSizeUnit::Mibibytes => (bytes as f64, ["B", "KiB", "MiB", "GiB", "TiB"]),
-        DataSizeUnit::Bits => (bytes as f64 * 8.0, ["b", "Kb", "Mb", "Gb", "Tb"]),
-    };
+    Memo::new(move |_| {
+        let (size, units): (f64, [&str; 5]) = match settings.data_size_unit.signal().get() {
+            DataSizeUnit::Bytes => (bytes as f64, ["B", "KB", "MB", "GB", "TB"]),
+            DataSizeUnit::Mibibytes => (bytes as f64, ["B", "KiB", "MiB", "GiB", "TiB"]),
+            DataSizeUnit::Bits => (bytes as f64 * 8.0, ["b", "Kb", "Mb", "Gb", "Tb"]),
+        };
 
-    let mut size = size;
-    let mut unit_index = 0;
+        let mut size = size;
+        let mut unit_index = 0;
 
-    while size >= 1024.0 && unit_index < units.len() - 1 {
-        size /= 1024.0;
-        unit_index += 1;
-    }
+        while size >= 1024.0 && unit_index < units.len() - 1 {
+            size /= 1024.0;
+            unit_index += 1;
+        }
 
-    if unit_index == 0 {
-        format!("{} {}", size as u64, units[unit_index])
-    } else {
-        format!("{:.2} {}", size, units[unit_index])
-    }
+        if unit_index == 0 {
+            format!("{} {}", size as u64, units[unit_index])
+        } else {
+            format!("{:.2} {}", size, units[unit_index])
+        }
+    })
 }
 
 #[component]
@@ -506,9 +508,7 @@ fn HomePage() -> impl IntoView {
             style=root_css_vars
         >
             <div data-tauri-drag-region class="absolute top-0 left-0 right-0 h-3 z-50"></div>
-            <div class="absolute top-[var(--gap)] right-[var(--gap)] z-9999 flex items-center h-(--header-height) px-(--system-button-padding)">
-                <SystemButtons />
-            </div>
+            <SystemButtons active=true />
             <Sidebar />
             <Chat />
             <ImageLightbox />

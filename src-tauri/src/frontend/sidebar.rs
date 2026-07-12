@@ -1,7 +1,8 @@
 use matrix_sdk::deserialized_responses::SyncOrStrippedState;
-use matrix_sdk::ruma::OwnedRoomId;
+use matrix_sdk::ruma::{OwnedRoomId, UserId};
 use matrix_sdk::ruma::api::client::space::get_hierarchy;
 use matrix_sdk::ruma::events::direct::DirectEventContent;
+use matrix_sdk::ruma::events::room::power_levels::RoomPowerLevels;
 use matrix_sdk::ruma::events::space::child::SpaceChildEventContent;
 use matrix_sdk::ruma::room::RoomSummary;
 use matrix_sdk::ruma::serde::Raw;
@@ -16,13 +17,11 @@ use matrix_sdk::{Client, Room, RoomMemberships, RoomState};
 use matrix_sdk::room::ParentSpace;
 use matrix_sdk::ruma::events::call::member::CallMemberEventContent;
 use matrix_sdk::ruma::events::{
-    AnyGlobalAccountDataEvent, AnySyncStateEvent, AnySyncTimelineEvent, OriginalSyncStateEvent,
+    AnyGlobalAccountDataEvent, AnySyncStateEvent, AnySyncTimelineEvent, MessageLikeEventType, OriginalSyncStateEvent, StateEventType
 };
 use matrix_sdk::sync::RoomUpdates;
 use shared::sidebar::{
-    DmRoomNode, NotificationCounts, RoomMapUpdate, RoomNode, RoomNodeInfo, ServerList,
-    ServerRoomNode, SingleRoomNode, SpaceRoomNode, TextChannelRoomNode, UnjoinedRoomNode,
-    UserDevice, VoiceChannelRoomNode,
+    DmRoomNode, NotificationCounts, RoomMapUpdate, RoomNode, RoomNodeInfo, RoomRights, ServerList, ServerRoomNode, SingleRoomNode, SpaceRoomNode, TextChannelRoomNode, UnjoinedRoomNode, UserDevice, VoiceChannelRoomNode
 };
 use tauri::AppHandle;
 
@@ -68,6 +67,30 @@ async fn get_all_child_room_ids(room: &Room) -> Result<Vec<OwnedRoomId>, TauriEr
     Ok(all_children)
 }
 
+fn room_rights_from_powerlevels(power_levels: &RoomPowerLevels, user_id: &UserId) -> RoomRights {
+    RoomRights {
+        send_messages: power_levels.user_can_send_message(user_id, MessageLikeEventType::RoomMessage),
+        send_reactions: power_levels.user_can_send_message(user_id, MessageLikeEventType::Reaction),
+        mention_everyone: power_levels.user_can_trigger_room_notification(user_id),
+
+        // Moderation
+        pin_messages: power_levels.user_can_send_state(user_id, StateEventType::RoomPinnedEvents),
+        delete_messages: power_levels.user_can_redact_event_of_other(user_id),
+        kick_users: power_levels.user_can_kick(user_id),
+        ban_users: power_levels.user_can_ban(user_id),
+        invite_users: power_levels.user_can_invite(user_id),
+
+        // Management
+        change_name_and_avatar: power_levels.user_can_send_state(user_id, StateEventType::RoomName)
+                                    && power_levels.user_can_send_state(user_id, StateEventType::RoomAvatar),
+        change_topic: power_levels.user_can_send_state(user_id, StateEventType::RoomTopic),
+        manage_permissions: power_levels.user_can_send_state(user_id, StateEventType::RoomPowerLevels),
+
+        // Spaces (Servers/Categories)
+        manage_children: power_levels.user_can_send_state(user_id, StateEventType::SpaceChild),
+    }
+}
+
 pub async fn convert_room_to_node(room: &Room, handle: &AppHandle) -> Option<RoomNode> {
     let info = room.clone_info();
 
@@ -90,6 +113,14 @@ pub async fn convert_room_to_node(room: &Room, handle: &AppHandle) -> Option<Roo
 
     send_event(handle, &pin_payload);
 
+    let power_level = match room.power_levels().await {
+        Ok(levels) => levels,
+        Err(e) => {
+            log::error!("Failed to get power levels for room {}: {e}", &room_id);
+            return None;
+        }
+    };
+
     let info = RoomNodeInfo {
         name,
         has_avatar,
@@ -98,6 +129,8 @@ pub async fn convert_room_to_node(room: &Room, handle: &AppHandle) -> Option<Roo
         room_id: room_id.clone(),
         topic,
         color,
+
+        rights: room_rights_from_powerlevels(&power_level, room.own_user_id()),
     };
 
     if room
@@ -598,6 +631,8 @@ pub async fn get_unknown_children(
             room_id: room_id.to_string(),
             topic: summary.topic.clone(),
             color: get_color(room_id.as_ref()),
+
+            rights: RoomRights::default(),
         };
         let unjoined_node = UnjoinedRoomNode {
             info,

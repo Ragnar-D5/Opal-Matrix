@@ -202,11 +202,11 @@ pub fn render_update_section() -> AnyView {
                     if let Some(total) = total {
                         format!(
                             "Downloading... ({}/{})",
-                            format_bytes(progress as u64),
-                            format_bytes(total)
+                            format_bytes(progress as u64).get(),
+                            format_bytes(total).get()
                         )
                     } else {
-                        format!("Downloading... ({})", format_bytes(progress as u64))
+                        format!("Downloading... ({})", format_bytes(progress as u64).get())
                     }
                 }
                 UpdateDownloadProgress::Finished => "Downloaded".to_string(),
