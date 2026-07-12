@@ -82,11 +82,6 @@ async fn reqwest_response_to_http_response(
         .map_err(|e| format!("Failed to build response: {}", e).into())
 }
 
-/// Sends a notification with the apphandle if the user has granted permission.
-///
-/// `icon` is a path to an image file (or platform icon name) to show alongside the
-/// notification; not all platforms honor per-notification icons (e.g. macOS always
-/// shows the app icon).
 pub(crate) async fn send_notification(
     handle: &AppHandle,
     title: String,
@@ -98,39 +93,19 @@ pub(crate) async fn send_notification(
         return Ok(());
     }
 
-    // tauri-plugin-notification's `show()` hands notify-rust's *synchronous* show() (which
-    // does a blocking `zbus::block_on` under the hood) to `tauri::async_runtime::spawn`,
-    // which panics with "Cannot start a runtime from within a runtime" because it's already
-    // running on a tokio worker thread. Call notify-rust's async API directly on Linux
-    // instead, which awaits the D-Bus call properly rather than blocking on it.
-    #[cfg(target_os = "linux")]
-    {
-        let mut notification = notify_rust::Notification::new();
-        notification.summary(&title).body(&body);
-        if let Some(icon) = &icon {
-            notification.icon(icon);
-        } else {
-            notification.auto_icon();
-        }
-
-        return notification
-            .show_async()
-            .await
-            .map(|_| ())
-            .map_err(|e| format!("Failed to show notification: {}", e).into());
+    let mut notification = notify_rust::Notification::new();
+    notification.summary(&title).body(&body);
+    if let Some(icon) = &icon {
+        notification.icon(icon);
+    } else {
+        notification.auto_icon();
     }
 
-    #[cfg(not(target_os = "linux"))]
-    {
-        let mut notification = handle.notification().builder().title(title).body(body);
-        if let Some(icon) = icon {
-            notification = notification.icon(icon);
-        }
-
-        notification
-            .show()
-            .map_err(|e| format!("Failed to show notification: {}", e).into())
-    }
+    return notification
+        .show_async()
+        .await
+        .map(|_| ())
+        .map_err(|e| format!("Failed to show notification: {}", e).into());
 }
 
 pub fn send_event<T: TauriEvent>(app_handle: &AppHandle, payload: &T) {
@@ -491,12 +466,18 @@ async fn login(
     Ok(user_id)
 }
 
-#[command]
-async fn close_window(app_handle: AppHandle) -> Result<(), TauriError> {
-    app_handle
+#[command(rename_all = "snake_case")]
+async fn close_window(app_handle: AppHandle, minimize_to_tray: bool) -> Result<(), TauriError> {
+    let window = app_handle
         .get_webview_window("main")
-        .ok_or("Window not found")?
-        .close()?;
+        .ok_or("Window not found")?;
+
+    if minimize_to_tray {
+        window.hide()?;
+    } else {
+        window.close()?;
+    }
+
     Ok(())
 }
 
@@ -672,14 +653,14 @@ async fn get_update_status(state: State<'_, Arc<AppState>>) -> Result<UpdateStat
     Ok(status)
 }
 
-#[command]
-async fn check_for_update(
+pub async fn check_for_update_backend(
     state: State<'_, Arc<AppState>>,
     handle: AppHandle,
-) -> Result<UpdateStatus, TauriError> {
+) -> Result<(), TauriError> {
     let current_status = state.update_status.read().await.clone();
     if !current_status.needs_update_download() {
-        return Ok(current_status);
+        send_event(&handle, &current_status);
+        return Ok(());
     }
 
     let update = handle.updater()?.check().await?;
@@ -687,29 +668,55 @@ async fn check_for_update(
     state.update.write().await.clone_from(&update);
 
     let new_status = if let Some(update) = &update {
+        send_notification(
+            &handle,
+            format!(
+                "Update Available ({} ⟶ {})",
+                update.current_version, update.version
+            ),
+            update
+                .body
+                .clone()
+                .unwrap_or("Click to open the app".to_string()),
+            None,
+        )
+        .await?;
         UpdateStatus::UpdateAvailable(info_from_update(update))
     } else {
         UpdateStatus::UpToDate
     };
 
     *state.update_status.write().await = new_status.clone();
-    Ok(new_status)
+    send_event(&handle, &new_status);
+
+    Ok(())
+}
+
+#[command]
+async fn check_for_update(
+    state: State<'_, Arc<AppState>>,
+    handle: AppHandle,
+) -> Result<(), TauriError> {
+    check_for_update_backend(state, handle).await
 }
 
 #[command]
 async fn download_update(
     state: State<'_, Arc<AppState>>,
     handle: AppHandle,
-) -> Result<UpdateStatus, TauriError> {
+) -> Result<(), TauriError> {
     let update_handle = handle.clone();
 
     let Some(update) = state.update.read().await.clone() else {
         log::warn!("Update not downloaded yet");
-        return Ok(UpdateStatus::Error {
+        let new_state = UpdateStatus::Error {
             short: "Download the update first".to_string(),
             long: "If you are seeing this, something went wrong, please create a ticket"
                 .to_string(),
-        });
+        };
+        *state.update_status.write().await = new_state.clone();
+        send_event(&handle, &new_state);
+        return Ok(());
     };
 
     let info = info_from_update(&update);
@@ -723,6 +730,8 @@ async fn download_update(
     let finished_info = info.clone();
     let finished_state = state.clone();
 
+    let handle_clone = handle.clone();
+    let handle_clone2 = handle.clone();
     let bytes = match update
         .download(
             move |progress, total| {
@@ -736,7 +745,7 @@ async fn download_update(
             move || {
                 *finished_state.update_status.blocking_write() =
                     UpdateStatus::ReadyToInstall(finished_info);
-                send_event(&handle, &UpdateDownloadProgress::Finished);
+                send_event(&handle_clone, &UpdateDownloadProgress::Finished);
             },
         )
         .await
@@ -744,20 +753,23 @@ async fn download_update(
         Ok(bytes) => bytes,
         Err(e) => {
             log::error!("Failed to download update: {:?}", e);
-            *state.update_status.write().await = UpdateStatus::Error {
+            let new_state = UpdateStatus::Error {
                 short: "Failed to download update".to_string(),
                 long: format!("Failed to download update: {:?}", e),
             };
-            return Ok(UpdateStatus::Error {
-                short: "Failed to download update".to_string(),
-                long: format!("Failed to download update: {:?}", e),
-            });
+            *state.update_status.write().await = new_state.clone();
+            send_event(&handle_clone2, &new_state);
+            return Ok(());
         }
     };
 
     state.update_bytes.write().await.clone_from(&Some(bytes));
 
-    Ok(UpdateStatus::ReadyToInstall(info))
+    let new_state = UpdateStatus::ReadyToInstall(info);
+    *state.update_status.write().await = new_state.clone();
+    send_event(&handle, &new_state);
+
+    Ok(())
 }
 
 #[command]
@@ -784,29 +796,35 @@ async fn install_update(state: State<'_, Arc<AppState>>) -> Result<(), TauriErro
 async fn recheck_update(
     state: State<'_, Arc<AppState>>,
     handle: AppHandle,
-) -> Result<UpdateStatus, TauriError> {
+) -> Result<(), TauriError> {
     let update = match handle.updater()?.check().await {
         Ok(Some(update)) => update,
         Ok(None) => {
             *state.update.write().await = None;
-            *state.update_status.write().await = UpdateStatus::UpToDate;
-            return Ok(UpdateStatus::UpToDate);
+            let new_state = UpdateStatus::UpToDate;
+            *state.update_status.write().await = new_state.clone();
+            send_event(&handle, &new_state);
+            return Ok(());
         }
         Err(e) => {
             log::error!("Failed to check for update: {e}");
-            return Ok(UpdateStatus::Error {
+            let new_state = UpdateStatus::Error {
                 short: "Failed to check for update".to_string(),
                 long: format!("Failed to check for update: {e}"),
-            });
+            };
+            *state.update_status.write().await = new_state.clone();
+            send_event(&handle, &new_state);
+            return Ok(());
         }
     };
 
     *state.update.write().await = Some(update.clone());
 
-    let info = info_from_update(&update);
-    *state.update_status.write().await = UpdateStatus::UpdateAvailable(info.clone());
+    let new_state = UpdateStatus::UpdateAvailable(info_from_update(&update));
+    *state.update_status.write().await = new_state.clone();
+    send_event(&handle, &new_state);
 
-    Ok(UpdateStatus::UpdateAvailable(info))
+    Ok(())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

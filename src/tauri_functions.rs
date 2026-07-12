@@ -261,9 +261,18 @@ pub fn save_name_color(color: &str) -> Result<(), String> {
     Ok(())
 }
 
-pub fn close_window() {
+pub fn close_window(minimize_to_tray: bool) {
+    let args = match serde_wasm_bindgen::to_value(&json!({ "minimize_to_tray": minimize_to_tray }))
+    {
+        Ok(args) => args,
+        Err(e) => {
+            log::error!("Failed to serialize request: {:?}", e);
+            return;
+        }
+    };
+
     spawn_local(async move {
-        if let Err(e) = call_tauri_no_args("close_window").await {
+        if let Err(e) = call_tauri("close_window", args).await {
             log::error!("Failed to close window: {:?}", e);
         }
     });

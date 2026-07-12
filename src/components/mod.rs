@@ -5,7 +5,7 @@ use shared::ColorExt;
 use web_sys::MouseEvent;
 
 use crate::{
-    components::overlays::audi_menu::audio_device_popup,
+    components::{overlays::audi_menu::audio_device_popup, settings::Settings},
     tauri_functions::{close_window, get_audio_devices, minimize_window, toggle_fullscreen},
 };
 
@@ -248,6 +248,8 @@ pub fn DeafenMenu(
 
 #[component]
 pub fn SystemButtons() -> impl IntoView {
+    let settings: Option<Settings> = use_context();
+
     let btns: Vec<(&str, Callback<()>)> = vec![
         (
             "var(--idle-color)",
@@ -257,7 +259,18 @@ pub fn SystemButtons() -> impl IntoView {
             "var(--online-color)",
             Callback::new(move |_| toggle_fullscreen()),
         ),
-        ("var(--busy-color)", Callback::new(move |_| close_window())),
+        (
+            "var(--busy-color)",
+            Callback::new(move |_| {
+                let minimize_to_tray = if let Some(settings) = settings {
+                    settings.minimize_to_tray.signal().get()
+                } else {
+                    false
+                };
+
+                close_window(minimize_to_tray);
+            }),
+        ),
     ];
 
     view! {

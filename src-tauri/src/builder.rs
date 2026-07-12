@@ -3,6 +3,8 @@ use notify::Watcher;
 use percent_encoding::percent_decode_str;
 use shared::api::UpdateStatus;
 use shared::api::events::{LogEntry, NotificationEvent, NotificationLevel, SettingsUpdate, TauriEvent};
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::TrayIconBuilder;
 use std::collections::HashMap;
 use std::fs::{read_to_string, write};
 use std::path::PathBuf;
@@ -15,12 +17,12 @@ use toml_edit::DocumentMut;
 
 use chrono::Local;
 use log::LevelFilter;
-use tauri::{App, Builder, Emitter, Manager, Wry};
+use tauri::{App, AppHandle, Builder, Emitter, Manager, Wry};
 
 use tauri_plugin_cli::CliExt;
 use tauri_plugin_log::{Target, TargetKind};
 
-use crate::{info_from_update, ipc_log};
+use crate::{check_for_update_backend, info_from_update, ipc_log};
 #[cfg(all(desktop, debug_assertions))]
 use crate::ipc_log::IpcTrafficLog;
 use crate::matrix_api::media::{
@@ -358,11 +360,49 @@ pub fn register_mxc_uri(builder: Builder<Wry>) -> Builder<Wry> {
     )
 }
 
+fn toggle_main_window(app: &AppHandle) {
+    if let Some(win) = app.get_webview_window("main") {
+        if win.is_visible().unwrap_or(false) {
+            win.hide().ok();
+        } else {
+            win.show().ok();
+            win.unminimize().ok();
+            win.set_focus().ok();
+        }
+    }
+}
+
 pub fn setup_builder(builder: Builder<Wry>) -> Builder<Wry> {
     builder.setup(|app: &mut App| {
         let config_dir = app.path().app_config_dir().map_err(|e| {
             std::io::Error::other(format!("Failed to resolve app config dir: {e}"))
         })?;
+
+        let show_hide = MenuItem::with_id(app, "show_hide", "Show/Hide Opal", true, None::<&str>).map_err(|e| format!("Failed to set up show/hide menu: {e}"))?;
+        let updates = MenuItem::with_id(app, "check_updates", "Check for Updates", true, None::<&str>).map_err(|e| format!("Failed to set up updates menu: {e}"))?;
+        let quit = MenuItem::with_id(app, "quit", "Close Opal", true, None::<&str>).map_err(|e| format!("Failed to set up quit menu: {e}"))?;
+        let menu = Menu::with_items(app, &[&show_hide, &updates, &quit]).map_err(|e| format!("Failed to setup tray icon: {e}"))?;
+
+        let mut tray: TrayIconBuilder<Wry> = TrayIconBuilder::new().menu(&menu).show_menu_on_left_click(false).on_menu_event(|app, event| match event.id.as_ref() {
+            "show_hide" => toggle_main_window(app),
+            "check_updates" => {
+                let app = app.clone();
+                log::info!("Checking for updates...");
+                spawn(async move {
+                    let state = app.state::<Arc<AppState>>();
+                    check_for_update_backend(state.clone(), app.clone()).await.ok();
+                });
+            },
+            "quit" => app.exit(0),
+            _ => {}
+        });
+
+
+        if let Some(icon) = app.default_window_icon() {
+            tray = tray.icon(icon.clone());
+        }
+
+        tray.build(app)?;
 
         let state = Arc::new(AppState::default());
 

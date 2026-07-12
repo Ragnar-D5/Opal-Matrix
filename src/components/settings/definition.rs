@@ -34,7 +34,7 @@ pub fn system_message_modes() -> [(&'static str, &'static [SystemMessageDataless
 fn default_system_messages_to_show() -> HashMap<SystemMessageDataless, bool> {
     let mut map = SystemMessage::init_map();
     for message in DEFAULT_SYSTEM_MESSAGES {
-        map.insert(message.clone(), true);
+        map.insert(*message, true);
     }
     map
 }
@@ -159,4 +159,11 @@ pub struct Settings {
         default = default_system_messages_to_show()
     )]
     pub system_messages_to_show: HashMap<SystemMessageDataless, bool>,
+    #[setting(
+        "Minimize to tray",
+        "Whether to minimize the window to the system tray",
+        true,
+        default = false
+    )]
+    pub minimize_to_tray: bool,
 }
