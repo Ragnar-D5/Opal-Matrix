@@ -10,10 +10,10 @@ use matrix_sdk::{
     },
 };
 use shared::profile::{CustomProperties, UserProfile};
-use tauri::{AppHandle, Emitter, State, command};
+use tauri::{AppHandle, State, command};
 use tokio::sync::RwLock;
 
-use crate::TauriError;
+use crate::{send_event, TauriError};
 
 fn banner_color_field() -> ProfileFieldName {
     "org.opal-matrix.banner_color".into()
@@ -26,17 +26,25 @@ fn sonic_signature_field() -> ProfileFieldName {
 }
 
 pub fn send_user_profile_update(handle: &AppHandle, update: UserProfile) -> Result<(), TauriError> {
-    handle
-        .emit("user_profile", update)
-        .map_err(|e| format!("Failed to send user profile update: {e}").into())
+    send_event(handle, &update);
+    Ok(())
 }
 
 pub async fn send_user_to_frontend(handle: &AppHandle, client: &Client) -> Result<(), TauriError> {
     let user_id = client.user_id().ok_or("Not logged in")?;
-    let display_name = client.account().get_display_name().await?;
-    let has_avatar = client.account().get_avatar_url().await?.is_some();
+    let account = client.account();
 
-    let custom_properties = get_custom_fields(client, user_id.to_owned()).await;
+    // Same as `get_user_profile`: a fetch error here usually just means the field
+    // isn't set (e.g. no avatar), not that the request failed, so don't let `?`
+    // turn that into a fatal error for the whole restore/login flow.
+    let (display_name_result, avatar_result, custom_properties) = tokio::join!(
+        account.get_display_name(),
+        account.get_avatar_url(),
+        get_custom_fields(client, user_id.to_owned()),
+    );
+
+    let display_name = display_name_result.ok().flatten();
+    let has_avatar = avatar_result.ok().flatten().is_some();
 
     let update = UserProfile {
         display_name,

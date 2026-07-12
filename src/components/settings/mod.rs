@@ -285,7 +285,7 @@ pub fn SettingsIcon(#[prop(into, optional)] class: String) -> impl IntoView {
                         on:click=move |e| e.stop_propagation()
                         class="opacity-100 text-bright max-w-300 w-[80vw] h-full max-h-[95vh] min-h-[50vh] flex flex-row overflow-hidden z-50 bg-(--ui-solid-bg)"
                     >
-                        <div class="border-r border-(--tile-border-color) w-50 h-full flex flex-col gap-1">
+                        <div class="border-r border-(--tile-border-color) w-50 h-full flex flex-col gap-(--gap)">
                             <div
                                 class="flex items-center p-2 pb-0 gap-2 cursor-pointer group"
                                 on:click=move |_| selected_section.set(PROFILE_SECTION.id)
@@ -316,12 +316,12 @@ pub fn SettingsIcon(#[prop(into, optional)] class: String) -> impl IntoView {
                                                 size="12px"
                                                 weight=IconWeight::Fill
                                             />
-                                            "Edit profiles"
+                                            "Edit profile(s)"
                                         </span>
                                     </div>
                                 </div>
                             </div>
-                            <div class="px-2 pb-1">
+                            <div class="px-2 py-1">
                                 <div class="relative flex items-center">
                                     <div class="absolute left-2 flex items-center pointer-events-none text-muted">
                                         <Icon

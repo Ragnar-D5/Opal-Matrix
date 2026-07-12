@@ -153,19 +153,19 @@ pub async fn get_user_profile(
 
     let user_id = UserId::parse(user_id)?;
 
-    let display_name = client
-        .account()
-        .fetch_profile_field_of(user_id.clone(), ProfileFieldName::DisplayName)
-        .await?
+    let account = client.account();
+
+    let (display_name_result, avatar_result, custom_properties) = tokio::join!(
+        account.fetch_profile_field_of(user_id.clone(), ProfileFieldName::DisplayName),
+        account.fetch_profile_field_of(user_id.clone(), ProfileFieldName::AvatarUrl),
+        get_custom_fields(&client, user_id.clone()),
+    );
+
+    let display_name = display_name_result
+        .ok()
+        .flatten()
         .and_then(|v| v.value().as_str().map(|t| t.to_string()));
-
-    let has_avatar = client
-        .account()
-        .fetch_profile_field_of(user_id.clone(), ProfileFieldName::AvatarUrl)
-        .await?
-        .is_some();
-
-    let custom_properties = get_custom_fields(&client, user_id.clone()).await;
+    let has_avatar = avatar_result.ok().flatten().is_some();
 
     let profile = UserProfile {
         user_id: user_id.to_string(),

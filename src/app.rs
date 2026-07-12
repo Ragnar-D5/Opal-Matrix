@@ -9,6 +9,7 @@ use shared::api::events::{
     ProfileUpdates, RecentEmojies, RoomPinnedUpdate, TypingUpdate,
 };
 use shared::api::{AudioDeviceInfos, RestoreResponse, UpdateDownloadProgress, UpdateStatus};
+use shared::profile::UserProfile;
 use shared::settings::{DataSizeUnit, DateFormat, HourFormat};
 use shared::sidebar::{DmList, RoomMapUpdate, ServerList, SingleList};
 use std::collections::HashMap;
@@ -190,6 +191,7 @@ pub fn App() -> impl IntoView {
     let store = ProfileStore::default();
     let store_for_profiles = store.clone();
     let store_for_presences = store.clone();
+    let store_for_own_profile = store.clone();
 
     provide_context(store);
 
@@ -228,6 +230,17 @@ pub fn App() -> impl IntoView {
                     .set(profile.clone());
             }
         }
+    });
+
+    // The backend pushes the logged-in user's own global profile eagerly during
+    // login/restore, rather than waiting for something to lazily call
+    // `get_user_profile`.
+    let own_profile_update: ReadSignal<Option<UserProfile>> = use_tauri_event();
+
+    setup_update_effect(own_profile_update, move |profile| {
+        store_for_own_profile
+            .get_user_profile(&profile.user_id)
+            .set(profile);
     });
 
     Effect::new(move |_| {
