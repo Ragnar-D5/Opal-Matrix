@@ -23,7 +23,6 @@ use crate::{
 pub mod definition;
 pub mod sections;
 
-pub use definition::EnumVariants;
 pub use definition::MatrixSettingField;
 pub use definition::Settings;
 

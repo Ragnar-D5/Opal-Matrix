@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use macros::TauriEvent;
+use macros::{EnumHashMap, TauriEvent};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -518,7 +518,7 @@ impl std::fmt::Display for UiJoinRule {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, EnumHashMap)]
 pub enum SystemMessage {
     MembershipChange {
         user_id: String,
@@ -792,6 +792,16 @@ impl UiTimelineItem {
     pub fn event_id(&self) -> Option<String> {
         if let UiTimelineItemKind::Event(event) = &self.kind {
             event.event_id.clone()
+        } else {
+            None
+        }
+    }
+
+    pub fn as_system_message(&self) -> Option<&SystemMessage> {
+        if let UiTimelineItemKind::Event(event) = &self.kind
+            && let EventContent::SystemMessage(system_message) = &event.content
+        {
+            Some(system_message)
         } else {
             None
         }

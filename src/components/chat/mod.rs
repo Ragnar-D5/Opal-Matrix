@@ -33,9 +33,7 @@ use shared::{
     api::{
         FileMetadata, ScrollDirection, SearchParameters, UiAttachmentSource,
         events::SearchResultUpdate,
-    },
-    sidebar::RoomNode,
-    timeline::{EventContent, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind},
+    }, settings::EnumHashMap, sidebar::RoomNode, timeline::{EventContent, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind}
 };
 use uuid::Uuid;
 use wasm_bindgen::JsCast;
@@ -125,6 +123,7 @@ fn TimeLine() -> impl IntoView {
         });
     });
 
+    let settings: Settings = expect_context();
     let timeline = Memo::new(move |_| {
         let msgs = messages.get();
         let mut processed_items = Vec::with_capacity(msgs.len());
@@ -132,12 +131,31 @@ fn TimeLine() -> impl IntoView {
         let mut last_sender: Option<String> = None;
         let mut last_timestamp: Option<u64> = None;
 
-        for (idx, item_sig) in msgs.clone().into_iter().enumerate() {
+        let valid_map = settings.system_messages_to_show.signal().get();
+
+        let mut prev_was_divider = false;
+        for item_sig in msgs.clone().into_iter() {
             let mut show_header = true;
 
             let Some(item) = item_sig.try_get_untracked() else {
                 continue;
             };
+
+            if let Some(ev) = item.as_system_message()
+            && !ev.is_valid(&valid_map) {
+                continue;
+            }
+
+            let is_divider = matches!(item.kind, UiTimelineItemKind::DateDivider(_) | UiTimelineItemKind::ReadMarker);
+            let was_prev_divider = prev_was_divider;
+            prev_was_divider = is_divider;
+
+            if is_divider && was_prev_divider {
+                // Remove the previous divider to avoid duplicates
+                processed_items.pop();
+                continue;
+            }
+
 
             let is_event = if let UiTimelineItemKind::Event(ev) = &item.kind {
                 matches!(ev.content, EventContent::MsgLike(_))
@@ -150,21 +168,8 @@ fn TimeLine() -> impl IntoView {
                 continue;
             }
 
-            let prev_was_divider = if idx > 0 {
-                if let Some(prev_item) = msgs[idx - 1].try_get_untracked() {
-                    matches!(
-                        prev_item.kind,
-                        UiTimelineItemKind::DateDivider(_) | UiTimelineItemKind::ReadMarker
-                    )
-                } else {
-                    false
-                }
-            } else {
-                false
-            };
-
             // Check if the previous chronological item was a divider
-            if prev_was_divider {
+            if was_prev_divider {
                 show_header = true;
                 if let UiTimelineItemKind::Event(event) = &item.kind {
                     last_sender = Some(event.sender_id.clone());
@@ -197,6 +202,13 @@ fn TimeLine() -> impl IntoView {
             }
 
             processed_items.push((item_sig, show_header));
+        }
+
+        if let Some((last_sig, _)) = processed_items.last()
+            && let Some(last_item) = last_sig.try_get_untracked()
+            && matches!(last_item.kind, UiTimelineItemKind::DateDivider(_) | UiTimelineItemKind::ReadMarker)
+        {
+            processed_items.pop();
         }
 
         processed_items.reverse();

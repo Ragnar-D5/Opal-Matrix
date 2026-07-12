@@ -1,5 +1,5 @@
 use proc_macro::TokenStream;
-use quote::quote;
+use quote::{format_ident, quote};
 use syn::punctuated::Punctuated;
 use syn::{DeriveInput, Expr, ExprLit, Fields, ItemStruct, Lit, Token};
 
@@ -36,28 +36,86 @@ pub fn derive_enum_variants(input: TokenStream) -> TokenStream {
         );
 
         let variant_ident = &variant.ident;
-
-        // Mirrors serde's `#[serde(rename = "...")]`, falling back to the
-        // variant's own name, so the string matches what serde_json produces.
-        let mut name = variant_ident.to_string();
-        for attr in &variant.attrs {
-            if !attr.path().is_ident("serde") {
-                continue;
-            }
-            let _ = attr.parse_nested_meta(|meta| {
-                if meta.path.is_ident("rename") {
-                    name = meta.value()?.parse::<syn::LitStr>()?.value();
-                }
-                Ok(())
-            });
-        }
+        let name = serde_variant_name(variant);
 
         quote! { (#ident::#variant_ident, #name) }
     });
 
     quote! {
-        impl crate::components::settings::definition::EnumVariants for #ident {
+        impl crate::settings::EnumVariants for #ident {
             fn variants() -> impl Iterator<Item = (#ident, &'static str)> {
+                [#(#entries),*].into_iter()
+            }
+        }
+    }
+    .into()
+}
+
+/// Mirrors serde's `#[serde(rename = "...")]`, falling back to the
+/// variant's own name, so the string matches what serde_json produces.
+fn serde_variant_name(variant: &syn::Variant) -> String {
+    let mut name = variant.ident.to_string();
+    for attr in &variant.attrs {
+        if !attr.path().is_ident("serde") {
+            continue;
+        }
+        let _ = attr.parse_nested_meta(|meta| {
+            if meta.path.is_ident("rename") {
+                name = meta.value()?.parse::<syn::LitStr>()?.value();
+            }
+            Ok(())
+        });
+    }
+    name
+}
+
+#[proc_macro_derive(EnumHashMap)]
+pub fn derive_enum_hash_map(input: TokenStream) -> TokenStream {
+    let input = syn::parse_macro_input!(input as DeriveInput);
+    let ident = &input.ident;
+    let vis = &input.vis;
+    let dataless_ident = format_ident!("{}Dataless", ident);
+
+    let syn::Data::Enum(data) = &input.data else {
+        panic!("EnumHashMap can only be derived for enums");
+    };
+
+    let dataless_variants = data.variants.iter().map(|variant| {
+        let variant_ident = &variant.ident;
+        let name = serde_variant_name(variant);
+        quote! {
+            #[serde(rename = #name)]
+            #variant_ident
+        }
+    });
+
+    let dataless_arms = data.variants.iter().map(|variant| {
+        let variant_ident = &variant.ident;
+        quote! { #ident::#variant_ident { .. } => #dataless_ident::#variant_ident }
+    });
+
+    let entries = data.variants.iter().map(|variant| {
+        let variant_ident = &variant.ident;
+        let name = serde_variant_name(variant);
+        quote! { (#dataless_ident::#variant_ident, #name) }
+    });
+
+    quote! {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, ::serde::Serialize, ::serde::Deserialize)]
+        #vis enum #dataless_ident {
+            #(#dataless_variants),*
+        }
+
+        impl crate::settings::EnumHashMap for #ident {
+            type Dataless = #dataless_ident;
+
+            fn dataless(&self) -> #dataless_ident {
+                match self {
+                    #(#dataless_arms),*
+                }
+            }
+
+            fn dataless_variants() -> impl Iterator<Item = (#dataless_ident, &'static str)> {
                 [#(#entries),*].into_iter()
             }
         }

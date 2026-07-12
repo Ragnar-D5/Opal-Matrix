@@ -8,14 +8,11 @@ use phosphor_leptos::{
     PUSH_PIN_SLASH, SMILEY, SPEAKER_HIGH, TRASH, WARNING_CIRCLE,
 };
 use shared::{
-    api::events::RecentEmoji,
-    profile::MemberProfile,
-    sidebar::RoomNode,
-    timeline::{
+    api::events::RecentEmoji, profile::MemberProfile, sidebar::RoomNode, timeline::{
         DetailState, EventContent, EventFlags, MessageContent, ReactionInfo, ReplyInfo,
         RichTextSpan, SystemMessage, UiCallIntent, UiMembershipChange, UiMessageType,
         UiTimelineItem, UiTimelineItemKind,
-    },
+    }
 };
 use wasm_bindgen::JsCast;
 use web_sys::Element;
@@ -1509,13 +1506,15 @@ fn render_timeline_event(
                     {format!("Failed to render {event_type} with state key {state_key}: {error}")}
                 </div>
             }.into_any(),
-            EventContent::SystemMessage(ev) => render_system_message(
-                sender_id,
-                ev,
-                store_for_content.clone(),
-                room_id.get_value(),
-                jump_target
-            ).into_any(),
+            EventContent::SystemMessage(ev) => {
+                render_system_message(
+                    sender_id,
+                    ev,
+                    store_for_content.clone(),
+                    room_id.get_value(),
+                    jump_target
+                ).into_any()
+            },
         }
     };
 

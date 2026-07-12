@@ -1,4 +1,8 @@
 use chrono_tz::Tz as TimeZone;
+use shared::{
+    settings::{DataSizeUnit, DateFormat, DayOfWeek, EnumHashMap, HourFormat},
+    timeline::{SystemMessage, SystemMessageDataless},
+};
 use std::collections::HashMap;
 
 use crate::{
@@ -6,61 +10,7 @@ use crate::{
     hooks::{setup_update_effect, use_tauri_event},
 };
 use leptos::prelude::*;
-use macros::{matrix_settings, EnumVariants};
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
-
-pub trait EnumVariants: Sized + Serialize + DeserializeOwned {
-    fn variants() -> impl Iterator<Item = (Self, &'static str)>;
-}
-
-#[derive(Clone, PartialEq, Deserialize, Serialize, EnumVariants)]
-pub enum HourFormat {
-    #[serde(rename = "12-hour")]
-    TwelveHour,
-    #[serde(rename = "24-hour")]
-    TwentyFourHour,
-}
-
-#[derive(Clone, PartialEq, Deserialize, Serialize, EnumVariants)]
-pub enum DateFormat {
-    #[serde(rename = "DD/MM/YYYY")]
-    DayMonthYear,
-    #[serde(rename = "MM/DD/YYYY")]
-    MonthDayYear,
-    #[serde(rename = "YYYY/MM/DD")]
-    YearMonthDay,
-}
-
-#[derive(Clone, PartialEq, Deserialize, Serialize, EnumVariants)]
-pub enum DayOfWeek {
-    #[serde(rename = "Monday")]
-    Monday,
-    #[serde(rename = "Tuesday")]
-    Tuesday,
-    #[serde(rename = "Wednesday")]
-    Wednesday,
-    #[serde(rename = "Thursday")]
-    Thursday,
-    #[serde(rename = "Friday")]
-    Friday,
-    #[serde(rename = "Saturday")]
-    Saturday,
-    #[serde(rename = "Sunday")]
-    Sunday,
-}
-
-#[derive(Clone, PartialEq, Deserialize, Serialize, EnumVariants)]
-pub enum DataSizeUnit {
-    Bytes,
-    Bits,
-    Mibibytes,
-}
-
-impl EnumVariants for TimeZone {
-    fn variants() -> impl Iterator<Item = (Self, &'static str)> {
-        chrono_tz::TZ_VARIANTS.iter().map(|tz| (*tz, tz.name()))
-    }
-}
+use macros::matrix_settings;
 
 #[matrix_settings]
 pub struct Settings {
@@ -72,8 +22,8 @@ pub struct Settings {
     )]
     pub scaling: f64,
     #[setting(
-        "Url Previews per room",
-        "The number of URL previews to show per room",
+        "Enable Url Previews per room",
+        "Whether to show URL previews per room",
         true
     )]
     pub url_previews: HashMap<String, bool>,
@@ -175,4 +125,11 @@ pub struct Settings {
         default = true
     )]
     pub mark_pinned_messages: bool,
+    #[setting(
+        "Which system messages to show",
+        "Which system messages to show in the chat",
+        true,
+        default = SystemMessage::init_map()
+    )]
+    pub system_messages_to_show: HashMap<SystemMessageDataless, bool>,
 }

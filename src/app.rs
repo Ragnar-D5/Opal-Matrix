@@ -1,7 +1,6 @@
 use crate::components::authentication::{get_stuff_after_login, Authentication};
 use crate::components::loading::Loading;
 use crate::components::previews::ImageLightbox;
-use crate::components::settings::definition::{DataSizeUnit, DateFormat, HourFormat};
 use crate::components::settings::Settings;
 use crate::components::shader::BackgroundShader;
 use chrono::{DateTime, Local};
@@ -10,6 +9,7 @@ use shared::api::events::{
     ProfileUpdates, RecentEmojies, RoomPinnedUpdate, TypingUpdate,
 };
 use shared::api::{AudioDeviceInfos, RestoreResponse, UpdateDownloadProgress};
+use shared::settings::{DataSizeUnit, DateFormat, HourFormat};
 use shared::sidebar::{DmList, RoomMapUpdate, ServerList, SingleList};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
