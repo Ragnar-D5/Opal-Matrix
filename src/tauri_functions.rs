@@ -5,7 +5,6 @@ use shared::{
     account_data::ServerOrder,
     api::{
         FileMetadata, GetTimelineResult, LinkPreviewResponse, ScrollDirection, SearchParameters,
-        UpdateStatus,
     },
     commands::Command,
     profile::UserProfile,
@@ -476,34 +475,20 @@ pub fn unpin_event(room_id: &str, event_id: &str) {
     });
 }
 
-pub async fn get_update_status() -> Result<UpdateStatus, String> {
-    let res = call_tauri_no_args("get_update_status")
-        .await
-        .map_err(|e| format!("Tauri call failed: {:?}", e))?;
-
-    let json_string: String = js_sys::JSON::stringify(&res)
-        .map_err(|e| format!("Failed to convert response to string: {:?}", e))?
-        .into();
-
-    let update_status: UpdateStatus = serde_json::from_str(&json_string)
-        .map_err(|e| format!("Failed to parse JSON response: {:?}", e))?;
-
-    Ok(update_status)
+pub fn get_update_status() {
+    spawn_local(async move {
+        if let Err(e) = call_tauri_no_args("get_update_status").await {
+            log::error!("Failed to get update status: {:?}", e)
+        }
+    });
 }
 
-pub async fn check_for_update() -> Result<UpdateStatus, String> {
-    let res = call_tauri_no_args("check_for_update")
-        .await
-        .map_err(|e| format!("Tauri call failed: {:?}", e))?;
-
-    let json_string: String = js_sys::JSON::stringify(&res)
-        .map_err(|e| format!("Failed to convert response to string: {:?}", e))?
-        .into();
-
-    let update_status: UpdateStatus = serde_json::from_str(&json_string)
-        .map_err(|e| format!("Failed to parse JSON response: {:?}", e))?;
-
-    Ok(update_status)
+pub fn check_for_update() {
+    spawn_local(async move {
+        if let Err(e) = call_tauri_no_args("check_for_update").await {
+            log::error!("Failed to check for update: {:?}", e)
+        }
+    });
 }
 
 pub async fn get_app_version() -> Result<String, String> {
@@ -521,42 +506,28 @@ pub async fn get_app_version() -> Result<String, String> {
     Ok(version)
 }
 
-pub async fn download_update() -> Result<UpdateStatus, String> {
-    let res = call_tauri_no_args("download_update")
-        .await
-        .map_err(|e| format!("Tauri call failed: {:?}", e))?;
-
-    let json_string: String = js_sys::JSON::stringify(&res)
-        .map_err(|e| format!("Failed to convert response to string: {:?}", e))?
-        .into();
-
-    let update_status: UpdateStatus = serde_json::from_str(&json_string)
-        .map_err(|e| format!("Failed to parse JSON response: {:?}", e))?;
-
-    Ok(update_status)
+pub fn download_update() {
+    spawn_local(async move {
+        if let Err(e) = call_tauri_no_args("download_update").await {
+            log::error!("Failed to download update: {:?}", e)
+        }
+    });
 }
 
-pub async fn recheck_update() -> Result<UpdateStatus, String> {
-    let res = call_tauri_no_args("recheck_update")
-        .await
-        .map_err(|e| format!("Tauri call failed: {:?}", e))?;
-
-    let json_string: String = js_sys::JSON::stringify(&res)
-        .map_err(|e| format!("Failed to convert response to string: {:?}", e))?
-        .into();
-
-    let update_status: UpdateStatus = serde_json::from_str(&json_string)
-        .map_err(|e| format!("Failed to parse JSON response: {:?}", e))?;
-
-    Ok(update_status)
+pub fn recheck_update() {
+    spawn_local(async move {
+        if let Err(e) = call_tauri_no_args("recheck_update").await {
+            log::error!("Failed to recheck update: {:?}", e)
+        }
+    });
 }
 
-pub async fn install_update() -> Result<(), String> {
-    call_tauri_no_args("install_update")
-        .await
-        .map_err(|e| format!("Tauri call failed: {:?}", e))?;
-
-    Ok(())
+pub fn install_update() {
+    spawn_local(async move {
+        if let Err(e) = call_tauri_no_args("install_update").await {
+            log::error!("Failed to install update: {:?}", e)
+        }
+    });
 }
 
 pub fn change_screen_scaling(scale_factor: f64) {

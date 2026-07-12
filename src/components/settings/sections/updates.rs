@@ -1,5 +1,4 @@
 use leptos::prelude::*;
-use leptos::task::spawn_local;
 use phosphor_leptos::{
     Icon, IconWeight, CHECK_CIRCLE, DOWNLOAD, INFO, SPINNER, WARNING, WARNING_DIAMOND,
 };
@@ -170,41 +169,19 @@ pub fn render_update_section() -> AnyView {
                 .update_status
                 .set(UpdateStatus::Downloading(dummy_info()));
             state.update_progress.set(UpdateDownloadProgress::Started);
-            spawn_local(async move {
-                match download_update().await {
-                    Ok(status) => state.update_status.set(status),
-                    Err(e) => log::error!("Error while downloading update: {e}"),
-                }
-            });
+            download_update();
         }
         UpdateStatus::Error { .. } => {
             state.update_status.set(UpdateStatus::CheckingForUpdates);
-            spawn_local(async move {
-                match recheck_update().await {
-                    Ok(status) => state.update_status.set(status),
-                    Err(e) => log::error!("Error while checking for updates: {e}"),
-                }
-            });
+            recheck_update();
         }
         UpdateStatus::ReadyToInstall(_) => {
             state.update_status.set(UpdateStatus::CheckingForUpdates);
-            spawn_local(async move {
-                if let Err(e) = install_update().await {
-                    state.update_status.set(UpdateStatus::Error {
-                        short: "Failed to install update".to_string(),
-                        long: format!("Error while installing update: {e}"),
-                    });
-                }
-            });
+            install_update();
         }
         UpdateStatus::UpToDate => {
             state.update_status.set(UpdateStatus::CheckingForUpdates);
-            spawn_local(async move {
-                match check_for_update().await {
-                    Ok(status) => state.update_status.set(status),
-                    Err(e) => log::error!("Error while checking for updates: {e}"),
-                }
-            });
+            check_for_update();
         }
         _ => (),
     };

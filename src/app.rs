@@ -8,7 +8,7 @@ use shared::api::events::{
     CallMemberUpdate, NotificationEvent, NotificationLevel, NotificationUpdate, PresenceUpdate,
     ProfileUpdates, RecentEmojies, RoomPinnedUpdate, TypingUpdate,
 };
-use shared::api::{AudioDeviceInfos, RestoreResponse, UpdateDownloadProgress};
+use shared::api::{AudioDeviceInfos, RestoreResponse, UpdateDownloadProgress, UpdateStatus};
 use shared::settings::{DataSizeUnit, DateFormat, HourFormat};
 use shared::sidebar::{DmList, RoomMapUpdate, ServerList, SingleList};
 use std::collections::HashMap;
@@ -302,18 +302,19 @@ pub fn App() -> impl IntoView {
         state.recent_emojies.set(update);
     });
 
-    let settings_download_update: ReadSignal<Option<UpdateDownloadProgress>> = use_tauri_event();
+    let download_update: ReadSignal<Option<UpdateDownloadProgress>> = use_tauri_event();
 
-    setup_update_effect(settings_download_update, move |update| {
+    setup_update_effect(download_update, move |update| {
         state.update_progress.set(update);
     });
 
-    spawn_local(async move {
-        match get_update_status().await {
-            Ok(status) => state.update_status.set(status),
-            Err(e) => log::error!("Failed to get update status: {e}"),
-        }
+    let update_status: ReadSignal<Option<UpdateStatus>> = use_tauri_event();
+
+    setup_update_effect(update_status, move |update| {
+        state.update_status.set(update);
     });
+
+    get_update_status();
 
     spawn_local(async move {
         match get_app_version().await {
