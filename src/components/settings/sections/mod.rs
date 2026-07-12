@@ -456,11 +456,11 @@ where
     };
 
     view! {
-        <div class="flex flex-col gap-2 rounded-lg p-(--gap)">
+        <div class="flex flex-col gap-2 rounded-lg p-(--gap) group border-transparent border transition-colors duration-200 hover:border-(--tile-border-color)">
             <div class="flex flex-row gap-2">
                 <div class="flex gap-2 items-center">
                     <span class="inline-flex items-center gap-2">
-                        <span class="select-none text-normal">{name}</span>
+                        <span class="select-none text-dim group-hover:text-normal">{name}</span>
                         <div title=description class="flex items-center">
                             <Icon icon=QUESTION size="14px" color="var(--dim-text-color)" />
                         </div>
@@ -477,6 +477,7 @@ where
                                     view! {
                                         <button
                                             type="button"
+                                            title=format!("Apply mode: {}", label)
                                             on:click=move |_| apply_mode(mode_variants)
                                             class="px-2 py-1 rounded-lg border border-(--tile-border-color) text-dim hover:text-normal hover:border-(--accent-color) text-xs cursor-pointer transition-colors duration-100"
                                             class=(
