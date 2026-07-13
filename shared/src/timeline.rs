@@ -472,13 +472,13 @@ impl std::fmt::Display for UiGuestAccess {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub enum UiHistoryVisibility {
     Invited,
     Joined,
+    #[default]
     Shared,
     WorldReadable,
-    Unknown,
 }
 
 impl std::fmt::Display for UiHistoryVisibility {
@@ -488,20 +488,19 @@ impl std::fmt::Display for UiHistoryVisibility {
             UiHistoryVisibility::Joined => write!(f, "Only joined members can see history"),
             UiHistoryVisibility::Shared => write!(f, "Shared history"),
             UiHistoryVisibility::WorldReadable => write!(f, "World readable history"),
-            UiHistoryVisibility::Unknown => write!(f, "Unknown history visibility"),
         }
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub enum UiJoinRule {
     Public,
     Knock,
+    #[default]
     Invite,
     Private,
     Restricted,
     KnockRestricted,
-    Unknown,
 }
 
 impl std::fmt::Display for UiJoinRule {
@@ -513,7 +512,6 @@ impl std::fmt::Display for UiJoinRule {
             UiJoinRule::Private => write!(f, "Private"),
             UiJoinRule::Restricted => write!(f, "Restricted"),
             UiJoinRule::KnockRestricted => write!(f, "Knock Restricted"),
-            UiJoinRule::Unknown => write!(f, "Unknown"),
         }
     }
 }

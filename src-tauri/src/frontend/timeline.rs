@@ -18,7 +18,7 @@ use matrix_sdk::{
             AnySyncMessageLikeEvent, AnySyncTimelineEvent, StateEventContentChange, StateEventType,
             SyncMessageLikeEvent,
         },
-        room::JoinRule,
+        room::JoinRuleSummary,
         serde::Raw,
         EventId, MilliSecondsSinceUnixEpoch, OwnedEventId,
     },
@@ -184,6 +184,28 @@ fn reply_preview_spans(content: &TimelineItemContent) -> Vec<RichTextSpan> {
                 intent_str, declined_by_str
             ))]
         }
+    }
+}
+
+pub fn join_rule_to_ui(rule: JoinRuleSummary) -> UiJoinRule {
+    match rule {
+        JoinRuleSummary::Invite => UiJoinRule::Invite,
+        JoinRuleSummary::Knock => UiJoinRule::Knock,
+        JoinRuleSummary::KnockRestricted(_) => UiJoinRule::KnockRestricted,
+        JoinRuleSummary::Private => UiJoinRule::Private,
+        JoinRuleSummary::Public => UiJoinRule::Public,
+        JoinRuleSummary::Restricted(_) => UiJoinRule::Restricted,
+        _ => UiJoinRule::default(),
+    }
+}
+
+pub fn history_visibility_to_ui(visibility: &HistoryVisibility) -> UiHistoryVisibility {
+    match visibility {
+        HistoryVisibility::Invited => UiHistoryVisibility::Invited,
+        HistoryVisibility::Joined => UiHistoryVisibility::Joined,
+        HistoryVisibility::Shared => UiHistoryVisibility::Shared,
+        HistoryVisibility::WorldReadable => UiHistoryVisibility::WorldReadable,
+        _ => UiHistoryVisibility::default(),
     }
 }
 
@@ -687,13 +709,7 @@ pub fn timeline_item_content_to_ui(
             AnyOtherStateEventContentChange::RoomHistoryVisibility(change) => match change {
                 StateEventContentChange::Original { content, .. } => {
                     EventContent::SystemMessage(SystemMessage::RoomHistoryVisibility {
-                        visibility: match content.history_visibility {
-                            HistoryVisibility::Invited => UiHistoryVisibility::Invited,
-                            HistoryVisibility::Joined => UiHistoryVisibility::Joined,
-                            HistoryVisibility::Shared => UiHistoryVisibility::Shared,
-                            HistoryVisibility::WorldReadable => UiHistoryVisibility::WorldReadable,
-                            _ => UiHistoryVisibility::Unknown,
-                        },
+                        visibility: history_visibility_to_ui(&content.history_visibility),
                     })
                 }
                 StateEventContentChange::Redacted(_) => {
@@ -703,14 +719,7 @@ pub fn timeline_item_content_to_ui(
             AnyOtherStateEventContentChange::RoomJoinRules(change) => match change {
                 StateEventContentChange::Original { content, .. } => {
                     EventContent::SystemMessage(SystemMessage::RoomJoinRules {
-                        join_rule: match content.join_rule {
-                            JoinRule::Invite => UiJoinRule::Invite,
-                            JoinRule::Knock => UiJoinRule::Knock,
-                            JoinRule::Public => UiJoinRule::Public,
-                            JoinRule::Restricted(_) => UiJoinRule::Restricted,
-                            JoinRule::KnockRestricted(_) => UiJoinRule::KnockRestricted,
-                            _ => UiJoinRule::Unknown,
-                        },
+                        join_rule: join_rule_to_ui(content.join_rule.clone().into()),
                     })
                 }
                 StateEventContentChange::Redacted(_) => {

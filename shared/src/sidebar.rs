@@ -4,7 +4,11 @@ use csscolorparser::Color;
 use macros::TauriEvent;
 use serde::{Deserialize, Serialize};
 
-use crate::{account_data::ServerOrder, profile::RoomProfile};
+use crate::{
+    account_data::ServerOrder,
+    profile::RoomProfile,
+    timeline::{UiHistoryVisibility, UiJoinRule},
+};
 
 #[derive(Debug, Serialize, Clone, Deserialize, PartialEq, TauriEvent)]
 pub struct UserDevice {
@@ -377,4 +381,23 @@ impl MaybeNotificationCounts for Option<NotificationCounts> {
             false
         }
     }
+}
+
+#[derive(Debug, Serialize, Clone, Deserialize, PartialEq, TauriEvent)]
+pub enum UiMembership {
+    Join,
+    Invite,
+    Leave,
+    Ban,
+    Knock,
+}
+
+#[derive(Debug, Serialize, Clone, Deserialize, PartialEq, TauriEvent)]
+pub struct RoomExtraInfo {
+    pub membership: UiMembership,
+    pub join_rule: UiJoinRule,
+    pub history_visibility: UiHistoryVisibility,
+    pub encrypted: bool,
+    pub version: Option<String>,
+    pub num_joined_users: u64,
 }

@@ -6,6 +6,7 @@ pub(crate) mod messages;
 pub(crate) mod notifications;
 pub(crate) mod presence;
 pub(crate) mod profiles;
+pub(crate) mod rooms;
 pub(crate) mod search;
 pub(crate) mod settings;
 pub(crate) mod sidebar;
