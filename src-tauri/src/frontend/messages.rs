@@ -12,7 +12,7 @@ use matrix_sdk::{
     attachment::{AttachmentInfo, BaseFileInfo, BaseImageInfo, BaseVideoInfo},
     room::edit::EditedContent,
     ruma::{
-        EventId, api::client::receipt::create_receipt::v3::ReceiptType, events::room::MediaSource,
+        EventId, events::room::MediaSource,
     },
 };
 use matrix_sdk_ui::timeline::{
@@ -425,14 +425,9 @@ pub async fn get_timeline(
 
             log::debug!("Fetched {} messages for room {}", messages.len(), room_id);
 
-            timeline.mark_as_read(ReceiptType::FullyRead).await?;
-
             let mut unknown_reply_event_ids = HashSet::new();
             let ui_messages: Vec<_> = messages.iter().map(|v| timeline_item_to_ui(v, &mut media_store, &mut unknown_reply_event_ids)).collect();
 
-            // Fetch reply details in the background so the stream index stays in
-            // sync with what the frontend receives. The stream handler will deliver
-            // the resulting Set diffs once details are ready.
             if !unknown_reply_event_ids.is_empty() {
                 let timeline_bg = timeline.clone();
                 tokio::spawn(async move {

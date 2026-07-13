@@ -1,4 +1,4 @@
-use phosphor_leptos::{BUG, Icon, IconData, IconWeight, SPEAKER_HIGH};
+use phosphor_leptos::{Icon, IconData, IconWeight, BUG, SPEAKER_HIGH};
 use shared::{
     profile::MemberProfile,
     sidebar::{ServerRoomNode, UserDevice},
@@ -6,11 +6,11 @@ use shared::{
 
 use crate::{
     components::{
-        AudioMenu, DeafenMenu, FloatingTile, MuteMenu,
         logo::Logo,
         presence::PresenceBadge,
         settings::SettingsIcon,
-        user_profile::{MemberProfileExt, RoomNodeExt, render_url_icon},
+        user_profile::{render_url_icon, MemberProfileExt, RoomNodeExt},
+        AudioMenu, DeafenMenu, FloatingTile, MuteMenu,
     },
     state::{AppState, CurrentSection, ProfileStore},
     tauri_functions::open_log_window,
@@ -331,11 +331,14 @@ fn render_room_preview(room: RoomNode, members: Option<Vec<UserDevice>>) -> impl
 
             <CutoutBadge bottom_right=br_corner top_right=tr_corner class="justify-center flex">
                 <div class="avatar-circle w-10 h-10 rounded-full" style:justify-content="center">
-                    {if let RoomNode::Dm(dm) = &room {
-                        let profile = store.get_member_profile(&room.room_id(), &dm.other_user_id);
-                        profile.get().render_icon("40px")
-                    } else {
-                        room.render_url_icon("40px")
+                    {move || {
+                        if let RoomNode::Dm(dm) = &room {
+                            let profile = store
+                                .get_member_profile(&room.room_id(), &dm.other_user_id);
+                            profile.get().render_icon("40px")
+                        } else {
+                            room.render_url_icon("40px")
+                        }
                     }}
                 </div>
             </CutoutBadge>
@@ -347,28 +350,23 @@ fn render_room_preview(room: RoomNode, members: Option<Vec<UserDevice>>) -> impl
 pub fn ServerIcon(server: ServerRoomNode) -> impl IntoView {
     let state = expect_context::<AppState>();
 
-    let server_id = server.room_id();
-
-    let server_id_for_active = server_id.clone();
-    let server_id_for_click = server_id.clone();
+    let server_id = StoredValue::new(server.room_id());
 
     let is_active = Memo::new(move |_| {
-        state.active_section.get() == CurrentSection::Server(server_id_for_active.clone())
+        state.active_section.get() == CurrentSection::Server(server_id.get_value())
     });
 
-    let server_id_for_not = server_id.clone();
+    let all_children = server.all_children.clone();
     let notifications = Memo::new(move |_| {
-        state
-            .notification_counts
-            .get()
-            .get(&server_id_for_not)
-            .cloned()
-            .unwrap_or_default()
-    });
+        let counts = state.notification_counts.get();
+        let server_id = &server_id.get_value();
 
-    let has_notifications = Memo::new(move |_| {
-        let counts = notifications.get();
-        counts.notification_count > 0 || counts.highlight_count > 0
+        let mut count = counts.get(server_id).cloned().unwrap_or_default();
+
+        for room_id in &all_children {
+            count += counts.get(room_id).cloned().unwrap_or_default();
+        }
+        count
     });
 
     let avatar_content = render_server_avatar(RoomNode::Server(server.clone()), "40px");
@@ -408,7 +406,10 @@ pub fn ServerIcon(server: ServerRoomNode) -> impl IntoView {
 
     view! {
         <div class="relative flex items-center justify-center group w-full">
-            <IndicatorPill is_active=is_active has_notifications=has_notifications />
+            <IndicatorPill
+                is_active=is_active
+                has_notifications=move || notifications.get().has_notifications()
+            />
             <div class="relative w-10 h-10">
                 <CutoutBadge
                     bottom_right=move || br_corner()
@@ -421,10 +422,7 @@ pub fn ServerIcon(server: ServerRoomNode) -> impl IntoView {
                         class=("bg-[var(--color-icon-bg)]", move || !is_active.get())
                         class=("hover:bg-[var(--color-icon-hover)]", move || !is_active.get())
                         on:click=move |_| {
-                            state
-                                .set_active_section(
-                                    CurrentSection::Server(server_id_for_click.clone()),
-                                );
+                            state.set_active_section(CurrentSection::Server(server_id.get_value()));
                         }
                     >
                         <div class="avatar-circle w-full h-full rounded-[25%] overflow-hidden">
@@ -457,6 +455,15 @@ fn render_server_channel(child: RoomNode) -> AnyView {
             .unwrap_or_default();
         counts.highlight_count
     };
+    let notification_count = move || {
+        let counts = state
+            .notification_counts
+            .get()
+            .get(&room_id.get_value())
+            .cloned()
+            .unwrap_or_default();
+        counts.notification_count
+    };
 
     let has_notifications = Memo::new(move |_| {
         let counts = state
@@ -467,6 +474,14 @@ fn render_server_channel(child: RoomNode) -> AnyView {
             .unwrap_or_default();
         counts.notification_count > 0 || counts.highlight_count > 0
     });
+
+    let notification_gradient = move || {
+        if !has_notifications.get() {
+            return String::new();
+        }
+
+        "linear-gradient(in oklch to right, oklch(from var(--accent-color) l c h / 0.15), oklch(from var(--accent-color) l c h / 0) 100%)".to_string()
+    };
 
     let participants = Memo::new(move |_| state.get_call_members(&room_id.get_value()).get());
     let name = child.name();
@@ -519,6 +534,7 @@ fn render_server_channel(child: RoomNode) -> AnyView {
                 class=("bg-(--ui-solid-hover-bg)", move || is_active.get())
                 class=("border-transparent", move || !is_active.get())
                 class=("border-(--tile-border-color)", move || is_active.get())
+                style:background-image=notification_gradient
                 on:click=move |_| { state.set_active_room_with_id(Some(click_id.clone())) }
             >
                 <div class=(
@@ -527,12 +543,16 @@ fn render_server_channel(child: RoomNode) -> AnyView {
                 )>{child.get_value().render_simple_icon("20px")}</div>
                 <div class="w-1"></div>
                 {name}
+                <div class="flex flex-1" />
                 {if highlight_count() > 0 {
                     view! {
-                        <div class="ml-auto bg-(--mention-color) text-white text-xs font-bold px-1.5 py-0.5 rounded-full">
+                        <div class="text-center bg-(--accent-color) w-5 h-5 text-(--ui-solid-bg) text-xs font-bold px-1.5 py-0.5 rounded-full">
                             {highlight_count}
                         </div>
                     }
+                        .into_any()
+                } else if notification_count() > 0 {
+                    view! { <div class="bg-(--text-color) w-2 h-2 rounded-full mr-1.5" /> }
                         .into_any()
                 } else {
                     view! { <div></div> }.into_any()

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, ops::AddAssign};
 
 use csscolorparser::Color;
 use macros::TauriEvent;
@@ -352,9 +352,16 @@ pub struct NotificationCounts {
     pub notification_count: u64,
 }
 
+impl AddAssign for NotificationCounts {
+    fn add_assign(&mut self, other: Self) {
+        self.highlight_count += other.highlight_count;
+        self.notification_count += other.notification_count;
+    }
+}
+
 impl NotificationCounts {
     pub fn has_notifications(&self) -> bool {
-        self.notification_count > 0
+        self.notification_count > 0 || self.highlight_count > 0
     }
 }
 

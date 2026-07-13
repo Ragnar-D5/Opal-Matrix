@@ -489,6 +489,9 @@
   .mr-1 {
     margin-right: calc(var(--spacing) * 1);
   }
+  .mr-1\.5 {
+    margin-right: calc(var(--spacing) * 1.5);
+  }
   .mr-2 {
     margin-right: calc(var(--spacing) * 2);
   }
@@ -1228,9 +1231,6 @@
   .border-\(--tile-border-color\) {
     border-color: var(--tile-border-color);
   }
-  .border-\[\#00ffff\] {
-    border-color: #00ffff;
-  }
   .border-\[\#262a38\] {
     border-color: #262a38;
   }
@@ -1264,8 +1264,8 @@
   .border-y-transparent {
     border-block-color: transparent;
   }
-  .border-r-\[\#00ffff\] {
-    border-right-color: #00ffff;
+  .border-r-\(--accent-color\) {
+    border-right-color: var(--accent-color);
   }
   .bg {
     background-color: var(--bg-color, #1e1e2e);
@@ -1294,9 +1294,6 @@
   .bg-\(--idle-color\) {
     background-color: var(--idle-color);
   }
-  .bg-\(--mention-color\) {
-    background-color: var(--mention-color);
-  }
   .bg-\(--offline-color\) {
     background-color: var(--offline-color);
   }
@@ -1321,6 +1318,9 @@
   .bg-\(--success-color\) {
     background-color: var(--success-color);
   }
+  .bg-\(--text-color\) {
+    background-color: var(--text-color);
+  }
   .bg-\(--text-muted\) {
     background-color: var(--text-muted);
   }
@@ -1344,9 +1344,6 @@
   }
   .bg-\(--ui-solid-hover-bg\) {
     background-color: var(--ui-solid-hover-bg);
-  }
-  .bg-\[\#00ffff\] {
-    background-color: #00ffff;
   }
   .bg-\[rgba\(255\,180\,84\,0\.30\)\] {
     background-color: rgba(255,180,84,0.30);
@@ -1564,9 +1561,6 @@
   .pr-2 {
     padding-right: calc(var(--spacing) * 2);
   }
-  .pr-4 {
-    padding-right: calc(var(--spacing) * 4);
-  }
   .pr-5 {
     padding-right: calc(var(--spacing) * 5);
   }
@@ -1743,6 +1737,9 @@
   .text-\(--accent-color\) {
     color: var(--accent-color);
   }
+  .text-\(--bg-color\) {
+    color: var(--bg-color);
+  }
   .text-\(--blue\) {
     color: var(--blue);
   }
@@ -1799,9 +1796,6 @@
   }
   .text-\[\#ffe0b0\] {
     color: #ffe0b0;
-  }
-  .text-\[var\(--bg-color\)\] {
-    color: var(--bg-color);
   }
   .text-blue-400 {
     color: var(--color-blue-400);

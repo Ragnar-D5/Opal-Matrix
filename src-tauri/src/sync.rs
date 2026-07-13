@@ -14,8 +14,8 @@ use tauri::{async_runtime::spawn, AppHandle, Manager};
 use crate::frontend::notifications::on_message;
 use crate::frontend::profiles::handle_typing_notice;
 use crate::frontend::sidebar::{
-    compute_dm_order, compute_single_order, convert_room_to_node, get_unknown_children,
-    handle_account_data, spawn_all_children_update,
+    compute_dm_order, compute_single_order, convert_room_to_node, get_notification_counts,
+    get_unknown_children, handle_account_data, spawn_all_children_update,
 };
 use crate::matrix_api::account_data::on_recent_emoji_update;
 use crate::matrix_api::matrixrtc::handle_call_member_change;
@@ -212,6 +212,9 @@ pub async fn attach_callbacks(
         if !updates.is_empty() {
             send_event(&handle_clone, &updates);
         }
+
+        let counts = get_notification_counts(&client_sync_clone).await;
+        send_event(&handle_clone, &counts);
 
         while let Some(sync_item) = sync_stream.next().await {
             match sync_item {

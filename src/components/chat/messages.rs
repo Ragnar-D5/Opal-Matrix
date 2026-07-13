@@ -1800,11 +1800,11 @@ pub fn render_timeline_item(
         }
         .into_any(),
         UiTimelineItemKind::ReadMarker => view! {
-            <div class="flex items-center w-full pr-4">
-                <div class="flex-1 border-2 border-[#00ffff] rounded-full"></div>
+            <div class="flex items-center w-full px-4">
+                <div class="flex-1 border-2 border-(--accent-color) rounded-full"></div>
 
-                <span class="relative flex items-center h-[20px] bg-[#00ffff] text-[var(--bg-color)] text-[10px] font-bold px-2 rounded-r-[3px] ml-1 uppercase tracking-wider select-none">
-                    <div class="absolute -left-[6px] top-0 w-0 h-0 border-y-[10px] border-y-transparent border-r-[6px] border-r-[#00ffff]"></div>
+                <span class="relative flex items-center h-[20px] bg-(--accent-color) text-(--bg-color) text-[10px] font-bold px-2 rounded-r-[3px] ml-1 uppercase tracking-wider select-none">
+                    <div class="absolute -left-[6px] top-0 w-0 h-0 border-y-[10px] border-y-transparent border-r-[6px] border-r-(--accent-color)"></div>
                     "New"
                 </span>
             </div>
