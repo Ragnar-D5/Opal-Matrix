@@ -438,7 +438,7 @@ pub fn ServerIcon(server: ServerRoomNode) -> impl IntoView {
             .into_any()
 }
 
-pub fn render_server_channel(child: RoomNode) -> AnyView {
+fn render_server_channel(child: RoomNode) -> AnyView {
     let state: AppState = expect_context();
     let store: ProfileStore = expect_context();
 

@@ -280,8 +280,16 @@ impl RoomNode {
         matches!(self, RoomNode::Unjoined(_))
     }
 
-    pub fn is_space(&self) -> bool {
-        matches!(self, RoomNode::Space(_) | RoomNode::Server(_))
+    pub fn has_children(&self) -> bool {
+        self.children().is_some_and(|children| !children.is_empty())
+    }
+
+    pub fn children(&self) -> Option<Vec<String>> {
+        match self {
+            RoomNode::Space(space_node) => Some(space_node.children.clone()),
+            RoomNode::Server(server_node) => Some(server_node.children.clone()),
+            _ => None,
+        }
     }
 }
 

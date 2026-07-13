@@ -28,7 +28,7 @@ pub fn ChatHeader(chat_sidebar_open: RwSignal<bool>) -> impl IntoView {
         if let Some(node) = state.active_room.get() {
             if node.is_dm() {
                 USER_CIRCLE
-            } else if node.is_space() {
+            } else if node.has_children() {
                 INFO
             } else {
                 USER_LIST
@@ -222,7 +222,7 @@ pub fn ChatHeader(chat_sidebar_open: RwSignal<bool>) -> impl IntoView {
                     }
                 }}
             </div>
-            <div class="flex-1 flex flex-col self-center text-bright text-m font-semibold">
+            <div class="flex-1 flex flex-col self-center text-normal text-m font-semibold">
                 {move || {
                     let Some(current_room) = state.active_room.get() else {
                         return view! { <span>"No Room"</span> }.into_any();
