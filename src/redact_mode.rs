@@ -49,6 +49,13 @@ thread_local! {
 /// cover newly rendered content.
 pub fn set_redaction_mode(percentage: f64, container_selector: &'static str) {
     CURRENT_PERCENTAGE.with(|p| p.set(percentage));
+
+    if percentage <= 0.0 {
+        clear_redactions();
+        stop_periodic_redaction();
+        return;
+    }
+
     redact_now(container_selector);
     start_periodic_redaction(container_selector);
 }
@@ -61,6 +68,14 @@ fn start_periodic_redaction(container_selector: &'static str) {
         let new_handle =
             set_interval_with_handle(move || redact_now(container_selector), REDACT_PERIOD).ok();
         *handle.borrow_mut() = new_handle;
+    });
+}
+
+fn stop_periodic_redaction() {
+    PERIODIC_HANDLE.with(|handle| {
+        if let Some(h) = handle.borrow_mut().take() {
+            h.clear();
+        }
     });
 }
 

@@ -3,15 +3,18 @@ use std::collections::HashMap;
 use leptos::{html::Input, prelude::*, task::spawn_local};
 use leptos_use::use_active_element;
 use phosphor_leptos::{
-    HASH, INFO, Icon, IconWeight, MAGNIFYING_GLASS, MATRIX_LOGO, PHONE, PHONE_DISCONNECT, PUSH_PIN,
-    SPEAKER_HIGH, USER_CIRCLE, USER_LIST, X,
+    INFO, Icon, IconWeight, MAGNIFYING_GLASS, PHONE, PHONE_DISCONNECT, PUSH_PIN, USER_CIRCLE,
+    USER_LIST, X,
 };
 use shared::{api::SearchParameters, sidebar::RoomNode, timeline::UiTimelineItem};
 use uuid::Uuid;
 use web_sys::KeyboardEvent;
 
 use crate::{
-    components::{FloatingTile, SystemButtons, presence::PresenceBadge, user_profile::MemberProfileExt},
+    components::{
+        FloatingTile, SystemButtons,
+        user_profile::{MemberProfileExt, RoomNodeExt},
+    },
     state::{AppState, CurrentSection, ProfileStore},
     tauri_functions::{get_pinned_events, join_call, leave_call, search_rooms},
 };
@@ -204,75 +207,18 @@ pub fn ChatHeader(chat_sidebar_open: RwSignal<bool>) -> impl IntoView {
     let store_clone = store.clone();
     view! {
         <FloatingTile class="h-(--header-height) items-start flex-row gap-1 pl-[5px]">
-            <div class="w-8 self-center flex items-center justify-center">
+            <div class="w-8 self-center flex items-center justify-center text-normal">
                 {move || {
-                    let clone = store.clone();
                     let Some(node) = state.active_room.get() else {
                         return view! {
-                            <div class="text-(--ui-base-color) w-full justify-center flex">
+                            <div class="w-full justify-center flex">
                                 <Icon icon=INFO color="currentColor" size="70%" />
                             </div>
                         }
                             .into_any();
                     };
-                    match &node {
-                        RoomNode::TextChannel(_) | RoomNode::Single(_) => {
-
-                            view! {
-                                <div class="text-(--ui-base-color) w-full justify-center flex">
-                                    <Icon icon=HASH color="currentColor" size="70%" />
-                                </div>
-                            }
-                                .into_any()
-                        }
-                        RoomNode::VoiceChannel(_) => {
-                            view! {
-                                <div class="text-(--ui-base-color) w-full justify-center flex">
-                                    <Icon icon=SPEAKER_HIGH color="currentColor" size="70%" />
-                                </div>
-                            }
-                                .into_any()
-                        }
-                        RoomNode::Dm(dm_node) => {
-                            let profile_sig = store
-                                .get_member_profile(&node.room_id(), &dm_node.other_user_id);
-                            {
-
-                                view! {
-                                    {move || {
-                                        let profile = profile_sig.get();
-                                        let presence = clone
-                                            .clone()
-                                            .get_presence(profile.user_id());
-                                        view! {
-                                            <PresenceBadge presence=presence size=14.0>
-                                                {profile.render_icon("30px")}
-                                            </PresenceBadge>
-                                        }
-                                            .into_any()
-                                    }}
-                                }
-                            }
-                                .into_any()
-                        }
-                        RoomNode::Unjoined(_) => {
-                            view! {
-                                <div class="w-8 text-end">
-                                    <span class="text-lg text-bright self-center align-middle">
-                                        "?"
-                                    </span>
-                                </div>
-                            }
-                                .into_any()
-                        }
-                        RoomNode::Server(_) | RoomNode::Space(_) => {
-                            view! {
-                                <div class="text-(--ui-base-color) w-full justify-center flex">
-                                    <Icon icon=MATRIX_LOGO color="currentColor" size="70%" />
-                                </div>
-                            }
-                                .into_any()
-                        }
+                    view! {
+                        {node.render_icon("70%")}
                     }
                 }}
             </div>

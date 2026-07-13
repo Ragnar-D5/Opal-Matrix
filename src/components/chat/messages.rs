@@ -8,11 +8,14 @@ use phosphor_leptos::{
     PUSH_PIN_SLASH, SMILEY, SPEAKER_HIGH, TRASH, WARNING_CIRCLE,
 };
 use shared::{
-    api::events::RecentEmoji, profile::MemberProfile, sidebar::RoomNode, timeline::{
+    api::events::RecentEmoji,
+    profile::MemberProfile,
+    sidebar::RoomNode,
+    timeline::{
         DetailState, EventContent, EventFlags, MessageContent, ReactionInfo, ReplyInfo,
         RichTextSpan, SystemMessage, UiCallIntent, UiMembershipChange, UiMessageType,
         UiTimelineItem, UiTimelineItemKind,
-    }
+    },
 };
 use wasm_bindgen::JsCast;
 use web_sys::Element;
@@ -20,7 +23,15 @@ use web_sys::Element;
 use crate::{
     app::{format_date, format_time},
     components::{
-        CloseButton, TextCircle, TextCircleProps, blurhash::Blurhash, chat::{Attachment, ChatInputInfo}, input::move_caret_to_end, overlays::emoji_picker::{EmojiPickerState, pick_emoji}, previews::render_link, settings::Settings, text::{RichTextExt, richt_text_spans_to_html}, user_profile::MemberProfileExt
+        CloseButton, TextCircle, TextCircleProps,
+        blurhash::Blurhash,
+        chat::{Attachment, ChatInputInfo},
+        input::move_caret_to_end,
+        overlays::emoji_picker::{EmojiPickerState, pick_emoji},
+        previews::render_link,
+        settings::Settings,
+        text::{RichTextExt, richt_text_spans_to_html},
+        user_profile::MemberProfileExt,
     },
     state::{AppState, LighboxImage, ProfileStore},
     tauri_functions::{delete_message, pin_event, toggle_reaction, unpin_event},
@@ -673,11 +684,7 @@ fn render_reactions(
     view! { <div class="flex flex-wrap gap-1 mt-1 mb-2">{content}</div> }.into_any()
 }
 
-fn render_read_receipts(
-    receipts: Vec<String>,
-    store: ProfileStore,
-    room_id: String,
-) -> AnyView {
+fn render_read_receipts(receipts: Vec<String>, store: ProfileStore, room_id: String) -> AnyView {
     if receipts.is_empty() {
         return ().into_any();
     }
@@ -718,7 +725,7 @@ fn render_read_receipts(
             {pics} {overflow}
         </div>
     }
-        .into_any()
+    .into_any()
 }
 
 fn get_date_from_ts(ts: i64) -> DateTime<Local> {
@@ -1832,7 +1839,7 @@ pub fn render_timeline_item(
                     <div class="w-16 h-16 rounded-full bg-(--ui-solid-bg) border border-(--tile-border-color) flex items-center justify-center mb-2 text-normal">
                         <Icon icon=icon size="36px" weight=IconWeight::Bold />
                     </div>
-                    <h2 class="text-3xl font-bold text-bright">{heading}</h2>
+                    <h2 class="text-3xl font-bold text-normal">{heading}</h2>
                     <p class="text-muted text-sm">{subtitle}</p>
                 </div>
             }

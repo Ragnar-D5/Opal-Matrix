@@ -1,4 +1,4 @@
-use phosphor_leptos::{Icon, IconData, IconWeight, BUG, SPEAKER_HIGH};
+use phosphor_leptos::{BUG, Icon, IconData, IconWeight, SPEAKER_HIGH};
 use shared::{
     profile::MemberProfile,
     sidebar::{ServerRoomNode, UserDevice},
@@ -6,11 +6,11 @@ use shared::{
 
 use crate::{
     components::{
+        AudioMenu, DeafenMenu, FloatingTile, MuteMenu,
         logo::Logo,
         presence::PresenceBadge,
         settings::SettingsIcon,
-        user_profile::{render_url_icon, MemberProfileExt, RoomNodeExt},
-        AudioMenu, DeafenMenu, FloatingTile, MuteMenu,
+        user_profile::{MemberProfileExt, RoomNodeExt, render_url_icon},
     },
     state::{AppState, CurrentSection, ProfileStore},
     tauri_functions::open_log_window,
@@ -125,7 +125,7 @@ fn render_full_room(node: RoomNode, other_user_id: StoredValue<Option<String>>) 
                 let notifications = notifications().notification_count;
                 if notifications > 0 {
                     view! {
-                        <div class="ml-auto bg-[var(--mention-color)] text-white text-xs font-bold px-1.5 py-0.5 rounded-full">
+                        <div class="ml-auto bg-[var(--mention-color)] text-normal text-xs font-bold px-1.5 py-0.5 rounded-full">
                             {notifications}
                         </div>
                     }
@@ -474,9 +474,6 @@ pub fn render_server_channel(child: RoomNode) -> AnyView {
     let child = StoredValue::new(child);
 
     let call_preview = move || {
-        if !matches!(child.get_value(), RoomNode::VoiceChannel(_)) {
-            return ().into_any();
-        }
         let participants = participants.get();
 
         if participants.is_empty() {

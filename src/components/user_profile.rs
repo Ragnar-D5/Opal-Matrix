@@ -1,6 +1,6 @@
 use csscolorparser::Color;
 use leptos::prelude::*;
-use phosphor_leptos::{Icon, IconWeight, HASH, MATRIX_LOGO, SIGN_IN, SPEAKER_HIGH};
+use phosphor_leptos::{HASH, Icon, IconWeight, MATRIX_LOGO, SIGN_IN, SPEAKER_HIGH};
 use shared::{
     profile::{MemberProfile, RoomProfile, UserProfile},
     sidebar::RoomNode,
@@ -10,7 +10,7 @@ use shared::{
 use wasm_bindgen::JsCast;
 use web_sys::MouseEvent;
 
-use crate::components::overlays::profile_card::ProfileCardState;
+use crate::{components::overlays::profile_card::ProfileCardState, state::ProfileStore};
 
 use super::TextCircle;
 
@@ -126,10 +126,23 @@ pub fn render_unknown_name<T: AsRef<str>>(font_size_str: T) -> impl IntoView {
 pub trait RoomNodeExt {
     fn render_url_icon<T: AsRef<str>>(&self, size_str: T) -> AnyView;
     fn render_simple_icon<T: AsRef<str>>(&self, size_str: T) -> AnyView;
+    /// Renders the url icon if it is a `Dm` or `Single`, simple icon otherwise
+    fn render_icon<T: AsRef<str>>(&self, size_str: T) -> AnyView;
 }
 
 impl RoomNodeExt for RoomNode {
     fn render_url_icon<T: AsRef<str>>(&self, size_str: T) -> AnyView {
+        if let Some(dm) = self.as_dm() {
+            let store: ProfileStore = expect_context();
+            let sig = store.get_member_profile(&self.room_id(), &dm.other_user_id);
+
+            let size = size_str.as_ref().to_string();
+            return view! {
+                {move || sig.get().render_icon(&size)}
+            }
+            .into_any();
+        }
+
         if let Some(url) = self.avatar_url() {
             render_url_icon(Some(url), self.name(), size_str, self.color(), "full")
         } else {
@@ -140,14 +153,22 @@ impl RoomNodeExt for RoomNode {
     fn render_simple_icon<T: AsRef<str>>(&self, size_str: T) -> AnyView {
         let (icon, weight) = match self {
             RoomNode::Dm(_) | RoomNode::TextChannel(_) | RoomNode::Single(_) => {
-                (HASH, IconWeight::Light)
+                (HASH, IconWeight::Bold)
             }
             RoomNode::VoiceChannel(_) => (SPEAKER_HIGH, IconWeight::Fill),
-            RoomNode::Unjoined(_) => (SIGN_IN, IconWeight::Light),
-            _ => (MATRIX_LOGO, IconWeight::Light),
+            RoomNode::Unjoined(_) => (SIGN_IN, IconWeight::Bold),
+            _ => (MATRIX_LOGO, IconWeight::Bold),
         };
 
         view! { <Icon icon=icon weight=weight size=size_str.as_ref().to_string() /> }.into_any()
+    }
+
+    fn render_icon<T: AsRef<str>>(&self, size_str: T) -> AnyView {
+        if matches!(self, RoomNode::Dm(_) | RoomNode::Single(_)) {
+            self.render_url_icon(size_str)
+        } else {
+            self.render_simple_icon(size_str)
+        }
     }
 }
 
