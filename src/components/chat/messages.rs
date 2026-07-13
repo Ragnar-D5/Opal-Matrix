@@ -1645,7 +1645,7 @@ fn render_timeline_event(
                     .map(|color| {
                         let hovered = is_active();
                         format!(
-                            "linear-gradient(in oklch to right, oklch(from {color} l c h / {}) 20%, oklch(from {color} l c h / 0) 100%)",
+                            "linear-gradient(in srgb to right, oklch(from {color} l c h / {}) 20%, oklch(from {color} l c h / 0) 100%)",
                             if hovered { "0.10" } else { "0.15" },
                         )
                     })

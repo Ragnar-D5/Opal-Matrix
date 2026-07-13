@@ -261,6 +261,9 @@
   .pointer-events-none {
     pointer-events: none;
   }
+  .\!visible {
+    visibility: visible !important;
+  }
   .invisible {
     visibility: hidden;
   }
@@ -530,6 +533,9 @@
   }
   .ml-\[5px\] {
     margin-left: 5px;
+  }
+  .ml-\[9px\] {
+    margin-left: 9px;
   }
   .ml-\[14px\] {
     margin-left: 14px;
@@ -1198,6 +1204,10 @@
   .border-b-0 {
     border-bottom-style: var(--tw-border-style);
     border-bottom-width: 0px;
+  }
+  .border-l {
+    border-left-style: var(--tw-border-style);
+    border-left-width: 1px;
   }
   .border-l-2 {
     border-left-style: var(--tw-border-style);

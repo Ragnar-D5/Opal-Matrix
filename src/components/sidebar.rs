@@ -1,4 +1,4 @@
-use phosphor_leptos::{Icon, IconData, IconWeight, BUG, SPEAKER_HIGH};
+use phosphor_leptos::{Icon, IconData, IconWeight, BUG, CARET_DOWN, CARET_RIGHT, SPEAKER_HIGH};
 use shared::{
     profile::MemberProfile,
     sidebar::{ServerRoomNode, UserDevice},
@@ -436,9 +436,104 @@ pub fn ServerIcon(server: ServerRoomNode) -> impl IntoView {
             .into_any()
 }
 
+fn room_should_stay_visible(
+    state: &AppState,
+    room_id: &str,
+    active_room_id: &Option<String>,
+) -> bool {
+    if active_room_id.as_deref() == Some(room_id) {
+        return true;
+    }
+
+    let has_notifications = state
+        .notification_counts
+        .get()
+        .get(room_id)
+        .cloned()
+        .unwrap_or_default()
+        .has_notifications();
+
+    if has_notifications {
+        return true;
+    }
+
+    match state.get_room(room_id) {
+        Some(RoomNode::Space(space)) => space
+            .children
+            .iter()
+            .any(|child_id| room_should_stay_visible(state, child_id, active_room_id)),
+        _ => false,
+    }
+}
+
 fn render_server_channel(child: RoomNode) -> AnyView {
     let state: AppState = expect_context();
     let store: ProfileStore = expect_context();
+
+    if let RoomNode::Space(space) = &child {
+        let child_ids = StoredValue::new(space.children.clone());
+        let name = space.name();
+        let is_open = RwSignal::new(true);
+
+        let has_visible_exception = Memo::new(move |_| {
+            let active_id = state.active_room_id();
+            child_ids
+                .get_value()
+                .iter()
+                .any(|id| room_should_stay_visible(&state, id, &active_id))
+        });
+
+        return view! {
+            <div class="flex flex-col w-full">
+                <div
+                    class="flex flex-row flex-grow items-center gap-1 p-1 rounded-(--ui-border-radius) cursor-pointer text-dim hover:text-normal"
+                    on:click=move |_| is_open.update(|open| *open = !*open)
+                >
+                    <span>{name}</span>
+                    {move || {
+                        let icon = if is_open.get() { CARET_DOWN } else { CARET_RIGHT };
+                        view! { <Icon icon=icon size="14px" /> }
+                    }}
+                </div>
+                {move || {
+                    if !is_open.get() && !has_visible_exception.get() {
+                        return ().into_any();
+                    }
+
+                    view! {
+                        <div class="flex flex-col gap-(--gap) pl-3 ml-[9px] border-l border-(--tile-border-color)">
+                            <For
+                                each=move || child_ids.get_value()
+                                key=|child_id| child_id.clone()
+                                children=move |child_id| {
+                                    view! {
+                                        {move || {
+                                            let visible = is_open.get()
+                                                || room_should_stay_visible(
+                                                    &state,
+                                                    &child_id,
+                                                    &state.active_room_id(),
+                                                );
+                                            if !visible {
+                                                return ().into_any();
+                                            }
+                                            match state.get_room(&child_id) {
+                                                Some(child) => render_room(child),
+                                                None => ().into_any(),
+                                            }
+                                        }}
+                                    }
+                                        .into_any()
+                                }
+                            />
+                        </div>
+                    }
+                        .into_any()
+                }}
+            </div>
+        }
+        .into_any();
+    }
 
     let click_id = child.room_id();
     let check_id = click_id.clone();
@@ -480,7 +575,7 @@ fn render_server_channel(child: RoomNode) -> AnyView {
             return String::new();
         }
 
-        "linear-gradient(in oklch to right, oklch(from var(--accent-color) l c h / 0.15), oklch(from var(--accent-color) l c h / 0) 100%)".to_string()
+        "linear-gradient(in srgb to right, oklch(from var(--accent-color) l c h / 0.15), oklch(from var(--accent-color) l c h / 0) 100%)".to_string()
     };
 
     let participants = Memo::new(move |_| state.get_call_members(&room_id.get_value()).get());
@@ -544,18 +639,20 @@ fn render_server_channel(child: RoomNode) -> AnyView {
                 <div class="w-1"></div>
                 {name}
                 <div class="flex flex-1" />
-                {if highlight_count() > 0 {
-                    view! {
-                        <div class="text-center bg-(--accent-color) w-5 h-5 text-(--ui-solid-bg) text-xs font-bold px-1.5 py-0.5 rounded-full">
-                            {highlight_count}
-                        </div>
+                {move || {
+                    if highlight_count() > 0 {
+                        view! {
+                            <div class="text-center bg-(--accent-color) w-5 h-5 text-(--ui-solid-bg) text-xs font-bold px-1.5 py-0.5 rounded-full">
+                                {highlight_count}
+                            </div>
+                        }
+                            .into_any()
+                    } else if notification_count() > 0 {
+                        view! { <div class="bg-(--text-color) w-2 h-2 rounded-full mr-1.5" /> }
+                            .into_any()
+                    } else {
+                        view! { <div></div> }.into_any()
                     }
-                        .into_any()
-                } else if notification_count() > 0 {
-                    view! { <div class="bg-(--text-color) w-2 h-2 rounded-full mr-1.5" /> }
-                        .into_any()
-                } else {
-                    view! { <div></div> }.into_any()
                 }}
             </div>
         </div>
