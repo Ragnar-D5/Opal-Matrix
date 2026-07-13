@@ -1,4 +1,6 @@
-use phosphor_leptos::{Icon, IconData, IconWeight, BUG, CARET_DOWN, CARET_RIGHT, SPEAKER_HIGH};
+use phosphor_leptos::{
+    BUG, CARET_DOWN, CARET_RIGHT, Icon, IconData, IconWeight, QUESTION_MARK, SPEAKER_HIGH,
+};
 use shared::{
     profile::MemberProfile,
     sidebar::{ServerRoomNode, UserDevice},
@@ -6,13 +8,13 @@ use shared::{
 
 use crate::{
     components::{
+        AudioMenu, DeafenMenu, FloatingTile, MuteMenu,
         logo::Logo,
         presence::PresenceBadge,
         settings::SettingsIcon,
-        user_profile::{render_url_icon, MemberProfileExt, RoomNodeExt},
-        AudioMenu, DeafenMenu, FloatingTile, MuteMenu,
+        user_profile::{MemberProfileExt, RoomNodeExt, render_url_icon},
     },
-    state::{AppState, CurrentSection, ProfileStore},
+    state::{AppState, CurrentSection, MainView, ProfileStore},
     tauri_functions::open_log_window,
 };
 use leptos::prelude::*;
@@ -93,7 +95,9 @@ fn render_full_room(node: RoomNode, other_user_id: StoredValue<Option<String>>) 
             class=("border-transparent", move || !is_active.get())
             class=("text-normal", move || is_active.get())
             class=("text-dim", move || !is_active.get())
-            on:click=move |_| { state.set_active_room_with_id(Some(room_id.get_value())) }
+            on:click=move |_| {
+                state.set_active_room_with_id(Some(room_id.get_value()), MainView::Chat)
+            }
         >
             {move || {
                 if let Some(user_id) = &other_user_id.get_value() {
@@ -321,7 +325,7 @@ fn render_room_preview(room: RoomNode, members: Option<Vec<UserDevice>>) -> impl
                     CurrentSection::Single
                 };
                 state.set_active_section(section);
-                state.set_active_room_with_id(Some(clone.clone()));
+                state.set_active_room_with_id(Some(clone.clone()), MainView::Chat);
             }
         >
             <IndicatorPill
@@ -537,6 +541,7 @@ fn render_server_channel(child: RoomNode) -> AnyView {
 
     let click_id = child.room_id();
     let check_id = click_id.clone();
+    let info_click_id = click_id.clone();
     let is_active = Memo::new(move |_| state.active_room_id() == Some(check_id.clone()));
 
     let room_id = StoredValue::new(child.room_id());
@@ -630,7 +635,14 @@ fn render_server_channel(child: RoomNode) -> AnyView {
                 class=("border-transparent", move || !is_active.get())
                 class=("border-(--tile-border-color)", move || is_active.get())
                 style:background-image=notification_gradient
-                on:click=move |_| { state.set_active_room_with_id(Some(click_id.clone())) }
+                on:click=move |_| {
+                    let view = if child.get_value().is_unjoined() {
+                        MainView::Info
+                    } else {
+                        MainView::Chat
+                    };
+                    state.set_active_room_with_id(Some(click_id.clone()), view)
+                }
             >
                 <div class=(
                     "text-(--online-color)",
@@ -638,6 +650,16 @@ fn render_server_channel(child: RoomNode) -> AnyView {
                 )>{child.get_value().render_simple_icon("20px")}</div>
                 <div class="w-1"></div>
                 {name}
+                <div class="w-1"></div>
+                <button
+                    class="opacity-0 group-hover:opacity-100 text-dim hover:text-normal cursor-pointer flex items-center justify-center transition-opacity mr-1"
+                    on:click=move |e| {
+                        e.stop_propagation();
+                        state.set_active_room_with_id(Some(info_click_id.clone()), MainView::Info);
+                    }
+                >
+                    <Icon icon=QUESTION_MARK size="14px" />
+                </button>
                 <div class="flex flex-1" />
                 {move || {
                     if highlight_count() > 0 {

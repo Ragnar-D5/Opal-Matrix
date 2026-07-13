@@ -17,7 +17,7 @@ use crate::{
         presence::PresenceBadge,
         user_profile::{MemberProfileExt, render_user_profile_card},
     },
-    state::{AppState, ProfileStore},
+    state::{AppState, MainView, ProfileStore},
 };
 
 enum ChatSidebarContent {
@@ -399,7 +399,7 @@ fn room_results(
                     class="flex flex-row flex-1 text-normal cursor-pointer gap-1 items-center hover:text-(--accent-color) hover:underline"
 
                     on:click=move |_| {
-                        state.set_active_room_with_id(Some(node.room_id()));
+                        state.set_active_room_with_id(Some(node.room_id()), MainView::Chat);
                     }
                 >
                     <Icon icon=icon size="20px" />
@@ -465,7 +465,7 @@ fn message_result(
                     return;
                 };
                 jump_target.set(Some(event_id));
-                state.set_active_room_with_id(Some(room_id.clone()));
+                state.set_active_room_with_id(Some(room_id.clone()), MainView::Chat);
             }
         >
             {move || {

@@ -3,7 +3,7 @@ use crate::{
     components::{
         input::move_caret_to_end, settings::Settings, SingleFloatingTile, SystemButtonsInTile,
     },
-    state::AppState,
+    state::{AppState, MainView},
     tauri_functions::get_server_order,
 };
 use leptos::{html::Input, prelude::*, task::spawn_local};
@@ -90,7 +90,10 @@ pub fn get_stuff_after_login(state: AppState, settings: Settings) {
 
                 state.breadcrums.set(breadcrumbs.clone());
 
-                state.set_active_room_with_id(breadcrumbs.recent_rooms.first().cloned());
+                state.set_active_room_with_id(
+                    breadcrumbs.recent_rooms.first().cloned(),
+                    MainView::Chat,
+                );
             }
             Err(err) => {
                 log::error!("Error fetching breadcrumbs: {:?}", err);

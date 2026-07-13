@@ -31,6 +31,13 @@ pub struct RoomState {
     pub pinned_result: Option<Vec<UiTimelineItem>>,
 }
 
+#[derive(Clone, Debug, Copy, PartialEq, Default)]
+pub enum MainView {
+    #[default]
+    Chat,
+    Info,
+}
+
 #[derive(Clone, Debug, PartialEq, Default)]
 pub enum CurrentSection {
     Server(String),
@@ -72,6 +79,7 @@ pub struct AppState {
 
     pub active_room_id: RwSignal<Option<String>>,
     pub active_section: RwSignal<CurrentSection>,
+    pub main_view: RwSignal<MainView>,
 
     pub breadcrums: RwSignal<Breadcrumbs>,
     pub server_order: RwSignal<ServerOrder>,
@@ -233,7 +241,12 @@ impl AppState {
         }
     }
 
-    pub fn set_active_room_with_id(&self, room_id: Option<String>) {
+    /// Change which room is active and which view (chat, room info, …) is shown
+    /// for it. `view` is taken explicitly rather than always resetting to
+    /// `MainView::Chat` so callers like the per-room info button can jump
+    /// straight to `MainView::Info`, including when re-selecting the room
+    /// that's already active.
+    pub fn set_active_room_with_id(&self, room_id: Option<String>, view: MainView) {
         log::debug!(
             "Changing active room to {}",
             room_id.clone().unwrap_or("no room".into())
@@ -247,6 +260,10 @@ impl AppState {
             None
         };
         self.set_active_room_node(room_id.clone(), active_room);
+
+        if self.main_view.with_untracked(|cur| cur != &view) {
+            self.main_view.set(view);
+        }
 
         let Some(room_id) = room_id else {
             return;
@@ -286,7 +303,7 @@ impl AppState {
             .filter(|room_id| self.room_belongs_to_section(room_id, &section));
 
         if let Some(room_id) = cached_room_id {
-            self.set_active_room_with_id(Some(room_id.clone()));
+            self.set_active_room_with_id(Some(room_id.clone()), MainView::Chat);
             self.append_room_id(room_id);
             return;
         }
@@ -294,7 +311,7 @@ impl AppState {
         match &section {
             CurrentSection::Dms => {
                 if let Some(room_id) = self.dm_list.get_untracked().0.first().cloned() {
-                    self.set_active_room_with_id(Some(room_id.clone()));
+                    self.set_active_room_with_id(Some(room_id.clone()), MainView::Chat);
                     self.append_room_id(room_id);
                 } else {
                     log::warn!("DM list is empty, cannot set active room");
@@ -302,7 +319,7 @@ impl AppState {
             }
             CurrentSection::Single => {
                 if let Some(room_id) = self.single_room_list.get_untracked().0.first().cloned() {
-                    self.set_active_room_with_id(Some(room_id.clone()));
+                    self.set_active_room_with_id(Some(room_id.clone()), MainView::Chat);
                     self.append_room_id(room_id);
                 } else {
                     log::warn!("Single room list is empty, cannot set active room");
@@ -310,7 +327,7 @@ impl AppState {
             }
             CurrentSection::Server(server_id) => {
                 if let Some(room_id) = self.first_channel_id_for_server(server_id) {
-                    self.set_active_room_with_id(Some(room_id.clone()));
+                    self.set_active_room_with_id(Some(room_id.clone()), MainView::Chat);
                     self.append_room_id(room_id);
                 } else {
                     log::warn!("Server {} has no channels to set as active room", server_id);

@@ -8,6 +8,7 @@ use shared::{
     },
     commands::Command,
     profile::UserProfile,
+    sidebar::RoomExtraInfo,
     timeline::{UiMediaSource, UiTimelineItem},
 };
 use uuid::Uuid;
@@ -545,4 +546,19 @@ pub fn change_screen_scaling(scale_factor: f64) {
             log::error!("Tauri call failed: {:?}", e);
         }
     });
+}
+
+pub async fn get_extra_room_info(room_id: &str) -> Result<RoomExtraInfo, String> {
+    let args = serde_wasm_bindgen::to_value(&json!({ "room_id": room_id }))
+        .map_err(|e| format!("Failed to serialize request: {:?}", e))?;
+
+    let result = call_tauri("get_extra_room_info", args)
+        .await
+        .map_err(|e| format!("Tauri call failed: {:?}", e))?;
+
+    let json_string: String = js_sys::JSON::stringify(&result)
+        .map_err(|e| format!("Failed to stringify result: {:?}", e))?
+        .into();
+
+    serde_json::from_str(&json_string).map_err(|e| format!("Failed to parse result: {:?}", e))
 }

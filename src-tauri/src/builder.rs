@@ -2,15 +2,17 @@ use matrix_sdk::Client;
 use notify::Watcher;
 use percent_encoding::percent_decode_str;
 use shared::api::UpdateStatus;
-use shared::api::events::{LogEntry, NotificationEvent, NotificationLevel, SettingsUpdate, TauriEvent};
-use tauri::menu::{Menu, MenuItem};
-use tauri::tray::TrayIconBuilder;
+use shared::api::events::{
+    LogEntry, NotificationEvent, NotificationLevel, SettingsUpdate, TauriEvent,
+};
 use std::collections::HashMap;
 use std::fs::{read_to_string, write};
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
 use tauri::async_runtime::{block_on, spawn};
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::TrayIconBuilder;
 use tauri_plugin_updater::UpdaterExt;
 use tokio::sync::{RwLock, mpsc};
 use toml_edit::DocumentMut;
@@ -22,7 +24,6 @@ use tauri::{App, AppHandle, Builder, Emitter, Manager, Wry};
 use tauri_plugin_cli::CliExt;
 use tauri_plugin_log::{Target, TargetKind};
 
-use crate::{check_for_update_backend, info_from_update, ipc_log};
 #[cfg(all(desktop, debug_assertions))]
 use crate::ipc_log::IpcTrafficLog;
 use crate::matrix_api::media::{
@@ -36,6 +37,7 @@ use crate::state::{
 use crate::{
     BrandColorsMap, TauriError, detect_content_type, diff_settings, send_event, send_event_logless,
 };
+use crate::{check_for_update_backend, info_from_update, ipc_log};
 
 use super::frontend;
 use super::matrix_api;
@@ -81,6 +83,7 @@ pub fn add_invoke_handler(builder: Builder<Wry>) -> Builder<Wry> {
         frontend::settings::change_screen_scaling,
         frontend::klipy::search_gifs,
         frontend::search::search_rooms,
+        frontend::rooms::get_extra_room_info,
         // matrix API commands
         matrix_api::discovery::choose_home_server,
         // matrix_api::messages::fetch_messages,

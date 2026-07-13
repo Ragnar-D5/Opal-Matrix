@@ -18,8 +18,8 @@ use crate::{
         }, settings::Settings, user_profile::MemberProfileExt
     },
     hooks::{setup_update_effect, use_tauri_event},
-    state::{AppState, CurrentSection, ProfileStore},
-    tauri_functions::{get_timeline, indicate_typing, pick_files, scroll_timeline},
+    state::{AppState, CurrentSection, MainView, ProfileStore},
+    tauri_functions::{get_extra_room_info, get_timeline, indicate_typing, pick_files, scroll_timeline},
 };
 
 use phosphor_leptos::{GIF, Icon, IconWeight, SMILEY, TRASH, UPLOAD_SIMPLE, X_CIRCLE};
@@ -33,7 +33,7 @@ use shared::{
     api::{
         FileMetadata, ScrollDirection, SearchParameters, UiAttachmentSource,
         events::SearchResultUpdate,
-    }, settings::EnumHashMap, sidebar::RoomNode, timeline::{EventContent, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind}
+    }, settings::EnumHashMap, sidebar::{RoomExtraInfo, RoomNode}, timeline::{EventContent, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind}
 };
 use uuid::Uuid;
 use wasm_bindgen::JsCast;
@@ -290,6 +290,10 @@ fn TimeLine() -> impl IntoView {
     );
 
     Effect::new(move || {
+        if state.main_view.get() != MainView::Chat {
+            return;
+        }
+
         if let Some(room_id) = state.active_room_id() {
             if jump_target.get_untracked().is_some() {
                 // A jump to a specific message is pending for this room; let the
@@ -1034,7 +1038,8 @@ fn ChatInput() -> impl IntoView {
     };
 
     Effect::new(move |_| {
-        if is_empty.get()
+        if state.main_view.get() == MainView::Chat
+            && is_empty.get()
             && let Some(room_id) = state.active_room_id()
         {
             spawn_local(async move {
@@ -1138,6 +1143,79 @@ fn ChatInput() -> impl IntoView {
             </div>
         </div>
     }
+}
+
+#[component]
+fn InfoRow(label: &'static str, value: String) -> impl IntoView {
+    view! {
+        <div class="flex flex-row justify-between gap-4 border-b border-(--tile-border-color) pb-1">
+            <span class="text-muted">{label}</span>
+            <span class="text-normal">{value}</span>
+        </div>
+    }
+}
+
+fn room_info_screen(node: RoomNode) -> AnyView {
+    let room_id = node.room_id();
+    let extra_info: RwSignal<Option<RoomExtraInfo>> = RwSignal::new(None);
+
+    Effect::new({
+        let room_id = room_id.clone();
+        move |_| {
+            let room_id = room_id.clone();
+            extra_info.set(None);
+            spawn_local(async move {
+                match get_extra_room_info(&room_id).await {
+                    Ok(info) => extra_info.set(Some(info)),
+                    Err(e) => log::error!("Failed to get extra room info: {e}"),
+                }
+            });
+        }
+    });
+
+    let info = node.info();
+    let name = info.name.clone();
+    let topic = info.topic.clone();
+    let room_id_for_row = room_id.clone();
+
+    view! {
+        <div class="flex-1 flex flex-col h-full min-h-0 overflow-y-auto p-(--gap) gap-(--gap) text-normal">
+            <div class="flex flex-col gap-1">
+                <span class="text-xl text-bright">{name}</span>
+                {topic.map(|t| view! { <span class="text-dim">{t}</span> })}
+            </div>
+            {move || match extra_info.get() {
+                None => view! { <span class="text-muted">"Loading room info..."</span> }.into_any(),
+                Some(extra) => {
+                    view! {
+                        <div class="flex flex-col gap-2">
+                            <InfoRow label="Room ID" value=room_id_for_row.clone() />
+                            <InfoRow label="Membership" value=format!("{:?}", extra.membership) />
+                            <InfoRow label="Join Rule" value=extra.join_rule.to_string() />
+                            <InfoRow
+                                label="History Visibility"
+                                value=extra.history_visibility.to_string()
+                            />
+                            <InfoRow
+                                label="Encrypted"
+                                value=if extra.encrypted { "Yes" } else { "No" }.to_string()
+                            />
+                            <InfoRow
+                                label="Room Version"
+                                value=extra.version.clone().unwrap_or_else(|| "Unknown".to_string())
+                            />
+                            <InfoRow
+                                label="Joined Members"
+                                value=extra.num_joined_users.to_string()
+                            />
+                        </div>
+                    }
+                        .into_any()
+                }
+            }}
+        </div>
+    }
+    .into_any()
 }
 
 #[component]
@@ -1266,6 +1344,10 @@ pub fn Chat() -> impl IntoView {
                                 .into_any()
                         }
                         Some(node) => {
+                            if state.main_view.get() == MainView::Info {
+                                return room_info_screen(node);
+                            }
+
                             match &node {
                                 RoomNode::Dm(_)
                                 | RoomNode::TextChannel(_)
