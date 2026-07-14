@@ -37,6 +37,14 @@ pub async fn get_url_preview(
     let mut preview: LinkPreviewResponse = serde_json::from_str(data.get())?;
     preview.resolve_color(&url, &color_map.0);
 
+    if preview.title.is_empty() {
+        preview.title = preview
+            .site_name
+            .clone()
+            .or_else(|| preview.url.clone())
+            .unwrap_or_else(|| url.to_string());
+    }
+
     if let Some(ref url) = preview.image_url.clone() {
         let media_id = Uuid::new_v4();
         let image_url = OwnedMxcUri::from(url.as_str());

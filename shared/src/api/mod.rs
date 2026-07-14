@@ -32,7 +32,7 @@ pub enum RestoreResponse {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct LinkPreviewResponse {
-    #[serde(rename = "og:title")]
+    #[serde(rename = "og:title", default)]
     pub title: String,
     #[serde(rename = "og:site_name")]
     pub site_name: Option<String>,
