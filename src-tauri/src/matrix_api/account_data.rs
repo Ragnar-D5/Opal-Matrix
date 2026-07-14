@@ -3,15 +3,15 @@ use shared::{
     account_data::{Breadcrumbs, ServerOrder},
     api::events::{RecentEmoji, RecentEmojies},
 };
-use tauri::{command, AppHandle};
+use tauri::{AppHandle, command};
 
-use crate::{send_event, MatrixClientState, TauriError};
+use crate::{MatrixClientState, TauriError, send_event};
 
 use matrix_sdk::{
     event_handler::Ctx,
     ruma::{
-        events::{macros::EventContent, GlobalAccountDataEvent},
         UInt,
+        events::{GlobalAccountDataEvent, macros::EventContent},
     },
 };
 

@@ -5,11 +5,11 @@ use shared::{
     api::{FileMetadata, UiAttachmentSource},
     timeline::UiMediaSource,
 };
-use tauri::{command, AppHandle, State};
+use tauri::{AppHandle, State, command};
 use tauri_plugin_dialog::DialogExt;
 use tokio::sync::RwLock;
 
-use crate::{matrix_api::media::get_media_bytes, state::MediaManager, TauriError};
+use crate::{TauriError, matrix_api::media::get_media_bytes, state::MediaManager};
 
 #[command(rename_all = "snake_case")]
 pub async fn open_file_dialog(app: AppHandle) -> Result<Vec<FileMetadata>, TauriError> {

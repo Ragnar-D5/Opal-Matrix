@@ -1,11 +1,11 @@
 use matrix_sdk::deserialized_responses::SyncOrStrippedState;
-use matrix_sdk::ruma::{OwnedRoomId, UserId};
 use matrix_sdk::ruma::api::client::space::get_hierarchy;
 use matrix_sdk::ruma::events::direct::DirectEventContent;
 use matrix_sdk::ruma::events::room::power_levels::RoomPowerLevels;
 use matrix_sdk::ruma::events::space::child::SpaceChildEventContent;
 use matrix_sdk::ruma::room::RoomSummary;
 use matrix_sdk::ruma::serde::Raw;
+use matrix_sdk::ruma::{OwnedRoomId, UserId};
 use shared::api::events::{CallMemberUpdate, RoomPinnedUpdate};
 use shared::get_color;
 use std::collections::{HashMap, HashSet};
@@ -17,11 +17,14 @@ use matrix_sdk::{Client, Room, RoomMemberships, RoomState};
 use matrix_sdk::room::ParentSpace;
 use matrix_sdk::ruma::events::call::member::CallMemberEventContent;
 use matrix_sdk::ruma::events::{
-    AnyGlobalAccountDataEvent, AnySyncStateEvent, AnySyncTimelineEvent, MessageLikeEventType, OriginalSyncStateEvent, StateEventType
+    AnyGlobalAccountDataEvent, AnySyncStateEvent, AnySyncTimelineEvent, MessageLikeEventType,
+    OriginalSyncStateEvent, StateEventType,
 };
 use matrix_sdk::sync::RoomUpdates;
 use shared::sidebar::{
-    DmRoomNode, NotificationCounts, RoomMapUpdate, RoomNode, RoomNodeInfo, RoomRights, ServerList, ServerRoomNode, SingleRoomNode, SpaceRoomNode, TextChannelRoomNode, UnjoinedRoomNode, UserDevice, VoiceChannelRoomNode
+    DmRoomNode, NotificationCounts, RoomMapUpdate, RoomNode, RoomNodeInfo, RoomRights, ServerList,
+    ServerRoomNode, SingleRoomNode, SpaceRoomNode, TextChannelRoomNode, UnjoinedRoomNode,
+    UserDevice, VoiceChannelRoomNode,
 };
 use tauri::AppHandle;
 
@@ -69,7 +72,8 @@ async fn get_all_child_room_ids(room: &Room) -> Result<Vec<OwnedRoomId>, TauriEr
 
 fn room_rights_from_powerlevels(power_levels: &RoomPowerLevels, user_id: &UserId) -> RoomRights {
     RoomRights {
-        send_messages: power_levels.user_can_send_message(user_id, MessageLikeEventType::RoomMessage),
+        send_messages: power_levels
+            .user_can_send_message(user_id, MessageLikeEventType::RoomMessage),
         send_reactions: power_levels.user_can_send_message(user_id, MessageLikeEventType::Reaction),
         mention_everyone: power_levels.user_can_trigger_room_notification(user_id),
 
@@ -82,9 +86,10 @@ fn room_rights_from_powerlevels(power_levels: &RoomPowerLevels, user_id: &UserId
 
         // Management
         change_name_and_avatar: power_levels.user_can_send_state(user_id, StateEventType::RoomName)
-                                    && power_levels.user_can_send_state(user_id, StateEventType::RoomAvatar),
+            && power_levels.user_can_send_state(user_id, StateEventType::RoomAvatar),
         change_topic: power_levels.user_can_send_state(user_id, StateEventType::RoomTopic),
-        manage_permissions: power_levels.user_can_send_state(user_id, StateEventType::RoomPowerLevels),
+        manage_permissions: power_levels
+            .user_can_send_state(user_id, StateEventType::RoomPowerLevels),
 
         // Spaces (Servers/Categories)
         manage_children: power_levels.user_can_send_state(user_id, StateEventType::SpaceChild),

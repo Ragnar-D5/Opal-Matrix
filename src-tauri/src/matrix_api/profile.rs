@@ -13,7 +13,7 @@ use shared::profile::{CustomProperties, UserProfile};
 use tauri::{AppHandle, State, command};
 use tokio::sync::RwLock;
 
-use crate::{send_event, TauriError};
+use crate::{TauriError, send_event};
 
 fn banner_color_field() -> ProfileFieldName {
     "org.opal-matrix.banner_color".into()
@@ -112,9 +112,7 @@ pub async fn client_user_profile_event_handle(
             pending
         };
 
-        if should_emit
-            && let Err(e) = send_user_to_frontend(&handle_clone, &client_clone).await
-        {
+        if should_emit && let Err(e) = send_user_to_frontend(&handle_clone, &client_clone).await {
             log::error!("Failed to send user profile update after debounce: {e:?}");
         }
     });

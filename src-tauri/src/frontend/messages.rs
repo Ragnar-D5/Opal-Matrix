@@ -11,9 +11,7 @@ use matrix_sdk::{
     Client as MatrixClient,
     attachment::{AttachmentInfo, BaseFileInfo, BaseImageInfo, BaseVideoInfo},
     room::edit::EditedContent,
-    ruma::{
-        EventId, events::room::MediaSource,
-    },
+    ruma::{EventId, events::room::MediaSource},
 };
 use matrix_sdk_ui::timeline::{
     AttachmentConfig, AttachmentSource, TimelineEventItemId, TimelineItemContent,
@@ -474,13 +472,16 @@ pub async fn toggle_reaction(
         .get_or_create_timeline(&room, Some(event_id.clone()))
         .await?;
 
-
     let own_id = client.user_id().ok_or("No user ID found")?.to_owned();
 
     let mut is_adding = true;
     if let Some(item) = timeline.item_by_event_id(&event_id).await
-    && let Some(reactions) = item.content().reactions()
-    && reactions.get(&reaction).map(|r| r.contains_key(&own_id)).unwrap_or(false) {
+        && let Some(reactions) = item.content().reactions()
+        && reactions
+            .get(&reaction)
+            .map(|r| r.contains_key(&own_id))
+            .unwrap_or(false)
+    {
         is_adding = false;
     }
 

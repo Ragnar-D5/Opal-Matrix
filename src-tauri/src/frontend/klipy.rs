@@ -1,9 +1,9 @@
 use klipy::{MediaItem, Page};
-use tauri::{command, State};
+use tauri::{State, command};
 use tauri_plugin_http::reqwest;
 use tokio_util::sync::CancellationToken;
 
-use crate::{state::TaskManager, TauriError};
+use crate::{TauriError, state::TaskManager};
 
 /// Search klipy using the given string
 #[command(rename_all = "snake_case")]

@@ -1,11 +1,26 @@
-use cpal::{Device, DeviceId, SampleFormat, Stream, SupportedStreamConfig, traits::{DeviceTrait, HostTrait, StreamTrait}};
-use livekit::webrtc::{audio_source::native::NativeAudioSource, prelude::{AudioFrame, AudioSourceOptions}};
-use matrix_sdk::{Room, ruma::{EventId, OwnedEventId, OwnedRoomId, events::room::MediaSource}};
-use matrix_sdk_ui::{Timeline, timeline::{
-    DateDividerMode, TimelineBuilder, TimelineEventFocusThreadMode, TimelineFocus, TimelineReadReceiptTracking
-}};
-use ringbuf::{HeapProd, HeapRb, traits::{Consumer, Observer, Split}};
-use tauri_plugin_updater::Update;
+use cpal::{
+    Device, DeviceId, SampleFormat, Stream, SupportedStreamConfig,
+    traits::{DeviceTrait, HostTrait, StreamTrait},
+};
+use livekit::webrtc::{
+    audio_source::native::NativeAudioSource,
+    prelude::{AudioFrame, AudioSourceOptions},
+};
+use matrix_sdk::{
+    Room,
+    ruma::{EventId, OwnedEventId, OwnedRoomId, events::room::MediaSource},
+};
+use matrix_sdk_ui::{
+    Timeline,
+    timeline::{
+        DateDividerMode, TimelineBuilder, TimelineEventFocusThreadMode, TimelineFocus,
+        TimelineReadReceiptTracking,
+    },
+};
+use ringbuf::{
+    HeapProd, HeapRb,
+    traits::{Consumer, Observer, Split},
+};
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     sync::{
@@ -13,10 +28,17 @@ use std::{
         atomic::{AtomicU64, Ordering},
     },
 };
+use tauri_plugin_updater::Update;
 
 use shared::api::{UpdateStatus, events::LogEntry};
-use tauri::{AppHandle, async_runtime::{Mutex, RwLock}};
-use tokio::{sync::mpsc::{self, UnboundedReceiver, UnboundedSender}, task::JoinHandle};
+use tauri::{
+    AppHandle,
+    async_runtime::{Mutex, RwLock},
+};
+use tokio::{
+    sync::mpsc::{self, UnboundedReceiver, UnboundedSender},
+    task::JoinHandle,
+};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
@@ -42,12 +64,13 @@ impl AppState {
     /// running again on a frontend reload) so the old client's tasks are torn
     /// down instead of being orphaned, which would otherwise keep its sqlite
     /// and search-index stores open and deadlock the next client build.
-    pub async fn replace_sync_tasks(
-        &self,
-        session_refresh: JoinHandle<()>,
-        sync: JoinHandle<()>,
-    ) {
-        if let Some(old) = self.session_refresh_task.lock().await.replace(session_refresh) {
+    pub async fn replace_sync_tasks(&self, session_refresh: JoinHandle<()>, sync: JoinHandle<()>) {
+        if let Some(old) = self
+            .session_refresh_task
+            .lock()
+            .await
+            .replace(session_refresh)
+        {
             old.abort();
             let _ = old.await;
         }
@@ -341,14 +364,15 @@ impl AudioManager {
         };
 
         if let Some(id) = &active_input_id
-            && !input_devices.contains_key(id) {
-                if let Some(device) = self.host.default_input_device() {
-                    self.try_setup_input_stream_for_device(&device)?;
-                } else {
-                    *self.input_device.lock().unwrap() = None;
-                    *self.input_stream.lock().unwrap() = None;
-                }
+            && !input_devices.contains_key(id)
+        {
+            if let Some(device) = self.host.default_input_device() {
+                self.try_setup_input_stream_for_device(&device)?;
+            } else {
+                *self.input_device.lock().unwrap() = None;
+                *self.input_stream.lock().unwrap() = None;
             }
+        }
 
         let output_id = self
             .output_device
@@ -363,15 +387,16 @@ impl AudioManager {
         };
 
         if let Some(id) = &active_output_id
-            && !output_devices.contains_key(id) {
-                if let Some(device) = self.host.default_output_device() {
-                    self.try_setup_output_stream_for_device(&device)?;
-                } else {
-                    *self.output_device.lock().unwrap() = None;
-                    *self.output_stream.lock().unwrap() = None;
-                    *self.output_producer.lock().unwrap() = None;
-                }
+            && !output_devices.contains_key(id)
+        {
+            if let Some(device) = self.host.default_output_device() {
+                self.try_setup_output_stream_for_device(&device)?;
+            } else {
+                *self.output_device.lock().unwrap() = None;
+                *self.output_stream.lock().unwrap() = None;
+                *self.output_producer.lock().unwrap() = None;
             }
+        }
 
         let default_input_id = self
             .host
@@ -385,7 +410,15 @@ impl AudioManager {
             .and_then(|d| d.id().ok())
             .map(|id| id.to_string());
 
-        emit_devices_update(input_devices, output_devices, default_input_id, default_output_id, active_input_id.map(|i| i.to_string()), active_output_id.map(|i| i.to_string()), handle);
+        emit_devices_update(
+            input_devices,
+            output_devices,
+            default_input_id,
+            default_output_id,
+            active_input_id.map(|i| i.to_string()),
+            active_output_id.map(|i| i.to_string()),
+            handle,
+        );
 
         Ok(())
     }
@@ -407,9 +440,18 @@ impl AudioManager {
                 let (new_input_devices, new_output_devices) = get_devices(&host);
 
                 let new_input_ids: HashSet<DeviceId> = new_input_devices.keys().cloned().collect();
-                let new_output_ids: HashSet<DeviceId> = new_output_devices.keys().cloned().collect();
-                let new_active_input = active_input.lock().unwrap().as_ref().and_then(|d| d.id().ok());
-                let new_active_output = active_output.lock().unwrap().as_ref().and_then(|d| d.id().ok());
+                let new_output_ids: HashSet<DeviceId> =
+                    new_output_devices.keys().cloned().collect();
+                let new_active_input = active_input
+                    .lock()
+                    .unwrap()
+                    .as_ref()
+                    .and_then(|d| d.id().ok());
+                let new_active_output = active_output
+                    .lock()
+                    .unwrap()
+                    .as_ref()
+                    .and_then(|d| d.id().ok());
 
                 if new_input_ids != prev_input_ids
                     || new_output_ids != prev_output_ids
@@ -424,8 +466,12 @@ impl AudioManager {
                     emit_devices_update(
                         new_input_devices,
                         new_output_devices,
-                        host.default_input_device().and_then(|d| d.id().ok()).map(|id| id.to_string()),
-                        host.default_output_device().and_then(|d| d.id().ok()).map(|id| id.to_string()),
+                        host.default_input_device()
+                            .and_then(|d| d.id().ok())
+                            .map(|id| id.to_string()),
+                        host.default_output_device()
+                            .and_then(|d| d.id().ok())
+                            .map(|id| id.to_string()),
                         new_active_input.as_ref().map(|id| id.to_string()),
                         new_active_output.as_ref().map(|id| id.to_string()),
                         handle.clone(),
@@ -570,18 +616,33 @@ impl AudioManager {
         let input_stream = match config.sample_format() {
             SampleFormat::F32 => device.build_input_stream(
                 &stream_config,
-                move |data: &[f32], _| for &sample in data { let _ = tx.send(sample); },
-                err_callback, None
+                move |data: &[f32], _| {
+                    for &sample in data {
+                        let _ = tx.send(sample);
+                    }
+                },
+                err_callback,
+                None,
             )?,
             SampleFormat::I16 => device.build_input_stream(
                 &stream_config,
-                move |data: &[i16], _| for &sample in data { let _ = tx.send(sample as f32 / i16::MAX as f32); },
-                err_callback, None
+                move |data: &[i16], _| {
+                    for &sample in data {
+                        let _ = tx.send(sample as f32 / i16::MAX as f32);
+                    }
+                },
+                err_callback,
+                None,
             )?,
             SampleFormat::U16 => device.build_input_stream(
                 &stream_config,
-                move |data: &[u16], _| for &sample in data { let _ = tx.send((sample as f32 - 32768.0) / 32768.0); },
-                err_callback, None
+                move |data: &[u16], _| {
+                    for &sample in data {
+                        let _ = tx.send((sample as f32 - 32768.0) / 32768.0);
+                    }
+                },
+                err_callback,
+                None,
             )?,
             _ => return Err(TauriError::from("Unsupported sample format")),
         };
@@ -629,13 +690,18 @@ impl AudioManager {
                 // try_setup_input_stream_for_device — clone it once here so
                 // capture_frame uses the same underlying source as the track.
                 let source = native_audio_source.lock().unwrap().clone();
-                log::debug!("Handler using NativeAudioSource for {}Hz {}ch stream", sample_rate, channels);
+                log::debug!(
+                    "Handler using NativeAudioSource for {}Hz {}ch stream",
+                    sample_rate,
+                    channels
+                );
 
                 let mut frame_buffer = Vec::with_capacity(total_samples);
                 loop {
                     while frame_buffer.len() < total_samples {
                         if let Some(s) = data_receiver.blocking_recv() {
-                            let scaled = (s * i16::MAX as f32).clamp(i16::MIN as f32, i16::MAX as f32);
+                            let scaled =
+                                (s * i16::MAX as f32).clamp(i16::MIN as f32, i16::MAX as f32);
                             frame_buffer.push(scaled as i16);
                         } else {
                             break;

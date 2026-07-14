@@ -3,22 +3,22 @@ use std::collections::HashMap;
 use futures::future::join_all;
 use futures_util::StreamExt;
 use matrix_sdk::{
+    Client, Room, RoomMemberships,
     event_handler::Ctx,
     ruma::{
+        OwnedUserId, UserId,
         events::{room::member::OriginalSyncRoomMemberEvent, typing::SyncTypingEvent},
         profile::ProfileFieldName,
-        OwnedUserId, UserId,
     },
-    Client, Room, RoomMemberships,
 };
 use shared::{
     api::events::TypingUpdate,
     profile::{CustomProperties, MemberProfile, UserProfile},
 };
-use tauri::{command, AppHandle, State};
+use tauri::{AppHandle, State, command};
 use tokio::sync::RwLock;
 
-use crate::{matrix_api::profile::get_custom_fields, send_event, TauriError};
+use crate::{TauriError, matrix_api::profile::get_custom_fields, send_event};
 
 pub async fn on_member_update(
     event: OriginalSyncRoomMemberEvent,

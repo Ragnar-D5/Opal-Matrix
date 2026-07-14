@@ -3,22 +3,22 @@ use std::{
     str::FromStr,
 };
 
-use matrix_sdk::{ruma::OwnedRoomId, Client};
+use matrix_sdk::{Client, ruma::OwnedRoomId};
 use matrix_sdk_ui::timeline::TimelineItemContent;
 use shared::{
-    api::{events::SearchResultUpdate, SearchParameters},
+    api::{SearchParameters, events::SearchResultUpdate},
     timeline::{EventContent, UiTimelineItem},
 };
-use tauri::{async_runtime::spawn, command, AppHandle, State};
+use tauri::{AppHandle, State, async_runtime::spawn, command};
 use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use crate::{
+    TauriError,
     frontend::timeline::{load_reply_info, timeline_item_content_to_ui},
     send_event,
     state::TaskManager,
-    TauriError,
 };
 
 const SEARCH_BATCH_SIZE: usize = 20;

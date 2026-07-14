@@ -1,24 +1,24 @@
-use base64::{engine::general_purpose, Engine};
+use base64::{Engine, engine::general_purpose};
 use matrix_sdk::{
+    Client, RoomMemberships,
     media::{MediaFormat, MediaRequestParameters, MediaThumbnailSettings},
     ruma::{
+        OwnedMxcUri, RoomId, UserId,
         events::room::{
             EncryptedFile, EncryptedFileHashes, EncryptedFileInfo, MediaSource, V2EncryptedFileInfo,
         },
         media::Method,
         profile::ProfileFieldName,
         serde::{
-            base64::{Standard, UrlSafe},
             Base64,
+            base64::{Standard, UrlSafe},
         },
-        OwnedMxcUri, RoomId, UserId,
     },
-    Client, RoomMemberships,
 };
 use shared::timeline::UiMediaSource;
 use uuid::Uuid;
 
-use crate::{state::MediaManager, TauriError};
+use crate::{TauriError, state::MediaManager};
 
 pub async fn get_media(
     client: &Client,

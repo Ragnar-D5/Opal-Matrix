@@ -1,4 +1,4 @@
-use tauri::{command, AppHandle, Manager};
+use tauri::{AppHandle, Manager, command};
 
 use crate::TauriError;
 

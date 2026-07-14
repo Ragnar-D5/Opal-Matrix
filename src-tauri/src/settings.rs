@@ -1,18 +1,18 @@
-use std::{path::PathBuf};
+use std::path::PathBuf;
 
 use matrix_sdk::{
+    Client,
     event_handler::Ctx,
     ruma::{
         events::{AnyGlobalAccountDataEvent, GlobalAccountDataEventType},
         serde::Raw,
     },
-    Client,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use shared::api::events::SettingsUpdate;
 use tauri::{AppHandle, State, command};
 use tokio::sync::RwLock;
-use toml_edit::{value, Array, DocumentMut, InlineTable, Item, Table};
+use toml_edit::{Array, DocumentMut, InlineTable, Item, Table, value};
 
 use crate::{TauriError, send_event};
 
@@ -93,7 +93,8 @@ async fn load_setting_from_cloud(client: &Client, key: &str) -> Result<Option<St
         let content_json: Value = serde_json::from_str(event.json().get())?;
 
         if let Some(val) = content_json.get("value")
-        && !val.is_null() {
+            && !val.is_null()
+        {
             return Ok(Some(val.to_string()));
         }
     }
@@ -101,7 +102,11 @@ async fn load_setting_from_cloud(client: &Client, key: &str) -> Result<Option<St
     Ok(None)
 }
 
-pub async fn save_setting_to_cloud(client: &Client, key: &str, value: &str) -> Result<(), TauriError> {
+pub async fn save_setting_to_cloud(
+    client: &Client,
+    key: &str,
+    value: &str,
+) -> Result<(), TauriError> {
     let parsed_value: Value = serde_json::from_str(value)?;
 
     let content = Raw::from_json_string(serde_json::to_string(&json!({ "value": parsed_value }))?)?;
@@ -154,7 +159,8 @@ pub async fn get_setting(
         };
         let mut cashed_settings_mut = cashed_settings_sig.inner().write().await;
         if let Some(ref s) = setting
-            && let Err(e) = save_setting_to_file(settings_file, &mut cashed_settings_mut, &key, s).await
+            && let Err(e) =
+                save_setting_to_file(settings_file, &mut cashed_settings_mut, &key, s).await
         {
             log::warn!(
                 "Failed to save cloud setting to file: {:?}. Continuing with cloud value.",
@@ -187,14 +193,17 @@ pub async fn set_setting(
 
     // Notify the frontend directly. The file watcher will see no diff (cache
     // and file are always in sync), so we must emit the event ourselves.
-    send_event(&app_handle, &SettingsUpdate {
-        key: key.clone(),
-        value: value.clone(),
-        cloud: false,
-        // skip_cloud_upload=true because we handle cloud below; the frontend
-        // must not re-upload or it causes a redundant round-trip.
-        skip_cloud_upload: true,
-    });
+    send_event(
+        &app_handle,
+        &SettingsUpdate {
+            key: key.clone(),
+            value: value.clone(),
+            cloud: false,
+            // skip_cloud_upload=true because we handle cloud below; the frontend
+            // must not re-upload or it causes a redundant round-trip.
+            skip_cloud_upload: true,
+        },
+    );
 
     if to_cloud {
         save_setting_to_cloud(&client, &key, &value).await?;
@@ -204,7 +213,11 @@ pub async fn set_setting(
 }
 
 #[command(rename_all = "snake_case")]
-pub async fn set_setting_cloud(client: State<'_, RwLock<Client>>, key: String, value: String) -> Result<(), TauriError> {
+pub async fn set_setting_cloud(
+    client: State<'_, RwLock<Client>>,
+    key: String,
+    value: String,
+) -> Result<(), TauriError> {
     let client: Client = client.read().await.clone();
     save_setting_to_cloud(&client, &key, &value).await
 }
@@ -244,10 +257,13 @@ pub async fn handle_account_data_event(
         return;
     }
 
-    send_event(&handle, &SettingsUpdate {
-        key: key.to_string(),
-        value: val.to_string(),
-        cloud: true,
-        skip_cloud_upload: false,
-    });
+    send_event(
+        &handle,
+        &SettingsUpdate {
+            key: key.to_string(),
+            value: val.to_string(),
+            cloud: true,
+            skip_cloud_upload: false,
+        },
+    );
 }

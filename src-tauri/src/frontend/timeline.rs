@@ -4,25 +4,25 @@ use std::{
 };
 
 use matrix_sdk::{
+    Room,
     ruma::{
+        EventId, MilliSecondsSinceUnixEpoch, OwnedEventId,
         events::{
+            AnySyncMessageLikeEvent, AnySyncTimelineEvent, StateEventContentChange, StateEventType,
+            SyncMessageLikeEvent,
             poll::start::PollKind,
             receipt::ReceiptThread,
             room::{
+                MediaSource,
                 guest_access::GuestAccess,
                 history_visibility::HistoryVisibility,
                 message::{MessageFormat, MessageType, Relation},
-                MediaSource,
             },
             rtc::notification::CallIntent,
-            AnySyncMessageLikeEvent, AnySyncTimelineEvent, StateEventContentChange, StateEventType,
-            SyncMessageLikeEvent,
         },
         room::JoinRuleSummary,
         serde::Raw,
-        EventId, MilliSecondsSinceUnixEpoch, OwnedEventId,
     },
-    Room,
 };
 use matrix_sdk_ui::{
     eyeball_im::VectorDiff,

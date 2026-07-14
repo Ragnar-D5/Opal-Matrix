@@ -20,7 +20,7 @@ use toml_edit::DocumentMut;
 
 use bytes::Bytes;
 use log::info;
-use tauri::{AppHandle, Emitter, Url, command};
+use tauri::{command, AppHandle, Emitter, Url};
 use tauri::{Manager, State, WebviewUrl, WebviewWindowBuilder};
 
 pub mod builder;
@@ -39,7 +39,7 @@ pub const APP_NAME: &str = "opal-matrix";
 use tauri_plugin_notification::{NotificationExt, PermissionState};
 
 use crate::builder::{add_invoke_handler, register_mxc_uri, setup_builder};
-use crate::matrix_api::keyring::{self, StoredSession, get_or_create_store_key, init_keyring};
+use crate::matrix_api::keyring::{self, get_or_create_store_key, init_keyring, StoredSession};
 use crate::state::{AppState, TimelineManager};
 use crate::sync::attach_callbacks;
 
@@ -695,8 +695,8 @@ pub async fn check_for_update_backend(
         .read()
         .await
         .get("com.opal.auto_download_update")
-        .map_or(false, |item| {
-            item.as_bool().unwrap_or_else(|| {
+        .is_some_and(|item| {
+            item.as_bool().unwrap_or({
                 log::warn!("Setting auto_download_update is not a bool");
                 false
             })
@@ -859,12 +859,22 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_http::init());
 
+    #[cfg(desktop)]
+    {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            let _ = app
+                .get_webview_window("main")
+                .expect("no main window")
+                .set_focus();
+        }));
+    }
+
     builder = setup_builder(builder);
     builder = add_invoke_handler(builder);
     builder = register_mxc_uri(builder);
 
-    builder = builder.on_window_event(|w, e| match e {
-        tauri::WindowEvent::CloseRequested { api, .. } => {
+    builder = builder.on_window_event(|w, e| {
+        if let tauri::WindowEvent::CloseRequested { api, .. } = e {
             let settings = w.app_handle().state::<RwLock<DocumentMut>>();
             let minimize_to_tray = settings
                 .blocking_read()
@@ -882,7 +892,6 @@ pub fn run() {
                 w.hide().unwrap();
             }
         }
-        _ => {}
     });
 
     builder

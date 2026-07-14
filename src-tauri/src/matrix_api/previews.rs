@@ -1,17 +1,17 @@
+use matrix_sdk::Client as MatrixClient;
 use matrix_sdk::ruma::OwnedMxcUri;
 use matrix_sdk::ruma::{
     api::client::authenticated_media::get_media_preview::v1::Request as GetMediaPreviewRequest,
     events::room::MediaSource,
 };
-use matrix_sdk::Client as MatrixClient;
 use regex::Regex;
 use shared::api::LinkPreviewResponse;
-use tauri::{command, State};
+use tauri::{State, command};
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use crate::LogResultExt;
-use crate::{state::MediaManager, BrandColorsMap, TauriError};
+use crate::{BrandColorsMap, TauriError, state::MediaManager};
 
 /// Tauri command to get a URL preview for a given URL.
 #[command]

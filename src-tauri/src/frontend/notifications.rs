@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use matrix_sdk::{
+    Room,
     event_handler::Ctx,
     media::{MediaFormat, MediaThumbnailSettings},
     room::RoomMember,
@@ -8,7 +9,6 @@ use matrix_sdk::{
         events::room::message::{MessageType, OriginalSyncRoomMessageEvent},
         push::{Action, Tweak},
     },
-    Room,
 };
 use tauri::{AppHandle, Manager};
 

@@ -1,15 +1,15 @@
-use matrix_sdk::ruma::events::direct::DirectEventContent;
-use matrix_sdk::ruma::OwnedRoomId;
 use matrix_sdk::RoomState;
+use matrix_sdk::ruma::OwnedRoomId;
+use matrix_sdk::ruma::events::direct::DirectEventContent;
 use matrix_sdk::{
-    config::SyncSettings, ruma::presence::PresenceState, Client as MatrixClient, SessionChange,
+    Client as MatrixClient, SessionChange, config::SyncSettings, ruma::presence::PresenceState,
 };
 use shared::api::events::{RecentEmoji, RecentEmojies};
 use shared::sidebar::{DmList, RoomMapUpdate, RoomNode, ServerList, SingleList};
 use std::collections::{HashMap, HashSet};
 use std::pin::pin;
 use std::sync::{Arc, Mutex};
-use tauri::{async_runtime::spawn, AppHandle, Manager};
+use tauri::{AppHandle, Manager, async_runtime::spawn};
 
 use crate::frontend::notifications::on_message;
 use crate::frontend::profiles::handle_typing_notice;
@@ -23,17 +23,17 @@ use crate::send_event;
 use crate::settings::handle_account_data_event;
 use crate::state::AppState;
 use crate::{
+    TauriError,
     frontend::{
         presence::handle_presences,
         profiles::{on_member_update, send_all_members},
         sidebar::{extract_call_memberships, handle_room_updates},
     },
     matrix_api::{
-        keyring::{save_session, StoredSession},
+        keyring::{StoredSession, save_session},
         matrixrtc::{cleanup_ghost_calls, handle_to_device_messages},
-        profile::{client_user_profile_event_handle, send_user_to_frontend, ProfileDebounce},
+        profile::{ProfileDebounce, client_user_profile_event_handle, send_user_to_frontend},
     },
-    TauriError,
 };
 use futures_util::StreamExt;
 

@@ -1,19 +1,19 @@
 use std::str::FromStr;
 
 use matrix_sdk::{
-    ruma::{api::client::room::get_summary, OwnedRoomId},
     Client, RoomState,
+    ruma::{OwnedRoomId, api::client::room::get_summary},
 };
 use shared::{
     sidebar::{RoomExtraInfo, UiMembership},
     timeline::UiHistoryVisibility,
 };
-use tauri::{command, State};
+use tauri::{State, command};
 use tokio::sync::RwLock;
 
 use crate::{
-    frontend::timeline::{history_visibility_to_ui, join_rule_to_ui},
     TauriError,
+    frontend::timeline::{history_visibility_to_ui, join_rule_to_ui},
 };
 
 #[command(rename_all = "snake_case")]

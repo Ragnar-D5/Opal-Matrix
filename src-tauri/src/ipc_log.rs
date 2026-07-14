@@ -72,7 +72,13 @@ pub fn log_event(handle: &AppHandle, name: &str, bytes: usize) {
 }
 
 /// Frontend -> backend command call.
-pub fn log_call(handle: &AppHandle, name: &str, request_bytes: usize, response_bytes: usize, ok: bool) {
+pub fn log_call(
+    handle: &AppHandle,
+    name: &str,
+    request_bytes: usize,
+    response_bytes: usize,
+    ok: bool,
+) {
     write_entry(
         handle,
         Entry::Call {
