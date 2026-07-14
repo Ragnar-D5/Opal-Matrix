@@ -855,9 +855,8 @@ pub fn run() {
                 .blocking_read()
                 .get("com.opal.minimize_to_tray")
                 .map(|item| {
-                    log::debug!("{:?}, {:?}", item, item.as_bool());
                     item.as_bool().unwrap_or_else(|| {
-                        log::warn!("Setting minimize to tray is not a bool");
+                        log::warn!("Setting minimize_to_tray is not a bool");
                         true
                     })
                 })
