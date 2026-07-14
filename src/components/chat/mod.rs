@@ -192,9 +192,9 @@ fn TimeLine() -> impl IntoView {
                             show_header = false;
                         }
                     }
-                    last_sender = Some(id.clone());
-                    last_timestamp = Some(event.timestamp);
                 }
+                last_sender = Some(event.sender_id.clone());
+                last_timestamp = Some(event.timestamp);
             } else {
                 show_header = true;
                 last_sender = None;

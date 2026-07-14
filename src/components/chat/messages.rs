@@ -1663,7 +1663,7 @@ fn render_timeline_event(
                     };
                     view! {
                         <div class=format!(
-                            "absolute text-xs text-muted mt-[5px] {ml}",
+                            "absolute text-xs text-muted mt-[5px] {ml} select-none",
                         )>{format_time(date)}</div>
                     }
                         .into_any()
