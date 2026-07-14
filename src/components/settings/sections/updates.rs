@@ -1,12 +1,16 @@
 use leptos::prelude::*;
+use leptos::task::spawn_local;
+use leptos_md::{Markdown, MarkdownOptions};
 use phosphor_leptos::{
     Icon, IconWeight, CHECK_CIRCLE, DOWNLOAD, INFO, SPINNER, WARNING, WARNING_DIAMOND,
 };
-use shared::api::{UpdateDownloadProgress, UpdateInfo, UpdateStatus};
+use shared::api::{UpdateDownloadProgress, UpdateStatus};
 
-use crate::components::settings::sections::Toggle;
+use crate::components::settings::sections::{Spacer, SubSection, Toggle};
 use crate::components::settings::Settings;
-use crate::tauri_functions::{check_for_update, download_update, install_update, recheck_update};
+use crate::tauri_functions::{
+    check_for_update, download_update, get_version, get_versions, install_update, recheck_update,
+};
 
 use crate::app::format_bytes;
 use crate::state::AppState;
@@ -88,69 +92,6 @@ pub fn render_update_section() -> AnyView {
         }
     };
 
-    let test_step = RwSignal::new(0usize);
-    const TEST_STEP_COUNT: usize = 10;
-
-    let dummy_info = || UpdateInfo {
-        version: "1.2.3".to_string(),
-        current_version: "1.0.0".to_string(),
-        body: Some("- Fixed a bug\n- Added a feature".to_string()),
-        date: None,
-    };
-
-    let cycle_test_state = move |_| {
-        match test_step.get_untracked() {
-            0 => state.update_status.set(UpdateStatus::UpToDate),
-            1 => state
-                .update_status
-                .set(UpdateStatus::UpdateAvailable(dummy_info())),
-            2 => {
-                state
-                    .update_status
-                    .set(UpdateStatus::Downloading(dummy_info()));
-                state.update_progress.set(UpdateDownloadProgress::Started)
-            }
-            3 => state
-                .update_progress
-                .set(UpdateDownloadProgress::InProgress {
-                    progress: 250_000,
-                    total: Some(1_000_000),
-                }),
-            4 => state
-                .update_progress
-                .set(UpdateDownloadProgress::InProgress {
-                    progress: 500_000,
-                    total: Some(1_000_000),
-                }),
-            5 => state
-                .update_progress
-                .set(UpdateDownloadProgress::InProgress {
-                    progress: 750_000,
-                    total: None,
-                }),
-            6 => state
-                .update_progress
-                .set(UpdateDownloadProgress::InProgress {
-                    progress: 750_000,
-                    total: Some(1_000_000),
-                }),
-            7 => state.update_progress.set(UpdateDownloadProgress::Finished),
-            8 => {
-                state.update_progress.set(UpdateDownloadProgress::Finished);
-                state
-                    .update_status
-                    .set(UpdateStatus::ReadyToInstall(dummy_info()));
-            }
-            9 => state.update_status.set(UpdateStatus::CheckingForUpdates),
-            _ => state.update_status.set(UpdateStatus::Error {
-                short: "Simulated update error for testing".to_string(),
-                long: "This is a simulated error message for testing purposes. It does not represent a real error.".to_string(),
-            }),
-        }
-
-        test_step.update(|i| *i = (*i + 1) % TEST_STEP_COUNT);
-    };
-
     let is_downloading = move || matches!(status.get(), UpdateStatus::Downloading(_));
 
     let progress_percent = move || -> f64 {
@@ -165,9 +106,6 @@ pub fn render_update_section() -> AnyView {
 
     let on_button_click = move |_| match status.get() {
         UpdateStatus::UpdateAvailable(_) => {
-            state
-                .update_status
-                .set(UpdateStatus::Downloading(dummy_info()));
             state.update_progress.set(UpdateDownloadProgress::Started);
             download_update();
         }
@@ -241,6 +179,14 @@ pub fn render_update_section() -> AnyView {
 
     let settings: Settings = expect_context();
 
+    let versions: RwSignal<Vec<String>> = RwSignal::new(Vec::new());
+    spawn_local(async move {
+        match get_versions().await {
+            Ok(vs) => versions.set(vs),
+            Err(e) => log::error!("Failed to get versions: {}", e),
+        }
+    });
+
     view! {
         <div class="flex flex-col gap-4 mb-4">
             {header_view} <div class="relative h-20">
@@ -299,15 +245,41 @@ pub fn render_update_section() -> AnyView {
                     {button_label}
                 </button>
             </div>
-            <button
-                class="self-start px-3 py-1 text-sm border border-(--tile-border-color) text-muted rounded-(--ui-border-radius) hover:text-normal cursor-pointer"
-                on:click=cycle_test_state
-            >
-                "Cycle test state"
-            </button>
         </div>
         <Toggle field=settings.auto_download_update />
         <Toggle field=settings.notify_update />
+        <Spacer />
+        <For
+            each=move || versions.get().into_iter().enumerate()
+            key=|(_, version)| version.clone()
+            children=move |(idx, version)| render_release(idx, StoredValue::new(version))
+        />
     }
         .into_any()
+}
+
+fn render_release(idx: usize, version: StoredValue<String>) -> AnyView {
+    let expanded = RwSignal::new(idx == 0);
+
+    let notes = RwSignal::new(String::new());
+
+    Effect::new(move || {
+        if expanded.get() {
+            spawn_local(async move {
+                match get_version(&version.get_value()).await {
+                    Ok(text) => notes.set(text),
+                    Err(e) => log::error!("Failed to get notes: {e}"),
+                }
+            });
+        }
+    });
+
+    view! {
+        <SubSection title=version.get_value() expanded=expanded>
+            {move || {
+                view! { <Markdown content=notes.get() class="text-normal".to_string() /> }
+            }}
+        </SubSection>
+    }
+    .into_any()
 }

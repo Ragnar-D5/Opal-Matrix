@@ -81,6 +81,7 @@ web-sys = {
   ]
 }
 wgpu = "29.0.3"
+leptos-md = "0.1.0"
 
 [profile.dev]
 debug = false

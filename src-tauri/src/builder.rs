@@ -64,6 +64,9 @@ pub fn add_invoke_handler(builder: Builder<Wry>) -> Builder<Wry> {
         super::install_update,
         super::get_app_version,
         super::recheck_update,
+        // versions
+        super::versions::get_version,
+        super::versions::get_versions,
         // frontend commands
         frontend::messages::commit_message,
         frontend::messages::send_attachment,
@@ -136,6 +139,7 @@ fn add_logging_plugin(
             .level_for("matrix_sdk", LevelFilter::max())
             .level_for("rustls_platform_verifier", LevelFilter::Off)
             .level_for("html5ever", LevelFilter::Off)
+            .level_for("tauri_plugin_updater", LevelFilter::Warn)
             .level_for("matrix_sdk_base", LevelFilter::Debug)
             .level_for("rustls", LevelFilter::Off)
             .level_for("keyring_core", keyring_log_level)

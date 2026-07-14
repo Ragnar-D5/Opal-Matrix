@@ -345,15 +345,19 @@ where
 }
 
 #[component]
-pub fn SubSection<'a>(title: &'a str, children: Children) -> AnyView {
-    let expanded = RwSignal::new(true);
+pub fn SubSection<T: AsRef<str>>(
+    title: T,
+    children: Children,
+    #[prop(optional)] expanded: Option<RwSignal<bool>>,
+) -> AnyView {
+    let expanded = expanded.unwrap_or_else(|| RwSignal::new(true));
 
     view! {
         <div
             class="w-full flex items-center justify-between cursor-pointer select-none group pr-(--gap)"
             on:click=move |_| expanded.update(|v| *v = !*v)
         >
-            <h2 class="text-lg font-semibold text-normal">{title}</h2>
+            <h2 class="text-lg font-semibold text-normal">{title.as_ref()}</h2>
             <div class="flex-1 h-px bg-(--tile-border-color) mx-2"></div>
             <button
                 class="flex items-center justify-center transition-transform duration-100 cursor-pointer text-dim group-hover:text-normal"

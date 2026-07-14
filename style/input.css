@@ -1,4 +1,6 @@
 @import "tailwindcss";
+@plugin "@tailwindcss/typography";
+@source inline("prose prose-gray max-w-none dark:prose-invert");
 
 :root {
     --color-item-hover: rgba(200, 200, 255, 0.05);
