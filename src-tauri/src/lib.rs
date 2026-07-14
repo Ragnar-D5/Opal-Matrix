@@ -20,7 +20,7 @@ use toml_edit::DocumentMut;
 
 use bytes::Bytes;
 use log::info;
-use tauri::{command, AppHandle, Emitter, Url};
+use tauri::{AppHandle, Emitter, Url, command};
 use tauri::{Manager, State, WebviewUrl, WebviewWindowBuilder};
 
 pub mod builder;
@@ -38,7 +38,7 @@ pub const APP_NAME: &str = "opal-matrix";
 use tauri_plugin_notification::{NotificationExt, PermissionState};
 
 use crate::builder::{add_invoke_handler, register_mxc_uri, setup_builder};
-use crate::matrix_api::keyring::{self, get_or_create_store_key, init_keyring, StoredSession};
+use crate::matrix_api::keyring::{self, StoredSession, get_or_create_store_key, init_keyring};
 use crate::state::{AppState, TimelineManager};
 use crate::sync::attach_callbacks;
 
@@ -846,6 +846,29 @@ pub fn run() {
     builder = setup_builder(builder);
     builder = add_invoke_handler(builder);
     builder = register_mxc_uri(builder);
+
+    builder = builder.on_window_event(|w, e| match e {
+        tauri::WindowEvent::CloseRequested { api, .. } => {
+            let settings = w.app_handle().state::<RwLock<DocumentMut>>();
+            let minimize_to_tray = settings
+                .blocking_read()
+                .get("com.opal.minimize_to_tray")
+                .map(|item| {
+                    log::debug!("{:?}, {:?}", item, item.as_bool());
+                    item.as_bool().unwrap_or_else(|| {
+                        log::warn!("Setting minimize to tray is not a bool");
+                        true
+                    })
+                })
+                .unwrap_or(true);
+
+            if minimize_to_tray {
+                api.prevent_close();
+                w.hide().unwrap();
+            }
+        }
+        _ => {}
+    });
 
     builder
         .run(tauri::generate_context!())
