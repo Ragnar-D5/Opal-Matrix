@@ -277,7 +277,10 @@ fn render_release(idx: usize, version: StoredValue<String>) -> AnyView {
     view! {
         <SubSection title=version.get_value() expanded=expanded>
             {move || {
-                view! { <Markdown content=notes.get() class="text-normal".to_string() /> }
+                let options = MarkdownOptions::new().without_code_theme();
+                view! {
+                    <Markdown content=notes.get() class="text-normal".to_string() options=options />
+                }
             }}
         </SubSection>
     }

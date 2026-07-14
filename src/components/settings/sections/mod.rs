@@ -367,7 +367,7 @@ pub fn SubSection<T: AsRef<str>>(
             </button>
         </div>
         <div
-            class="overflow-hidden transition-all duration-100 mb-4"
+            class="overflow-y-auto transition-all duration-100 mb-4"
             style=move || {
                 if expanded.get() {
                     "max-height: 1000px; opacity: 1;"
