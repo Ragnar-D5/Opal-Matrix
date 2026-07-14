@@ -30,6 +30,7 @@ pub(crate) mod matrix_api;
 pub(crate) mod settings;
 pub(crate) mod state;
 pub(crate) mod sync;
+pub(crate) mod versions;
 
 use tauri_plugin_http::reqwest::{self, Response};
 

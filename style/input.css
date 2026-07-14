@@ -1,4 +1,46 @@
 @import "tailwindcss";
+@plugin "@tailwindcss/typography";
+@source inline("prose prose-gray max-w-none dark:prose-invert");
+
+@layer utilities {
+.leptos-mdx-content {
+    --tw-prose-body: var(--text-color);
+    --tw-prose-headings: inherit;
+    --tw-prose-lead: var(--text-color);
+    --tw-prose-links: var(--accent-color);
+    --tw-prose-bold: var(--bright-text-color);
+    --tw-prose-counters: var(--dim-text-color);
+    --tw-prose-bullets: var(--dim-text-color);
+    --tw-prose-hr: var(--tile-border-color);
+    --tw-prose-quotes: var(--text-color);
+    --tw-prose-quote-borders: var(--accent-color);
+    --tw-prose-captions: var(--dim-text-color);
+    --tw-prose-code: var(--teal);
+    --tw-prose-pre-code: var(--text-color);
+    --tw-prose-pre-bg: var(--tile-bg-color);
+    --tw-prose-th-borders: var(--tile-border-color);
+    --tw-prose-td-borders: var(--tile-border-color);
+
+    /* app has no light mode; force the invert palette to match so styling
+       doesn't flip based on the OS prefers-color-scheme media query */
+    --tw-prose-invert-body: var(--text-color);
+    --tw-prose-invert-headings: inherit;
+    --tw-prose-invert-lead: var(--text-color);
+    --tw-prose-invert-links: var(--accent-color);
+    --tw-prose-invert-bold: var(--bright-text-color);
+    --tw-prose-invert-counters: var(--dim-text-color);
+    --tw-prose-invert-bullets: var(--dim-text-color);
+    --tw-prose-invert-hr: var(--tile-border-color);
+    --tw-prose-invert-quotes: var(--text-color);
+    --tw-prose-invert-quote-borders: var(--accent-color);
+    --tw-prose-invert-captions: var(--dim-text-color);
+    --tw-prose-invert-code: var(--teal);
+    --tw-prose-invert-pre-code: var(--text-color);
+    --tw-prose-invert-pre-bg: var(--tile-bg-color);
+    --tw-prose-invert-th-borders: var(--tile-border-color);
+    --tw-prose-invert-td-borders: var(--tile-border-color);
+}
+}
 
 :root {
     --color-item-hover: rgba(200, 200, 255, 0.05);
@@ -66,6 +108,11 @@
 
     --overlay-bg-color: rgba(0, 0, 0, 0.5);
     --result-highlight-color: rgba(200, 200, 64, 0.7);
+}
+
+::selection {
+    background-color: var(--accent-color);
+    color: var(--accent-text-color);
 }
 
 @utility text-token {

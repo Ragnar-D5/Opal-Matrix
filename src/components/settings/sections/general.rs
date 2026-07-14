@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 
 use crate::components::settings::{
-    sections::{Dropdown, Spacer, SubSection},
+    sections::{Dropdown, Spacer, SubSection, Toggle},
     Settings,
 };
 
@@ -18,6 +18,9 @@ pub fn render_general_section() -> AnyView {
         </SubSection>
         <SubSection title="Units">
             <Dropdown field=settings.data_size_unit />
+        </SubSection>
+        <SubSection title="Behavior">
+            <Toggle field=settings.minimize_to_tray />
         </SubSection>
     }
     .into_any()

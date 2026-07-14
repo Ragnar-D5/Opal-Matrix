@@ -562,3 +562,34 @@ pub async fn get_extra_room_info(room_id: &str) -> Result<RoomExtraInfo, String>
 
     serde_json::from_str(&json_string).map_err(|e| format!("Failed to parse result: {:?}", e))
 }
+
+pub async fn get_versions() -> Result<Vec<String>, String> {
+    let result = call_tauri(
+        "get_versions",
+        serde_wasm_bindgen::to_value(&json!({}))
+            .map_err(|e| format!("Failed to serialize request: {:?}", e))?,
+    )
+    .await
+    .map_err(|e| format!("Tauri call failed: {:?}", e))?;
+
+    let json_string: String = js_sys::JSON::stringify(&result)
+        .map_err(|e| format!("Failed to stringify result: {:?}", e))?
+        .into();
+
+    serde_json::from_str(&json_string).map_err(|e| format!("Failed to parse result: {:?}", e))
+}
+
+pub async fn get_version(version: &str) -> Result<String, String> {
+    let args = serde_wasm_bindgen::to_value(&json!({ "version": version }))
+        .map_err(|e| format!("Failed to serialize request: {:?}", e))?;
+
+    let result = call_tauri("get_version", args)
+        .await
+        .map_err(|e| format!("Tauri call failed: {:?}", e))?;
+
+    let json_string: String = js_sys::JSON::stringify(&result)
+        .map_err(|e| format!("Failed to stringify result: {:?}", e))?
+        .into();
+
+    serde_json::from_str(&json_string).map_err(|e| format!("Failed to parse result: {:?}", e))
+}

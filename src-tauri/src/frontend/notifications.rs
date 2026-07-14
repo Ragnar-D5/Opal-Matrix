@@ -68,6 +68,10 @@ pub async fn on_message(
     state: Ctx<Arc<AppState>>,
     handle: Ctx<AppHandle>,
 ) {
+    if !*state.initial_sync_done.read().await {
+        return;
+    }
+
     if !actions.iter().any(|a| a.should_notify()) {
         return;
     }
