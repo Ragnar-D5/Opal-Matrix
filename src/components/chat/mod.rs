@@ -15,14 +15,14 @@ use crate::{
         }, overlays::{
             emoji_picker::{EmojiPickerState, pick_emoji},
             gif_picker::{GifPickerState, pick_gif},
-        }, settings::Settings, user_profile::MemberProfileExt
+        }, settings::Settings, user_profile::{MemberProfileExt, render_url_icon}
     },
     hooks::{setup_update_effect, use_tauri_event},
     state::{AppState, CurrentSection, MainView, ProfileStore},
     tauri_functions::{get_extra_room_info, get_timeline, indicate_typing, pick_files, scroll_timeline},
 };
 
-use phosphor_leptos::{GIF, Icon, IconWeight, SMILEY, TRASH, UPLOAD_SIMPLE, X_CIRCLE};
+use phosphor_leptos::{GIF, GLOBE, Icon, IconWeight, LOCK, SMILEY, TRASH, UPLOAD_SIMPLE, X_CIRCLE};
 
 use leptos::{ev, html::Div, prelude::*, task::spawn_local};
 use leptos_use::{
@@ -33,7 +33,7 @@ use shared::{
     api::{
         FileMetadata, ScrollDirection, SearchParameters, UiAttachmentSource,
         events::SearchResultUpdate,
-    }, settings::EnumHashMap, sidebar::{RoomExtraInfo, RoomNode}, timeline::{EventContent, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind}
+    }, settings::EnumHashMap, sidebar::{RoomExtraInfo, RoomNode}, timeline::{EventContent, UiJoinRule, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind}
 };
 use uuid::Uuid;
 use wasm_bindgen::JsCast;
@@ -1156,16 +1156,14 @@ fn InfoRow(label: &'static str, value: String) -> impl IntoView {
 }
 
 fn room_info_screen(node: RoomNode) -> AnyView {
-    let room_id = node.room_id();
+    let room_id = StoredValue::new(node.room_id());
     let extra_info: RwSignal<Option<RoomExtraInfo>> = RwSignal::new(None);
 
     Effect::new({
-        let room_id = room_id.clone();
         move |_| {
-            let room_id = room_id.clone();
             extra_info.set(None);
             spawn_local(async move {
-                match get_extra_room_info(&room_id).await {
+                match get_extra_room_info(&room_id.get_value()).await {
                     Ok(info) => extra_info.set(Some(info)),
                     Err(e) => log::error!("Failed to get extra room info: {e}"),
                 }
@@ -1176,43 +1174,84 @@ fn room_info_screen(node: RoomNode) -> AnyView {
     let info = node.info();
     let name = info.name.clone();
     let topic = info.topic.clone();
-    let room_id_for_row = room_id.clone();
+
+    let kind_label = match &node {
+        RoomNode::Space(_) => "space",
+        RoomNode::Server(_) => "server",
+        RoomNode::VoiceChannel(_) => "voice channel",
+        _ => "room",
+    };
+    let avatar = render_url_icon(node.avatar_url(), node.name(), "64px", node.color(), "[25%]");
 
     view! {
-        <div class="flex-1 flex flex-col h-full min-h-0 overflow-y-auto p-(--gap) gap-(--gap) text-normal">
-            <div class="flex flex-col gap-1">
-                <span class="text-xl text-bright">{name}</span>
-                {topic.map(|t| view! { <span class="text-dim">{t}</span> })}
+        <div class="flex flex-col justify-center">
+            <div class="flex flex-row items-center gap-3 bg-(--ui-solid-bg) border border-(--tile-border-color) p-(--gap) rounded-(--ui-border-radius)">
+                {avatar} <div class="flex flex-col">
+                    <span class="text-3xl font-bold text-normal">{name.clone()}</span>
+                    <span class="text-muted text-sm">{room_id.get_value()}</span>
+                </div>
             </div>
-            {move || match extra_info.get() {
-                None => view! { <span class="text-muted">"Loading room info..."</span> }.into_any(),
-                Some(extra) => {
-                    view! {
-                        <div class="flex flex-col gap-2">
-                            <InfoRow label="Room ID" value=room_id_for_row.clone() />
-                            <InfoRow label="Membership" value=format!("{:?}", extra.membership) />
-                            <InfoRow label="Join Rule" value=extra.join_rule.to_string() />
-                            <InfoRow
-                                label="History Visibility"
-                                value=extra.history_visibility.to_string()
-                            />
-                            <InfoRow
-                                label="Encrypted"
-                                value=if extra.encrypted { "Yes" } else { "No" }.to_string()
-                            />
-                            <InfoRow
-                                label="Room Version"
-                                value=extra.version.clone().unwrap_or_else(|| "Unknown".to_string())
-                            />
-                            <InfoRow
-                                label="Joined Members"
-                                value=extra.num_joined_users.to_string()
-                            />
-                        </div>
+            <div class="flex flex-col overflow-y-auto p-(--gap) gap-10 text-normal">
+                <div class="flex flex-col items-start gap-2 pb-2">
+                    <span class="text-dim text-sm flex items-center gap-1">
+                        {move || match extra_info.get() {
+                            Some(extra) => {
+                                let is_public = matches!(extra.join_rule, UiJoinRule::Public);
+                                view! {
+                                    <Icon icon=if is_public { GLOBE } else { LOCK } size="14px" />
+                                    <span>
+                                        {format!(
+                                            "{} {kind_label} · {} members",
+                                            if is_public { "Public" } else { "Private" },
+                                            extra.num_joined_users,
+                                        )}
+                                    </span>
+                                }
+                                    .into_any()
+                            }
+                            None => view! { <span>"Loading..."</span> }.into_any(),
+                        }}
+                    </span>
+                </div>
+                {topic.map(|t| view! { <span class="text-dim">{t}</span> })}
+                {move || match extra_info.get() {
+                    None => {
+                        view! { <span class="text-muted">"Loading room info..."</span> }.into_any()
                     }
-                        .into_any()
-                }
-            }}
+                    Some(extra) => {
+                        view! {
+                            <div class="flex flex-col gap-2">
+                                <InfoRow label="Room ID" value=room_id.get_value() />
+                                <InfoRow
+                                    label="Membership"
+                                    value=format!("{:?}", extra.membership)
+                                />
+                                <InfoRow label="Join Rule" value=extra.join_rule.to_string() />
+                                <InfoRow
+                                    label="History Visibility"
+                                    value=extra.history_visibility.to_string()
+                                />
+                                <InfoRow
+                                    label="Encrypted"
+                                    value=if extra.encrypted { "Yes" } else { "No" }.to_string()
+                                />
+                                <InfoRow
+                                    label="Room Version"
+                                    value=extra
+                                        .version
+                                        .clone()
+                                        .unwrap_or_else(|| "Unknown".to_string())
+                                />
+                                <InfoRow
+                                    label="Joined Members"
+                                    value=extra.num_joined_users.to_string()
+                                />
+                            </div>
+                        }
+                            .into_any()
+                    }
+                }}
+            </div>
         </div>
     }
     .into_any()
@@ -1333,7 +1372,7 @@ pub fn Chat() -> impl IntoView {
         <div class="flex-1 h-full flex gap-[var(--gap)] flex-col overflow-hidden">
             <ChatHeader chat_sidebar_open=chat_sidebar_open />
             <div class="flex flex-row h-full min-h-0">
-                <FloatingTile class="flex-1 flex flex-col h-full min-h-0 overflow-hidden">
+                <FloatingTile class="flex-1 flex flex-col h-full min-h-0 overflow-hidden justify-center">
                     {move || match state.active_room.get() {
                         None => {
                             view! {
@@ -1347,7 +1386,6 @@ pub fn Chat() -> impl IntoView {
                             if state.main_view.get() == MainView::Info {
                                 return room_info_screen(node);
                             }
-
                             match &node {
                                 RoomNode::Dm(_)
                                 | RoomNode::TextChannel(_)

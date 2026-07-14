@@ -68,6 +68,11 @@
     --result-highlight-color: rgba(200, 200, 64, 0.7);
 }
 
+::selection {
+    background-color: var(--accent-color);
+    color: var(--accent-text-color);
+}
+
 @utility text-token {
     white-space: pre-wrap;
     line-height: 1;

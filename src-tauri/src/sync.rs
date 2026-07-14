@@ -125,6 +125,7 @@ pub async fn attach_callbacks(
 
     let client_sync_clone = client.clone();
     let handle_clone = handle.clone();
+    let state_sync_clone = state.clone();
     let sync_task = tokio::spawn(async move {
         let sync_settings = SyncSettings::default()
             .set_presence(PresenceState::Online)
@@ -216,10 +217,16 @@ pub async fn attach_callbacks(
         let counts = get_notification_counts(&client_sync_clone).await;
         send_event(&handle_clone, &counts);
 
+        let mut is_first_sync = true;
         while let Some(sync_item) = sync_stream.next().await {
             match sync_item {
                 Ok(sync_result) => {
                     log::trace!("Received sync");
+
+                    if is_first_sync {
+                        is_first_sync = false;
+                        *state_sync_clone.initial_sync_done.write().await = true;
+                    }
                     if let Err(e) =
                         handle_to_device_messages(sync_result.to_device, handle_clone.clone()).await
                     {

@@ -26,6 +26,9 @@ use crate::{TauriError, frontend::audio::emit_devices_update};
 pub struct AppState {
     pub frontend_current_room_id: RwLock<Option<String>>,
     pub frontend_is_focused: RwLock<bool>,
+    /// Set once the initial sync response has been fully processed, so
+    /// notification handlers can skip the backlog of messages it backfills.
+    pub initial_sync_done: RwLock<bool>,
     pub update: RwLock<Option<Update>>,
     pub update_bytes: RwLock<Option<Vec<u8>>>,
     pub update_status: RwLock<UpdateStatus>,

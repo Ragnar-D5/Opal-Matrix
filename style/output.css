@@ -1038,6 +1038,9 @@
   .gap-5 {
     gap: calc(var(--spacing) * 5);
   }
+  .gap-10 {
+    gap: calc(var(--spacing) * 10);
+  }
   .gap-\[1px\] {
     gap: 1px;
   }
@@ -2565,6 +2568,10 @@
     );
   --overlay-bg-color: rgba(0, 0, 0, 0.5);
   --result-highlight-color: rgba(200, 200, 64, 0.7);
+}
+::selection {
+  background-color: var(--accent-color);
+  color: var(--accent-text-color);
 }
 @keyframes grow-change-color {
   0%, 40%, 100% {

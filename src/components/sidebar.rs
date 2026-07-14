@@ -1,5 +1,5 @@
 use phosphor_leptos::{
-    BUG, CARET_DOWN, CARET_RIGHT, Icon, IconData, IconWeight, QUESTION_MARK, SPEAKER_HIGH,
+    Icon, IconData, IconWeight, BUG, CARET_DOWN, CARET_RIGHT, QUESTION_MARK, SPEAKER_HIGH,
 };
 use shared::{
     profile::MemberProfile,
@@ -8,11 +8,11 @@ use shared::{
 
 use crate::{
     components::{
-        AudioMenu, DeafenMenu, FloatingTile, MuteMenu,
         logo::Logo,
         presence::PresenceBadge,
         settings::SettingsIcon,
-        user_profile::{MemberProfileExt, RoomNodeExt, render_url_icon},
+        user_profile::{render_url_icon, MemberProfileExt, RoomNodeExt},
+        AudioMenu, DeafenMenu, FloatingTile, MuteMenu,
     },
     state::{AppState, CurrentSection, MainView, ProfileStore},
     tauri_functions::open_log_window,
@@ -89,7 +89,7 @@ fn render_full_room(node: RoomNode, other_user_id: StoredValue<Option<String>>) 
     let node_clone = node.clone();
     view! {
         <div
-            class="flex flex-row flex-grow items-center p-1 rounded-(--ui-border-radius) cursor-pointer hover:text-normal border hover:border-(--tile-border-color)"
+            class="flex flex-row flex-grow items-center p-1 rounded-(--ui-border-radius) cursor-pointer hover:text-normal border hover:border-(--tile-border-color) group"
             class=("bg-(--ui-solid-hover-bg)", move || is_active.get())
             class=("border-(--tile-border-color)", move || is_active.get())
             class=("border-transparent", move || !is_active.get())
@@ -125,6 +125,15 @@ fn render_full_room(node: RoomNode, other_user_id: StoredValue<Option<String>>) 
                 }}
             </span>
             {call_icon}
+            <button
+                class="opacity-0 group-hover:opacity-100 text-dim hover:text-normal cursor-pointer flex items-center justify-center mr-1"
+                on:click=move |e| {
+                    e.stop_propagation();
+                    state.set_active_room_with_id(Some(room_id.get_value()), MainView::Info);
+                }
+            >
+                <Icon icon=QUESTION_MARK size="14px" />
+            </button>
             {move || {
                 let notifications = notifications().notification_count;
                 if notifications > 0 {
@@ -539,12 +548,8 @@ fn render_server_channel(child: RoomNode) -> AnyView {
         .into_any();
     }
 
-    let click_id = child.room_id();
-    let check_id = click_id.clone();
-    let info_click_id = click_id.clone();
-    let is_active = Memo::new(move |_| state.active_room_id() == Some(check_id.clone()));
-
     let room_id = StoredValue::new(child.room_id());
+    let is_active = Memo::new(move |_| state.active_room_id() == Some(room_id.get_value()));
 
     let highlight_count = move || {
         let counts = state
@@ -641,7 +646,7 @@ fn render_server_channel(child: RoomNode) -> AnyView {
                     } else {
                         MainView::Chat
                     };
-                    state.set_active_room_with_id(Some(click_id.clone()), view)
+                    state.set_active_room_with_id(Some(room_id.get_value()), view)
                 }
             >
                 <div class=(
@@ -652,10 +657,10 @@ fn render_server_channel(child: RoomNode) -> AnyView {
                 {name}
                 <div class="w-1"></div>
                 <button
-                    class="opacity-0 group-hover:opacity-100 text-dim hover:text-normal cursor-pointer flex items-center justify-center transition-opacity mr-1"
+                    class="opacity-0 group-hover:opacity-100 text-dim hover:text-normal cursor-pointer flex items-center justify-center mr-1"
                     on:click=move |e| {
                         e.stop_propagation();
-                        state.set_active_room_with_id(Some(info_click_id.clone()), MainView::Info);
+                        state.set_active_room_with_id(Some(room_id.get_value()), MainView::Info);
                     }
                 >
                     <Icon icon=QUESTION_MARK size="14px" />
