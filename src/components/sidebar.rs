@@ -138,7 +138,7 @@ fn render_full_room(node: RoomNode, other_user_id: StoredValue<Option<String>>) 
                 let notifications = notifications().notification_count;
                 if notifications > 0 {
                     view! {
-                        <div class="ml-auto bg-[var(--mention-color)] text-normal text-xs font-bold px-1.5 py-0.5 rounded-full">
+                        <div class="ml-auto bg-(--mention-color) text-(--mention-text-color) text-xs font-bold px-1.5 py-0.5 rounded-full">
                             {notifications}
                         </div>
                     }
@@ -287,7 +287,7 @@ fn render_room_preview(room: RoomNode, members: Option<Vec<UserDevice>>) -> impl
     let br_corner = move || {
         if notifications.get().has_notifications() {
             Some(CutoutBadgeCorner {
-                fg_color: "white".to_string(),
+                fg_color: "var(--mention-text-color)".to_string(),
                 bg_color: "var(--mention-color)".to_string(),
                 content: CutoutBadgeContent::Number(notifications.get().notification_count),
             })
@@ -585,7 +585,7 @@ fn render_server_channel(child: RoomNode) -> AnyView {
             return String::new();
         }
 
-        "linear-gradient(in srgb to right, oklch(from var(--accent-color) l c h / 0.15), oklch(from var(--accent-color) l c h / 0) 100%)".to_string()
+        "linear-gradient(in srgb to right, oklch(from var(--mention-color) l c h / 0.15), oklch(from var(--accent-color) l c h / 0) 100%)".to_string()
     };
 
     let participants = Memo::new(move |_| state.get_call_members(&room_id.get_value()).get());
@@ -669,7 +669,7 @@ fn render_server_channel(child: RoomNode) -> AnyView {
                 {move || {
                     if highlight_count() > 0 {
                         view! {
-                            <div class="text-center bg-(--accent-color) w-5 h-5 text-(--ui-solid-bg) text-xs font-bold px-1.5 py-0.5 rounded-full">
+                            <div class="text-center bg-(--mention-color) w-5 h-5 text-(--mention-text-color) text-xs font-bold px-1.5 py-0.5 rounded-full">
                                 {highlight_count}
                             </div>
                         }

@@ -14,6 +14,7 @@ use shared::api::events::TauriEvent;
 use shared::api::{RestoreResponse, UpdateDownloadProgress, UpdateInfo, UpdateStatus};
 use std::collections::HashMap;
 use std::sync::Arc;
+use tauri::async_runtime::spawn_blocking;
 use tauri_plugin_updater::{Update, UpdaterExt};
 use tokio::sync::RwLock;
 use toml_edit::DocumentMut;
@@ -89,24 +90,24 @@ pub(crate) async fn send_notification(
     body: String,
     icon: Option<String>,
 ) -> Result<(), TauriError> {
-    if handle.notification().permission_state()? != PermissionState::Granted {
+    let notification = handle.notification();
+    if notification.permission_state()? != PermissionState::Granted {
         trace!("Notification permission not granted, skipping notification");
         return Ok(());
     }
 
-    let mut notification = notify_rust::Notification::new();
-    notification.summary(&title).body(&body);
+    let mut builder = notification.builder().title(title).body(body);
     if let Some(icon) = &icon {
-        notification.icon(icon);
-    } else {
-        notification.auto_icon();
+        builder = builder.icon(icon);
     }
 
-    return notification
-        .show_async()
-        .await
-        .map(|_| ())
-        .map_err(|e| format!("Failed to show notification: {}", e).into());
+    spawn_blocking(move || {
+        builder
+            .show()
+            .map_err(|e| format!("Failed to show notification: {}", e))
+    });
+
+    Ok(())
 }
 
 pub fn send_event<T: TauriEvent>(app_handle: &AppHandle, payload: &T) {
@@ -696,7 +697,7 @@ pub async fn check_for_update_backend(
         .await
         .get("com.opal.auto_download_update")
         .is_some_and(|item| {
-            item.as_bool().unwrap_or({
+            item.as_bool().unwrap_or_else(|| {
                 log::warn!("Setting auto_download_update is not a bool");
                 false
             })

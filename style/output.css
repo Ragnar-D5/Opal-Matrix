@@ -1725,6 +1725,9 @@
   .bg-\(--idle-color\) {
     background-color: var(--idle-color);
   }
+  .bg-\(--mention-color\) {
+    background-color: var(--mention-color);
+  }
   .bg-\(--offline-color\) {
     background-color: var(--offline-color);
   }
@@ -1784,9 +1787,6 @@
   }
   .bg-\[var\(--color-icon-selected\)\] {
     background-color: var(--color-icon-selected);
-  }
-  .bg-\[var\(--mention-color\)\] {
-    background-color: var(--mention-color);
   }
   .bg-black {
     background-color: var(--color-black);
@@ -2188,6 +2188,9 @@
   }
   .text-\(--link-color\) {
     color: var(--link-color);
+  }
+  .text-\(--mention-text-color\) {
+    color: var(--mention-text-color);
   }
   .text-\(--offline-color\) {
     color: var(--offline-color);
@@ -3043,7 +3046,6 @@
   --muted-text-color: hsl(220, 15%, 25%);
   --tile-border-color: rgba(255, 255, 255, 0.175);
   --gap: 5px;
-  --mention-color: rgb(255, 100, 100);
   --accent-color: #46aec5;
   --focus-color: rgb(from var(--accent-color) r g b / 60%);
   --accent-bg-color: #183c43;
@@ -3069,6 +3071,8 @@
   --purple: #d090ff;
   --teal: #50fbdf;
   --blue: #5298ff;
+  --mention-color: var(--accent-color);
+  --mention-text-color: var(--ui-solid-bg);
   --pin-color: var(--idle-color);
   --success-color: var(--online-color);
   --success-bg-color: rgb(from var(--success-color) r g b / 0.1);
