@@ -13,9 +13,9 @@ use shared::{
 use crate::components::FloatingTile;
 use crate::{
     components::{
-        chat::{JumpTarget, messages::render_timeline_item},
+        chat::{messages::render_timeline_item, JumpTarget},
         presence::PresenceBadge,
-        user_profile::{MemberProfileExt, render_user_profile_card},
+        user_profile::{render_user_profile_card, MemberProfileExt},
     },
     state::{AppState, MainView, ProfileStore},
 };
@@ -457,7 +457,7 @@ fn message_result(
 
     view! {
         <button
-            class="relative p-1 bg-(--ui-solid-bg) border border-(--tile-border-color) rounded-(--gap) cursor-pointer items-start text-left"
+            class="relative p-1 ui-solid-bg border border-(--tile-border-color) rounded-(--gap) cursor-pointer items-start text-left"
             on:mouseenter=move |_| hovered.set(true)
             on:mouseleave=move |_| hovered.set(false)
             on:click=move |_| {
@@ -509,18 +509,15 @@ fn pinned_messages(pinned_result: RwSignal<Option<Vec<UiTimelineItem>>>) -> AnyV
         }
 
         view! {
-                <div class="flex flex-1 min-h-0 flex-col gap-(--gap) w-full overflow-y-auto p-(--gap)">
-                    <For
-                        each=move || messages.clone()
-                        key=|msg| msg.render_key()
-                        children=move |msg| message_result(
-                            msg,
-                            room_id.clone(),
-                            Memo::new(|_| vec![]),
-                        )
-                    />
-                </div>
-        }.into_any()
+            <div class="flex flex-1 min-h-0 flex-col gap-(--gap) w-full overflow-y-auto p-(--gap)">
+                <For
+                    each=move || messages.clone()
+                    key=|msg| msg.render_key()
+                    children=move |msg| message_result(msg, room_id.clone(), Memo::new(|_| vec![]))
+                />
+            </div>
+        }
+        .into_any()
     };
 
     let text = move || {
@@ -536,10 +533,10 @@ fn pinned_messages(pinned_result: RwSignal<Option<Vec<UiTimelineItem>>>) -> AnyV
     view! {
         <div class="flex flex-col gap-(--gap) w-full h-full min-h-0 overflow-visible">
 
-        <div class="w-full h-(--header-height) shrink-0 text-normal flex items-center pl-[calc((var(--header-height)-1lh)/2)] border-b border-(--tile-border-color)">
-            {text}
-        </div>
-        {content}
+            <div class="w-full h-(--header-height) shrink-0 text-normal flex items-center pl-[calc((var(--header-height)-1lh)/2)] border-b border-(--tile-border-color)">
+                {text}
+            </div>
+            {content}
         </div>
     }.into_any()
 }

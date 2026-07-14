@@ -83,7 +83,7 @@ pub fn render_update_section() -> AnyView {
 
         view! {
             <div
-                class="px-4 py-2 rounded-(--ui-border-radius) text-sm font-medium border border-(--tile-border-color) flex flex-row items-center gap-2"
+                class="px-4 py-2 rounded-ui text-sm font-medium border border-(--tile-border-color) flex flex-row items-center gap-2"
                 style=format!("background-color: {bg_color}; color: {color};")
             >
                 <Icon icon=icon size="20px" />
@@ -223,7 +223,7 @@ pub fn render_update_section() -> AnyView {
                 <button
                     class=move || {
                         let base = format!(
-                            "absolute left-24 top-1/2 -translate-y-1/2 whitespace-nowrap text-sm transition-opacity duration-300 ease-in-out border border-(--tile-border-color) px-3 py-1 rounded-(--ui-border-radius) bg-(--overlay-bg-color) cursor-pointer hover:bg-(--ui-solid-hover-bg) text-({}) select-none {}",
+                            "absolute left-24 top-1/2 -translate-y-1/2 whitespace-nowrap text-sm transition-opacity duration-300 ease-in-out border border-(--tile-border-color) px-3 py-1 rounded-ui bg-(--overlay-bg-color) cursor-pointer hover:bg-(--ui-solid-hover-bg) text-({}) select-none {}",
                             button_color(),
                             if status.get() == UpdateStatus::CheckingForUpdates {
                                 "pointer-events-none"

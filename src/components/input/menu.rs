@@ -112,7 +112,7 @@ fn render_command(command: Command) -> impl IntoView {
     view! {
         <span
             contenteditable="false"
-            class="rounded-(--floating-border-radius) bg-(--ui-solid-bg) border border-(--accent-color) px-[2px]"
+            class="rounded-(--floating-border-radius) ui-solid-bg border border-(--accent-color) px-[2px]"
         >
             /
             {command.name}
@@ -584,7 +584,7 @@ fn auto_complete_item_render(
     view! {
         <button
             node_ref=row_ref
-            class="flex flex-row justify-center items-center rounded-(--ui-border-radius) cursor-pointer mx-(--gap) px-(--gap) py-1"
+            class="flex flex-row justify-center items-center rounded-ui cursor-pointer mx-(--gap) px-(--gap) py-1"
             class=("bg-(--ui-hover-bg)", move || selected_index.get() == idx)
             on:mouseenter=move |_| selected_index.set(idx)
             on:click=move |_| {
@@ -717,7 +717,7 @@ pub fn SelectionMenu(menu: RwSignal<MenuType>, input_ref: NodeRef<Div>) -> impl 
 
     view! {
         <div
-            class="mb-(--gap) absolute bottom-full left-4 right-4 bottom-(--gap) bg-(--ui-floating-hover-bg) backdrop-blur-2xl rounded-(--ui-border-radius) border border-(--tile-border-color) flex flex-col text-xs pb-(--gap) max-h-100"
+            class="mb-(--gap) absolute bottom-full left-4 right-4 bottom-(--gap) bg-(--ui-floating-hover-bg) backdrop-blur-2xl rounded-ui border border-(--tile-border-color) flex flex-col text-xs pb-(--gap) max-h-100"
             class:hidden=move || menu.get().is_none() || no_matches()
         >
             <CloseButton on_click=move |_| menu.set(MenuType::None) inset="3px" />

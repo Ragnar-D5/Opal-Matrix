@@ -103,7 +103,7 @@ pub fn render_profile_section() -> AnyView {
 
                     <div class="relative">
                         <div
-                            class="relative h-7 flex items-center w-48 border rounded-(--ui-border-radius) overflow-hidden"
+                            class="relative h-7 flex items-center w-48 border rounded-ui overflow-hidden"
                             class=("border-(--accent-color)", move || is_dropdown_open.get())
                             class=("border-(--tile-border-color)", move || !is_dropdown_open.get())
                         >
@@ -170,7 +170,7 @@ pub fn render_profile_section() -> AnyView {
                                 class="fixed inset-0 z-40"
                                 on:click=move |_| is_dropdown_open.set(false)
                             />
-                            <div class="absolute top-full left-0 mt-1 w-48 max-h-60 overflow-y-auto bg-(--ui-solid-bg) border border-(--tile-border-color) rounded-(--ui-border-radius) shadow-lg z-50 py-1 flex flex-col">
+                            <div class="absolute top-full left-0 mt-1 w-48 max-h-60 overflow-y-auto ui-solid-bg border border-(--tile-border-color) rounded-ui shadow-lg z-50 py-1 flex flex-col">
                                 <For
                                     each=move || {
                                         let search = search_text.get().to_lowercase();
@@ -312,7 +312,7 @@ pub fn render_profile_section() -> AnyView {
                 {picker_or_info}
             </div>
             <div class="flex flex-row gap-5 m-5 items-start">
-                <div class="w-56 shrink-0 border border-(--tile-border-color) flex flex-col rounded-(--ui-border-radius) overflow-hidden">
+                <div class="w-56 shrink-0 border border-(--tile-border-color) flex flex-col rounded-ui overflow-hidden">
                     <div class="relative">
                         <div
                             class="w-full cursor-pointer group relative overflow-hidden"
@@ -408,12 +408,12 @@ pub fn render_profile_section() -> AnyView {
                             <input
                                 node_ref=displayname_ref
                                 type="text"
-                                class="flex-1 min-w-0 px-2 py-1 bg-transparent border border-(--tile-border-color) rounded-(--ui-border-radius) text-sm text-normal outline-none focus:border-(--accent-color)"
+                                class="flex-1 min-w-0 px-2 py-1 bg-transparent border border-(--tile-border-color) rounded-ui text-sm text-normal outline-none focus:border-(--accent-color)"
                                 prop:value=move || displayname_val.get()
                                 on:input=move |ev| displayname_val.set(event_target_value(&ev))
                             />
                             <button
-                                class="shrink-0 px-3 py-1 text-sm bg-(--accent-color) text-white rounded-(--ui-border-radius) hover:brightness-110 cursor-pointer"
+                                class="shrink-0 px-3 py-1 text-sm bg-(--accent-color) text-white rounded-ui hover:brightness-110 cursor-pointer"
                                 on:click=move |_| {
                                     if let Err(e) = save_displayname(
                                         &displayname_val.get_untracked(),
@@ -426,7 +426,7 @@ pub fn render_profile_section() -> AnyView {
                                 "Save"
                             </button>
                             <button
-                                class="shrink-0 px-3 py-1 text-sm border border-(--tile-border-color) text-muted rounded-(--ui-border-radius) hover:text-normal cursor-pointer"
+                                class="shrink-0 px-3 py-1 text-sm border border-(--tile-border-color) text-muted rounded-ui hover:text-normal cursor-pointer"
                                 on:click=move |_| {
                                     let localpart = uid_reset
                                         .split(':')
@@ -467,12 +467,12 @@ pub fn render_profile_section() -> AnyView {
                             <input
                                 node_ref=bannercolor_ref
                                 type="text"
-                                class="flex-1 min-w-0 px-2 py-1 bg-transparent border border-(--tile-border-color) rounded-(--ui-border-radius) text-sm text-normal outline-none focus:border-(--accent-color)"
+                                class="flex-1 min-w-0 px-2 py-1 bg-transparent border border-(--tile-border-color) rounded-ui text-sm text-normal outline-none focus:border-(--accent-color)"
                                 prop:value=move || bannercolor_val.get()
                                 on:input=move |ev| bannercolor_val.set(event_target_value(&ev))
                             />
                             <button
-                                class="shrink-0 px-3 py-1 text-sm bg-(--accent-color) text-white rounded-(--ui-border-radius) hover:brightness-110 cursor-pointer"
+                                class="shrink-0 px-3 py-1 text-sm bg-(--accent-color) text-white rounded-ui hover:brightness-110 cursor-pointer"
                                 on:click=move |_| {
                                     if let Err(e) = save_banner_color(&bannercolor_val.get()) {
                                         log::error!("Failed to save banner color: {e}");
@@ -482,7 +482,7 @@ pub fn render_profile_section() -> AnyView {
                                 "Save"
                             </button>
                             <button
-                                class="shrink-0 px-3 py-1 text-sm border border-(--tile-border-color) text-muted rounded-(--ui-border-radius) hover:text-normal cursor-pointer"
+                                class="shrink-0 px-3 py-1 text-sm border border-(--tile-border-color) text-muted rounded-ui hover:text-normal cursor-pointer"
                                 on:click=move |_| {
                                     bannercolor_val.set(fallback_color.get().to_css_hsl());
                                 }
@@ -540,14 +540,14 @@ pub fn render_profile_section() -> AnyView {
                                 type="number"
                                 min="0"
                                 max="360"
-                                class="w-16 shrink-0 px-2 py-1 bg-transparent border border-(--tile-border-color) rounded-(--ui-border-radius) text-sm text-normal outline-none focus:border-(--accent-color)"
+                                class="w-16 shrink-0 px-2 py-1 bg-transparent border border-(--tile-border-color) rounded-ui text-sm text-normal outline-none focus:border-(--accent-color)"
                                 prop:value=move || namecolor_val.get()
                                 on:input=move |ev| {
                                     namecolor_val.set(event_target_value(&ev).parse().unwrap_or(0))
                                 }
                             />
                             <button
-                                class="shrink-0 px-3 py-1 text-sm bg-(--accent-color) text-white rounded-(--ui-border-radius) hover:brightness-110 cursor-pointer"
+                                class="shrink-0 px-3 py-1 text-sm bg-(--accent-color) text-white rounded-ui hover:brightness-110 cursor-pointer"
                                 on:click=move |_| {
                                     if let Err(e) = save_name_color(
                                         &format!("hsl({} 90% 70%)", namecolor_val.get()),
@@ -559,7 +559,7 @@ pub fn render_profile_section() -> AnyView {
                                 "Save"
                             </button>
                             <button
-                                class="shrink-0 px-3 py-1 text-sm border border-(--tile-border-color) text-muted rounded-(--ui-border-radius) hover:text-normal cursor-pointer"
+                                class="shrink-0 px-3 py-1 text-sm border border-(--tile-border-color) text-muted rounded-ui hover:text-normal cursor-pointer"
                                 on:click=move |_| {
                                     namecolor_val.set(fallback_color.get().to_hsla()[0] as u32);
                                 }

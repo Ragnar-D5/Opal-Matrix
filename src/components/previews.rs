@@ -32,7 +32,7 @@ pub fn render_link(span: RichTextSpan) -> impl IntoView {
     view! {
         <Suspense fallback=move || {
             view! {
-                <div class="animate-pulse bg-(--ui-solid-bg) w-full max-w-sm h-24 rounded-md mt-2"></div>
+                <div class="animate-pulse ui-solid-bg w-full max-w-sm h-24 rounded-md mt-2"></div>
             }
         }>
             {move || {
@@ -45,7 +45,7 @@ pub fn render_link(span: RichTextSpan) -> impl IntoView {
                         let is_small_image = data.image_width.unwrap_or(400) < 250;
                         Some(
                             view! {
-                                <div class="flex flex-row max-w-[520px] bg-(--ui-solid-bg) border border-(--tile-border-color) rounded-(--ui-border-radius) overflow-hidden">
+                                <div class="flex flex-row max-w-[520px] ui-solid-bg border border-(--tile-border-color) rounded-ui overflow-hidden">
                                     <div
                                         class="w-1 shrink-0"
                                         style=format!("background-color: {}", app_color)
@@ -288,7 +288,7 @@ pub fn ImageLightbox() -> impl IntoView {
                                         src=url
                                         width=img.width
                                         height=img.height
-                                        class="w-auto h-auto max-w-[90vw] max-h-[calc(90vh-3rem)] rounded-(--ui-border-radius) object-contain shadow-[0_0_15px_3px_rgba(255,255,255,0.3)]"
+                                        class="w-auto h-auto max-w-[90vw] max-h-[calc(90vh-3rem)] rounded-ui object-contain shadow-[0_0_15px_3px_rgba(255,255,255,0.3)]"
                                         style=move || {
                                             if zoomed.get() {
                                                 "transform: scale(2); cursor: zoom-out;"

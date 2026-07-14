@@ -156,7 +156,7 @@ pub fn ProfileCardPortal() -> impl IntoView {
                 <div class="fixed inset-0 z-[999]" on:click=move |_| state.close() />
 
                 <div
-                    class="fixed z-[1000] bg-(--ui-solid-bg) border border-(--tile-border-color) rounded-(--floating-border-radius) overflow-hidden"
+                    class="fixed z-[1000] ui-solid-bg border border-(--tile-border-color) rounded-(--floating-border-radius) overflow-hidden"
                     style=style
                 >
                     {content}

@@ -341,7 +341,7 @@ pub fn LogView() -> impl IntoView {
         <BackgroundShader />
         <div class="backdrop-blur-2xl bg-(--tile-bg-color) flex flex-col h-screen w-screen \
         text-[#c8ccd8] font-mono text-xs">
-            <div class="bg-(--ui-solid-bg) flex items-center justify-between gap-4 px-3 py-1.5 \
+            <div class="ui-solid-bg flex items-center justify-between gap-4 px-3 py-1.5 \
             border-b border-[#262a38] shrink-0">
                 <input
                     type="text"
@@ -430,7 +430,12 @@ pub fn LogView() -> impl IntoView {
                                 <span class="text-[#3a3f52]">"|"</span>
                                 {highlighted_field(m.location, "text-(--teal)", query, matcher)}
                                 <span class="text-[#3a3f52]">"|"</span>
-                                {highlighted_field(m.entry.message, "text-[#c8ccd8]", query, matcher)}
+                                {highlighted_field(
+                                    m.entry.message,
+                                    "text-[#c8ccd8]",
+                                    query,
+                                    matcher,
+                                )}
                             </div>
                         }
                     }

@@ -89,7 +89,7 @@ fn render_full_room(node: RoomNode, other_user_id: StoredValue<Option<String>>) 
     let node_clone = node.clone();
     view! {
         <div
-            class="flex flex-row flex-grow items-center p-1 rounded-(--ui-border-radius) cursor-pointer hover:text-normal border hover:border-(--tile-border-color) group"
+            class="flex flex-row flex-grow items-center p-1 rounded-ui cursor-pointer hover:text-normal border hover:border-(--tile-border-color) group"
             class=("bg-(--ui-solid-hover-bg)", move || is_active.get())
             class=("border-(--tile-border-color)", move || is_active.get())
             class=("border-transparent", move || !is_active.get())
@@ -499,7 +499,7 @@ fn render_server_channel(child: RoomNode) -> AnyView {
         return view! {
             <div class="flex flex-col w-full">
                 <div
-                    class="flex flex-row flex-grow items-center gap-1 p-1 rounded-(--ui-border-radius) cursor-pointer text-dim hover:text-normal"
+                    class="flex flex-row flex-grow items-center gap-1 p-1 rounded-ui cursor-pointer text-dim hover:text-normal"
                     on:click=move |_| is_open.update(|open| *open = !*open)
                 >
                     <span>{name}</span>
@@ -618,7 +618,7 @@ fn render_server_channel(child: RoomNode) -> AnyView {
     view! {
         <div class="group relative flex flex-row w-full cursor-pointer">
             <div
-                class="flex flex-row flex-grow items-center p-1 rounded-(--ui-border-radius) cursor-pointer border hover:border-(--tile-border-color)"
+                class="flex flex-row flex-grow items-center p-1 rounded-ui cursor-pointer border hover:border-(--tile-border-color)"
                 class=("hover:text-normal", move || !child.get_value().is_unjoined())
                 class=("hover:text-dim", move || child.get_value().is_unjoined())
                 class=(
@@ -818,7 +818,7 @@ pub fn Sidebar() -> impl IntoView {
                                 move || state.active_section.get().is_not_server(),
                             )
                             class=(
-                                "bg-(--ui-solid-bg)",
+                                "ui-solid-bg",
                                 move || !state.active_section.get().is_not_server(),
                             )
 
@@ -898,7 +898,7 @@ pub fn Sidebar() -> impl IntoView {
                 </div>
                 <div class="relative flex items-center justify-center group w-full border-t border-(--tile-border-color) pt-3 pb-3 flex-shrink-0">
                     <div
-                        class="server-btn flex items-center justify-center w-10 h-10 rounded-[25%] cursor-pointer transition-colors bg-(--ui-solid-bg) hover:bg-(--ui-solid-hover-bg) border border-(--tile-border-color) text-(--dim-text-color) hover:text-(--accent-color)"
+                        class="server-btn flex items-center justify-center w-10 h-10 rounded-[25%] cursor-pointer transition-colors ui-solid-bg hover:bg-(--ui-solid-hover-bg) border border-(--tile-border-color) text-(--dim-text-color) hover:text-(--accent-color)"
                         on:click=move |_| open_log_window()
                     >
                         <Icon icon=BUG size="65%" weight=IconWeight::Thin />

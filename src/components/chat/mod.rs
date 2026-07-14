@@ -655,7 +655,7 @@ impl Attachment {
         };
 
         view! {
-            <div class="flex flex-col w-35 bg-(--ui-solid-bg) rounded-(--ui-border-radius) overflow-hidden border border-(--tile-border-color)">
+            <div class="flex flex-col w-35 ui-solid-bg rounded-ui overflow-hidden border border-(--tile-border-color)">
                 <div class="group relative">
 
                     {if is_image {
@@ -678,7 +678,7 @@ impl Attachment {
                             .into_any()
                     }}
                     <div
-                        class="absolute top-1.5 right-1.5 rounded cursor-pointer flex items-center justify-center opacity-0 transition-all duration-150 ease-in-out group-hover:opacity-100 bg-(--ui-solid-bg) hover:bg-(--ui-solid-hover-bg) border border-(--tile-border-color) hover:border-(--accent-color) text-muted hover:text-bright"
+                        class="absolute top-1.5 right-1.5 rounded cursor-pointer flex items-center justify-center opacity-0 transition-all duration-150 ease-in-out group-hover:opacity-100 ui-solid-bg hover:bg-(--ui-solid-hover-bg) border border-(--tile-border-color) hover:border-(--accent-color) text-muted hover:text-bright"
                         on:click=move |_| {
                             let mut atts = attachments.get_untracked();
                             if let Some(pos) = atts.iter().position(|a| a.id == id) {
@@ -1057,7 +1057,7 @@ fn ChatInput() -> impl IntoView {
             {move || input_info_content()} {move || attachment_view()}
             <SelectionMenu menu=menu input_ref=input_ref />
             <div
-                class="text-normal w-full min-h-13 border rounded-b-(--ui-border-radius) flex flex-row bg-(--ui-solid-bg) items-center gap-3 px-3 cursor-text duration-100"
+                class="text-normal w-full min-h-13 border rounded-b-(--ui-border-radius) flex flex-row ui-solid-bg items-center gap-3 px-3 cursor-text duration-100"
                 class=(
                     "rounded-t-(--ui-border-radius)",
                     move || input_info.get().is_none() && attachments.get().is_empty(),
@@ -1066,7 +1066,7 @@ fn ChatInput() -> impl IntoView {
                 class=("border-(--tile-border-color)", move || !is_focused.get())
             >
                 <button
-                    class="text-(--ui-base-color) hover:text-normal rounded-(--ui-border-radius) hover:bg-(--ui-solid-hover-bg) p-1 transition-colors"
+                    class="text-(--ui-base-color) hover:text-normal rounded-ui hover:bg-(--ui-solid-hover-bg) p-1 transition-colors"
                     class=("cursor-not-allowed", move || is_editing.get())
                     class=("cursor-pointer", move || !is_editing.get())
                     on:click=move |_| {
@@ -1104,7 +1104,7 @@ fn ChatInput() -> impl IntoView {
                     ></div>
                 </div>
                 <button
-                    class="text-(--ui-base-color) hover:text-normal rounded-(--ui-border-radius) hover:bg-(--ui-solid-hover-bg) p-1 cursor-pointer"
+                    class="text-(--ui-base-color) hover:text-normal rounded-ui hover:bg-(--ui-solid-hover-bg) p-1 cursor-pointer"
                     on:click=move |ev| {
                         let anchor: Element = ev.target().unwrap().unchecked_into();
                         spawn_local(async move {
@@ -1123,7 +1123,7 @@ fn ChatInput() -> impl IntoView {
                     <Icon icon=GIF weight=IconWeight::Fill size="20px" />
                 </button>
                 <button
-                    class="text-(--ui-base-color) hover:text-normal rounded-(--ui-border-radius) hover:bg-(--ui-solid-hover-bg) p-1 cursor-pointer"
+                    class="text-(--ui-base-color) hover:text-normal rounded-ui hover:bg-(--ui-solid-hover-bg) p-1 cursor-pointer"
                     on:click=move |ev| {
                         let anchor: Element = ev.target().unwrap().unchecked_into();
                         spawn_local(async move {
@@ -1185,7 +1185,7 @@ fn room_info_screen(node: RoomNode) -> AnyView {
 
     view! {
         <div class="flex flex-col justify-center">
-            <div class="flex flex-row items-center gap-3 bg-(--ui-solid-bg) border border-(--tile-border-color) p-(--gap) rounded-(--ui-border-radius)">
+            <div class="flex flex-row items-center gap-3 ui-solid-bg border border-(--tile-border-color) p-(--gap) rounded-ui">
                 {avatar} <div class="flex flex-col">
                     <span class="text-3xl font-bold text-normal">{name.clone()}</span>
                     <span class="text-muted text-sm">{room_id.get_value()}</span>

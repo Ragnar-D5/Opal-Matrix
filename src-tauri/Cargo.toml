@@ -98,7 +98,7 @@ android-native-keyring-store = "1.0"
 notify-rust = "4.17"
 zbus-secret-service-keyring-store = {
   version = "1.0",
-  features = ["rt-tokio-crypto-rust"]
+  features = ["rt-async-io-crypto-rust"]
 }
 
 [target.'cfg(target_os = "macos")'.dependencies]

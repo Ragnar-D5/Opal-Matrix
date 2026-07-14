@@ -649,7 +649,7 @@ fn render_reactions(
             view! {
                 <button
                     class="flex items-center p-0.5 pr-1 rounded-lg border cursor-pointer transition-colors select-none group"
-                    class=("bg-(--ui-solid-bg)", !contains_user)
+                    class=("ui-solid-bg", !contains_user)
                     class=("hover:bg-(--ui-solid-hover-bg)", !contains_user)
                     class=("border-(--tile-border-color)", !contains_user)
                     class=("bg-(--accent-bg-color)", contains_user)
@@ -1247,7 +1247,7 @@ fn MesssageButtons(
 
     view! {
         <div
-            class="absolute -top-4 right-4 z-10 transform-gpu flex items-center gap-1 bg-(--ui-solid-bg) p-1 rounded-(--gap) text-muted text-xs border border-(--tile-border-color) opacity-0 group-hover/msg:opacity-100"
+            class="absolute -top-4 right-4 z-10 transform-gpu flex items-center gap-1 ui-solid-bg p-1 rounded-(--gap) text-muted text-xs border border-(--tile-border-color) opacity-0 group-hover/msg:opacity-100"
             class=("hidden", no_buttons)
             style:opacity=move || interacting().then_some("1")
         >
@@ -1311,13 +1311,13 @@ fn MesssageButtons(
             </div>
             <div class="flex gap-2 pt-2 justify-end w-full">
                 <button
-                    class="px-4 py-1.5 rounded-(--ui-border-radius) text-sm bg-(--ui-solid-hover-bg) hover:bg-(--ui-floating-hover-bg) text-normal cursor-pointer border border-(--tile-border-color) flex flex-grow items-center justify-center"
+                    class="px-4 py-1.5 rounded-ui text-sm bg-(--ui-solid-hover-bg) hover:bg-(--ui-floating-hover-bg) text-normal cursor-pointer border border-(--tile-border-color) flex flex-grow items-center justify-center"
                     on:click=move |_| show_delete_confirm.set(false)
                 >
                     "Cancel"
                 </button>
                 <button
-                    class="px-4 py-1.5 rounded-(--ui-border-radius) text-(--ui-solid-bg) text-sm cursor-pointer font-semibold flex flex-grow items-center justify-center bg-(--error-color)"
+                    class="px-4 py-1.5 rounded-ui text-(--ui-solid-bg) text-sm cursor-pointer font-semibold flex flex-grow items-center justify-center bg-(--error-color)"
                     on:click=move |_| {
                         show_delete_confirm.set(false);
                         on_delete_confirm.run(());
@@ -1341,13 +1341,13 @@ fn MesssageButtons(
             </div>
             <div class="flex gap-2 pt-2 justify-end w-full">
                 <button
-                    class="px-4 py-1.5 rounded-(--ui-border-radius) text-sm bg-(--ui-solid-hover-bg) hover:bg-(--ui-floating-hover-bg) text-normal cursor-pointer border border-(--tile-border-color) flex flex-grow items-center justify-center"
+                    class="px-4 py-1.5 rounded-ui text-sm bg-(--ui-solid-hover-bg) hover:bg-(--ui-floating-hover-bg) text-normal cursor-pointer border border-(--tile-border-color) flex flex-grow items-center justify-center"
                     on:click=move |_| show_pin_confirm.set(false)
                 >
                     "Cancel"
                 </button>
                 <button
-                    class="px-4 py-1.5 rounded-(--ui-border-radius) text-sm text-(--ui-solid-bg) bg-(--pin-color) cursor-pointer font-semibold flex flex-grow items-center justify-center"
+                    class="px-4 py-1.5 rounded-ui text-sm text-(--ui-solid-bg) bg-(--pin-color) cursor-pointer font-semibold flex flex-grow items-center justify-center"
                     on:click=move |_| {
                         show_pin_confirm.set(false);
                         if let Some(event_id) = event_id.get_value() {
@@ -1373,13 +1373,13 @@ fn MesssageButtons(
             </div>
             <div class="flex gap-2 pt-2 justify-end w-full">
                 <button
-                    class="px-4 py-1.5 rounded-(--ui-border-radius) text-sm bg-(--ui-solid-hover-bg) hover:bg-(--ui-floating-hover-bg) text-normal cursor-pointer border border-(--tile-border-color) flex flex-grow items-center justify-center"
+                    class="px-4 py-1.5 rounded-ui text-sm bg-(--ui-solid-hover-bg) hover:bg-(--ui-floating-hover-bg) text-normal cursor-pointer border border-(--tile-border-color) flex flex-grow items-center justify-center"
                     on:click=move |_| show_unpin_confirm.set(false)
                 >
                     "Cancel"
                 </button>
                 <button
-                    class="px-4 py-1.5 rounded-(--ui-border-radius) text-sm bg-(--pin-color) text-(--ui-solid-bg) hover:bg-(--accent-hover-bg) cursor-pointer font-semibold flex flex-grow items-center justify-center"
+                    class="px-4 py-1.5 rounded-ui text-sm bg-(--pin-color) text-(--ui-solid-bg) hover:bg-(--accent-hover-bg) cursor-pointer font-semibold flex flex-grow items-center justify-center"
                     on:click=move |_| {
                         show_unpin_confirm.set(false);
                         if let Some(event_id) = event_id.get_value() {
@@ -1402,7 +1402,7 @@ fn ConfirmDialog(
 ) -> impl IntoView {
     let children = StoredValue::new(children);
     let dialog_class = StoredValue::new(format!(
-        "relative pointer-events-auto bg-(--ui-solid-bg) border border-(--tile-border-color) rounded-(--floating-border-radius) shadow-xl p-3 flex flex-col backdrop-blur-xl {class}",
+        "relative pointer-events-auto ui-solid-bg border border-(--tile-border-color) rounded-(--floating-border-radius) shadow-xl p-3 flex flex-col backdrop-blur-xl {class}",
     ));
 
     view! {
@@ -1836,7 +1836,7 @@ pub fn render_timeline_item(
 
             view! {
                 <div class="flex flex-col items-start px-4 pt-10 pb-6 gap-2 pt-30">
-                    <div class="w-16 h-16 rounded-full bg-(--ui-solid-bg) border border-(--tile-border-color) flex items-center justify-center mb-2 text-normal">
+                    <div class="w-16 h-16 rounded-full ui-solid-bg border border-(--tile-border-color) flex items-center justify-center mb-2 text-normal">
                         <Icon icon=icon size="36px" weight=IconWeight::Bold />
                     </div>
                     <h2 class="text-3xl font-bold text-normal">{heading}</h2>

@@ -14,7 +14,6 @@ use shared::api::events::TauriEvent;
 use shared::api::{RestoreResponse, UpdateDownloadProgress, UpdateInfo, UpdateStatus};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tauri::async_runtime::spawn_blocking;
 use tauri_plugin_updater::{Update, UpdaterExt};
 use tokio::sync::RwLock;
 use toml_edit::DocumentMut;
@@ -101,11 +100,9 @@ pub(crate) async fn send_notification(
         builder = builder.icon(icon);
     }
 
-    spawn_blocking(move || {
-        builder
-            .show()
-            .map_err(|e| format!("Failed to show notification: {}", e))
-    });
+    if let Err(e) = builder.show() {
+        log::warn!("Failed to show notification: {}", e);
+    }
 
     Ok(())
 }

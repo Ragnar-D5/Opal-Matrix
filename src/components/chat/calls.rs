@@ -109,7 +109,7 @@ pub fn CallView(node: RoomNode) -> impl IntoView {
     };
 
     view! {
-        <div node_ref=container_ref class="flex w-full h-full bg-(--ui-solid-bg)">
+        <div node_ref=container_ref class="flex w-full h-full ui-solid-bg">
             {content}
         </div>
     }

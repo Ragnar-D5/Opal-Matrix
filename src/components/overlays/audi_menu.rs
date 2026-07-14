@@ -109,7 +109,7 @@ pub fn audio_device_popup(on_close: Callback<()>, input: bool) -> AnyView {
                 devices_open.set(false);
             }
         >
-            <div class="bg-(--ui-solid-bg) border border-(--tile-border-color) rounded-(--floating-border-radius) overflow-hidden w-[260px]">
+            <div class="ui-solid-bg border border-(--tile-border-color) rounded-(--floating-border-radius) overflow-hidden w-[260px]">
                 <button
                     class="w-full flex flex-col px-3 py-3 hover:bg-(--color-item-hover) cursor-pointer text-left"
                     on:mouseenter=move |_| {
@@ -177,7 +177,7 @@ pub fn audio_device_popup(on_close: Callback<()>, input: bool) -> AnyView {
             </div>
 
             <Show when=move || devices_open.get()>
-                <button class="bg-(--ui-solid-bg) border border-(--tile-border-color) rounded-(--floating-border-radius) overflow-hidden w-[240px]">
+                <button class="ui-solid-bg border border-(--tile-border-color) rounded-(--floating-border-radius) overflow-hidden w-[240px]">
                     {devices}
                 </button>
             </Show>

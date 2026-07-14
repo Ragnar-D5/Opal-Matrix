@@ -217,9 +217,7 @@ pub fn ChatHeader(chat_sidebar_open: RwSignal<bool>) -> impl IntoView {
                         }
                             .into_any();
                     };
-                    view! {
-                        {node.render_icon("70%")}
-                    }
+                    view! { {node.render_icon("70%")} }
                 }}
             </div>
             <div class="flex-1 flex flex-col self-center text-normal text-m font-semibold">
@@ -311,7 +309,7 @@ pub fn ChatHeader(chat_sidebar_open: RwSignal<bool>) -> impl IntoView {
                     </button>
                 </div>
                 <div
-                    class="bg-(--ui-solid-bg) text-sm h-7 rounded-(--ui-border-radius) px-1 border w-[200px] text-dim flex transition-colors duration-100"
+                    class="ui-solid-bg text-sm h-7 rounded-ui px-1 border w-[200px] text-dim flex transition-colors duration-100"
                     class=("border-(--focus-color)", search_input_focused)
                     class=("border-(--tile-border-color)", move || !search_input_focused())
                 >

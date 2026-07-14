@@ -260,7 +260,7 @@ where
                         type="button"
                         node_ref=button_ref
                         on:click=toggle_open
-                        class="flex items-center gap-2 min-w-50 px-3 py-1.5 rounded-lg border border-(--tile-border-color) bg-(--ui-solid-bg) text-normal text-sm cursor-pointer hover:border-(--accent-color) transition-colors duration-100 justify-between"
+                        class="flex items-center gap-2 min-w-50 px-3 py-1.5 rounded-lg border border-(--tile-border-color) ui-solid-bg text-normal text-sm cursor-pointer hover:border-(--accent-color) transition-colors duration-100 justify-between"
                     >
                         <span class="select-none">{current_label}</span>
                         <span
@@ -280,7 +280,7 @@ where
                 <Portal>
                     <div class="fixed inset-0 z-[999]" on:click=move |_| is_open.set(false) />
                     <div
-                        class="fixed z-[1000] flex flex-col gap-0.5 p-1 overflow-y-auto bg-(--ui-solid-bg) border border-(--tile-border-color) rounded-(--floating-border-radius) shadow-lg"
+                        class="fixed z-[1000] flex flex-col gap-0.5 p-1 overflow-y-auto ui-solid-bg border border-(--tile-border-color) rounded-(--floating-border-radius) shadow-lg"
                         style=panel_style
                     >
                         {move || {

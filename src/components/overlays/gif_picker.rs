@@ -253,7 +253,7 @@ pub fn GifPickerPortal() -> impl IntoView {
                             type="text"
                             node_ref=search_ref
                             placeholder="Search KLIPY"
-                            class="w-full bg-(--ui-solid-bg) border border-(--tile-border-color) rounded-(--ui-border-radius) pl-7 pr-2 py-1 text-sm text-normal outline-none placeholder:text-muted"
+                            class="w-full ui-solid-bg border border-(--tile-border-color) rounded-ui pl-7 pr-2 py-1 text-sm text-normal outline-none placeholder:text-muted"
                             on:keydown=on_keydown
                             on:input=move |ev| {
                                 let el = ev

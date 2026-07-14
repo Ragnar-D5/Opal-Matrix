@@ -1527,9 +1527,6 @@
   .rounded-\(--gap\) {
     border-radius: var(--gap);
   }
-  .rounded-\(--ui-border-radius\) {
-    border-radius: var(--ui-border-radius);
-  }
   .rounded-3xl {
     border-radius: var(--radius-3xl);
   }
@@ -1550,6 +1547,9 @@
   }
   .rounded-md {
     border-radius: var(--radius-md);
+  }
+  .rounded-ui {
+    border-radius: var(--ui-border-radius);
   }
   .rounded-t-\(--ui-border-radius\) {
     border-top-left-radius: var(--ui-border-radius);
@@ -1773,9 +1773,6 @@
   .bg-\(--ui-hover-bg\) {
     background-color: var(--ui-hover-bg);
   }
-  .bg-\(--ui-solid-bg\) {
-    background-color: var(--ui-solid-bg);
-  }
   .bg-\(--ui-solid-hover-bg\) {
     background-color: var(--ui-solid-hover-bg);
   }
@@ -1841,6 +1838,9 @@
   }
   .bg-yellow-50 {
     background-color: var(--color-yellow-50);
+  }
+  .ui-solid-bg {
+    background-color: var(--ui-solid-bg);
   }
   .bg-radial-\[at_50\%_100\%\] {
     --tw-gradient-position: at 50% 100%;

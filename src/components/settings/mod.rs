@@ -283,7 +283,7 @@ pub fn SettingsIcon(#[prop(into, optional)] class: String) -> impl IntoView {
                 >
                     <FloatingTile
                         on:click=move |e| e.stop_propagation()
-                        class="opacity-100 text-bright max-w-300 w-[80vw] h-full max-h-[95vh] min-h-[50vh] flex flex-row overflow-hidden z-50 bg-(--ui-solid-bg)"
+                        class="opacity-100 text-bright max-w-300 w-[80vw] h-full max-h-[95vh] min-h-[50vh] flex flex-row overflow-hidden z-50 ui-solid-bg"
                     >
                         <div class="border-r border-(--tile-border-color) w-60 h-full flex flex-col gap-(--gap)">
                             <div
@@ -333,7 +333,7 @@ pub fn SettingsIcon(#[prop(into, optional)] class: String) -> impl IntoView {
                                     <input
                                         type="text"
                                         placeholder="Search settings..."
-                                        class="w-full bg-(--ui-solid-bg) border border-(--tile-border-color) rounded-(--ui-border-radius) pl-7 pr-2 py-1 text-sm text-normal outline-none placeholder:text-muted"
+                                        class="w-full ui-solid-bg border border-(--tile-border-color) rounded-ui pl-7 pr-2 py-1 text-sm text-normal outline-none placeholder:text-muted"
                                         prop:value=move || search_query.get()
                                         on:input=move |ev| search_query.set(event_target_value(&ev))
                                     />
