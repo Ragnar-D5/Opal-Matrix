@@ -690,6 +690,21 @@ pub async fn check_for_update_backend(
     *state.update_status.write().await = new_status.clone();
     send_event(&handle, &new_status);
 
+    let settings = handle.state::<RwLock<DocumentMut>>();
+    let auto_download_update = settings
+        .read()
+        .await
+        .get("com.opal.auto_download_update")
+        .map_or(false, |item| {
+            item.as_bool().unwrap_or_else(|| {
+                log::warn!("Setting auto_download_update is not a bool");
+                false
+            })
+        });
+    if matches!(new_status, UpdateStatus::UpdateAvailable(_)) && auto_download_update {
+        download_update(state, handle).await?
+    }
+
     Ok(())
 }
 
