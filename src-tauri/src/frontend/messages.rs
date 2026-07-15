@@ -394,7 +394,7 @@ pub async fn get_timeline(
                             media_for_stream.sources.write().await.extend(new_sources);
                         }
 
-                        log::debug!("Sending timeline update");
+                        log::trace!("Sending timeline update");
                         if let Err(e) = channel.send(diffs.clone()) {
                             warn!("Failed to send timeline update: {:?}", e);
                         }

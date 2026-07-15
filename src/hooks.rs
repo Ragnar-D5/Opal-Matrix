@@ -197,19 +197,30 @@ where
 
 pub fn use_tauri_channel<T>(events: RwSignal<T>) -> Channel
 where
-    T: DeserializeOwned + Sync + Send + 'static,
+    T: DeserializeOwned + Sync + Send + 'static + Clone + PartialEq,
 {
     let channel = Channel::new();
 
     let cb = Closure::wrap(Box::new(move |val: JsValue| {
-        // Because your backend sends a `Vec<T>`, we deserialize the payload as a Vec
-        match serde_wasm_bindgen::from_value::<T>(val) {
-            Ok(new_events) => {
-                // Extend the existing signal with the newly arrived chunk
-                events.set(new_events);
+        let js_string = match js_sys::JSON::stringify(&val) {
+            Ok(s) => s,
+            Err(e) => {
+                error!("Failed to stringify channel payload: {:?}", e);
+                return;
             }
-            Err(err) => {
-                error!("Failed to deserialize channel payload: {:?}", err);
+        };
+
+        let Some(js_string) = js_string.as_string() else {
+            error!("Channel payload did not stringify to JSON: {:?}", val);
+            return;
+        };
+
+        match serde_json::from_str::<T>(&js_string) {
+            Ok(payload) => {
+                events.set(payload);
+            }
+            Err(e) => {
+                error!("Failed to deserialize channel payload: {}; {:?}", e, val);
             }
         }
     }) as Box<dyn FnMut(JsValue)>);
