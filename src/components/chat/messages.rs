@@ -101,7 +101,7 @@ fn ReplyPreview(
 
 #[component]
 fn MessageHeader(
-    reply_info: Option<ReplyInfo>,
+    reply_info: Memo<Option<ReplyInfo>>,
     room_id: String,
     scroll_to_item: Callback<String>,
     show_header: bool,
@@ -112,7 +112,7 @@ fn MessageHeader(
     is_pinned: Memo<bool>,
     children: Children,
 ) -> impl IntoView {
-    let has_reply = reply_info.is_some();
+    let has_reply = move || reply_info.with(|r| r.is_some());
     let name_profile_sig = sender_profile_sig.clone();
 
     view! {
@@ -166,14 +166,14 @@ fn MessageHeader(
                 ().into_any()
             }}
             <div class="shrink-0 mr-2 w-[40px] relative flex flex-col">
-                <Show when=move || has_reply>
+                <Show when=has_reply>
                     <div class="absolute left-[calc(50%-1px)] right-[-8px] top-2 h-4 border-l-2 border-t-2 border-white/20 rounded-tl-md -z-10"></div>
                 </Show>
 
                 <div
                     class="mb-[5px]"
-                    class=("mt-[28px]", move || has_reply)
-                    class=("mt-[5px]", move || !has_reply)
+                    class=("mt-[28px]", has_reply)
+                    class=("mt-[5px]", move || !has_reply())
                 >
                     {if show_header {
                         view! { {move || sender_profile_sig.get().render_icon("40px")} }.into_any()
@@ -183,11 +183,15 @@ fn MessageHeader(
                 </div>
             </div>
             <div class="flex flex-col min-w-0 flex-1">
-                <ReplyPreview
-                    reply_info=reply_info
-                    active_room_id=room_id
-                    scroll_to_item=scroll_to_item
-                />
+                {move || {
+                    view! {
+                        <ReplyPreview
+                            reply_info=reply_info.get()
+                            active_room_id=room_id.clone()
+                            scroll_to_item=scroll_to_item
+                        />
+                    }
+                }}
 
                 {move || {
                     if show_header {
@@ -1444,19 +1448,28 @@ fn render_timeline_event(
     let scroll_target = use_context::<super::ScrollTarget>().unwrap_or_default().0;
     let node_ref = NodeRef::<Div>::new();
 
-    let (show_highlight, date, sender_id, reply_info, event_id) = item_sig.with_untracked(|item| {
+    let (show_highlight, date, sender_id, event_id) = item_sig.with_untracked(|item| {
         if let UiTimelineItemKind::Event(event) = &item.kind {
             let sender_id = event.sender_id.clone();
             (
                 event.flags.is_highlighted,
                 get_date_from_ts(event.timestamp as i64),
                 sender_id,
-                event.in_reply_to(),
                 StoredValue::new(event.event_id.clone()),
             )
         } else {
             unreachable!("Must be an event")
         }
+    });
+
+    let reply_info = Memo::new(move |_| {
+        item_sig.with(|item| {
+            if let UiTimelineItemKind::Event(event) = &item.kind {
+                event.in_reply_to()
+            } else {
+                None
+            }
+        })
     });
 
     Effect::new(move |_| {
