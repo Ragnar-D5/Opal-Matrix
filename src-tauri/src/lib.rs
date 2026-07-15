@@ -662,6 +662,9 @@ pub async fn check_for_update_backend(
         return Ok(());
     }
 
+    *state.update_status.write().await = UpdateStatus::CheckingForUpdates;
+    send_event(&handle, &UpdateStatus::CheckingForUpdates);
+
     let update = handle.updater()?.check().await?;
 
     state.update.write().await.clone_from(&update);

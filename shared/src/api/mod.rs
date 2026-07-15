@@ -250,7 +250,9 @@ impl UpdateStatus {
     pub fn needs_update_download(&self) -> bool {
         !matches!(
             self,
-            UpdateStatus::UpdateAvailable(_) | UpdateStatus::Downloading(_)
+            UpdateStatus::UpdateAvailable(_)
+                | UpdateStatus::Downloading(_)
+                | UpdateStatus::CheckingForUpdates
         )
     }
 }
