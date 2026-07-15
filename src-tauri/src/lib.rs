@@ -878,10 +878,12 @@ pub fn run() {
     #[cfg(desktop)]
     {
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            let _ = app
-                .get_webview_window("main")
-                .expect("no main window")
-                .set_focus();
+            let window = app.get_webview_window("main").expect("no main window");
+            let _ = || -> Result<(), TauriError> {
+                window.show()?;
+                window.set_focus()?;
+                Ok(())
+            }();
         }));
     }
 
