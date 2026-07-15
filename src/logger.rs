@@ -7,6 +7,8 @@ use wasm_bindgen::JsValue;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::console;
 
+use crate::hooks::call_tauri;
+
 #[derive(Serialize, Debug, Clone)]
 pub struct BackendLogPayload {
     pub level: String,
@@ -69,7 +71,7 @@ impl log::Log for FrontendLogger {
                 }
             };
 
-            if let Err(err) = crate::app::call_tauri("backend_log", args).await {
+            if let Err(err) = call_tauri("backend_log", args).await {
                 console::warn_1(&JsValue::from_str(&format!(
                     "backend_log call failed: {err:?}"
                 )));

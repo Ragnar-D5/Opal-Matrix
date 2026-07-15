@@ -20,8 +20,9 @@ use shared::{
 };
 
 use crate::{
-    app::{CurrentWindow, call_tauri},
+    app::CurrentWindow,
     components::{chat::Attachment, user_profile::MemberProfileExt},
+    hooks::call_tauri,
     tauri_functions::get_user_profile,
 };
 use leptos::prelude::*;

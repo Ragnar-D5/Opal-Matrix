@@ -32,9 +32,9 @@ use matrix_sdk::ruma::{
 use scraper::{Html, Node};
 use shared::{
     api::{FileMetadata, GetTimelineResult, ScrollDirection, UiAttachmentSource},
-    timeline::{EventContent, UiTimelineItem, coalesce_diffs},
+    timeline::{EventContent, UiTimelineDiff, UiTimelineItem, coalesce_diffs},
 };
-use tauri::{AppHandle, State, command};
+use tauri::{State, command, ipc::Channel};
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
@@ -43,7 +43,6 @@ use crate::{
     frontend::timeline::{
         load_reply_info, timeline_diff_to_ui, timeline_item_content_to_ui, timeline_item_to_ui,
     },
-    send_event,
     state::{MediaManager, TaskManager, TimelineManager},
 };
 
@@ -334,15 +333,16 @@ pub async fn scroll_timeline(
     Ok(!hit_end)
 }
 
+#[allow(clippy::too_many_arguments)]
 #[command(rename_all = "snake_case")]
 pub async fn get_timeline(
     matrix_client: State<'_, RwLock<MatrixClient>>,
     timeline_manager: State<'_, TimelineManager>,
     task_manager: State<'_, TaskManager>,
     media_manager: State<'_, MediaManager>,
-    handle: AppHandle,
     room_id: OwnedRoomId,
     event_id: Option<OwnedEventId>,
+    channel: Channel<Vec<UiTimelineDiff>>,
 ) -> Result<GetTimelineResult, TauriError> {
     log::debug!(
         "Fetching timeline for room {}{}",
@@ -395,7 +395,9 @@ pub async fn get_timeline(
                         }
 
                         log::debug!("Sending timeline update");
-                        send_event(&handle, &diffs);
+                        if let Err(e) = channel.send(diffs.clone()) {
+                            warn!("Failed to send timeline update: {:?}", e);
+                        }
 
                         for event_id in unknown_reply_event_ids {
                             log::debug!("Fetching unknown reply event {}", event_id);

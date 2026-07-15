@@ -14,7 +14,7 @@ use shared::{
 };
 use uuid::Uuid;
 
-use crate::app::{call_tauri, call_tauri_no_args};
+use crate::hooks::{Channel, call_tauri, call_tauri_no_args, call_tauri_with_channel};
 
 pub async fn commit_message(
     message: String,
@@ -96,11 +96,12 @@ pub async fn get_commands() -> Result<Vec<Command>, String> {
 pub async fn get_timeline(
     room_id: &RoomId,
     event_id: Option<OwnedEventId>,
+    channel: &Channel,
 ) -> Result<GetTimelineResult, String> {
     let args = serde_wasm_bindgen::to_value(&json!({ "room_id": room_id, "event_id": event_id }))
         .map_err(|e| format!("Failed to serialize request: {:?}", e))?;
 
-    let res = call_tauri("get_timeline", args)
+    let res = call_tauri_with_channel("get_timeline", args, channel)
         .await
         .map_err(|e| format!("Tauri call failed: {:?}", e))?;
 

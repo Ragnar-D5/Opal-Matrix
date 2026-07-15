@@ -1,4 +1,4 @@
-use crate::openUrl;
+use crate::hooks::openUrl;
 use leptos::{prelude::*, task::spawn_local};
 use ruma::RoomId;
 use shared::{ColorExt, timeline::RichTextSpan};

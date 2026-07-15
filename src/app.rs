@@ -32,69 +32,13 @@ use crate::components::{
     overlays::profile_card::{ProfileCardPortal, ProfileCardState},
     sidebar::Sidebar,
 };
-use crate::hooks::{setup_update_effect, use_tauri_event};
+use crate::hooks::{call_tauri_no_args, setup_update_effect, use_tauri_event};
 use crate::redact_mode::{self, REDACTION_ROOT_SELECTOR};
 use crate::state::{AppState, ProfileStore};
 use crate::tauri_functions::{
     change_screen_scaling, get_app_version, get_update_status, set_backend_room_id,
     set_focused_in_backend,
 };
-
-#[wasm_bindgen]
-extern "C" {
-    #[wasm_bindgen(js_namespace = ["window", "__TAURI__", "core"])]
-    pub fn invoke(cmd: &str, args: JsValue) -> js_sys::Promise;
-
-    #[wasm_bindgen(js_namespace = ["__TAURI__", "core"], js_name = convertFileSrc)]
-    pub fn convertFileSrc(path: &str) -> String;
-
-    #[wasm_bindgen(js_namespace = ["__TAURI__", "opener"])]
-    pub fn openUrl(url: &str) -> js_sys::Promise;
-}
-
-#[derive(serde::Serialize)]
-struct IpcCallLog {
-    cmd: String,
-    request_bytes: usize,
-    response_bytes: usize,
-    ok: bool,
-}
-
-fn js_value_byte_len(value: &JsValue) -> usize {
-    match js_sys::JSON::stringify(value) {
-        Ok(s) => {
-            let s: String = s.into();
-            s.len()
-        }
-        Err(_) => 0,
-    }
-}
-
-pub async fn call_tauri(cmd: &str, args: JsValue) -> Result<JsValue, JsValue> {
-    let request_bytes = js_value_byte_len(&args);
-    let result = wasm_bindgen_futures::JsFuture::from(invoke(cmd, args)).await;
-
-    // Avoid recursively logging the traffic-logging call itself.
-    if cmd != "log_ipc_call" {
-        let log = IpcCallLog {
-            cmd: cmd.to_string(),
-            request_bytes,
-            response_bytes: result.as_ref().map(js_value_byte_len).unwrap_or(0),
-            ok: result.is_ok(),
-        };
-        spawn_local(async move {
-            if let Ok(args) = serde_wasm_bindgen::to_value(&log) {
-                let _ = call_tauri("log_ipc_call", args).await;
-            }
-        });
-    }
-
-    result
-}
-
-pub async fn call_tauri_no_args(cmd: &str) -> Result<JsValue, JsValue> {
-    call_tauri(cmd, JsValue::NULL).await
-}
 
 #[derive(Clone, Debug, Copy, PartialEq, Default)]
 pub enum CurrentWindow {
@@ -182,9 +126,6 @@ pub fn format_bytes(bytes: u64) -> Memo<String> {
 
 #[component]
 pub fn App() -> impl IntoView {
-    spawn_local(async move {
-        let _ = call_tauri_no_args("get_devices").await;
-    });
     let state = AppState::default();
     provide_context(state);
 

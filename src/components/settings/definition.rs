@@ -5,10 +5,7 @@ use shared::{
 };
 use std::collections::HashMap;
 
-use crate::{
-    call_tauri,
-    hooks::{setup_update_effect, use_tauri_event},
-};
+use crate::hooks::{call_tauri, setup_update_effect, use_tauri_event};
 use leptos::prelude::*;
 use macros::matrix_settings;
 

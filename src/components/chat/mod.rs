@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::{
-    app::{convertFileSrc, format_bytes},
+    app::format_bytes,
     components::{
         FloatingTile, TypingIndicator,
         chat::{
@@ -22,7 +22,7 @@ use crate::{
         settings::Settings,
         user_profile::{MemberProfileExt, render_url_icon},
     },
-    hooks::{setup_update_effect, use_tauri_event},
+    hooks::{convertFileSrc, setup_update_effect, use_tauri_channel, use_tauri_event},
     state::{AppState, CurrentSection, MainView, ProfileStore},
     tauri_functions::{
         get_extra_room_info, get_timeline, indicate_typing, pick_files, scroll_timeline,
@@ -63,13 +63,16 @@ pub(crate) mod messages;
 fn TimeLine() -> impl IntoView {
     let state: AppState = expect_context();
 
-    let messages_update_event: ReadSignal<Option<Vec<UiTimelineDiff>>> = use_tauri_event();
+    let message_diffs: RwSignal<Vec<UiTimelineDiff>> = RwSignal::new(Vec::new());
+    let channel = StoredValue::new_local(use_tauri_channel(message_diffs));
 
     let messages: RwSignal<Vec<RwSignal<UiTimelineItem>>> = RwSignal::new(Vec::new());
 
     let owner = Owner::current().expect("TimeLine must have an owner");
 
-    setup_update_effect(messages_update_event, move |diffs| {
+    Effect::new(move || {
+        let diffs = message_diffs.get();
+
         owner.with(|| {
             for diff in diffs {
                 match diff {
@@ -311,47 +314,48 @@ fn TimeLine() -> impl IntoView {
             return;
         }
 
-        if let Some(room_id) = state.active_room_id() {
-            if jump_target.get_untracked().is_some() {
-                // A jump to a specific message is pending for this room; let the
-                // jump_target effect below fetch a timeline centered on it instead.
-                return;
-            }
+        let Some(room_id) = state.active_room_id() else {
+            return;
+        };
 
-            log::debug!("Loading room {}, resetting messages to empty", room_id);
-            messages.set(Vec::new());
-            has_more_top.set(true);
-            has_more_bottom.set(true);
-            is_loading_top.set(true);
+        if jump_target.get_untracked().is_some() {
+            return;
+        }
 
-            let current_room_id = room_id.clone();
+        log::debug!("Loading room {}, resetting messages to empty", room_id);
+        messages.set(Vec::new());
+        has_more_top.set(true);
+        has_more_bottom.set(true);
+        is_loading_top.set(true);
 
-            spawn_local(async move {
-                match get_timeline(&current_room_id, None).await {
-                    Ok(result) => {
-                        if state.active_room_id_untracked() == Some(current_room_id.clone()) {
-                            timeline_id.set(Some(result.timeline_id));
-                            messages.set(result.messages.into_iter().map(RwSignal::new).collect());
+        let current_room_id = room_id.clone();
+        let channel = channel.get_value();
+
+        spawn_local(async move {
+            match get_timeline(&current_room_id, None, &channel).await {
+                Ok(result) => {
+                    if state.active_room_id_untracked() == Some(current_room_id.clone()) {
+                        timeline_id.set(Some(result.timeline_id));
+                        messages.set(result.messages.into_iter().map(RwSignal::new).collect());
+                        is_loading_top.set(false);
+                    }
+                }
+                Err(e) => {
+                    let err_str = e.to_string();
+                    if err_str.contains("Cancelled by newer request") {
+                        log::debug!(
+                            "Frontend ignored cancelled request for room {}",
+                            current_room_id
+                        );
+                    } else {
+                        log::error!("Failed to load timeline: {}", e);
+                        if state.active_room_id_untracked() == Some(current_room_id) {
                             is_loading_top.set(false);
                         }
                     }
-                    Err(e) => {
-                        let err_str = e.to_string();
-                        if err_str.contains("Cancelled by newer request") {
-                            log::debug!(
-                                "Frontend ignored cancelled request for room {}",
-                                current_room_id
-                            );
-                        } else {
-                            log::error!("Failed to load timeline: {}", e);
-                            if state.active_room_id_untracked() == Some(current_room_id) {
-                                is_loading_top.set(false);
-                            }
-                        }
-                    }
                 }
-            });
-        }
+            }
+        });
     });
 
     let important_event_id: RwSignal<Option<OwnedEventId>> = expect_context();
@@ -400,13 +404,15 @@ fn TimeLine() -> impl IntoView {
         has_more_bottom.set(true);
         is_loading_top.set(true);
 
+        let channel = channel.get_value();
+
         spawn_local(async move {
             log::debug!(
                 "Fetching timeline around event {} in room {}",
                 event_id,
                 room_id
             );
-            match get_timeline(&room_id, Some(event_id.clone())).await {
+            match get_timeline(&room_id, Some(event_id.clone()), &channel).await {
                 Ok(result) => {
                     timeline_id.set(Some(result.timeline_id));
                     messages.set(result.messages.into_iter().map(RwSignal::new).collect());

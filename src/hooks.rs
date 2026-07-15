@@ -12,6 +12,96 @@ use log::error;
 extern "C" {
     #[wasm_bindgen(js_namespace = ["window", "__TAURI__", "event"])]
     async fn listen(event: &str, handler: &js_sys::Function) -> JsValue;
+
+    #[wasm_bindgen(js_namespace = ["window", "__TAURI__", "core"])]
+    pub type Channel;
+
+    #[wasm_bindgen(constructor, js_namespace = ["window", "__TAURI__", "core"])]
+    fn new() -> Channel;
+
+    #[wasm_bindgen(method, setter)]
+    fn set_onmessage(this: &Channel, cb: &Closure<dyn FnMut(JsValue)>);
+
+    #[wasm_bindgen(js_namespace = ["window", "__TAURI__", "core"])]
+    pub fn invoke(cmd: &str, args: JsValue) -> js_sys::Promise;
+
+    #[wasm_bindgen(js_namespace = ["__TAURI__", "core"], js_name = convertFileSrc)]
+    pub fn convertFileSrc(path: &str) -> String;
+
+    #[wasm_bindgen(js_namespace = ["__TAURI__", "opener"])]
+    pub fn openUrl(url: &str) -> js_sys::Promise;
+}
+
+impl Clone for Channel {
+    fn clone(&self) -> Self {
+        // Clones the JS handle, not the channel itself: both values refer to
+        // the same underlying `__TAURI__.core.Channel` object.
+        JsValue::clone(self).unchecked_into()
+    }
+}
+
+#[derive(serde::Serialize)]
+struct IpcCallLog {
+    cmd: String,
+    request_bytes: usize,
+    response_bytes: usize,
+    ok: bool,
+}
+
+fn js_value_byte_len(value: &JsValue) -> usize {
+    match js_sys::JSON::stringify(value) {
+        Ok(s) => {
+            let s: String = s.into();
+            s.len()
+        }
+        Err(_) => 0,
+    }
+}
+
+pub async fn call_tauri(cmd: &str, args: JsValue) -> Result<JsValue, JsValue> {
+    let request_bytes = js_value_byte_len(&args);
+    let result = wasm_bindgen_futures::JsFuture::from(invoke(cmd, args)).await;
+
+    // Avoid recursively logging the traffic-logging call itself.
+    if cmd != "log_ipc_call" {
+        let log = IpcCallLog {
+            cmd: cmd.to_string(),
+            request_bytes,
+            response_bytes: result.as_ref().map(js_value_byte_len).unwrap_or(0),
+            ok: result.is_ok(),
+        };
+        spawn_local(async move {
+            if let Ok(args) = serde_wasm_bindgen::to_value(&log) {
+                let _ = call_tauri("log_ipc_call", args).await;
+            }
+        });
+    }
+
+    result
+}
+
+pub async fn call_tauri_no_args(cmd: &str) -> Result<JsValue, JsValue> {
+    call_tauri(cmd, JsValue::NULL).await
+}
+
+/// Calls a Tauri command, injecting a `Channel` into the `args` object under
+/// `channel_key` (which must match the backend command's parameter name, in
+/// snake_case) before invoking.
+pub async fn call_tauri_with_channel(
+    cmd: &str,
+    args: JsValue,
+    channel: &Channel,
+) -> Result<JsValue, JsValue> {
+    // Args serialized via `serde_wasm_bindgen::to_value(&json!(..))` come out as
+    // an ES `Map`, and Tauri's IPC layer only keeps its *entries* — a property
+    // added with `Reflect::set` would be silently dropped.
+    if let Some(map) = args.dyn_ref::<js_sys::Map>() {
+        map.set(&JsValue::from_str("channel"), channel.as_ref());
+    } else {
+        js_sys::Reflect::set(&args, &JsValue::from_str("channel"), channel.as_ref())?;
+    }
+
+    call_tauri(cmd, args).await
 }
 
 pub fn use_tauri_event_named<T>(event_name: &str) -> ReadSignal<Option<T>>
@@ -103,4 +193,35 @@ where
             closure(payload);
         }
     });
+}
+
+pub fn use_tauri_channel<T>(events: RwSignal<T>) -> Channel
+where
+    T: DeserializeOwned + Sync + Send + 'static,
+{
+    let channel = Channel::new();
+
+    let cb = Closure::wrap(Box::new(move |val: JsValue| {
+        // Because your backend sends a `Vec<T>`, we deserialize the payload as a Vec
+        match serde_wasm_bindgen::from_value::<T>(val) {
+            Ok(new_events) => {
+                // Extend the existing signal with the newly arrived chunk
+                events.set(new_events);
+            }
+            Err(err) => {
+                error!("Failed to deserialize channel payload: {:?}", err);
+            }
+        }
+    }) as Box<dyn FnMut(JsValue)>);
+
+    channel.set_onmessage(&cb);
+
+    let safe_cb = SendWrapper::new(cb);
+
+    // Drop the closure when the Leptos component unmounts to prevent memory leaks
+    on_cleanup(move || {
+        drop(safe_cb);
+    });
+
+    channel
 }
