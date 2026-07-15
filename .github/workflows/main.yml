@@ -157,7 +157,7 @@ jobs:
                   CB_REPO="opal-matrix"
                   CB_API="https://codeberg.org/api/v1/repos/${CB_OWNER}/${CB_REPO}"
 
-                  # Updated API Helper function that strips harmful line endings/whitespaces
+                  # API Helper function
                   api() {
                       local method="$1" path="$2"
                       shift 2
@@ -169,6 +169,17 @@ jobs:
                           -H "Authorization: token ${clean_token}" \
                           "$@" "${clean_url}"
                   }
+
+                  # =========================================================================
+                  # PRE-FLIGHT CHECK: Abort if the versioned release already exists on Codeberg
+                  # =========================================================================
+                  echo "Checking if versioned release '${TAG}' already exists on Codeberg..."
+                  resp=$(api GET "/releases/tags/${TAG}")
+                  code=$(tail -n1 <<<"$resp")
+                  if [ "$code" == "200" ]; then
+                      echo "::error::Release for version ${VERSION} (${TAG}) already exists on Codeberg! Aborting run to prevent overwriting historical releases."
+                      exit 1
+                  fi
 
                   mkdir -p assets
                   gh release download "$TAG" --dir assets --clobber
@@ -188,6 +199,13 @@ jobs:
                       body=$(sed '$d' <<<"$resp")
 
                       if [ "$code" == "200" ]; then
+                          # =========================================================================
+                          # SAFETY GUARDRAIL: Only the "latest" release is permitted to be overwritten
+                          # =========================================================================
+                          if [ "$target_tag" != "latest" ]; then
+                              echo "::error::Release for tag ${target_tag} already exists on Codeberg. Aborting!"
+                              exit 1
+                          fi
                           RELEASE_ID=$(jq -r '.id' <<<"$body")
                           echo "Found existing release ${RELEASE_ID}. Moving target to current commit..."
                           payload=$(jq -n --arg sha "${GITHUB_SHA}" --arg name "$release_name" --argjson draft "$is_draft" \
@@ -212,14 +230,32 @@ jobs:
                       existing_assets=$(sed '$d' <<<"$resp")
                       if [ "$code" != "200" ]; then echo "$existing_assets"; exit 1; fi
 
-                      for f in assets/*; do
-                          name=$(basename "$f")
-                          existing_id=$(jq -r --arg N "$name" '.[] | select(.name==$N) | .id' <<<"$existing_assets")
-                          if [ -n "$existing_id" ]; then
-                              echo "Clearing old asset ${name}..."
+                      # Completely wipe old assets from this release
+                      echo "Wiping existing assets on Codeberg for clean slate..."
+                      for id in $(jq -r '.[] | .id' <<<"$existing_assets"); do
+                          if [ -n "$id" ] && [ "$id" != "null" ]; then
                               curl -sS -f -X DELETE -H "Authorization: token ${CODEBERG_TOKEN}" \
-                                  "${CB_API}/releases/${RELEASE_ID}/assets/${existing_id}"
+                                  "${CB_API}/releases/${RELEASE_ID}/assets/${id}"
                           fi
+                      done
+
+                      # Filter and upload the correct assets
+                      for f in assets/*; do
+                          [ -e "$f" ] || continue
+                          name=$(basename "$f")
+
+                          # Skip binaries/manifests other than latest.json if this is the "latest" release
+                          if [ "$target_tag" = "latest" ] && [ "$name" != "latest.json" ]; then
+                              echo "Skipping ${name} for 'latest' release (only latest.json allowed)"
+                              continue
+                          fi
+
+                          # Skip latest.json if this is the versioned release
+                          if [ "$target_tag" != "latest" ] && [ "$name" = "latest.json" ]; then
+                              echo "Skipping ${name} for versioned release (latest.json excluded)"
+                              continue
+                          fi
+
                           echo "Uploading ${name} to ${target_tag}..."
                           curl -sS -f -X POST -H "Authorization: token ${CODEBERG_TOKEN}" \
                               -F "attachment=@${f};filename=${name}" \
@@ -227,11 +263,11 @@ jobs:
                       done
                   }
 
-                  # 1. Update/Create the specific versioned DRAFT release
-                  sync_to_codeberg "$TAG" "App v${VERSION}" "true"
+                  # 1. Update/Create the specific versioned release -> PUBLISHED ("false")
+                  sync_to_codeberg "$TAG" "App v${VERSION}" "false"
 
-                  # 2. Update/Create the static public LATEST release
-                  sync_to_codeberg "latest" "Latest Stable Release" "true"
+                  # 2. Update/Create the static public LATEST release -> PUBLISHED ("false")
+                  sync_to_codeberg "latest" "Latest Stable Release" "false"
 
                   echo "Cleaning up the temporary draft on the GitHub mirror..."
                   gh release delete "$TAG" --yes
