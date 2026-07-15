@@ -7,6 +7,7 @@ use crate::{
     tauri_functions::get_server_order,
 };
 use leptos::{html::Input, prelude::*, task::spawn_local};
+use ruma::OwnedUserId;
 use serde_json::json;
 use shared::{account_data::Breadcrumbs, api::errors::LoginError};
 use web_sys::{HtmlInputElement, SubmitEvent};
@@ -194,9 +195,10 @@ pub fn LoginPage(window: RwSignal<CurrentWindow>) -> impl IntoView {
 
             match call_tauri("login", args).await {
                 Ok(js_val) => {
-                    let user_id: String = serde_wasm_bindgen::from_value(js_val).unwrap();
+                    let json_string: String = serde_wasm_bindgen::from_value(js_val).unwrap();
+                    let user_id: OwnedUserId = serde_json::from_str(&json_string).unwrap();
 
-                    state.user_id.set(user_id);
+                    state.user_id.set(Some(user_id));
                     window.set(CurrentWindow::Home);
                     get_stuff_after_login(state, settings);
                 }

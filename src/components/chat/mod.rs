@@ -36,6 +36,7 @@ use leptos_use::{
     UseIntersectionObserverOptions, UseIntersectionObserverReturn, use_event_listener,
     use_intersection_observer_with_options,
 };
+use ruma::{OwnedEventId, OwnedRoomId, OwnedUserId, room::JoinRuleSummary};
 use shared::{
     api::{
         FileMetadata, ScrollDirection, SearchParameters, UiAttachmentSource,
@@ -43,7 +44,7 @@ use shared::{
     },
     settings::EnumHashMap,
     sidebar::{RoomExtraInfo, RoomNode},
-    timeline::{EventContent, UiJoinRule, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind},
+    timeline::{EventContent, JoinRuleExt, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind},
 };
 use uuid::Uuid;
 use wasm_bindgen::JsCast;
@@ -138,7 +139,7 @@ fn TimeLine() -> impl IntoView {
         let msgs = messages.get();
         let mut processed_items = Vec::with_capacity(msgs.len());
 
-        let mut last_sender: Option<String> = None;
+        let mut last_sender: Option<OwnedUserId> = None;
         let mut last_timestamp: Option<u64> = None;
 
         let valid_map = settings.system_messages_to_show.signal().get();
@@ -353,7 +354,7 @@ fn TimeLine() -> impl IntoView {
         }
     });
 
-    let important_event_id: RwSignal<Option<String>> = expect_context();
+    let important_event_id: RwSignal<Option<OwnedEventId>> = expect_context();
 
     let ScrollTarget(scroll_target) = expect_context();
 
@@ -364,7 +365,7 @@ fn TimeLine() -> impl IntoView {
         }
     });
 
-    let scroll_to_event = Callback::new(move |event_id: String| {
+    let scroll_to_event = Callback::new(move |event_id: OwnedEventId| {
         let Some(room_id) = state.active_room_id_untracked() else {
             log::error!("No active room ID, cannot scroll to event");
             return;
@@ -484,10 +485,10 @@ fn TypingUserIndicator() -> impl IntoView {
             .get_typing_users(&room_id)
             .get()
             .into_iter()
-            .any(|id| id != own_id)
+            .any(|id| Some(id) != own_id)
     });
 
-    let visible_users: RwSignal<Vec<String>> = RwSignal::new(Vec::new());
+    let visible_users: RwSignal<Vec<OwnedUserId>> = RwSignal::new(Vec::new());
 
     Effect::new(move |_| {
         let Some(room_id) = state.active_room_id() else {
@@ -495,11 +496,11 @@ fn TypingUserIndicator() -> impl IntoView {
             return;
         };
         let own_id = state.user_id.get();
-        let users: Vec<String> = state
+        let users: Vec<OwnedUserId> = state
             .get_typing_users(&room_id)
             .get()
             .into_iter()
-            .filter(|id| id != &own_id)
+            .filter(|id| Some(id) != own_id.as_ref())
             .take(4)
             .collect();
 
@@ -574,18 +575,23 @@ fn TypingUserIndicator() -> impl IntoView {
 }
 
 #[derive(Clone, Copy, Default)]
-pub struct ScrollTarget(pub RwSignal<Option<String>>);
+pub struct ScrollTarget(pub RwSignal<Option<OwnedEventId>>);
 
 /// Set to request jumping to a message in the chat (e.g. from search results), the
 /// same way clicking a reply preview does: scroll to it if already loaded, otherwise
 /// fetch a timeline centered on it.
 #[derive(Clone, Copy, Default)]
-pub struct JumpTarget(pub RwSignal<Option<String>>);
+pub struct JumpTarget(pub RwSignal<Option<OwnedEventId>>);
 
 #[derive(Clone, Debug)]
 pub enum ChatInputInfo {
-    ReplyingTo { event_id: String, sender_id: String },
-    Editing { event_id: String },
+    ReplyingTo {
+        event_id: OwnedEventId,
+        sender_id: OwnedUserId,
+    },
+    Editing {
+        event_id: OwnedEventId,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -893,9 +899,13 @@ fn ChatInput() -> impl IntoView {
 
     // Load on room change
     Effect::new(move |_| {
-        let room_id = state.active_room_id();
-        let draft = room_id
-            .and_then(|rid| state.room_states.with_untracked(|d| d.get(&rid).cloned()))
+        let Some(room_id) = state.active_room_id() else {
+            return;
+        };
+
+        let draft = state
+            .room_states
+            .with_untracked(|d| d.get(&room_id).cloned())
             .unwrap_or_default();
 
         let Some(el) = input_ref.get() else {
@@ -927,16 +937,19 @@ fn ChatInput() -> impl IntoView {
 
     let store_clone = store.clone();
 
-    let important_event_id: RwSignal<Option<String>> = expect_context();
+    let important_event_id: RwSignal<Option<OwnedEventId>> = expect_context();
     let input_info_content = move || {
         let Some(info) = input_info.get() else {
             return ().into_any();
         };
 
+        let Some(room_id) = state.active_room_id() else {
+            return ().into_any();
+        };
+
         let content = match info {
             ChatInputInfo::ReplyingTo { sender_id, .. } => {
-                let profile = store_clone
-                    .get_member_profile(&state.active_room_id().unwrap_or_default(), &sender_id);
+                let profile = store_clone.get_member_profile(&room_id, &sender_id);
                 view! {
                     <span class="text-sm text-bright">
                         "Replying to " {move || profile.get().render_name_popup("14px")}
@@ -1210,7 +1223,7 @@ fn room_info_screen(node: RoomNode) -> AnyView {
             <div class="flex flex-row items-center gap-3 ui-solid-bg border border-(--tile-border-color) p-(--gap) rounded-ui">
                 {avatar} <div class="flex flex-col">
                     <span class="text-3xl font-bold text-normal">{name.clone()}</span>
-                    <span class="text-muted text-sm">{room_id.get_value()}</span>
+                    <span class="text-muted text-sm">{room_id.get_value().to_string()}</span>
                 </div>
             </div>
             <div class="flex flex-col overflow-y-auto p-(--gap) gap-10 text-normal">
@@ -1218,7 +1231,7 @@ fn room_info_screen(node: RoomNode) -> AnyView {
                     <span class="text-dim text-sm flex items-center gap-1">
                         {move || match extra_info.get() {
                             Some(extra) => {
-                                let is_public = matches!(extra.join_rule, UiJoinRule::Public);
+                                let is_public = matches!(extra.join_rule, JoinRuleSummary::Public);
                                 view! {
                                     <Icon icon=if is_public { GLOBE } else { LOCK } size="14px" />
                                     <span>
@@ -1243,7 +1256,7 @@ fn room_info_screen(node: RoomNode) -> AnyView {
                     Some(extra) => {
                         view! {
                             <div class="flex flex-col gap-2">
-                                <InfoRow label="Room ID" value=room_id.get_value() />
+                                <InfoRow label="Room ID" value=room_id.get_value().to_string() />
                                 <InfoRow
                                     label="Membership"
                                     value=format!("{:?}", extra.membership)
@@ -1300,16 +1313,16 @@ pub fn Chat() -> impl IntoView {
     let input_info: RwSignal<Option<ChatInputInfo>> = RwSignal::new(None);
     provide_context(input_info);
 
-    let important_event_id: RwSignal<Option<String>> = RwSignal::new(None);
-    let scroll_target: RwSignal<Option<String>> = RwSignal::new(None);
-    let jump_target: RwSignal<Option<String>> = RwSignal::new(None);
+    let important_event_id: RwSignal<Option<OwnedEventId>> = RwSignal::new(None);
+    let scroll_target: RwSignal<Option<OwnedEventId>> = RwSignal::new(None);
+    let jump_target: RwSignal<Option<OwnedEventId>> = RwSignal::new(None);
 
     provide_context(important_event_id);
     provide_context(ScrollTarget(scroll_target));
     provide_context(JumpTarget(jump_target));
 
     let search_parameters: RwSignal<Option<SearchParameters>> = RwSignal::new(None);
-    let search_results: RwSignal<Option<HashMap<String, Vec<UiTimelineItem>>>> =
+    let search_results: RwSignal<Option<HashMap<OwnedRoomId, Vec<UiTimelineItem>>>> =
         RwSignal::new(None);
 
     provide_context(search_parameters);
@@ -1347,7 +1360,7 @@ pub fn Chat() -> impl IntoView {
     });
 
     let search_update_sig: ReadSignal<Option<SearchResultUpdate>> = use_tauri_event();
-    let seen_search_rooms: StoredValue<(Uuid, HashSet<String>)> =
+    let seen_search_rooms: StoredValue<(Uuid, HashSet<OwnedRoomId>)> =
         StoredValue::new((Uuid::nil(), HashSet::new()));
     setup_update_effect(
         search_update_sig,

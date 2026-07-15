@@ -11,7 +11,7 @@ use matrix_sdk::{
     Client as MatrixClient,
     attachment::{AttachmentInfo, BaseFileInfo, BaseImageInfo, BaseVideoInfo},
     room::edit::EditedContent,
-    ruma::{EventId, events::room::MediaSource},
+    ruma::{OwnedRoomId, events::room::MediaSource},
 };
 use matrix_sdk_ui::timeline::{
     AttachmentConfig, AttachmentSource, TimelineEventItemId, TimelineItemContent,
@@ -23,7 +23,7 @@ use tokio_util::sync::CancellationToken;
 use ego_tree::NodeRef;
 use log::warn;
 use matrix_sdk::ruma::{
-    OwnedEventId, OwnedUserId, RoomId,
+    OwnedEventId, OwnedUserId,
     events::{
         AnyMessageLikeEventContent, Mentions,
         room::message::{RoomMessageEventContent, RoomMessageEventContentWithoutRelation},
@@ -52,14 +52,12 @@ pub async fn commit_message(
     html: String,
     matrix_client: State<'_, RwLock<MatrixClient>>,
     timeline_manager: State<'_, TimelineManager>,
-    room_id: String,
-    replies_to: Option<String>,
+    room_id: OwnedRoomId,
+    replies_to: Option<OwnedEventId>,
 ) -> Result<(), TauriError> {
     log::debug!("Committing message to room {}", room_id);
     let client = matrix_client.read().await;
-    let room = client
-        .get_room(&RoomId::parse(&room_id)?)
-        .ok_or("Room not found")?;
+    let room = client.get_room(&room_id).ok_or("Room not found")?;
 
     let (_, timeline) = timeline_manager.get_or_create_timeline(&room, None).await?;
 
@@ -73,9 +71,7 @@ pub async fn commit_message(
         } else {
             RoomMessageEventContentWithoutRelation::text_plain(body)
         };
-        timeline
-            .send_reply(content, OwnedEventId::try_from(reply_to_id)?)
-            .await?;
+        timeline.send_reply(content, reply_to_id).await?;
     } else {
         let mut message_content = if let Some(formatted_body) = formatted_body {
             RoomMessageEventContent::text_html(body, formatted_body)
@@ -96,12 +92,10 @@ pub async fn send_attachment(
     matrix_client: State<'_, RwLock<MatrixClient>>,
     timeline_manager: State<'_, TimelineManager>,
     file: FileMetadata,
-    room_id: String,
+    room_id: OwnedRoomId,
 ) -> Result<(), TauriError> {
     let client = matrix_client.read().await;
-    let room = client
-        .get_room(&RoomId::parse(&room_id)?)
-        .ok_or("Room not found")?;
+    let room = client.get_room(&room_id).ok_or("Room not found")?;
 
     let (_, timeline) = timeline_manager.get_or_create_timeline(&room, None).await?;
 
@@ -195,16 +189,13 @@ pub async fn edit_message(
     html: String,
     matrix_client: State<'_, RwLock<MatrixClient>>,
     timeline_manager: State<'_, TimelineManager>,
-    room_id: String,
-    event_id: String,
+    room_id: OwnedRoomId,
+    event_id: OwnedEventId,
 ) -> Result<(), TauriError> {
     log::debug!("Editing message {} in room {}", event_id, room_id);
     let client = matrix_client.read().await;
-    let room = client
-        .get_room(&RoomId::parse(&room_id)?)
-        .ok_or("Room not found")?;
+    let room = client.get_room(&room_id).ok_or("Room not found")?;
 
-    let event_id = EventId::parse(event_id)?;
     let (_, timeline) = timeline_manager
         .get_or_create_timeline(&room, Some(event_id.clone()))
         .await?;
@@ -350,8 +341,8 @@ pub async fn get_timeline(
     task_manager: State<'_, TaskManager>,
     media_manager: State<'_, MediaManager>,
     handle: AppHandle,
-    room_id: String,
-    event_id: Option<String>,
+    room_id: OwnedRoomId,
+    event_id: Option<OwnedEventId>,
 ) -> Result<GetTimelineResult, TauriError> {
     log::debug!(
         "Fetching timeline for room {}{}",
@@ -368,16 +359,11 @@ pub async fn get_timeline(
         .await;
 
     let mut media_store: HashMap<Uuid, MediaSource> = media_manager.sources.read().await.clone();
-    let event_id = if let Some(id) = event_id {
-        Some(EventId::parse(id)?)
-    } else {
-        None
-    };
 
     let room = matrix_client
         .read()
         .await
-        .get_room(&RoomId::parse(&room_id)?)
+        .get_room(&room_id)
         .ok_or("No room found")?;
 
     tokio::select! {
@@ -451,8 +437,8 @@ pub async fn get_timeline(
 pub async fn toggle_reaction(
     client: State<'_, RwLock<MatrixClient>>,
     timeline_manager: State<'_, TimelineManager>,
-    room_id: String,
-    event_id: String,
+    room_id: OwnedRoomId,
+    event_id: OwnedEventId,
     reaction: String,
 ) -> Result<(), TauriError> {
     log::debug!(
@@ -463,11 +449,8 @@ pub async fn toggle_reaction(
     );
     let client = client.read().await;
 
-    let room = client
-        .get_room(&RoomId::parse(&room_id)?)
-        .ok_or("No room found")?;
+    let room = client.get_room(&room_id).ok_or("No room found")?;
 
-    let event_id = EventId::parse(event_id)?;
     let (_, timeline) = timeline_manager
         .get_or_create_timeline(&room, Some(event_id.clone()))
         .await?;
@@ -500,17 +483,16 @@ pub async fn toggle_reaction(
 pub async fn delete_message(
     matrix_client: State<'_, RwLock<MatrixClient>>,
     timeline_manager: State<'_, TimelineManager>,
-    room_id: String,
-    event_id: String,
+    room_id: OwnedRoomId,
+    event_id: OwnedEventId,
 ) -> Result<(), TauriError> {
     log::debug!("Deleting message {} in room {}", event_id, room_id);
     let room = matrix_client
         .read()
         .await
-        .get_room(&RoomId::parse(&room_id)?)
+        .get_room(&room_id)
         .ok_or("No room found")?;
 
-    let event_id = EventId::parse(event_id)?;
     let (_, timeline) = timeline_manager
         .get_or_create_timeline(&room, Some(event_id.clone()))
         .await?;
@@ -525,13 +507,11 @@ pub async fn delete_message(
 #[command(rename_all = "snake_case")]
 pub async fn indicate_typing(
     matrix_client: State<'_, RwLock<MatrixClient>>,
-    room_id: String,
+    room_id: OwnedRoomId,
     is_typing: bool,
 ) -> Result<(), TauriError> {
     let client = matrix_client.read().await;
-    let room = client
-        .get_room(&RoomId::parse(&room_id)?)
-        .ok_or("Room not found")?;
+    let room = client.get_room(&room_id).ok_or("Room not found")?;
 
     room.typing_notice(is_typing).await?;
 
@@ -542,12 +522,10 @@ pub async fn indicate_typing(
 pub async fn get_pinned_events(
     client: State<'_, RwLock<MatrixClient>>,
     media_manager: State<'_, MediaManager>,
-    room_id: String,
+    room_id: OwnedRoomId,
 ) -> Result<Vec<UiTimelineItem>, TauriError> {
     let client = client.read().await;
-    let room = client
-        .get_room(&RoomId::parse(&room_id)?)
-        .ok_or("Room not found")?;
+    let room = client.get_room(&room_id).ok_or("Room not found")?;
 
     let Some(pinned_event_ids) = room.pinned_event_ids() else {
         return Ok(Vec::new());
@@ -588,10 +566,7 @@ pub async fn get_pinned_events(
             msg.in_reply_to = reply_info;
         }
 
-        messages.push((
-            ts,
-            ui_content.to_timeline_item(event_id.to_string(), sender.to_string(), ts),
-        ));
+        messages.push((ts, ui_content.to_timeline_item(event_id, sender, ts)));
     }
 
     media_manager.sources.write().await.extend(media_store);
@@ -605,15 +580,11 @@ pub async fn get_pinned_events(
 #[command(rename_all = "snake_case")]
 pub async fn pin_event(
     matrix_client: State<'_, RwLock<MatrixClient>>,
-    room_id: String,
-    event_id: String,
+    room_id: OwnedRoomId,
+    event_id: OwnedEventId,
 ) -> Result<(), TauriError> {
     let client = matrix_client.read().await;
-    let room = client
-        .get_room(&RoomId::parse(&room_id)?)
-        .ok_or("Room not found")?;
-
-    let event_id = EventId::parse(event_id)?;
+    let room = client.get_room(&room_id).ok_or("Room not found")?;
 
     room.pin_event(&event_id).await?;
 
@@ -623,15 +594,11 @@ pub async fn pin_event(
 #[command(rename_all = "snake_case")]
 pub async fn unpin_event(
     matrix_client: State<'_, RwLock<MatrixClient>>,
-    room_id: String,
-    event_id: String,
+    room_id: OwnedRoomId,
+    event_id: OwnedEventId,
 ) -> Result<(), TauriError> {
     let client = matrix_client.read().await;
-    let room = client
-        .get_room(&RoomId::parse(&room_id)?)
-        .ok_or("Room not found")?;
-
-    let event_id = EventId::parse(event_id)?;
+    let room = client.get_room(&room_id).ok_or("Room not found")?;
 
     room.unpin_event(&event_id).await?;
 

@@ -13,10 +13,10 @@ use leptos::html::{Button, Div};
 use leptos::prelude::*;
 use log::error;
 use nucleo_matcher::{Config, Matcher, Utf32Str};
+use ruma::RoomId;
 use shared::{
     commands::Command,
     profile::{MemberProfile, RoomProfile},
-    timeline::{RichTextSpan, RoomIdFormat},
 };
 use web_sys::{
     Document, HtmlDivElement, HtmlElement, Node, Range, ScrollBehavior, ScrollIntoViewOptions,
@@ -65,7 +65,7 @@ impl SelectedItem {
 
     fn render_row(
         self,
-        room_id: String,
+        room_id: &RoomId,
         idx: usize,
         selected_index: RwSignal<usize>,
     ) -> impl IntoView {
@@ -194,22 +194,11 @@ pub fn commit_selection(
 
     let (focus_node, focus_offset) = match selected {
         SelectedItem::User(membership) => {
-            let room_id = state.active_room_id_untracked().unwrap_or_default();
-
-            let mention_view = if membership.is_room() {
-                let name = state
-                    .active_room_name_untracked()
-                    .unwrap_or(room_id.clone());
-
-                RichTextSpan::RoomMention {
-                    room_id: RoomIdFormat::Id(room_id.clone()),
-                    display_name: format!("#{}", name),
-                }
-                .render(store, room_id)
-                .into_any()
-            } else {
-                membership.to_span().render(store, room_id).into_any()
+            let Some(room_id) = state.active_room_id_untracked() else {
+                return;
             };
+
+            let mention_view = membership.to_span().render(store, &room_id).into_any();
 
             let any_view: AnyView = mention_view.into_any();
             let mut render_state = any_view.build();
@@ -230,9 +219,11 @@ pub fn commit_selection(
         }
         SelectedItem::Command(command) => commit_command(command, &doc, range),
         SelectedItem::Room(room) => {
-            let current_room_id = state.active_room_id_untracked().unwrap_or_default();
+            let Some(room_id) = state.active_room_id_untracked() else {
+                return;
+            };
 
-            let room_view = room.to_span().render(store, current_room_id).into_any();
+            let room_view = room.to_span().render(store, &room_id).into_any();
 
             let any_view: AnyView = room_view.into_any();
             let mut render_state = any_view.build();
@@ -347,12 +338,7 @@ fn scroll_into_view_when_selected(
 
 trait RenderMenuRow {
     fn id(&self) -> String;
-    fn render_row(
-        self,
-        room_id: String,
-        idx: usize,
-        selected_index: RwSignal<usize>,
-    ) -> impl IntoView;
+    fn render_row(self, room_id: &RoomId, idx: usize, selected_index: RwSignal<usize>) -> AnyView;
     fn match_fields() -> Vec<fn(&Self) -> Option<String>>;
 }
 
@@ -361,35 +347,28 @@ impl RenderMenuRow for MemberProfile {
         self.user_id().to_string()
     }
 
-    fn render_row(
-        self,
-        room_id: String,
-        idx: usize,
-        selected_index: RwSignal<usize>,
-    ) -> impl IntoView {
-        let state: AppState = expect_context();
+    fn render_row(self, room_id: &RoomId, idx: usize, selected_index: RwSignal<usize>) -> AnyView {
         let store: ProfileStore = expect_context();
+        let user_id = self.user_id();
 
-        let presence = store.get_presence(self.user_id());
-        let profile = store.get_member_profile(&room_id, self.user_id()).get();
+        let presence = store.get_presence(&user_id);
+        let profile = store.get_member_profile(room_id, &user_id).get();
         let p_clone = profile.clone();
-        let m_clone = self.clone();
+
+        let content = move || {
+            let profile = profile.clone();
+            let presence = presence.clone();
+
+            view! {
+                <PresenceBadge presence=presence size=15.0>
+                    {profile.render_icon("30px")}
+                </PresenceBadge>
+            }
+            .into_any()
+        };
 
         view! {
-            {move || {
-                let profile = profile.clone();
-                let presence = presence.clone();
-                if state.active_room_id().unwrap_or_default() != m_clone.user_id() {
-                    view! {
-                        <PresenceBadge presence=presence size=15.0>
-                            {profile.render_icon("30px")}
-                        </PresenceBadge>
-                    }
-                        .into_any()
-                } else {
-                    profile.render_icon("30px").into_any()
-                }
-            }}
+            {content}
             {p_clone.render_name_popup("14px")}
             <div class="flex flex-grow"></div>
             <span
@@ -399,6 +378,7 @@ impl RenderMenuRow for MemberProfile {
                 {self.user_id().to_string()}
             </span>
         }
+        .into_any()
     }
 
     fn match_fields() -> Vec<fn(&Self) -> Option<String>> {
@@ -413,7 +393,7 @@ impl RenderMenuRow for Command {
         format!("{}:{}", self.source, self.name)
     }
 
-    fn render_row(self, _: String, idx: usize, selected_index: RwSignal<usize>) -> impl IntoView {
+    fn render_row(self, _: &RoomId, idx: usize, selected_index: RwSignal<usize>) -> AnyView {
         view! {
             <div class="flex flex-col">
                 <span class="text-start text-sm text-normal">{self.usage}</span>
@@ -433,6 +413,7 @@ impl RenderMenuRow for Command {
                 {self.source}
             </span>
         }
+        .into_any()
     }
 
     fn match_fields() -> Vec<fn(&Self) -> Option<String>> {
@@ -444,10 +425,10 @@ impl RenderMenuRow for Command {
 
 impl RenderMenuRow for RoomProfile {
     fn id(&self) -> String {
-        self.room_id.clone()
+        self.room_id.to_string()
     }
 
-    fn render_row(self, _: String, idx: usize, selected_index: RwSignal<usize>) -> impl IntoView {
+    fn render_row(self, _: &RoomId, idx: usize, selected_index: RwSignal<usize>) -> AnyView {
         view! {
             <span class="text-start text-sm text-normal">{self.get_name()}</span>
             <div class="flex flex-grow"></div>
@@ -456,9 +437,10 @@ impl RenderMenuRow for RoomProfile {
                 class=("text-(--ui-hover-color)", move || idx == selected_index.get())
                 class=("text-(--ui-base-color)", move || idx != selected_index.get())
             >
-                {self.canonical_alias.clone().unwrap_or(self.room_id.clone())}
+                {self.canonical_alias.clone().unwrap_or(self.room_id.to_string())}
             </span>
         }
+        .into_any()
     }
 
     fn match_fields() -> Vec<fn(&Self) -> Option<String>> {
@@ -481,7 +463,7 @@ impl RenderMenuRow for EmojiItem {
         self.name.clone()
     }
 
-    fn render_row(self, _: String, idx: usize, selected_index: RwSignal<usize>) -> impl IntoView {
+    fn render_row(self, _: &RoomId, idx: usize, selected_index: RwSignal<usize>) -> AnyView {
         view! {
             <span class="text-xl">{self.character}</span>
             <span class="text-start text-sm text-normal">{self.name}</span>
@@ -493,6 +475,7 @@ impl RenderMenuRow for EmojiItem {
                 {self.shortcodes.join(", ")}
             </span>
         }
+        .into_any()
     }
 
     fn match_fields() -> Vec<fn(&Self) -> Option<String>> {
@@ -570,11 +553,11 @@ impl MenuCompletionMatches {
 
 fn auto_complete_item_render(
     el: HtmlDivElement,
-    room_id: String,
+    room_id: &RoomId,
     selected_index: RwSignal<usize>,
     idx: usize,
     item: SelectedItem,
-) -> impl IntoView {
+) -> AnyView {
     let content = item.clone().render_row(room_id, idx, selected_index);
 
     let row_ref: NodeRef<Button> = NodeRef::new();
@@ -593,7 +576,7 @@ fn auto_complete_item_render(
         >
             {content}
         </button>
-    }
+    }.into_any()
 }
 
 #[component]
@@ -606,7 +589,10 @@ pub fn SelectionMenu(menu: RwSignal<MenuType>, input_ref: NodeRef<Div>) -> impl 
     let matcher = StoredValue::new(Matcher::new(Config::DEFAULT));
 
     let members_resource = Memo::new(move |_| {
-        let room_id = state.active_room_id().unwrap_or_default();
+        let Some(room_id) = state.active_room_id() else {
+            return vec![];
+        };
+
         store.clone().get_members(&room_id)
     });
 
@@ -694,7 +680,9 @@ pub fn SelectionMenu(menu: RwSignal<MenuType>, input_ref: NodeRef<Div>) -> impl 
         let Some(el) = input_ref.get() else {
             return ().into_any();
         };
-        let room_id = state.active_room_id().unwrap_or_default();
+        let Some(room_id) = state.active_room_id() else {
+            return ().into_any();
+        };
 
         view! {
             <span class="text-(--ui-base-color) bold text-xs p-2 bb-4 border-b border-(--tile-border-color)">
@@ -707,7 +695,7 @@ pub fn SelectionMenu(menu: RwSignal<MenuType>, input_ref: NodeRef<Div>) -> impl 
                     children=move |(idx, row)| {
                         let room_id = room_id.clone();
                         let el = el.clone();
-                        auto_complete_item_render(el, room_id, selected_index, idx, row)
+                        auto_complete_item_render(el, &room_id, selected_index, idx, row)
                     }
                 />
             </div>

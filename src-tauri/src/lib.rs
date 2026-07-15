@@ -300,7 +300,10 @@ async fn try_restore(
     let state: &Arc<AppState> = state.inner();
     attach_callbacks(&new_client, &app_handle, state).await?;
 
-    let user_id = new_client.user_id().unwrap().to_string();
+    let user_id = new_client
+        .user_id()
+        .expect("User id not present")
+        .to_owned();
 
     *matrix_client.write().await = new_client;
 

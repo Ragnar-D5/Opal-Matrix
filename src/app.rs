@@ -4,6 +4,7 @@ use crate::components::previews::ImageLightbox;
 use crate::components::settings::Settings;
 use crate::components::shader::BackgroundShader;
 use chrono::{DateTime, Local};
+use ruma::OwnedRoomId;
 use shared::api::events::{
     CallMemberUpdate, NotificationEvent, NotificationLevel, NotificationUpdate, PresenceUpdate,
     ProfileUpdates, RecentEmojies, RoomPinnedUpdate, TypingUpdate,
@@ -411,11 +412,11 @@ pub fn App() -> impl IntoView {
         if let Some(mut new_state) = server_list_event.get() {
             let current_order = state.server_order.get_untracked();
 
-            let order_map: HashMap<&String, usize> = current_order
+            let order_map: HashMap<OwnedRoomId, usize> = current_order
                 .servers
                 .iter()
                 .enumerate()
-                .map(|(index, id)| (id, index))
+                .map(|(index, id)| (id.clone(), index))
                 .collect();
 
             new_state.0.sort_by(|a, b| {
@@ -449,7 +450,7 @@ pub fn App() -> impl IntoView {
                             state.current_window.set(CurrentWindow::HomeserverDiscovery);
                         }
                         RestoreResponse::Success { user_id } => {
-                            state.user_id.set(user_id);
+                            state.user_id.set(Some(user_id));
                             state.current_window.set(CurrentWindow::Home);
                             get_stuff_after_login(state, settings);
                         }

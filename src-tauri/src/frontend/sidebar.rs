@@ -103,16 +103,11 @@ pub async fn convert_room_to_node(room: &Room, handle: &AppHandle) -> Option<Roo
     let has_avatar = info.avatar_url().is_some();
     let canonical_alias = info.canonical_alias().map(|a| a.to_string());
     let aliases = info.alt_aliases().iter().map(|a| a.to_string()).collect();
-    let room_id = room.room_id().to_string();
+    let room_id = room.room_id().to_owned();
     let topic = info.topic().map(|t| t.to_string());
-    let color = get_color(&room_id);
+    let color = get_color(room_id.as_ref());
 
-    let pinned_event_ids = info
-        .pinned_event_ids()
-        .unwrap_or_default()
-        .iter()
-        .map(|id| id.to_string())
-        .collect();
+    let pinned_event_ids = info.pinned_event_ids().unwrap_or_default();
 
     let pin_payload = RoomPinnedUpdate((room_id.clone(), pinned_event_ids));
 
@@ -164,7 +159,7 @@ pub async fn convert_room_to_node(room: &Room, handle: &AppHandle) -> Option<Roo
         if let Some(other_user_id) = other_user_id {
             return Some(RoomNode::Dm(DmRoomNode {
                 info,
-                other_user_id: other_user_id.to_string(),
+                other_user_id,
             }));
         }
 
@@ -175,12 +170,7 @@ pub async fn convert_room_to_node(room: &Room, handle: &AppHandle) -> Option<Roo
     }
 
     if room.is_space() {
-        let children = get_child_room_ids(room)
-            .await
-            .unwrap_or_default()
-            .iter()
-            .map(|id| id.to_string())
-            .collect();
+        let children = get_child_room_ids(room).await.unwrap_or_default();
 
         let is_top_level = match room.parent_spaces().await {
             Ok(stream) => stream
@@ -258,17 +248,12 @@ pub fn spawn_all_children_update(client: Client, handle: AppHandle, room_id: Own
             return;
         };
 
-        node.all_children = get_all_child_room_ids(&room)
-            .await
-            .unwrap_or_default()
-            .iter()
-            .map(|id| id.to_string())
-            .collect();
+        node.all_children = get_all_child_room_ids(&room).await.unwrap_or_default();
 
         send_event(
             &handle,
             &vec![RoomMapUpdate::Insert {
-                key: room_id.to_string(),
+                key: room_id,
                 value: RoomNode::Server(node),
             }],
         );
@@ -335,13 +320,11 @@ pub async fn handle_room_updates(
         };
 
         if matches!(room.state(), RoomState::Left | RoomState::Banned) {
-            if known_room_map.remove(&room_id).is_some() {
-                updates.push(RoomMapUpdate::Remove {
-                    key: room_id.to_string(),
-                });
-            }
-
             servers_chaned = prev_seen_servers.remove(&room_id);
+
+            if known_room_map.remove(&room_id).is_some() {
+                updates.push(RoomMapUpdate::Remove { key: room_id });
+            }
 
             continue;
         }
@@ -366,12 +349,12 @@ pub async fn handle_room_updates(
 
         if is_new && matches!(node, RoomNode::Server(_)) {
             updates.push(RoomMapUpdate::Insert {
-                key: room_id.to_string(),
+                key: room_id.clone(),
                 value: node.clone(),
             });
             prev_seen_servers.insert(room_id.clone());
 
-            let servers: Vec<String> = prev_seen_servers.iter().map(|id| id.to_string()).collect();
+            let servers: Vec<OwnedRoomId> = prev_seen_servers.iter().cloned().collect();
             send_event(handle, &ServerList(servers));
 
             spawn_all_children_update(client.clone(), handle.clone(), room_id.clone());
@@ -381,7 +364,7 @@ pub async fn handle_room_updates(
 
         if known_room_map.get(&room_id) != Some(&node) {
             updates.push(RoomMapUpdate::Insert {
-                key: room_id.to_string(),
+                key: room_id.clone(),
                 value: node.clone(),
             });
             servers_chaned = known_room_map.insert(room_id.clone(), node).is_none();
@@ -401,7 +384,7 @@ pub async fn handle_room_updates(
     }
 
     if servers_chaned {
-        let servers: Vec<String> = prev_seen_servers.iter().map(|id| id.to_string()).collect();
+        let servers: Vec<OwnedRoomId> = prev_seen_servers.iter().cloned().collect();
         send_event(handle, &ServerList(servers));
     }
 
@@ -410,7 +393,7 @@ pub async fn handle_room_updates(
     }
 }
 
-pub fn compute_dm_order(client: &Client, dm_map: &Option<DirectEventContent>) -> Vec<String> {
+pub fn compute_dm_order(client: &Client, dm_map: &Option<DirectEventContent>) -> Vec<OwnedRoomId> {
     let Some(dm_map) = dm_map else {
         return Vec::new();
     };
@@ -424,13 +407,13 @@ pub fn compute_dm_order(client: &Client, dm_map: &Option<DirectEventContent>) ->
         })
         .collect();
     dms.sort_by(|(id1, ts1), (id2, ts2)| ts2.cmp(ts1).then_with(|| id1.cmp(id2)));
-    dms.into_iter().map(|(id, _)| id.to_string()).collect()
+    dms.into_iter().map(|(id, _)| id).collect()
 }
 
 pub fn compute_single_order(
     client: &Client,
     known_room_map: &HashMap<OwnedRoomId, RoomNode>,
-) -> Vec<String> {
+) -> Vec<OwnedRoomId> {
     let mut singles: Vec<_> = known_room_map
         .iter()
         .filter_map(|(room_id, node)| {
@@ -443,15 +426,15 @@ pub fn compute_single_order(
         })
         .collect();
     singles.sort_by(|(id1, ts1), (id2, ts2)| ts2.cmp(ts1).then_with(|| id1.cmp(id2)));
-    singles.into_iter().map(|(id, _)| id.to_string()).collect()
+    singles.into_iter().map(|(id, _)| id).collect()
 }
 
 pub fn handle_account_data(
     client: &Client,
     account_data: &Vec<Raw<AnyGlobalAccountDataEvent>>,
     dm_map: &mut Option<DirectEventContent>,
-    prev_dm_ids: &mut Vec<String>,
-) -> Option<Vec<String>> {
+    prev_dm_ids: &mut Vec<OwnedRoomId>,
+) -> Option<Vec<OwnedRoomId>> {
     for raw in account_data {
         let Ok(AnyGlobalAccountDataEvent::Direct(ev)) = raw.deserialize() else {
             continue;
@@ -534,13 +517,13 @@ pub async fn extract_call_member_updates(
             };
 
             user_devices.push(UserDevice {
-                user_id: sender.to_string(),
-                device_id: content.device_id.to_string(),
+                user_id: sender.clone(),
+                device_id: content.device_id.clone(),
             });
         }
 
         // Always insert, even when empty — an empty vec signals that everyone left this room.
-        updates.insert(room_id.to_string(), user_devices);
+        updates.insert(room_id.clone(), user_devices);
     }
 
     (!updates.is_empty()).then_some(updates)
@@ -575,8 +558,8 @@ pub async fn extract_call_memberships(rooms: &[Room]) -> Option<HashMap<String, 
             };
 
             user_devices.push(UserDevice {
-                user_id: sender.to_string(),
-                device_id: content.device_id.to_string(),
+                user_id: sender.clone(),
+                device_id: content.device_id.clone(),
             });
         }
 
@@ -633,7 +616,7 @@ pub async fn get_unknown_children(
             has_avatar: summary.avatar_url.is_some(),
             canonical_alias: summary.canonical_alias.map(|a| a.to_string()),
             aliases: Vec::new(),
-            room_id: room_id.to_string(),
+            room_id: room_id.clone(),
             topic: summary.topic.clone(),
             color: get_color(room_id.as_ref()),
 
@@ -647,7 +630,7 @@ pub async fn get_unknown_children(
 
         known_room_map.insert(room_id.clone(), node.clone());
         updates.push(RoomMapUpdate::Insert {
-            key: room_id.to_string(),
+            key: room_id,
             value: node,
         });
     }

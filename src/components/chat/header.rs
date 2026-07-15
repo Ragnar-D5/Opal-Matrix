@@ -6,6 +6,7 @@ use phosphor_leptos::{
     INFO, Icon, IconWeight, MAGNIFYING_GLASS, PHONE, PHONE_DISCONNECT, PUSH_PIN, USER_CIRCLE,
     USER_LIST, X,
 };
+use ruma::OwnedRoomId;
 use shared::{api::SearchParameters, sidebar::RoomNode, timeline::UiTimelineItem};
 use uuid::Uuid;
 use web_sys::KeyboardEvent;
@@ -51,7 +52,8 @@ pub fn ChatHeader(chat_sidebar_open: RwSignal<bool>) -> impl IntoView {
     };
 
     let search_params: RwSignal<Option<SearchParameters>> = expect_context();
-    let search_results: RwSignal<Option<HashMap<String, Vec<UiTimelineItem>>>> = expect_context();
+    let search_results: RwSignal<Option<HashMap<OwnedRoomId, Vec<UiTimelineItem>>>> =
+        expect_context();
 
     let on_search_input = move |ev| {
         let input = event_target_value(&ev);
@@ -153,7 +155,7 @@ pub fn ChatHeader(chat_sidebar_open: RwSignal<bool>) -> impl IntoView {
             .get_call_members(&room_id)
             .get()
             .iter()
-            .any(|dev| dev.user_id == user_id)
+            .any(|dev| Some(dev.user_id.clone()) == user_id)
     };
 
     let on_call_click = move |_| {

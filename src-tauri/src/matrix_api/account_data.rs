@@ -15,11 +15,11 @@ use matrix_sdk::{
     },
 };
 
-#[derive(Clone, Debug, Serialize, Deserialize, EventContent)]
+#[derive(Clone, Debug, Serialize, Deserialize, EventContent, Default)]
 #[ruma_event(type = "org.opal-matrix.breadcrumbs", kind = GlobalAccountData)]
 pub struct BreadcrumbsEventContent(pub Breadcrumbs);
 
-#[derive(Clone, Debug, Serialize, Deserialize, EventContent)]
+#[derive(Clone, Debug, Serialize, Deserialize, EventContent, Default)]
 #[ruma_event(type = "org.opal-matrix.server_order", kind = GlobalAccountData)]
 pub struct ServerOrderEventContent(pub ServerOrder);
 
@@ -34,7 +34,13 @@ pub async fn get_breadcrumbs(client: MatrixClientState<'_>) -> Result<Breadcrumb
         .await?;
 
     let breadcumbs: Breadcrumbs = if let Some(event) = res {
-        event.deserialize()?.0
+        event
+            .deserialize()
+            .unwrap_or_else(|e| {
+                log::warn!("Failed to deserialize breadcrumbs, using default: {}", e);
+                BreadcrumbsEventContent::default()
+            })
+            .0
     } else {
         Breadcrumbs::default()
     };
@@ -53,7 +59,13 @@ pub async fn get_server_order(client: MatrixClientState<'_>) -> Result<ServerOrd
         .await?;
 
     let server_order: ServerOrder = if let Some(event) = res {
-        event.deserialize()?.0
+        event
+            .deserialize()
+            .unwrap_or_else(|e| {
+                log::warn!("Failed to deserialize server order, using default: {}", e);
+                ServerOrderEventContent::default()
+            })
+            .0
     } else {
         ServerOrder::default()
     };

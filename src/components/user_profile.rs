@@ -1,6 +1,7 @@
 use csscolorparser::Color;
 use leptos::prelude::*;
 use phosphor_leptos::{HASH, Icon, IconWeight, MATRIX_LOGO, SIGN_IN, SPEAKER_HIGH};
+use ruma::{OwnedRoomId, OwnedUserId, UserId};
 use shared::{
     profile::{MemberProfile, RoomProfile, UserProfile},
     sidebar::RoomNode,
@@ -74,8 +75,8 @@ pub fn render_unknown_icon<T: AsRef<str>>(size_str: T) -> AnyView {
 pub fn render_profile_name<T: AsRef<str>>(
     name: String,
     color: Color,
-    user_id: Option<String>,
-    room_id: Option<String>,
+    user_id: Option<OwnedUserId>,
+    room_id: Option<OwnedRoomId>,
     font_size_str: T,
     popup: bool,
 ) -> AnyView {
@@ -137,10 +138,7 @@ impl RoomNodeExt for RoomNode {
             let sig = store.get_member_profile(&self.room_id(), &dm.other_user_id);
 
             let size = size_str.as_ref().to_string();
-            return view! {
-                {move || sig.get().render_icon(&size)}
-            }
-            .into_any();
+            return view! { {move || sig.get().render_icon(&size)} }.into_any();
         }
 
         if let Some(url) = self.avatar_url() {
@@ -183,27 +181,14 @@ pub trait MemberProfileExt {
     fn render_name_popup<T: AsRef<str>>(self, font_size_str: T) -> AnyView;
     fn render_name_no_popup<T: AsRef<str>>(self, font_size_str: T) -> AnyView;
     fn to_span(&self) -> RichTextSpan;
-
-    fn is_room(&self) -> bool;
 }
 
 impl MemberProfileExt for MemberProfile {
     fn to_span(&self) -> RichTextSpan {
-        if self.is_room() {
-            return RichTextSpan::RoomMention {
-                room_id: RoomIdFormat::Id(self.profile.user_id.clone()),
-                display_name: self.get_name(),
-            };
-        }
-
         RichTextSpan::UserMention {
             user_id: self.profile.user_id.clone(),
             display_name: self.get_name(),
         }
-    }
-
-    fn is_room(&self) -> bool {
-        self.profile.user_id.starts_with("!")
     }
 
     fn render_icon<T: AsRef<str>>(self, size_str: T) -> AnyView {
@@ -244,10 +229,6 @@ impl MemberProfileExt for UserProfile {
             user_id: self.user_id.clone(),
             display_name: self.get_name(),
         }
-    }
-
-    fn is_room(&self) -> bool {
-        self.user_id.starts_with("!")
     }
 
     fn render_icon_room<T: AsRef<str>, U: AsRef<str>>(
@@ -324,13 +305,6 @@ impl MemberProfileExt for Option<MemberProfile> {
         }
     }
 
-    fn is_room(&self) -> bool {
-        match self {
-            Some(profile) => profile.is_room(),
-            None => false,
-        }
-    }
-
     fn render_name<T: AsRef<str>>(self, font_size_str: T, popup: bool) -> AnyView {
         if let Some(profile) = self {
             profile.render_name(font_size_str, popup).into_any()
@@ -376,13 +350,6 @@ impl MemberProfileExt for Option<UserProfile> {
         }
     }
 
-    fn is_room(&self) -> bool {
-        match self {
-            Some(profile) => profile.is_room(),
-            None => false,
-        }
-    }
-
     fn render_name<T: AsRef<str>>(self, font_size_str: T, popup: bool) -> AnyView {
         if let Some(profile) = self {
             profile.render_name(font_size_str, popup).into_any()
@@ -416,14 +383,14 @@ impl RoomProfileExt for RoomProfile {
 pub fn render_user_profile_card(
     width: f64,
     height: f64,
-    user_id: String,
-    room_id: Option<String>,
+    user_id: &UserId,
+    room_id: Option<OwnedRoomId>,
 ) -> impl IntoView {
     use crate::{components::presence::PresenceBadge, state::ProfileStore};
 
     let store: ProfileStore = expect_context();
-    let profile_sig = store.get_profile_signal(room_id, &user_id);
-    let presence = store.get_presence(&user_id);
+    let profile_sig = store.get_profile_signal(room_id, user_id);
+    let presence = store.get_presence(user_id);
 
     let icon_sig = profile_sig.clone();
     let name_sig = profile_sig.clone();

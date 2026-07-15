@@ -10,17 +10,12 @@ use matrix_sdk::{
         events::{
             AnySyncMessageLikeEvent, AnySyncTimelineEvent, StateEventContentChange, StateEventType,
             SyncMessageLikeEvent,
-            poll::start::PollKind,
             receipt::ReceiptThread,
             room::{
                 MediaSource,
-                guest_access::GuestAccess,
-                history_visibility::HistoryVisibility,
                 message::{MessageFormat, MessageType, Relation},
             },
-            rtc::notification::CallIntent,
         },
-        room::JoinRuleSummary,
         serde::Raw,
     },
 };
@@ -38,9 +33,9 @@ use shared::{
     timeline::{
         AbstractProgress, Change, DetailState, EventContent, EventFlags, EventState,
         MediaUploadProgress, MessageContent, ProfileChange, ReactionInfo, ReplyInfo, ReplyPreview,
-        RichTextSpan, SystemMessage, TimelineEvent, UiBeaconInfo, UiCallIntent, UiGuestAccess,
-        UiHistoryVisibility, UiJoinRule, UiMediaSource, UiMembershipChange, UiMessageType,
-        UiPollKind, UiPollResult, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind,
+        RichTextSpan, SystemMessage, TimelineEvent, UiBeaconInfo, UiMediaSource,
+        UiMembershipChange, UiMessageType, UiPollResult, UiTimelineDiff, UiTimelineItem,
+        UiTimelineItemKind,
     },
 };
 use uuid::Uuid;
@@ -69,7 +64,7 @@ fn membership_change_to_ui(value: MembershipChange) -> UiMembershipChange {
 
 fn from_embedded_event_to_ui(value: &EmbeddedEvent) -> ReplyPreview {
     ReplyPreview {
-        sender_id: value.sender.to_string(),
+        sender_id: value.sender.clone(),
         content: reply_preview_spans(&value.content),
     }
 }
@@ -187,28 +182,6 @@ fn reply_preview_spans(content: &TimelineItemContent) -> Vec<RichTextSpan> {
     }
 }
 
-pub fn join_rule_to_ui(rule: JoinRuleSummary) -> UiJoinRule {
-    match rule {
-        JoinRuleSummary::Invite => UiJoinRule::Invite,
-        JoinRuleSummary::Knock => UiJoinRule::Knock,
-        JoinRuleSummary::KnockRestricted(_) => UiJoinRule::KnockRestricted,
-        JoinRuleSummary::Private => UiJoinRule::Private,
-        JoinRuleSummary::Public => UiJoinRule::Public,
-        JoinRuleSummary::Restricted(_) => UiJoinRule::Restricted,
-        _ => UiJoinRule::default(),
-    }
-}
-
-pub fn history_visibility_to_ui(visibility: &HistoryVisibility) -> UiHistoryVisibility {
-    match visibility {
-        HistoryVisibility::Invited => UiHistoryVisibility::Invited,
-        HistoryVisibility::Joined => UiHistoryVisibility::Joined,
-        HistoryVisibility::Shared => UiHistoryVisibility::Shared,
-        HistoryVisibility::WorldReadable => UiHistoryVisibility::WorldReadable,
-        _ => UiHistoryVisibility::default(),
-    }
-}
-
 pub async fn load_reply_info(room: &Room, raw: &Raw<AnySyncTimelineEvent>) -> Option<ReplyInfo> {
     let AnySyncTimelineEvent::MessageLike(AnySyncMessageLikeEvent::RoomMessage(
         SyncMessageLikeEvent::Original(message),
@@ -230,7 +203,7 @@ pub async fn load_reply_info(room: &Room, raw: &Raw<AnySyncTimelineEvent>) -> Op
 
     let unavailable = |event_id: &EventId| {
         Some(ReplyInfo {
-            event_id: event_id.to_string(),
+            event_id: event_id.to_owned(),
             event: DetailState::Unavailable,
         })
     };
@@ -243,7 +216,7 @@ pub async fn load_reply_info(room: &Room, raw: &Raw<AnySyncTimelineEvent>) -> Op
         }
     };
 
-    let Some(sender_id) = replied.sender().map(|id| id.to_string()) else {
+    let Some(sender_id) = replied.sender() else {
         return unavailable(&reply_event_id);
     };
     let Some(content) = TimelineItemContent::from_event(room, replied).await else {
@@ -251,7 +224,7 @@ pub async fn load_reply_info(room: &Room, raw: &Raw<AnySyncTimelineEvent>) -> Op
     };
 
     Some(ReplyInfo {
-        event_id: reply_event_id.to_string(),
+        event_id: reply_event_id.to_owned(),
         event: DetailState::Ready(ReplyPreview {
             sender_id,
             content: reply_preview_spans(&content),
@@ -265,7 +238,7 @@ fn in_reply_to_details_to_ui(
     unknown_reply_event_ids: &mut HashSet<OwnedEventId>,
 ) -> ReplyInfo {
     ReplyInfo {
-        event_id: value.event_id.to_string(),
+        event_id: value.event_id,
         event: match value.event {
             TimelineDetails::Error(e) => DetailState::Error(e.to_string()),
             TimelineDetails::Pending => DetailState::Pending,
@@ -287,7 +260,7 @@ fn get_reactions(reactions: ReactionsByKeyBySender) -> HashMap<String, Vec<React
             let mut reactors: Vec<ReactionInfo> = by_sender
                 .iter()
                 .map(|(sender, info)| ReactionInfo {
-                    sender_id: sender.to_string(),
+                    sender_id: sender.to_owned(),
                     timestamp: info.timestamp.as_secs().into(),
                 })
                 .collect();
@@ -306,7 +279,7 @@ fn get_reactions(reactions: ReactionsByKeyBySender) -> HashMap<String, Vec<React
 
 fn member_profile_change_to_ui(value: MemberProfileChange) -> ProfileChange {
     ProfileChange {
-        user_id: value.user_id().to_string(),
+        user_id: value.user_id().to_owned(),
         display_name_change: value.displayname_change().map(|c| Change {
             old: c.old.clone().map(|v| v.to_string()),
             new: c.new.clone().map(|v| v.to_string()),
@@ -315,14 +288,6 @@ fn member_profile_change_to_ui(value: MemberProfileChange) -> ProfileChange {
             old: c.old.clone().map(|v| v.to_string()),
             new: c.new.clone().map(|v| v.to_string()),
         }),
-    }
-}
-
-fn poll_kind_to_ui(value: PollKind) -> UiPollKind {
-    match value {
-        PollKind::Undisclosed => UiPollKind::Undisclosed,
-        PollKind::Disclosed => UiPollKind::Disclosed,
-        _ => UiPollKind::default(),
     }
 }
 
@@ -353,16 +318,8 @@ fn event_send_state_to_ui(state: &EventSendState) -> EventState {
             is_recoverable: *is_recoverable,
         },
         EventSendState::Sent { event_id } => EventState::Sent {
-            event_id: event_id.to_string(),
+            event_id: event_id.clone(),
         },
-    }
-}
-
-fn from_call_intent_to_ui(value: CallIntent) -> UiCallIntent {
-    match value {
-        CallIntent::Audio => UiCallIntent::Audio,
-        CallIntent::Video => UiCallIntent::Video,
-        _ => UiCallIntent::Unknown,
     }
 }
 
@@ -537,7 +494,7 @@ pub fn timeline_item_content_to_ui(
                             is_edit: poll.is_edit(),
                             result: UiPollResult {
                                 question: result.question,
-                                kind: poll_kind_to_ui(result.kind),
+                                kind: result.kind,
                                 max_selections: result.max_selections,
                                 votes: result.votes,
                                 end_time: result.end_time.map(|t| t.as_secs().into()),
@@ -601,8 +558,8 @@ pub fn timeline_item_content_to_ui(
             call_intent,
             declined_by,
         } => EventContent::SystemMessage(SystemMessage::RtcNotification {
-            call_intent: call_intent.map(from_call_intent_to_ui),
-            declined_by: declined_by.iter().map(|v| v.to_string()).collect(),
+            call_intent,
+            declined_by,
         }),
         TimelineItemContent::ProfileChange(change) => EventContent::SystemMessage(
             SystemMessage::ProfileChange(member_profile_change_to_ui(change)),
@@ -670,12 +627,8 @@ pub fn timeline_item_content_to_ui(
             AnyOtherStateEventContentChange::RoomCreate(change) => match change {
                 StateEventContentChange::Original { content, .. } => {
                     EventContent::SystemMessage(SystemMessage::RoomCreate {
-                        additional_creators: content
-                            .additional_creators
-                            .iter()
-                            .map(|u| u.to_string())
-                            .collect(),
-                        room_type: content.room_type.clone().map(|t| t.to_string()),
+                        additional_creators: content.additional_creators.clone(),
+                        room_type: content.room_type.clone(),
                     })
                 }
                 StateEventContentChange::Redacted(_) => {
@@ -685,7 +638,7 @@ pub fn timeline_item_content_to_ui(
             AnyOtherStateEventContentChange::RoomEncryption(change) => match change {
                 StateEventContentChange::Original { content, .. } => {
                     EventContent::SystemMessage(SystemMessage::RoomEncryption {
-                        algorithm: content.algorithm.to_string(),
+                        algorithm: content.algorithm.clone(),
                     })
                 }
                 StateEventContentChange::Redacted(_) => {
@@ -695,11 +648,7 @@ pub fn timeline_item_content_to_ui(
             AnyOtherStateEventContentChange::RoomGuestAccess(change) => match change {
                 StateEventContentChange::Original { content, .. } => {
                     EventContent::SystemMessage(SystemMessage::RoomGuestAccess {
-                        guest_access: match content.guest_access {
-                            GuestAccess::CanJoin => UiGuestAccess::CanJoin,
-                            GuestAccess::Forbidden => UiGuestAccess::Forbidden,
-                            _ => UiGuestAccess::Unknown,
-                        },
+                        guest_access: content.guest_access.clone(),
                     })
                 }
                 StateEventContentChange::Redacted(_) => {
@@ -709,7 +658,7 @@ pub fn timeline_item_content_to_ui(
             AnyOtherStateEventContentChange::RoomHistoryVisibility(change) => match change {
                 StateEventContentChange::Original { content, .. } => {
                     EventContent::SystemMessage(SystemMessage::RoomHistoryVisibility {
-                        visibility: history_visibility_to_ui(&content.history_visibility),
+                        visibility: content.history_visibility.clone(),
                     })
                 }
                 StateEventContentChange::Redacted(_) => {
@@ -719,7 +668,7 @@ pub fn timeline_item_content_to_ui(
             AnyOtherStateEventContentChange::RoomJoinRules(change) => match change {
                 StateEventContentChange::Original { content, .. } => {
                     EventContent::SystemMessage(SystemMessage::RoomJoinRules {
-                        join_rule: join_rule_to_ui(content.join_rule.clone().into()),
+                        join_rule: content.join_rule.clone(),
                     })
                 }
                 StateEventContentChange::Redacted(_) => {
@@ -739,7 +688,7 @@ pub fn timeline_item_content_to_ui(
             AnyOtherStateEventContentChange::RoomPinnedEvents(change) => match change {
                 StateEventContentChange::Original { content, .. } => {
                     EventContent::SystemMessage(SystemMessage::RoomPinnedEvents {
-                        pinned_events: content.pinned.iter().map(|e| e.to_string()).collect(),
+                        pinned_events: content.pinned.clone(),
                     })
                 }
                 StateEventContentChange::Redacted(_) => {
@@ -853,7 +802,7 @@ fn event_timeline_item_to_ui(
                 receipt.thread,
                 ReceiptThread::Main | ReceiptThread::Unthreaded
             ) {
-                Some(user_id.to_string())
+                Some(user_id.clone())
             } else {
                 None
             }
@@ -872,11 +821,11 @@ fn event_timeline_item_to_ui(
             contains_only_emojis: item.contains_only_emojis(),
         },
 
-        event_id: item.event_id().map(|e| e.to_string()),
+        event_id: item.event_id().map(|e| e.to_owned()),
 
         receipts,
 
-        sender_id: sender_id.to_string(),
+        sender_id: sender_id.to_owned(),
 
         content: timeline_item_content_to_ui(
             item.content(),

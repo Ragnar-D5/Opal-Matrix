@@ -2,24 +2,24 @@ use std::{collections::HashMap, ops::AddAssign};
 
 use csscolorparser::Color;
 use macros::TauriEvent;
+use ruma::{
+    OwnedDeviceId, OwnedRoomId, OwnedUserId, RoomId,
+    events::room::history_visibility::HistoryVisibility, room::JoinRuleSummary,
+};
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    account_data::ServerOrder,
-    profile::RoomProfile,
-    timeline::{UiHistoryVisibility, UiJoinRule},
-};
+use crate::{account_data::ServerOrder, profile::RoomProfile};
 
 #[derive(Debug, Serialize, Clone, Deserialize, PartialEq, TauriEvent)]
 pub struct UserDevice {
-    pub user_id: String,
-    pub device_id: String,
+    pub user_id: OwnedUserId,
+    pub device_id: OwnedDeviceId,
 }
 
 #[derive(Debug, Serialize, Clone, Deserialize, PartialEq)]
 pub struct SpaceRoomNode {
     pub info: RoomNodeInfo,
-    pub children: Vec<String>,
+    pub children: Vec<OwnedRoomId>,
 }
 
 impl SpaceRoomNode {
@@ -31,9 +31,9 @@ impl SpaceRoomNode {
 #[derive(Debug, Serialize, Clone, Deserialize, PartialEq)]
 pub struct ServerRoomNode {
     pub info: RoomNodeInfo,
-    pub children: Vec<String>,
+    pub children: Vec<OwnedRoomId>,
     /// All children of the server, recursively, including children of children.
-    pub all_children: Vec<String>,
+    pub all_children: Vec<OwnedRoomId>,
 }
 
 impl ServerRoomNode {
@@ -41,7 +41,7 @@ impl ServerRoomNode {
         self.info.name.clone()
     }
 
-    pub fn room_id(&self) -> String {
+    pub fn room_id(&self) -> OwnedRoomId {
         self.info.room_id.clone()
     }
 }
@@ -59,7 +59,7 @@ pub struct VoiceChannelRoomNode {
 #[derive(Debug, Serialize, Clone, Deserialize, PartialEq)]
 pub struct DmRoomNode {
     pub info: RoomNodeInfo,
-    pub other_user_id: String,
+    pub other_user_id: OwnedUserId,
 }
 
 impl DmRoomNode {
@@ -67,7 +67,7 @@ impl DmRoomNode {
         self.info.name.clone()
     }
 
-    pub fn room_id(&self) -> String {
+    pub fn room_id(&self) -> OwnedRoomId {
         self.info.room_id.clone()
     }
 
@@ -90,7 +90,7 @@ impl SingleRoomNode {
         self.info.name.clone()
     }
 
-    pub fn room_id(&self) -> String {
+    pub fn room_id(&self) -> OwnedRoomId {
         self.info.room_id.clone()
     }
 }
@@ -133,7 +133,7 @@ pub struct RoomRights {
 
 #[derive(Debug, Serialize, Clone, Deserialize, PartialEq)]
 pub struct RoomNodeInfo {
-    pub room_id: String,
+    pub room_id: OwnedRoomId,
     pub name: String,
     pub topic: Option<String>,
     pub has_avatar: bool,
@@ -178,7 +178,7 @@ impl RoomNode {
         }
     }
 
-    pub fn room_id(&self) -> String {
+    pub fn room_id(&self) -> OwnedRoomId {
         match self {
             RoomNode::Space(node) => node.info.room_id.clone(),
             RoomNode::TextChannel(node) => node.info.room_id.clone(),
@@ -288,7 +288,7 @@ impl RoomNode {
         self.children().is_some_and(|children| !children.is_empty())
     }
 
-    pub fn children(&self) -> Option<Vec<String>> {
+    pub fn children(&self) -> Option<Vec<OwnedRoomId>> {
         match self {
             RoomNode::Space(space_node) => Some(space_node.children.clone()),
             RoomNode::Server(server_node) => Some(server_node.children.clone()),
@@ -300,7 +300,7 @@ impl RoomNode {
 impl From<RoomNode> for RoomProfile {
     fn from(node: RoomNode) -> Self {
         RoomProfile {
-            room_id: node.room_id().to_string(),
+            room_id: node.room_id(),
             name: Some(node.name()),
             canonical_alias: node.canonical_alias(),
             aliases: node.aliases(),
@@ -309,24 +309,24 @@ impl From<RoomNode> for RoomProfile {
 }
 
 #[derive(Debug, Serialize, Clone, Default, Deserialize, PartialEq, TauriEvent)]
-pub struct ServerList(pub Vec<String>);
+pub struct ServerList(pub Vec<OwnedRoomId>);
 
 impl ServerList {
-    pub fn reorder_servers(&self, source_id: &str, target_id: &str) -> Self {
+    pub fn reorder_servers(&self, source_id: &RoomId, target_id: &RoomId) -> Self {
         let source_index = self.0.iter().position(|id| id == source_id);
         let target_index = self.0.iter().position(|id| id == target_id);
 
         let mut clone = self.0.clone();
         if let (Some(source_index), Some(target_index)) = (source_index, target_index) {
             clone.remove(source_index);
-            clone.insert(target_index, source_id.to_string());
+            clone.insert(target_index, source_id.to_owned());
         }
 
         Self(clone)
     }
 
     pub fn apply_order(&self, order: ServerOrder) -> Self {
-        let new_order: Vec<String> = order
+        let new_order: Vec<OwnedRoomId> = order
             .servers
             .iter()
             .filter(|id| self.0.contains(id))
@@ -338,16 +338,16 @@ impl ServerList {
 }
 
 #[derive(Debug, Serialize, Clone, Deserialize, PartialEq, TauriEvent, Default)]
-pub struct DmList(pub Vec<String>);
+pub struct DmList(pub Vec<OwnedRoomId>);
 
 #[derive(Debug, Serialize, Clone, Deserialize, PartialEq, TauriEvent, Default)]
-pub struct SingleList(pub Vec<String>);
+pub struct SingleList(pub Vec<OwnedRoomId>);
 
 #[derive(Debug, Serialize, Clone, Deserialize, PartialEq, TauriEvent)]
 pub enum RoomMapUpdate {
-    Insert { key: String, value: RoomNode },
-    Remove { key: String },
-    Set { map: HashMap<String, RoomNode> },
+    Insert { key: OwnedRoomId, value: RoomNode },
+    Remove { key: OwnedRoomId },
+    Set { map: HashMap<OwnedRoomId, RoomNode> },
 }
 
 #[derive(Debug, Serialize, Clone, Deserialize, PartialEq, Default, TauriEvent)]
@@ -395,8 +395,8 @@ pub enum UiMembership {
 #[derive(Debug, Serialize, Clone, Deserialize, PartialEq, TauriEvent)]
 pub struct RoomExtraInfo {
     pub membership: UiMembership,
-    pub join_rule: UiJoinRule,
-    pub history_visibility: UiHistoryVisibility,
+    pub join_rule: JoinRuleSummary,
+    pub history_visibility: HistoryVisibility,
     pub encrypted: bool,
     pub version: Option<String>,
     pub num_joined_users: u64,

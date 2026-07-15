@@ -1,6 +1,7 @@
 use phosphor_leptos::{
     BUG, CARET_DOWN, CARET_RIGHT, Icon, IconData, IconWeight, QUESTION_MARK, SPEAKER_HIGH,
 };
+use ruma::{OwnedRoomId, OwnedUserId};
 use shared::{
     profile::MemberProfile,
     sidebar::{ServerRoomNode, UserDevice},
@@ -39,7 +40,7 @@ fn render_server_avatar<T: AsRef<str> + 'static>(
     render_url_icon(url, name, size_str, color, rounding)
 }
 
-fn render_full_room(node: RoomNode, other_user_id: StoredValue<Option<String>>) -> AnyView {
+fn render_full_room(node: RoomNode, other_user_id: StoredValue<Option<OwnedUserId>>) -> AnyView {
     let state: AppState = expect_context();
     let store: ProfileStore = expect_context();
 
@@ -61,7 +62,7 @@ fn render_full_room(node: RoomNode, other_user_id: StoredValue<Option<String>>) 
         if !members_in_call.is_empty() {
             let user_in_call = members_in_call
                 .iter()
-                .any(|d| d.user_id == state.user_id.get());
+                .any(|d| d.user_id == state.user_id.get().expect("user_id is not set"));
 
             Some(
                 view! {
@@ -304,7 +305,8 @@ fn render_room_preview(room: RoomNode, members: Option<Vec<UserDevice>>) -> impl
                 .collect::<Vec<_>>();
 
             if !user_ids_in_calls.is_empty() {
-                let user_in_call = user_ids_in_calls.contains(&state.user_id.get());
+                let user_in_call =
+                    user_ids_in_calls.contains(&state.user_id.get().expect("user_id is not set"));
                 Some(CutoutBadgeCorner {
                     fg_color: "white".to_string(),
                     bg_color: if user_in_call {
@@ -389,7 +391,8 @@ pub fn ServerIcon(server: ServerRoomNode) -> impl IntoView {
             state.get_call_members_in_rooms(server.all_children.clone().into_iter().collect());
 
         if !user_ids_in_calls.is_empty() {
-            let user_in_call = user_ids_in_calls.contains(&state.user_id.get());
+            let user_in_call =
+                user_ids_in_calls.contains(&state.user_id.get().expect("user_id is not set"));
             Some(CutoutBadgeCorner {
                 fg_color: "white".to_string(),
                 bg_color: if user_in_call {
@@ -451,8 +454,8 @@ pub fn ServerIcon(server: ServerRoomNode) -> impl IntoView {
 
 fn room_should_stay_visible(
     state: &AppState,
-    room_id: &str,
-    active_room_id: &Option<String>,
+    room_id: &OwnedRoomId,
+    active_room_id: &Option<OwnedRoomId>,
 ) -> bool {
     if active_room_id.as_deref() == Some(room_id) {
         return true;
@@ -703,7 +706,7 @@ fn render_room(room: RoomNode) -> AnyView {
 pub fn Sidebar() -> impl IntoView {
     let state: AppState = expect_context();
 
-    let (dragged_server_id, set_dragged_server_id) = signal::<Option<String>>(None);
+    let dragged_server_id: RwSignal<Option<OwnedRoomId>> = RwSignal::new(None);
 
     let dms_btn = NodeRef::new();
     let rooms_btn = NodeRef::new();
@@ -862,10 +865,11 @@ pub fn Sidebar() -> impl IntoView {
                                         let img = img.clone();
                                         move |e| {
                                             if let Some(data_transfer) = e.data_transfer() {
-                                                let _ = data_transfer.set_data("text/plain", &drag_id);
+                                                let _ = data_transfer
+                                                    .set_data("text/plain", drag_id.as_ref());
                                                 data_transfer.set_drag_image(&img, 0, 0);
                                             }
-                                            set_dragged_server_id.set(Some(drag_id.clone()));
+                                            dragged_server_id.set(Some(drag_id.clone()));
                                         }
                                     }
                                     on:dragover=move |e| {
@@ -881,7 +885,7 @@ pub fn Sidebar() -> impl IntoView {
                                         }
                                     }
                                     on:dragend=move |_| {
-                                        set_dragged_server_id.set(None);
+                                        dragged_server_id.set(None);
                                         spawn_local(async move {
                                             let current_servers = state.server_list.get_untracked().0;
                                             state.set_server_order(current_servers);
@@ -1003,10 +1007,9 @@ pub fn ProfileCard() -> impl IntoView {
     let profile_store = store.clone();
     Effect::new(move |_| {
         let room_id = state.active_room_id();
-        let user_id = state.user_id.get();
-        if user_id.is_empty() {
+        let Some(user_id) = state.user_id.get() else {
             return;
-        }
+        };
 
         if let Some(rid) = room_id {
             let profile = profile_store.get_member_profile(&rid, &user_id).get();
@@ -1024,11 +1027,13 @@ pub fn ProfileCard() -> impl IntoView {
         let profile = current_profile.get();
         let name_profile = profile.clone();
 
+        let Some(profile) = profile else {
+            return ().into_any();
+        };
+
         view! {
             <PresenceBadge presence=store
-                .get_presence(
-                    &profile.clone().map(|p| p.profile.user_id.clone()).unwrap_or_default(),
-                )>{profile.render_icon("30px")}</PresenceBadge>
+                .get_presence(&profile.user_id())>{profile.render_icon("30px")}</PresenceBadge>
             {name_profile.render_name_popup("14px")}
         }
         .into_any()

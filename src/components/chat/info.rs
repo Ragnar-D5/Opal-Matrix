@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet};
 use leptos::prelude::*;
 use phosphor_leptos::Icon;
 use phosphor_leptos::{AT, CARET_DOWN, CARET_UP, GLOBE, HASH, QUESTION_MARK, SPEAKER_HIGH};
+use ruma::OwnedRoomId;
 use shared::{
     api::SearchParameters,
     profile::{MemberProfile, PresenceInfo},
@@ -100,7 +101,7 @@ fn chat_info() -> AnyView {
                 let member = profile_sig.get_untracked();
                 let user_id = member.profile.user_id.clone();
                 let room_id = member.room_id.clone();
-                render_user_profile_card(70.0, 108.0, user_id, Some(room_id)).into_any()
+                render_user_profile_card(70.0, 108.0, &user_id, Some(room_id)).into_any()
             }
             RoomNode::TextChannel(_)
             | RoomNode::Single(_)
@@ -124,7 +125,9 @@ fn member_list() -> AnyView {
     let state: AppState = expect_context();
     let store: ProfileStore = expect_context();
 
-    let room_id = state.active_room_id_untracked().unwrap_or_default();
+    let Some(room_id) = state.active_room_id_untracked() else {
+        return ().into_any();
+    };
 
     let members_store = store.clone();
     let members = Memo::new(move |_| members_store.clone().get_member_signals(&room_id));
@@ -280,9 +283,10 @@ fn chat_search() -> AnyView {
     let state: AppState = expect_context();
 
     let search_params: RwSignal<Option<SearchParameters>> = expect_context();
-    let search_results: RwSignal<Option<HashMap<String, Vec<UiTimelineItem>>>> = expect_context();
+    let search_results: RwSignal<Option<HashMap<OwnedRoomId, Vec<UiTimelineItem>>>> =
+        expect_context();
 
-    let collapsed_rooms: RwSignal<HashSet<String>> = RwSignal::new(HashSet::new());
+    let collapsed_rooms: RwSignal<HashSet<OwnedRoomId>> = RwSignal::new(HashSet::new());
 
     let highlight_words: Memo<Vec<String>> = Memo::new(move |_| {
         search_params
@@ -318,7 +322,7 @@ fn chat_search() -> AnyView {
     };
 
     let room_ids = Memo::new(move |_| {
-        let mut ids: Vec<String> = search_results
+        let mut ids: Vec<OwnedRoomId> = search_results
             .get()
             .map(|results| {
                 results
@@ -345,7 +349,11 @@ fn chat_search() -> AnyView {
                 <For
                     each=move || room_ids.get()
                     key=|room_id| room_id.clone()
-                    children=move |room_id| room_results(room_id, collapsed_rooms, highlight_words)
+                    children=move |room_id| room_results(
+                        StoredValue::new(room_id),
+                        collapsed_rooms,
+                        highlight_words,
+                    )
                 />
             </div>
         </div>
@@ -354,14 +362,15 @@ fn chat_search() -> AnyView {
 }
 
 fn room_results(
-    room_id: String,
-    collapsed_rooms: RwSignal<HashSet<String>>,
+    room_id: StoredValue<OwnedRoomId>,
+    collapsed_rooms: RwSignal<HashSet<OwnedRoomId>>,
     highlight_words: Memo<Vec<String>>,
 ) -> AnyView {
     let state: AppState = expect_context();
-    let search_results: RwSignal<Option<HashMap<String, Vec<UiTimelineItem>>>> = expect_context();
+    let search_results: RwSignal<Option<HashMap<OwnedRoomId, Vec<UiTimelineItem>>>> =
+        expect_context();
 
-    let Some(node) = state.get_room(&room_id) else {
+    let Some(node) = state.get_room(&room_id.get_value()) else {
         return ().into_any();
     };
 
@@ -376,21 +385,15 @@ fn room_results(
     };
 
     let messages = Memo::new({
-        let room_id = room_id.clone();
         move |_| {
             search_results
                 .get()
-                .and_then(|results| results.get(&room_id).cloned())
+                .and_then(|results| results.get(&room_id.get_value()).cloned())
                 .unwrap_or_default()
         }
     });
 
-    let is_collapsed = Memo::new({
-        let room_id = room_id.clone();
-        move |_| collapsed_rooms.get().contains(&room_id)
-    });
-
-    let toggle_room_id = room_id.clone();
+    let is_collapsed = Memo::new(move |_| collapsed_rooms.get().contains(&room_id.get_value()));
 
     view! {
         <div class="flex flex-col gap-(--gap) text-normal">
@@ -410,8 +413,8 @@ fn room_results(
                     on:click=move |_| {
                         collapsed_rooms
                             .update(|rooms| {
-                                if !rooms.remove(&toggle_room_id) {
-                                    rooms.insert(toggle_room_id.clone());
+                                if !rooms.remove(&room_id.get_value()) {
+                                    rooms.insert(room_id.get_value());
                                 }
                             });
                     }
@@ -426,13 +429,16 @@ fn room_results(
                 if is_collapsed.get() {
                     return ().into_any();
                 }
-                let room_id = room_id.clone();
 
                 view! {
                     <For
                         each=move || messages.get()
                         key=|msg| msg.render_key()
-                        children=move |msg| message_result(msg, room_id.clone(), highlight_words)
+                        children=move |msg| message_result(
+                            msg,
+                            room_id.get_value(),
+                            highlight_words,
+                        )
                     />
                 }
                     .into_any()
@@ -444,7 +450,7 @@ fn room_results(
 
 fn message_result(
     msg: UiTimelineItem,
-    room_id: String,
+    room_id: OwnedRoomId,
     highlight_words: Memo<Vec<String>>,
 ) -> AnyView {
     let state: AppState = expect_context();

@@ -100,7 +100,7 @@ const PROGS: [&[i8]; 7] = [
 ];
 
 impl SonicSignature {
-    pub fn from_user_id(s: &str) -> Self {
+    pub fn from_string(s: &str) -> Self {
         let hash = Sha256::digest(s.as_bytes());
 
         Self {

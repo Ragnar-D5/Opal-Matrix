@@ -1,9 +1,6 @@
-use std::{
-    collections::{HashMap, HashSet},
-    str::FromStr,
-};
+use std::collections::{HashMap, HashSet};
 
-use matrix_sdk::{Client, ruma::OwnedRoomId};
+use matrix_sdk::Client;
 use matrix_sdk_ui::timeline::TimelineItemContent;
 use shared::{
     api::{SearchParameters, events::SearchResultUpdate},
@@ -44,18 +41,11 @@ pub async fn search_rooms(
         parameters.room_ids
     );
 
-    for room_id_str in &parameters.room_ids {
-        let room_id = match OwnedRoomId::from_str(room_id_str) {
-            Ok(id) => id,
-            Err(e) => {
-                log::error!("Invalid room ID: {room_id_str}, error: {e}");
-                continue;
-            }
-        };
+    for room_id in parameters.room_ids {
         let room = match client.get_room(&room_id) {
             Some(room) => room,
             None => {
-                log::error!("Room with id {room_id} not found");
+                log::error!("Room with id {} not found", &room_id);
                 continue;
             }
         };
@@ -122,8 +112,8 @@ pub async fn search_rooms(
                             messages.push((
                                 ts,
                                 ui_content.to_timeline_item(
-                                    event_id.to_string(),
-                                    sender.to_string(),
+                                    event_id,
+                                    sender,
                                     ts,
                                 ),
                             ));
@@ -133,7 +123,7 @@ pub async fn search_rooms(
                         let messages: Vec<UiTimelineItem> =
                             messages.into_iter().rev().map(|(_, msg)| msg).collect();
 
-                        let payload: SearchResultUpdate = (search_id_clone, room_id.to_string(), messages);
+                        let payload: SearchResultUpdate = (search_id_clone, room_id.clone(), messages);
 
                         send_event(&handle_clone, &payload);
                         sent_any = true;
@@ -144,8 +134,7 @@ pub async fn search_rooms(
             // The frontend keeps showing the previous search's results for
             // this room until an update arrives, so always send one.
             if !sent_any {
-                let payload: SearchResultUpdate =
-                    (search_id_clone, room_id.to_string(), Vec::new());
+                let payload: SearchResultUpdate = (search_id_clone, room_id, Vec::new());
                 send_event(&handle_clone, &payload);
             }
         });

@@ -48,7 +48,7 @@ pub async fn send_user_to_frontend(handle: &AppHandle, client: &Client) -> Resul
 
     let update = UserProfile {
         display_name,
-        user_id: user_id.to_string(),
+        user_id: user_id.to_owned(),
 
         has_avatar,
 
@@ -126,7 +126,7 @@ pub struct ProfileDebounce {
 
 pub async fn get_custom_fields(client: &Client, user_id: OwnedUserId) -> CustomProperties {
     let account = client.account();
-    let derived = CustomProperties::from_user_id(user_id.as_str());
+    let derived = CustomProperties::from_user_id(&user_id);
 
     let (banner_result, name_result, sonic_result) = tokio::join!(
         account.fetch_profile_field_of(user_id.clone(), banner_color_field()),

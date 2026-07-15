@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use chrono::{DateTime, SecondsFormat, Utc};
 use macros::TauriEvent;
+use ruma::{OwnedRoomId, OwnedUserId};
 use serde::{Deserialize, Deserializer, Serialize};
 use uuid::Uuid;
 
@@ -26,7 +27,7 @@ pub mod events;
 #[derive(Serialize, Deserialize)]
 pub enum RestoreResponse {
     NoSession,
-    Success { user_id: String },
+    Success { user_id: OwnedUserId },
     Failed { home_server: String },
 }
 
@@ -145,9 +146,9 @@ impl AudioDeviceInfos {
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, TauriEvent)]
 pub struct SearchParameters {
     pub search_id: Uuid,
-    pub room_ids: Vec<String>,
+    pub room_ids: Vec<OwnedRoomId>,
     pub text: String,
-    pub senders: Vec<String>,
+    pub senders: Vec<OwnedUserId>,
     pub after: Option<DateTime<Utc>>,
     pub before: Option<DateTime<Utc>>,
     pub has_link: bool,
@@ -202,7 +203,7 @@ impl SearchParameters {
         clauses.join(" AND ")
     }
 
-    pub fn is_empty(&self, current_room_id: Option<String>) -> bool {
+    pub fn is_empty(&self, current_room_id: Option<OwnedRoomId>) -> bool {
         self.room_ids.is_empty()
             || (self.room_ids.first().cloned() == current_room_id)
                 && self.text.is_empty()

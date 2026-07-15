@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use macros::TauriEvent;
+use ruma::{OwnedEventId, OwnedRoomId, OwnedUserId};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use uuid::Uuid;
 
@@ -17,6 +18,18 @@ pub trait TauriEvent: Serialize + DeserializeOwned + PartialEq {
 impl TauriEvent for String {
     fn name() -> String {
         "String".to_string()
+    }
+}
+
+impl TauriEvent for OwnedRoomId {
+    fn name() -> String {
+        "OwnedRoomId".to_string()
+    }
+}
+
+impl TauriEvent for OwnedUserId {
+    fn name() -> String {
+        "OwnedUserId".to_string()
     }
 }
 
@@ -66,19 +79,19 @@ where
     }
 }
 
-pub type ProfileUpdates = HashMap<String, Vec<MemberProfile>>;
+pub type ProfileUpdates = HashMap<OwnedRoomId, Vec<MemberProfile>>;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TauriEvent)]
 pub struct TypingUpdate {
-    pub room_id: String,
-    pub user_ids: Vec<String>,
+    pub room_id: OwnedRoomId,
+    pub user_ids: Vec<OwnedUserId>,
 }
 
-pub type CallMemberUpdate = HashMap<String, Vec<UserDevice>>;
+pub type CallMemberUpdate = HashMap<OwnedRoomId, Vec<UserDevice>>;
 
-pub type PresenceUpdate = HashMap<String, PresenceInfo>;
+pub type PresenceUpdate = HashMap<OwnedUserId, PresenceInfo>;
 
-pub type NotificationUpdate = HashMap<String, NotificationCounts>;
+pub type NotificationUpdate = HashMap<OwnedRoomId, NotificationCounts>;
 
 /// A single log line, buffered in the backend and streamed to the log window.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TauriEvent)]
@@ -121,10 +134,10 @@ pub enum NotificationEvent {
     },
 }
 
-pub type SearchResultUpdate = (Uuid, String, Vec<UiTimelineItem>);
+pub type SearchResultUpdate = (Uuid, OwnedRoomId, Vec<UiTimelineItem>);
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TauriEvent)]
-pub struct RoomPinnedUpdate(pub (String, Vec<String>));
+pub struct RoomPinnedUpdate(pub (OwnedRoomId, Vec<OwnedEventId>));
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct RecentEmoji {

@@ -1,5 +1,6 @@
 use klipy::{MediaItem, Page};
 use leptos::task::spawn_local;
+use ruma::{EventId, OwnedEventId, OwnedRoomId, RoomId, UserId};
 use serde_json::json;
 use shared::{
     account_data::ServerOrder,
@@ -17,8 +18,8 @@ use crate::app::{call_tauri, call_tauri_no_args};
 
 pub async fn commit_message(
     message: String,
-    room_id: &str,
-    replies_to: Option<String>,
+    room_id: &RoomId,
+    replies_to: Option<OwnedEventId>,
 ) -> Result<(), String> {
     let args = serde_wasm_bindgen::to_value(
         &json!({ "html": message, "room_id": room_id, "replies_to": replies_to }),
@@ -32,7 +33,11 @@ pub async fn commit_message(
     Ok(())
 }
 
-pub async fn edit_message(message: String, room_id: &str, event_id: String) -> Result<(), String> {
+pub async fn edit_message(
+    message: String,
+    room_id: &RoomId,
+    event_id: &EventId,
+) -> Result<(), String> {
     let args = serde_wasm_bindgen::to_value(
         &json!({ "html": message, "room_id": room_id, "event_id": event_id }),
     )
@@ -45,7 +50,7 @@ pub async fn edit_message(message: String, room_id: &str, event_id: String) -> R
     Ok(())
 }
 
-pub async fn set_backend_room_id(room_id: Option<String>) -> Result<(), String> {
+pub async fn set_backend_room_id(room_id: Option<OwnedRoomId>) -> Result<(), String> {
     let args = serde_wasm_bindgen::to_value(&json!({ "room_id": room_id }))
         .map_err(|e| format!("Failed to construct args: {e}"))?;
 
@@ -89,8 +94,8 @@ pub async fn get_commands() -> Result<Vec<Command>, String> {
 }
 
 pub async fn get_timeline(
-    room_id: &str,
-    event_id: Option<String>,
+    room_id: &RoomId,
+    event_id: Option<OwnedEventId>,
 ) -> Result<GetTimelineResult, String> {
     let args = serde_wasm_bindgen::to_value(&json!({ "room_id": room_id, "event_id": event_id }))
         .map_err(|e| format!("Failed to serialize request: {:?}", e))?;
@@ -128,7 +133,7 @@ pub async fn scroll_timeline(
     Ok(has_more)
 }
 
-pub fn toggle_reaction(room_id: &str, event_id: &str, reaction: &str) {
+pub fn toggle_reaction(room_id: &RoomId, event_id: &EventId, reaction: &str) {
     let args = match serde_wasm_bindgen::to_value(
         &json!({ "room_id": room_id, "event_id": event_id, "reaction": reaction }),
     ) {
@@ -157,7 +162,7 @@ pub async fn pick_files() -> Result<Vec<FileMetadata>, String> {
     Ok(paths)
 }
 
-pub async fn send_attachment(file: FileMetadata, room_id: &str) -> Result<(), String> {
+pub async fn send_attachment(file: FileMetadata, room_id: &RoomId) -> Result<(), String> {
     let args = serde_wasm_bindgen::to_value(&json!({ "file": file, "room_id": room_id }))
         .map_err(|e| format!("Failed to serialize request: {:?}", e))?;
 
@@ -185,7 +190,7 @@ pub async fn save_file_to_picked_dest(
     Ok(path)
 }
 
-pub async fn get_user_profile(user_id: &str) -> Result<UserProfile, String> {
+pub async fn get_user_profile(user_id: &UserId) -> Result<UserProfile, String> {
     let args = serde_wasm_bindgen::to_value(&json!({ "user_id": user_id }))
         .map_err(|e| format!("Failed to serialize request: {:?}", e))?;
 
@@ -210,7 +215,7 @@ pub async fn get_server_order() -> Result<ServerOrder, String> {
     Ok(server_order)
 }
 
-pub async fn delete_message(room_id: &str, event_id: &str) -> Result<(), String> {
+pub async fn delete_message(room_id: &RoomId, event_id: &EventId) -> Result<(), String> {
     let args = serde_wasm_bindgen::to_value(&json!({ "room_id": room_id, "event_id": event_id }))
         .map_err(|e| format!("Failed to serialize request: {:?}", e))?;
 
@@ -221,7 +226,7 @@ pub async fn delete_message(room_id: &str, event_id: &str) -> Result<(), String>
     Ok(())
 }
 
-pub async fn indicate_typing(room_id: &str, is_typing: bool) -> Result<(), String> {
+pub async fn indicate_typing(room_id: &RoomId, is_typing: bool) -> Result<(), String> {
     let args = serde_wasm_bindgen::to_value(&json!({ "room_id": room_id, "is_typing": is_typing }))
         .map_err(|e| format!("Failed to serialize request: {:?}", e))?;
 
@@ -316,7 +321,7 @@ pub fn save_banner_color(color: &str) -> Result<(), String> {
     Ok(())
 }
 
-pub fn save_displayname(display_name: &str, room_id: Option<String>) -> Result<(), String> {
+pub fn save_displayname(display_name: &str, room_id: Option<OwnedRoomId>) -> Result<(), String> {
     let args = serde_wasm_bindgen::to_value(&json!({ "name": display_name, "room_id": room_id }))
         .map_err(|e| format!("Failed to serialize request: {:?}", e))?;
 
@@ -394,7 +399,7 @@ pub fn search_rooms(parameters: SearchParameters, search_id: Uuid) {
     });
 }
 
-pub fn join_call(room_id: &str) {
+pub fn join_call(room_id: &RoomId) {
     let args = match serde_wasm_bindgen::to_value(&json!({ "room_id": room_id })) {
         Ok(value) => value,
         Err(e) => {
@@ -410,7 +415,7 @@ pub fn join_call(room_id: &str) {
     });
 }
 
-pub fn leave_call(room_id: &str) {
+pub fn leave_call(room_id: &RoomId) {
     let args = match serde_wasm_bindgen::to_value(&json!({ "room_id": room_id })) {
         Ok(value) => value,
         Err(e) => {
@@ -426,7 +431,7 @@ pub fn leave_call(room_id: &str) {
     });
 }
 
-pub async fn get_pinned_events(room_id: &str) -> Result<Vec<UiTimelineItem>, String> {
+pub async fn get_pinned_events(room_id: &RoomId) -> Result<Vec<UiTimelineItem>, String> {
     let args = serde_wasm_bindgen::to_value(&json!({ "room_id": room_id }))
         .map_err(|e| format!("Failed to serialize request: {:?}", e))?;
 
@@ -442,7 +447,7 @@ pub async fn get_pinned_events(room_id: &str) -> Result<Vec<UiTimelineItem>, Str
         .map_err(|e| format!("Failed to parse JSON response: {:?}", e))
 }
 
-pub fn pin_event(room_id: &str, event_id: &str) {
+pub fn pin_event(room_id: &RoomId, event_id: &EventId) {
     let args =
         match serde_wasm_bindgen::to_value(&json!({ "room_id": room_id, "event_id": event_id })) {
             Ok(value) => value,
@@ -459,7 +464,7 @@ pub fn pin_event(room_id: &str, event_id: &str) {
     });
 }
 
-pub fn unpin_event(room_id: &str, event_id: &str) {
+pub fn unpin_event(room_id: &RoomId, event_id: &EventId) {
     let args =
         match serde_wasm_bindgen::to_value(&json!({ "room_id": room_id, "event_id": event_id })) {
             Ok(value) => value,
@@ -548,7 +553,7 @@ pub fn change_screen_scaling(scale_factor: f64) {
     });
 }
 
-pub async fn get_extra_room_info(room_id: &str) -> Result<RoomExtraInfo, String> {
+pub async fn get_extra_room_info(room_id: &RoomId) -> Result<RoomExtraInfo, String> {
     let args = serde_wasm_bindgen::to_value(&json!({ "room_id": room_id }))
         .map_err(|e| format!("Failed to serialize request: {:?}", e))?;
 

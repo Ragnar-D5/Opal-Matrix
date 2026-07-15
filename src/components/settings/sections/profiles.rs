@@ -1,5 +1,6 @@
 use leptos::prelude::*;
 use phosphor_leptos::{CAMERA, CARET_DOWN, Icon, IconWeight, PAINT_BRUSH};
+use ruma::OwnedRoomId;
 use web_sys::HtmlButtonElement;
 
 use shared::get_color;
@@ -14,10 +15,11 @@ pub fn render_profile_section() -> AnyView {
     let state: AppState = expect_context();
     let store: ProfileStore = expect_context();
 
-    let user_id = state.user_id.get_untracked();
+    let Some(user_id) = state.user_id.get_untracked() else {
+        return ().into_any();
+    };
 
-    // RwSignal<Option<String>>: None = global profile, Some(room_id) = room-specific
-    let selected_room: RwSignal<Option<String>> = RwSignal::new(None);
+    let selected_room: RwSignal<Option<OwnedRoomId>> = RwSignal::new(None);
 
     let presence = store.get_presence(&user_id);
 
@@ -45,8 +47,8 @@ pub fn render_profile_section() -> AnyView {
     let icon_top = banner_height - icon_radius;
     let icon_size_str = format!("{icon_size}px");
     let badge_size = (icon_size * 25.0 / 70.0) as f32;
-    let uid_display = user_id.clone();
-    let uid_reset = user_id.clone();
+    let uid_display = user_id.clone().to_string();
+    let uid_reset = user_id.clone().to_string();
 
     let in_room_selection = RwSignal::new(false);
 
@@ -143,9 +145,7 @@ pub fn render_profile_section() -> AnyView {
                                         room_resource
                                             .get()
                                             .into_iter()
-                                            .find(|room| {
-                                                Some(room.room_id().to_string()) == selected_id
-                                            })
+                                            .find(|room| { Some(room.room_id()) == selected_id })
                                             .map(|room| {
                                                 view! {
                                                     {render_url_icon(
@@ -180,13 +180,17 @@ pub fn render_profile_section() -> AnyView {
                                             .filter(move |room| {
                                                 search.is_empty()
                                                     || room.name().to_lowercase().contains(&search)
-                                                    || room.room_id().to_lowercase().contains(&search)
+                                                    || room
+                                                        .room_id()
+                                                        .to_string()
+                                                        .to_lowercase()
+                                                        .contains(&search)
                                             })
                                             .collect::<Vec<_>>()
                                     }
                                     key=|room| room.room_id().to_string()
                                     children=move |room| {
-                                        let room_id = room.room_id().to_string();
+                                        let room_id = room.room_id();
                                         let is_selected = Some(room_id.clone())
                                             == selected_room.get();
                                         view! {
@@ -219,7 +223,11 @@ pub fn render_profile_section() -> AnyView {
                                             .into_iter()
                                             .all(|room| {
                                                 !room.name().to_lowercase().contains(&search)
-                                                    && !room.room_id().to_lowercase().contains(&search)
+                                                    && !room
+                                                        .room_id()
+                                                        .to_string()
+                                                        .to_lowercase()
+                                                        .contains(&search)
                                             })
                                 }>
                                     <span class="px-3 py-2 text-sm text-muted italic">
@@ -276,7 +284,7 @@ pub fn render_profile_section() -> AnyView {
         namecolor_val.set(nc);
     });
 
-    let fallback_color = Memo::new(move |_| get_color(&user_id));
+    let fallback_color = Memo::new(move |_| get_color(user_id.as_ref()));
 
     view! {
         <div class="flex flex-col h-full">

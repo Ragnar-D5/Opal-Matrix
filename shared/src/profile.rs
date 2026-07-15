@@ -1,5 +1,6 @@
 use csscolorparser::Color;
 use macros::TauriEvent;
+use ruma::{OwnedRoomId, OwnedUserId, RoomId, UserId};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -66,7 +67,7 @@ impl PresenceInfo {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TauriEvent)]
 pub struct UserProfile {
-    pub user_id: String,
+    pub user_id: OwnedUserId,
     pub display_name: Option<String>,
 
     pub has_avatar: bool,
@@ -78,10 +79,10 @@ impl UserProfile {
     pub fn get_name(&self) -> String {
         self.display_name
             .clone()
-            .unwrap_or_else(|| self.user_id.clone())
+            .unwrap_or_else(|| self.user_id.to_string())
     }
 
-    pub fn get_avatar_url(&self, room_id: &str) -> String {
+    pub fn get_avatar_url(&self, room_id: &RoomId) -> String {
         format!("mxc://user/{}/room/{room_id}", self.user_id)
     }
 
@@ -100,7 +101,7 @@ impl UserProfile {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TauriEvent)]
 pub struct MemberProfile {
-    pub room_id: String,
+    pub room_id: OwnedRoomId,
     pub profile: UserProfile,
 }
 
@@ -113,8 +114,8 @@ impl MemberProfile {
         self.profile.get_avatar_url(&self.room_id)
     }
 
-    pub fn user_id(&self) -> &str {
-        &self.profile.user_id
+    pub fn user_id(&self) -> OwnedUserId {
+        self.profile.user_id.clone()
     }
 
     pub fn get_signature(&self) -> SonicSignature {
@@ -132,7 +133,7 @@ impl MemberProfile {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RoomProfile {
-    pub room_id: String,
+    pub room_id: OwnedRoomId,
     pub aliases: Vec<String>,
     pub canonical_alias: Option<String>,
     pub name: Option<String>,
@@ -145,7 +146,7 @@ impl RoomProfile {
             .map(|n| format!("#{n}"))
             .or_else(|| self.canonical_alias.clone())
             .or_else(|| self.aliases.first().cloned())
-            .unwrap_or_else(|| self.room_id.clone())
+            .unwrap_or_else(|| self.room_id.to_string())
     }
 }
 
@@ -157,7 +158,7 @@ pub struct CustomProperties {
 }
 
 impl CustomProperties {
-    pub fn from_user_id(user_id: &str) -> Self {
+    pub fn from_user_id(user_id: &UserId) -> Self {
         let hash = Sha256::digest(user_id.as_bytes());
         let h = hash[0] as f32 / 255.0 * 360.0;
         let color = Color::from_hsla(h, 0.9, 0.7, 1.0);
@@ -165,7 +166,7 @@ impl CustomProperties {
         Self {
             banner_color: color.clone(),
             name_color: color,
-            sonic_signature: SonicSignature::from_user_id(user_id),
+            sonic_signature: SonicSignature::from_string(user_id.as_ref()),
         }
     }
 }

@@ -171,11 +171,7 @@ pub async fn attach_callbacks(
         send_event(
             &handle_clone,
             &vec![RoomMapUpdate::Set {
-                map: known_room_map
-                    .clone()
-                    .into_iter()
-                    .map(|(k, v)| (k.to_string(), v))
-                    .collect(),
+                map: known_room_map.clone().into_iter().collect(),
             }],
         );
         send_event(&handle_clone, &DmList(prev_dm_ids.clone()));
@@ -189,8 +185,8 @@ pub async fn attach_callbacks(
                 matches!(node, RoomNode::Server(_)).then_some(room_id.clone())
             })
             .collect();
-        let servers: Vec<String> = prev_seen_servers.iter().map(|id| id.to_string()).collect();
 
+        let servers: Vec<OwnedRoomId> = prev_seen_servers.iter().cloned().collect();
         send_event(&handle_clone, &ServerList(servers));
 
         for room_id in &prev_seen_servers {

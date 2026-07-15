@@ -201,8 +201,7 @@ pub fn SettingsIcon(#[prop(into, optional)] class: String) -> impl IntoView {
     let search_query = RwSignal::new(String::new());
 
     let user_sig = Memo::new(move |_| {
-        let user_id = state.user_id.get();
-        store.get_user_profile(&user_id)
+        store.get_user_profile(&state.user_id.get().expect("user_id is not set"))
     });
 
     let sections_dict_for_search: StoredValue<HashMap<SettingsSection, UiSettingsSection>> =

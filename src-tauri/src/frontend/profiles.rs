@@ -6,7 +6,7 @@ use matrix_sdk::{
     Client, Room, RoomMemberships,
     event_handler::Ctx,
     ruma::{
-        OwnedUserId, UserId,
+        OwnedRoomId, OwnedUserId,
         events::{room::member::OriginalSyncRoomMemberEvent, typing::SyncTypingEvent},
         profile::ProfileFieldName,
     },
@@ -30,9 +30,9 @@ pub async fn on_member_update(
     let custom_properties = get_custom_fields(&room.client(), event.state_key.clone()).await;
 
     let profile = MemberProfile {
-        room_id: room.room_id().to_string(),
+        room_id: room.room_id().to_owned(),
         profile: UserProfile {
-            user_id: event.state_key.to_string(),
+            user_id: event.state_key,
             display_name: content.displayname,
             has_avatar: content.avatar_url.is_some(),
 
@@ -44,7 +44,7 @@ pub async fn on_member_update(
     send_event(&app_handle, &payload);
 }
 
-type RoomMembershipsType = Vec<(String, Vec<(OwnedUserId, bool, Option<String>)>)>;
+type RoomMembershipsType = Vec<(OwnedRoomId, Vec<(OwnedUserId, bool, Option<String>)>)>;
 
 pub async fn send_all_members(
     client: &Client,
@@ -53,7 +53,7 @@ pub async fn send_all_members(
 ) -> Result<(), TauriError> {
     let room_memberships: RoomMembershipsType = futures_util::stream::iter(rooms.iter().cloned())
         .map(|room| async move {
-            let room_id = room.room_id().to_string();
+            let room_id = room.room_id().to_owned();
             let members = match room.members(RoomMemberships::all()).await {
                 Ok(members) => members,
                 Err(e) => {
@@ -75,10 +75,10 @@ pub async fn send_all_members(
                     MemberProfile {
                         room_id: room_id.clone(),
                         profile: UserProfile {
-                            user_id: user_id.to_string(),
+                            custom_properties: CustomProperties::from_user_id(&user_id),
+                            user_id,
                             display_name,
                             has_avatar,
-                            custom_properties: CustomProperties::from_user_id(user_id.as_str()),
                         },
                     }
                 })
@@ -95,7 +95,7 @@ pub async fn send_all_members(
         .collect()
         .await;
 
-    let mut user_memberships: HashMap<OwnedUserId, Vec<(String, bool, Option<String>)>> =
+    let mut user_memberships: HashMap<OwnedUserId, Vec<(OwnedRoomId, bool, Option<String>)>> =
         HashMap::new();
     for (room_id, memberships) in room_memberships {
         for (user_id, has_avatar, display_name) in memberships {
@@ -121,7 +121,7 @@ pub async fn send_all_members(
 
     let results = join_all(futs).await;
 
-    let mut update_payload: HashMap<String, Vec<MemberProfile>> = HashMap::new();
+    let mut update_payload: HashMap<OwnedRoomId, Vec<MemberProfile>> = HashMap::new();
     for (user_id, custom_properties) in results {
         for (room_id, has_avatar, display_name) in &user_memberships[&user_id] {
             update_payload
@@ -130,7 +130,7 @@ pub async fn send_all_members(
                 .push(MemberProfile {
                     room_id: room_id.clone(),
                     profile: UserProfile {
-                        user_id: user_id.to_string(),
+                        user_id: user_id.clone(),
                         display_name: display_name.clone(),
                         has_avatar: *has_avatar,
                         custom_properties: custom_properties.clone(),
@@ -146,12 +146,10 @@ pub async fn send_all_members(
 
 #[command(rename_all = "snake_case")]
 pub async fn get_user_profile(
-    user_id: String,
+    user_id: OwnedUserId,
     client: State<'_, RwLock<Client>>,
 ) -> Result<UserProfile, TauriError> {
     let client = client.read().await;
-
-    let user_id = UserId::parse(user_id)?;
 
     let account = client.account();
 
@@ -168,7 +166,7 @@ pub async fn get_user_profile(
     let has_avatar = avatar_result.ok().flatten().is_some();
 
     let profile = UserProfile {
-        user_id: user_id.to_string(),
+        user_id,
         display_name,
         has_avatar,
         custom_properties,
@@ -178,19 +176,11 @@ pub async fn get_user_profile(
 }
 
 pub async fn handle_typing_notice(event: SyncTypingEvent, room: Room, handle: Ctx<AppHandle>) {
-    let room_id = room.room_id().to_string();
-    let user_ids: Vec<String> = event
-        .content
-        .user_ids
-        .iter()
-        .map(|v| v.to_string())
-        .collect();
-
     send_event(
         &handle,
         &TypingUpdate {
-            room_id: room_id.clone(),
-            user_ids: user_ids.clone(),
+            room_id: room.room_id().to_owned(),
+            user_ids: event.content.user_ids,
         },
     );
 }

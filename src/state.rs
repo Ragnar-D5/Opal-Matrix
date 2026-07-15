@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use leptos::task::spawn_local;
 use log::error;
+use ruma::{OwnedEventId, OwnedRoomId, OwnedUserId, RoomId, UserId};
 use serde_json::json;
 use shared::{
     account_data::{Breadcrumbs, ServerOrder},
@@ -30,7 +31,7 @@ pub struct RoomState {
     pub content: String,
     pub attachments: Vec<Attachment>,
     pub search_parameters: Option<SearchParameters>,
-    pub search_results: Option<HashMap<String, Vec<UiTimelineItem>>>,
+    pub search_results: Option<HashMap<OwnedRoomId, Vec<UiTimelineItem>>>,
     pub pinned_result: Option<Vec<UiTimelineItem>>,
 }
 
@@ -43,29 +44,13 @@ pub enum MainView {
 
 #[derive(Clone, Debug, PartialEq, Default)]
 pub enum CurrentSection {
-    Server(String),
+    Server(OwnedRoomId),
     #[default]
     Dms,
     Single,
 }
 
 impl CurrentSection {
-    pub fn key(&self) -> String {
-        match self {
-            CurrentSection::Server(server_id) => server_id.clone(),
-            CurrentSection::Dms => "dms".to_string(),
-            CurrentSection::Single => "single".to_string(),
-        }
-    }
-
-    pub fn from_key(key: &str) -> Self {
-        match key {
-            "dms" => CurrentSection::Dms,
-            "single" => CurrentSection::Single,
-            server_id => CurrentSection::Server(server_id.to_string()),
-        }
-    }
-
     pub fn is_not_server(&self) -> bool {
         !matches!(self, CurrentSection::Server(_))
     }
@@ -76,11 +61,11 @@ pub struct AppState {
     pub current_window: RwSignal<CurrentWindow>,
     pub previous_window: RwSignal<CurrentWindow>,
     pub last_changed_time: RwSignal<f64>,
-    pub user_id: RwSignal<String>,
+    pub user_id: RwSignal<Option<OwnedUserId>>,
 
     pub active_room: RwSignal<Option<RoomNode>>,
 
-    pub active_room_id: RwSignal<Option<String>>,
+    pub active_room_id: RwSignal<Option<OwnedRoomId>>,
     pub active_section: RwSignal<CurrentSection>,
     pub main_view: RwSignal<MainView>,
 
@@ -88,23 +73,23 @@ pub struct AppState {
     pub server_order: RwSignal<ServerOrder>,
     pub data_initialized: RwSignal<bool>,
 
-    pub room_map: RwSignal<HashMap<String, ArcRwSignal<RoomNode>>>,
+    pub room_map: RwSignal<HashMap<OwnedRoomId, ArcRwSignal<RoomNode>>>,
     pub dm_list: RwSignal<DmList>,
     pub single_room_list: RwSignal<SingleList>,
     pub server_list: RwSignal<ServerList>,
 
-    pub pinned_map: RwSignal<HashMap<String, Vec<String>>>,
+    pub pinned_map: RwSignal<HashMap<OwnedRoomId, Vec<OwnedEventId>>>,
 
     pub is_focused: RwSignal<bool>,
 
-    pub room_states: RwSignal<HashMap<String, RoomState>>,
+    pub room_states: RwSignal<HashMap<OwnedRoomId, RoomState>>,
 
     pub lightbox_image: RwSignal<Option<LighboxImage>>,
 
-    pub notification_counts: RwSignal<HashMap<String, NotificationCounts>>,
-    pub call_members: RwSignal<HashMap<String, ArcRwSignal<Vec<UserDevice>>>>,
+    pub notification_counts: RwSignal<HashMap<OwnedRoomId, NotificationCounts>>,
+    pub call_members: RwSignal<HashMap<OwnedRoomId, ArcRwSignal<Vec<UserDevice>>>>,
 
-    pub typing_users: RwSignal<HashMap<String, ArcRwSignal<Vec<String>>>>,
+    pub typing_users: RwSignal<HashMap<OwnedRoomId, ArcRwSignal<Vec<OwnedUserId>>>>,
 
     pub audio_devices: RwSignal<AudioDeviceInfos>,
 
@@ -119,7 +104,7 @@ pub struct AppState {
 #[derive(Debug, Clone, PartialEq)]
 pub struct LighboxImage {
     pub name: String,
-    pub sender_id: String,
+    pub sender_id: OwnedUserId,
     pub timestamp: u64,
     pub size: Option<u64>,
     pub source: UiMediaSource,
@@ -129,7 +114,7 @@ pub struct LighboxImage {
 }
 
 impl AppState {
-    pub fn update_typing_users(&self, room_id: &str, user_ids: Vec<String>) {
+    pub fn update_typing_users(&self, room_id: &RoomId, user_ids: Vec<OwnedUserId>) {
         let existing_signal = self
             .typing_users
             .with_untracked(|map| map.get(room_id).cloned());
@@ -144,12 +129,12 @@ impl AppState {
             let new_signal = ArcRwSignal::new(user_ids.clone());
 
             self.typing_users.update(|map| {
-                map.insert(room_id.to_string(), new_signal);
+                map.insert(room_id.to_owned(), new_signal);
             });
         }
     }
 
-    pub fn get_typing_users(&self, room_id: &str) -> ArcRwSignal<Vec<String>> {
+    pub fn get_typing_users(&self, room_id: &RoomId) -> ArcRwSignal<Vec<OwnedUserId>> {
         if let Some(signal) = self
             .typing_users
             .with_untracked(|map| map.get(room_id).cloned())
@@ -158,22 +143,18 @@ impl AppState {
         } else {
             let new_signal = ArcRwSignal::new(Vec::new());
             self.typing_users.update(|map| {
-                map.insert(room_id.to_string(), new_signal.clone());
+                map.insert(room_id.to_owned(), new_signal.clone());
             });
             new_signal
         }
     }
 
-    pub fn active_room_id(&self) -> Option<String> {
+    pub fn active_room_id(&self) -> Option<OwnedRoomId> {
         self.active_room_id.get()
     }
 
-    pub fn active_room_id_untracked(&self) -> Option<String> {
+    pub fn active_room_id_untracked(&self) -> Option<OwnedRoomId> {
         self.active_room_id.get_untracked()
-    }
-
-    pub fn active_room_name_untracked(&self) -> Option<String> {
-        self.active_room.get_untracked().map(|room| room.name())
     }
 
     pub fn apply_server_order(&self) {
@@ -186,7 +167,7 @@ impl AppState {
         }
     }
 
-    pub fn reorder_servers(&self, source_id: &str, target_id: &str) {
+    pub fn reorder_servers(&self, source_id: &RoomId, target_id: &RoomId) {
         let old_list = self.server_list.get_untracked();
 
         let new_list = old_list.reorder_servers(source_id, target_id);
@@ -199,7 +180,7 @@ impl AppState {
         }
     }
 
-    pub fn get_room_sig(&self, room_id: &str) -> Option<ArcRwSignal<RoomNode>> {
+    pub fn get_room_sig(&self, room_id: &RoomId) -> Option<ArcRwSignal<RoomNode>> {
         let sidebar_state = self.room_map.get();
 
         sidebar_state.get(room_id).cloned()
@@ -234,7 +215,7 @@ impl AppState {
     /// every sync (unread counts, `last_ts`, …); `active_room_id` only changes
     /// when a different room becomes active, so id-only subscribers (the timeline
     /// loader) don't react to that churn.
-    fn set_active_room_node(&self, room_id: Option<String>, node: Option<RoomNode>) {
+    fn set_active_room_node(&self, room_id: Option<OwnedRoomId>, node: Option<RoomNode>) {
         if self.active_room_id.with_untracked(|cur| cur != &room_id) {
             self.active_room_id.set(room_id);
         }
@@ -249,11 +230,8 @@ impl AppState {
     /// `MainView::Chat` so callers like the per-room info button can jump
     /// straight to `MainView::Info`, including when re-selecting the room
     /// that's already active.
-    pub fn set_active_room_with_id(&self, room_id: Option<String>, view: MainView) {
-        log::debug!(
-            "Changing active room to {}",
-            room_id.clone().unwrap_or("no room".into())
-        );
+    pub fn set_active_room_with_id(&self, room_id: Option<OwnedRoomId>, view: MainView) {
+        log::debug!("Changing active room to {room_id:?}");
 
         let active_room = if let Some(room_id) = &room_id {
             let node = self.room_map.get_untracked().get(room_id).cloned();
@@ -272,13 +250,16 @@ impl AppState {
             return;
         };
 
-        let key = self.active_section.get_untracked().key();
+        self.breadcrums
+            .update(|bc| match self.active_section.get_untracked() {
+                CurrentSection::Dms => bc.last_dm_id = Some(room_id.clone()),
+                CurrentSection::Single => bc.last_single_id = Some(room_id.clone()),
+                CurrentSection::Server(server) => {
+                    bc.last_space_ids.insert(server.clone(), room_id.clone());
+                }
+            });
 
-        self.breadcrums.update(|bc| {
-            bc.last_space_ids.insert(key, room_id.clone());
-        });
-
-        self.append_room_id(room_id.clone());
+        self.append_room_id(&room_id);
         self.save_breadcrumbs();
     }
 
@@ -295,19 +276,22 @@ impl AppState {
             });
         }
 
-        let key = section.key();
+        let breadcrumbs = self.breadcrums.get_untracked();
+        let section_clone = section.clone();
 
-        let cached_room_id = self
-            .breadcrums
-            .get_untracked()
-            .last_space_ids
-            .get(&key)
-            .cloned()
-            .filter(|room_id| self.room_belongs_to_section(room_id, &section));
+        let cached_room_id = match &section {
+            CurrentSection::Server(server_id) => breadcrumbs
+                .last_space_ids
+                .get(server_id)
+                .cloned()
+                .filter(move |rid| self.room_belongs_to_section(rid, &section_clone)),
+            CurrentSection::Dms => breadcrumbs.last_dm_id.clone(),
+            CurrentSection::Single => breadcrumbs.last_single_id.clone(),
+        };
 
         if let Some(room_id) = cached_room_id {
             self.set_active_room_with_id(Some(room_id.clone()), MainView::Chat);
-            self.append_room_id(room_id);
+            self.append_room_id(&room_id);
             return;
         }
 
@@ -315,7 +299,7 @@ impl AppState {
             CurrentSection::Dms => {
                 if let Some(room_id) = self.dm_list.get_untracked().0.first().cloned() {
                     self.set_active_room_with_id(Some(room_id.clone()), MainView::Chat);
-                    self.append_room_id(room_id);
+                    self.append_room_id(&room_id);
                 } else {
                     log::warn!("DM list is empty, cannot set active room");
                 }
@@ -323,7 +307,7 @@ impl AppState {
             CurrentSection::Single => {
                 if let Some(room_id) = self.single_room_list.get_untracked().0.first().cloned() {
                     self.set_active_room_with_id(Some(room_id.clone()), MainView::Chat);
-                    self.append_room_id(room_id);
+                    self.append_room_id(&room_id);
                 } else {
                     log::warn!("Single room list is empty, cannot set active room");
                 }
@@ -331,7 +315,7 @@ impl AppState {
             CurrentSection::Server(server_id) => {
                 if let Some(room_id) = self.first_channel_id_for_server(server_id) {
                     self.set_active_room_with_id(Some(room_id.clone()), MainView::Chat);
-                    self.append_room_id(room_id);
+                    self.append_room_id(&room_id);
                 } else {
                     log::warn!("Server {} has no channels to set as active room", server_id);
                 }
@@ -339,7 +323,7 @@ impl AppState {
         }
     }
 
-    fn first_channel_id_for_server(&self, server_id: &str) -> Option<String> {
+    fn first_channel_id_for_server(&self, server_id: &RoomId) -> Option<OwnedRoomId> {
         let map = self.room_map.get_untracked();
 
         let server = map.get(server_id)?.try_get_untracked()?;
@@ -367,10 +351,10 @@ impl AppState {
         res
     }
 
-    fn append_room_id(&self, room_id: String) {
+    fn append_room_id(&self, room_id: &RoomId) {
         self.breadcrums.update(|bc| {
-            bc.recent_rooms.retain(|id| id != &room_id);
-            bc.recent_rooms.insert(0, room_id);
+            bc.recent_rooms.retain(|id| id != room_id);
+            bc.recent_rooms.insert(0, room_id.to_owned());
 
             if bc.recent_rooms.len() > 10 {
                 bc.recent_rooms.pop();
@@ -395,7 +379,7 @@ impl AppState {
         });
     }
 
-    pub fn set_server_order(&self, servers: Vec<String>) {
+    pub fn set_server_order(&self, servers: Vec<OwnedRoomId>) {
         self.server_order.set(ServerOrder { servers });
         self.save_server_order();
     }
@@ -417,7 +401,7 @@ impl AppState {
         });
     }
 
-    fn room_belongs_to_section(&self, room_id: &str, section: &CurrentSection) -> bool {
+    fn room_belongs_to_section(&self, room_id: &RoomId, section: &CurrentSection) -> bool {
         match section {
             CurrentSection::Dms => self
                 .dm_list
@@ -433,38 +417,22 @@ impl AppState {
                 .any(|id| id == room_id),
             CurrentSection::Server(server_id) => {
                 server_id == room_id
-                    || self.find_server_id_for_room(room_id).as_deref() == Some(server_id.as_str())
+                    || self.find_server_id_for_room(room_id).as_deref() == Some(server_id)
             }
         }
     }
 
-    pub fn section_for_room(&self, room_id: &str) -> CurrentSection {
-        let recorded_section = self
-            .breadcrums
-            .get_untracked()
-            .last_space_ids
-            .iter()
-            .find(|(_, last_room_id)| last_room_id.as_str() == room_id)
-            .map(|(key, _)| CurrentSection::from_key(key));
+    pub fn section_for_room(&self, room_id: &RoomId) -> CurrentSection {
+        let breadcrumbs = self.breadcrums.get_untracked();
+        let dm_list = self.dm_list.get_untracked();
+        let single_room_list = self.single_room_list.get_untracked();
 
-        if let Some(section) = recorded_section {
-            return section;
-        }
-
-        if self
-            .dm_list
-            .get_untracked()
-            .0
-            .iter()
-            .any(|id| id == room_id)
+        if Some(room_id.to_owned()) == breadcrumbs.last_dm_id
+            && dm_list.0.iter().any(|id| id == room_id)
         {
             CurrentSection::Dms
-        } else if self
-            .single_room_list
-            .get_untracked()
-            .0
-            .iter()
-            .any(|id| id == room_id)
+        } else if Some(room_id.to_owned()) == breadcrumbs.last_single_id
+            && single_room_list.0.iter().any(|id| id == room_id)
         {
             CurrentSection::Single
         } else if let Some(server_id) = self.find_server_id_for_room(room_id) {
@@ -501,8 +469,8 @@ impl AppState {
 
     pub fn find_room_in_rooms(
         &self,
-        room_ids_to_search: &[String],
-        target_room_id: &str,
+        room_ids_to_search: &[OwnedRoomId],
+        target_room_id: &RoomId,
     ) -> Option<RoomNode> {
         for room_id in room_ids_to_search {
             let room_node = self
@@ -530,7 +498,7 @@ impl AppState {
 
     /// Finds the top-level server room_id that contains `room_id` by searching
     /// the sidebar directly. Returns `None` if the room is a DM or not found.
-    pub fn find_server_id_for_room(&self, room_id: &str) -> Option<String> {
+    pub fn find_server_id_for_room(&self, room_id: &RoomId) -> Option<OwnedRoomId> {
         for server_id in self.server_list.get_untracked().0 {
             if server_id == room_id {
                 return Some(server_id.clone());
@@ -552,7 +520,7 @@ impl AppState {
     }
 
     /// Update the hashmap of call members with new data. Update signals for the room_ids
-    pub fn update_call_members(&self, update: HashMap<String, Vec<UserDevice>>) {
+    pub fn update_call_members(&self, update: HashMap<OwnedRoomId, Vec<UserDevice>>) {
         self.call_members.update(|members| {
             for (room_id, devices) in update.iter() {
                 let device_signal = members
@@ -563,16 +531,19 @@ impl AppState {
         });
     }
 
-    pub fn get_call_members(&self, room_id: &str) -> ArcRwSignal<Vec<UserDevice>> {
+    pub fn get_call_members(&self, room_id: &RoomId) -> ArcRwSignal<Vec<UserDevice>> {
         self.call_members
             .get()
-            .entry(room_id.to_string())
+            .entry(room_id.to_owned())
             .or_insert_with(|| ArcRwSignal::new(Vec::new()))
             .clone()
     }
 
     /// Get call members for a set of room ids.
-    pub fn get_call_members_in_rooms(&self, room_ids: HashSet<String>) -> HashSet<String> {
+    pub fn get_call_members_in_rooms(
+        &self,
+        room_ids: HashSet<OwnedRoomId>,
+    ) -> HashSet<OwnedUserId> {
         let members = self.call_members.get();
         room_ids
             .into_iter()
@@ -583,7 +554,7 @@ impl AppState {
                 if call_member_list.is_empty() {
                     None
                 } else {
-                    let list: HashSet<String> =
+                    let list: HashSet<OwnedUserId> =
                         call_member_list.iter().map(|d| d.user_id.clone()).collect();
                     Some(list)
                 }
@@ -600,14 +571,14 @@ impl AppState {
             .collect()
     }
 
-    pub fn get_room(&self, room_id: &str) -> Option<RoomNode> {
+    pub fn get_room(&self, room_id: &RoomId) -> Option<RoomNode> {
         self.room_map
             .get()
             .get(room_id)
             .and_then(|sig| sig.try_get())
     }
 
-    pub fn get_room_untracked(&self, room_id: &str) -> Option<RoomNode> {
+    pub fn get_room_untracked(&self, room_id: &RoomId) -> Option<RoomNode> {
         self.room_map
             .get_untracked()
             .get(room_id)
@@ -632,7 +603,7 @@ impl AppState {
             .collect()
     }
 
-    pub fn get_server_rooms(&self, server_id: &str) -> Vec<RoomNode> {
+    pub fn get_server_rooms(&self, server_id: &RoomId) -> Vec<RoomNode> {
         let Some(server) = self.get_room(server_id).and_then(|s| s.as_server()) else {
             return vec![];
         };
@@ -644,34 +615,22 @@ impl AppState {
     }
 }
 
-type MemberStoreRoomEntry = HashMap<String, ArcRwSignal<MemberProfile>>;
+type MemberStoreRoomEntry = HashMap<OwnedUserId, ArcRwSignal<MemberProfile>>;
 
 #[derive(Default, Clone)]
 pub struct ProfileStore {
-    pub members: ArcRwSignal<HashMap<String, MemberStoreRoomEntry>>,
-    pub presences: RwSignal<HashMap<String, ArcRwSignal<PresenceInfo>>>,
+    pub members: ArcRwSignal<HashMap<OwnedRoomId, MemberStoreRoomEntry>>,
+    pub presences: RwSignal<HashMap<OwnedUserId, ArcRwSignal<PresenceInfo>>>,
 
-    pub user_profiles: ArcRwSignal<HashMap<String, ArcRwSignal<UserProfile>>>,
+    pub user_profiles: ArcRwSignal<HashMap<OwnedUserId, ArcRwSignal<UserProfile>>>,
 }
 
 impl ProfileStore {
-    pub fn room_as_profile(&self, room_id: &str) -> MemberProfile {
-        MemberProfile {
-            room_id: room_id.to_string(),
-            profile: UserProfile {
-                user_id: room_id.to_string(),
-                display_name: Some("room".to_string()),
-                has_avatar: false,
-                custom_properties: CustomProperties::from_user_id(room_id),
-            },
-        }
-    }
-
-    pub fn get_member_profile(&self, room_id: &str, user_id: &str) -> ArcRwSignal<MemberProfile> {
-        if room_id == user_id {
-            return ArcRwSignal::new(self.room_as_profile(room_id));
-        }
-
+    pub fn get_member_profile(
+        &self,
+        room_id: &RoomId,
+        user_id: &UserId,
+    ) -> ArcRwSignal<MemberProfile> {
         let existing_signal = self.members.with_untracked(|rooms| {
             rooms
                 .get(room_id)
@@ -684,9 +643,9 @@ impl ProfileStore {
         }
 
         let sig = ArcRwSignal::new(MemberProfile {
-            room_id: room_id.to_string(),
+            room_id: room_id.to_owned(),
             profile: UserProfile {
-                user_id: user_id.to_string(),
+                user_id: user_id.to_owned(),
                 display_name: None,
                 has_avatar: false,
                 custom_properties: CustomProperties::from_user_id(user_id),
@@ -695,15 +654,15 @@ impl ProfileStore {
 
         self.members.update(|members| {
             members
-                .entry(room_id.to_string())
+                .entry(room_id.to_owned())
                 .or_insert_with(HashMap::new)
-                .insert(user_id.to_string(), sig.clone());
+                .insert(user_id.to_owned(), sig.clone());
         });
 
         sig
     }
 
-    pub fn get_presence(&self, user_id: &str) -> ArcRwSignal<PresenceInfo> {
+    pub fn get_presence(&self, user_id: &UserId) -> ArcRwSignal<PresenceInfo> {
         let existing_signal = self.presences.with_untracked(|p| p.get(user_id).cloned());
 
         if let Some(sig) = existing_signal {
@@ -713,13 +672,13 @@ impl ProfileStore {
         let new_signal = ArcRwSignal::new(PresenceInfo::default());
 
         self.presences.update(|presences| {
-            presences.insert(user_id.to_string(), new_signal.clone());
+            presences.insert(user_id.to_owned(), new_signal.clone());
         });
 
         new_signal
     }
 
-    pub fn get_user_profile(&self, user_id: &str) -> ArcRwSignal<UserProfile> {
+    pub fn get_user_profile(&self, user_id: &UserId) -> ArcRwSignal<UserProfile> {
         let existing_signal = self
             .user_profiles
             .with_untracked(|p| p.get(user_id).cloned());
@@ -729,18 +688,18 @@ impl ProfileStore {
         }
 
         let sig = ArcRwSignal::new(UserProfile {
-            user_id: user_id.to_string(),
+            user_id: user_id.to_owned(),
             display_name: None,
             has_avatar: false,
             custom_properties: CustomProperties::from_user_id(user_id),
         });
 
         self.user_profiles.update(|profiles| {
-            profiles.insert(user_id.to_string(), sig.clone());
+            profiles.insert(user_id.to_owned(), sig.clone());
         });
 
-        let user_id = user_id.to_string();
         let sig_clone = sig.clone();
+        let user_id = user_id.to_owned();
         spawn_local(async move {
             match get_user_profile(&user_id).await {
                 Ok(res) => {
@@ -755,7 +714,11 @@ impl ProfileStore {
         sig
     }
 
-    pub fn get_profile_signal(&self, room_id: Option<String>, user_id: &str) -> ProfileSignal {
+    pub fn get_profile_signal(
+        &self,
+        room_id: Option<OwnedRoomId>,
+        user_id: &UserId,
+    ) -> ProfileSignal {
         if let Some(room_id) = room_id {
             ProfileSignal::Member(self.get_member_profile(&room_id, user_id))
         } else {
@@ -763,7 +726,7 @@ impl ProfileStore {
         }
     }
 
-    pub fn get_members(self, room_id: &str) -> Vec<MemberProfile> {
+    pub fn get_members(self, room_id: &RoomId) -> Vec<MemberProfile> {
         self.members
             .get()
             .get(room_id)
@@ -771,7 +734,10 @@ impl ProfileStore {
             .unwrap_or_default()
     }
 
-    pub fn get_member_signals(self, room_id: &str) -> HashMap<String, ArcRwSignal<MemberProfile>> {
+    pub fn get_member_signals(
+        self,
+        room_id: &RoomId,
+    ) -> HashMap<OwnedUserId, ArcRwSignal<MemberProfile>> {
         self.members.get().get(room_id).cloned().unwrap_or_default()
     }
 }

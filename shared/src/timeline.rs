@@ -1,6 +1,15 @@
 use std::collections::HashMap;
 
 use macros::{EnumHashMap, TauriEvent};
+use ruma::{
+    EventEncryptionAlgorithm, OwnedEventId, OwnedRoomId, OwnedUserId,
+    events::{
+        poll::start::PollKind,
+        room::{guest_access::GuestAccess, history_visibility::HistoryVisibility},
+        rtc::notification::CallIntent,
+    },
+    room::{JoinRule, JoinRuleSummary, RoomType},
+};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -27,7 +36,7 @@ pub enum EventState {
         is_recoverable: bool,
     },
     Sent {
-        event_id: String,
+        event_id: OwnedEventId,
     },
 }
 
@@ -69,7 +78,6 @@ pub enum UiMembershipChange {
 }
 
 impl UiMembershipChange {
-    /// Generates a user-friendly message describing the membership change, e.g. "joined the room", "was invited to the room", "left the room". Returns an empty string for UiMembershipChange::None, and a generic error message for UiMembershipChange::Error.
     pub fn display_string(&self) -> String {
         match self {
             UiMembershipChange::None => "".to_string(),
@@ -103,14 +111,14 @@ impl UiMembershipChange {
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub enum RoomIdFormat {
-    Id(String),
+    Id(OwnedRoomId),
     Alias(String),
 }
 
 impl RoomIdFormat {
     pub fn source(&self) -> String {
         match self {
-            RoomIdFormat::Id(id) => id.clone(),
+            RoomIdFormat::Id(id) => id.to_string(),
             RoomIdFormat::Alias(alias) => alias.clone(),
         }
     }
@@ -120,7 +128,7 @@ impl RoomIdFormat {
 pub enum RichTextSpan {
     Plain(String),
     UserMention {
-        user_id: String,
+        user_id: OwnedUserId,
         display_name: String,
     },
     RoomMention {
@@ -279,17 +287,10 @@ pub fn fit_dimensions(w: u64, h: u64, max_w: u64, max_h: u64) -> (u64, u64) {
     ((w as f64 * scale) as u64, (h as f64 * scale) as u64)
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
-pub enum UiPollKind {
-    #[default]
-    Undisclosed,
-    Disclosed,
-}
-
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct UiPollResult {
     pub question: String,
-    pub kind: UiPollKind,
+    pub kind: PollKind,
     pub max_selections: u64,
     // pub answers: Vec<PollResultAnswer>,
     pub votes: HashMap<String, Vec<String>>,
@@ -366,19 +367,19 @@ pub enum UiMessageType {
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct ReplyPreview {
-    pub sender_id: String,
+    pub sender_id: OwnedUserId,
     pub content: Vec<RichTextSpan>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct ReplyInfo {
-    pub event_id: String,
+    pub event_id: OwnedEventId,
     pub event: DetailState<ReplyPreview>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct ReactionInfo {
-    pub sender_id: String,
+    pub sender_id: OwnedUserId,
     pub timestamp: u64,
 }
 
@@ -398,7 +399,7 @@ pub struct MessageContent {
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct ProfileChange {
-    pub user_id: String,
+    pub user_id: OwnedUserId,
     pub display_name_change: Option<Change<Option<String>>>,
     pub avatar_url_change: Option<Change<Option<String>>>,
 }
@@ -436,96 +437,42 @@ impl ProfileChange {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-pub enum UiCallIntent {
-    Audio,
-    Video,
-    Unknown,
+pub trait JoinRuleExt {
+    fn to_string(&self) -> String;
 }
 
-impl std::fmt::Display for UiCallIntent {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl JoinRuleExt for JoinRuleSummary {
+    fn to_string(&self) -> String {
         match self {
-            UiCallIntent::Audio => write!(f, "Audio"),
-            UiCallIntent::Video => write!(f, "Video"),
-            UiCallIntent::Unknown => write!(f, "Call"),
+            JoinRuleSummary::Public => "Public".to_string(),
+            JoinRuleSummary::Knock => "Knock".to_string(),
+            JoinRuleSummary::Invite => "Invite".to_string(),
+            JoinRuleSummary::Private => "Private".to_string(),
+            JoinRuleSummary::Restricted(_) => "Restricted".to_string(),
+            JoinRuleSummary::KnockRestricted(_) => "Knock Restricted".to_string(),
+            _ => "Unknown".to_string(),
         }
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-pub enum UiGuestAccess {
-    CanJoin,
-    Forbidden,
-    Unknown,
-}
-
-impl std::fmt::Display for UiGuestAccess {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            UiGuestAccess::CanJoin => write!(f, "Guests can join"),
-            UiGuestAccess::Forbidden => write!(f, "Guests cannot join"),
-            UiGuestAccess::Unknown => write!(f, "Guest access unknown"),
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
-pub enum UiHistoryVisibility {
-    Invited,
-    Joined,
-    #[default]
-    Shared,
-    WorldReadable,
-}
-
-impl std::fmt::Display for UiHistoryVisibility {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            UiHistoryVisibility::Invited => write!(f, "Only invited members can see history"),
-            UiHistoryVisibility::Joined => write!(f, "Only joined members can see history"),
-            UiHistoryVisibility::Shared => write!(f, "Shared history"),
-            UiHistoryVisibility::WorldReadable => write!(f, "World readable history"),
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
-pub enum UiJoinRule {
-    Public,
-    Knock,
-    #[default]
-    Invite,
-    Private,
-    Restricted,
-    KnockRestricted,
-}
-
-impl std::fmt::Display for UiJoinRule {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            UiJoinRule::Public => write!(f, "Public"),
-            UiJoinRule::Knock => write!(f, "Knock"),
-            UiJoinRule::Invite => write!(f, "Invite"),
-            UiJoinRule::Private => write!(f, "Private"),
-            UiJoinRule::Restricted => write!(f, "Restricted"),
-            UiJoinRule::KnockRestricted => write!(f, "Knock Restricted"),
-        }
+impl JoinRuleExt for JoinRule {
+    fn to_string(&self) -> String {
+        JoinRuleSummary::from(self.clone()).to_string()
     }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, EnumHashMap, Eq)]
 pub enum SystemMessage {
     MembershipChange {
-        user_id: String,
+        user_id: OwnedUserId,
         change: Option<UiMembershipChange>,
     },
     ProfileChange(ProfileChange),
     CallInvite,
     CallMember,
     RtcNotification {
-        call_intent: Option<UiCallIntent>,
-        declined_by: Vec<String>,
+        call_intent: Option<CallIntent>,
+        declined_by: Vec<OwnedUserId>,
     },
     PolicyRuleRoom,
     PolicyRuleServer,
@@ -537,26 +484,26 @@ pub enum SystemMessage {
         alias: Option<String>,
     },
     RoomCreate {
-        additional_creators: Vec<String>,
-        room_type: Option<String>,
+        additional_creators: Vec<OwnedUserId>,
+        room_type: Option<RoomType>,
     },
     RoomEncryption {
-        algorithm: String,
+        algorithm: EventEncryptionAlgorithm,
     },
     RoomGuestAccess {
-        guest_access: UiGuestAccess,
+        guest_access: GuestAccess,
     },
     RoomHistoryVisibility {
-        visibility: UiHistoryVisibility,
+        visibility: HistoryVisibility,
     },
     RoomJoinRules {
-        join_rule: UiJoinRule,
+        join_rule: JoinRule,
     },
     RoomName {
         name: String,
     },
     RoomPinnedEvents {
-        pinned_events: Vec<String>,
+        pinned_events: Vec<OwnedEventId>,
     },
     RoomPowerLevels,
     RoomServerAcl,
@@ -602,9 +549,14 @@ pub enum EventContent {
 }
 
 impl EventContent {
-    pub fn to_timeline_item(self, id: String, sender: String, timestamp: u64) -> UiTimelineItem {
+    pub fn to_timeline_item(
+        self,
+        id: OwnedEventId,
+        sender: OwnedUserId,
+        timestamp: u64,
+    ) -> UiTimelineItem {
         UiTimelineItem {
-            id: id.clone(),
+            id: id.to_string(),
             kind: UiTimelineItemKind::Event(Box::new(TimelineEvent {
                 state: None,
                 timestamp,
@@ -631,11 +583,11 @@ pub struct TimelineEvent {
     pub state: Option<EventState>,
     pub timestamp: u64,
     pub flags: EventFlags,
-    pub sender_id: String,
+    pub sender_id: OwnedUserId,
 
-    pub receipts: Vec<String>,
+    pub receipts: Vec<OwnedUserId>,
 
-    pub event_id: Option<String>,
+    pub event_id: Option<OwnedEventId>,
 
     pub content: EventContent,
 }
@@ -778,14 +730,14 @@ impl UiTimelineItem {
             if let UiTimelineItemKind::Event(event) = &self.kind
                 && let Some(event_id) = &event.event_id
             {
-                event_id.clone()
+                event_id.to_string()
             } else {
-                self.id.clone()
+                self.id.to_string()
             }
         )
     }
 
-    pub fn event_id(&self) -> Option<String> {
+    pub fn event_id(&self) -> Option<OwnedEventId> {
         if let UiTimelineItemKind::Event(event) = &self.kind {
             event.event_id.clone()
         } else {

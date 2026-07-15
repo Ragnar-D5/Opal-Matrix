@@ -20,6 +20,7 @@ js-sys = "0.3"
 klipy = { git = "https://github.com/Ragnar-D5/klipy-rs.git" }
 leptos = { version = "0.8", features = ["csr"] }
 leptos_icons = "0.7.1"
+leptos-md = "0.1.0"
 leptos-use = "0.18.3"
 linkify = "0.11.0"
 log = "0.4.29"
@@ -27,6 +28,7 @@ macros = { path = "./macros" }
 nucleo-matcher = "0.3.1"
 phosphor-leptos = "0.8.0"
 regex = "1.12.3"
+ruma = { version = "0.16.0", features = ["js"] }
 send_wrapper = { version = "0.6.0", features = ["futures"] }
 serde = "1.0.228"
 serde_json = "1.0.149"
@@ -81,7 +83,6 @@ web-sys = {
   ]
 }
 wgpu = "29.0.3"
-leptos-md = "0.1.0"
 
 [profile.dev]
 debug = false

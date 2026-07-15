@@ -1,27 +1,21 @@
-use std::str::FromStr;
-
 use matrix_sdk::{
     Client, RoomState,
-    ruma::{OwnedRoomId, api::client::room::get_summary},
+    ruma::{
+        OwnedRoomId, api::client::room::get_summary,
+        events::room::history_visibility::HistoryVisibility, room::JoinRule,
+    },
 };
-use shared::{
-    sidebar::{RoomExtraInfo, UiMembership},
-    timeline::UiHistoryVisibility,
-};
+use shared::sidebar::{RoomExtraInfo, UiMembership};
 use tauri::{State, command};
 use tokio::sync::RwLock;
 
-use crate::{
-    TauriError,
-    frontend::timeline::{history_visibility_to_ui, join_rule_to_ui},
-};
+use crate::TauriError;
 
 #[command(rename_all = "snake_case")]
 pub async fn get_extra_room_info(
     client: State<'_, RwLock<Client>>,
-    room_id: String,
+    room_id: OwnedRoomId,
 ) -> Result<RoomExtraInfo, TauriError> {
-    let room_id = OwnedRoomId::from_str(&room_id)?;
     let client = client.read().await.clone();
 
     if let Some(room) = client.get_room(&room_id) {
@@ -40,12 +34,12 @@ pub async fn get_extra_room_info(
             join_rule: info
                 .join_rule()
                 .cloned()
-                .map(|r| join_rule_to_ui(r.into()))
-                .unwrap_or_default(),
+                .unwrap_or(JoinRule::Private)
+                .into(),
             history_visibility: info
                 .history_visibility()
-                .map(history_visibility_to_ui)
-                .unwrap_or_default(),
+                .cloned()
+                .unwrap_or(HistoryVisibility::Shared),
             encrypted: info.encryption_state().is_encrypted(),
             version: info.room_version().map(|v| v.to_string()),
             num_joined_users: info.active_members_count(),
@@ -58,11 +52,11 @@ pub async fn get_extra_room_info(
 
         Ok(RoomExtraInfo {
             membership: UiMembership::Leave,
-            join_rule: join_rule_to_ui(summary.join_rule),
+            join_rule: summary.join_rule.clone(),
             history_visibility: if summary.world_readable {
-                UiHistoryVisibility::WorldReadable
+                HistoryVisibility::WorldReadable
             } else {
-                UiHistoryVisibility::default()
+                HistoryVisibility::Shared
             },
             encrypted: summary.encryption.is_some(),
             version: summary.room_version.map(|v| v.to_string()),

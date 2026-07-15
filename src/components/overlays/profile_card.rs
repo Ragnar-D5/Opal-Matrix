@@ -1,4 +1,5 @@
 use leptos::{portal::Portal, prelude::*};
+use ruma::{OwnedRoomId, OwnedUserId};
 use shared::synth::{SignatureEvent, signature_audio_src};
 use web_sys::{Element, KeyboardEvent};
 
@@ -6,8 +7,8 @@ use crate::{components::presence::PresenceBadge, state::ProfileStore};
 
 #[derive(Clone, Copy)]
 pub struct ProfileCardState {
-    user_id: RwSignal<Option<String>>,
-    room_id: RwSignal<Option<String>>,
+    user_id: RwSignal<Option<OwnedUserId>>,
+    room_id: RwSignal<Option<OwnedRoomId>>,
     anchor_rect: RwSignal<Option<(f64, f64, f64, f64)>>,
 }
 
@@ -22,7 +23,7 @@ impl Default for ProfileCardState {
 }
 
 impl ProfileCardState {
-    pub fn open(&self, anchor: &Element, user_id: String, room_id: Option<String>) {
+    pub fn open(&self, anchor: &Element, user_id: OwnedUserId, room_id: Option<OwnedRoomId>) {
         let rect = anchor.get_bounding_client_rect();
         self.anchor_rect
             .set(Some((rect.left(), rect.top(), rect.right(), rect.bottom())));
@@ -143,7 +144,7 @@ pub fn ProfileCardPortal() -> impl IntoView {
                 </div>
 
                 <div class="px-3 pt-9 pb-4">
-                    {profile_name} <p class="text-xs text-muted">{user_id}</p>
+                    {profile_name} <p class="text-xs text-muted">{user_id.to_string()}</p>
                 </div>
             </div>
         }

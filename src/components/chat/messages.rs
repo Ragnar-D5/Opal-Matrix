@@ -1,4 +1,5 @@
 use csscolorparser::Color;
+use ruma::{OwnedEventId, OwnedRoomId, OwnedUserId, UserId, events::rtc::notification::CallIntent};
 use std::collections::HashMap;
 
 use chrono::{DateTime, Local, TimeZone};
@@ -12,9 +13,9 @@ use shared::{
     profile::MemberProfile,
     sidebar::RoomNode,
     timeline::{
-        DetailState, EventContent, EventFlags, MessageContent, ReactionInfo, ReplyInfo,
-        RichTextSpan, SystemMessage, UiCallIntent, UiMembershipChange, UiMessageType,
-        UiTimelineItem, UiTimelineItemKind,
+        DetailState, EventContent, EventFlags, JoinRuleExt, MessageContent, ReactionInfo,
+        ReplyInfo, RichTextSpan, SystemMessage, UiMembershipChange, UiMessageType, UiTimelineItem,
+        UiTimelineItemKind,
     },
 };
 use wasm_bindgen::JsCast;
@@ -40,8 +41,8 @@ use crate::{
 #[component]
 fn ReplyPreview(
     reply_info: Option<ReplyInfo>,
-    active_room_id: String,
-    scroll_to_item: Callback<String>,
+    active_room_id: StoredValue<OwnedRoomId>,
+    scroll_to_item: Callback<OwnedEventId>,
 ) -> impl IntoView {
     let Some(reply_info) = reply_info else {
         return ().into_any();
@@ -61,11 +62,10 @@ fn ReplyPreview(
     });
 
     let profile_store = store.clone();
-    let store_room_id = active_room_id.clone();
     let profile = Memo::new(move |_| {
         preview.get().map(|p| {
             profile_store
-                .get_member_profile(&store_room_id, &p.sender_id)
+                .get_member_profile(&active_room_id.get_value(), &p.sender_id)
                 .get()
         })
     });
@@ -90,7 +90,7 @@ fn ReplyPreview(
                     let spans = spans.get();
                     spans
                         .into_iter()
-                        .map(|v| v.clone().render(store.clone(), active_room_id.clone()))
+                        .map(|v| v.clone().render(store.clone(), &active_room_id.get_value()))
                         .collect::<Vec<_>>()
                 }}
             </span>
@@ -102,8 +102,8 @@ fn ReplyPreview(
 #[component]
 fn MessageHeader(
     reply_info: Memo<Option<ReplyInfo>>,
-    room_id: String,
-    scroll_to_item: Callback<String>,
+    room_id: StoredValue<OwnedRoomId>,
+    scroll_to_item: Callback<OwnedEventId>,
     show_header: bool,
     preview: bool,
     sender_profile_sig: ArcRwSignal<MemberProfile>,
@@ -187,12 +187,11 @@ fn MessageHeader(
                     view! {
                         <ReplyPreview
                             reply_info=reply_info.get()
-                            active_room_id=room_id.clone()
+                            active_room_id=room_id
                             scroll_to_item=scroll_to_item
                         />
                     }
                 }}
-
                 {move || {
                     if show_header {
                         let name_view = if preview {
@@ -210,9 +209,7 @@ fn MessageHeader(
                     } else {
                         ().into_any()
                     }
-                }}
-
-                {children()}
+                }} {children()}
             </div>
         </div>
     }
@@ -245,8 +242,8 @@ async fn mxc_to_blob_url(mxc_url: String) -> Option<String> {
 fn render_message_content(
     content: MessageContent,
     store: ProfileStore,
-    room_id: String,
-    sender_id: String,
+    room_id: StoredValue<OwnedRoomId>,
+    sender_id: OwnedUserId,
     timestamp: u64,
 ) -> impl IntoView {
     let settings: Settings = expect_context();
@@ -287,7 +284,7 @@ fn render_message_content(
                 {spans
                     .clone()
                     .into_iter()
-                    .map(|v| v.render(store.clone(), room_id.clone()))
+                    .map(|v| v.render(store.clone(), &room_id.get_value()))
                     .collect_view()}
             </div>
         }
@@ -320,7 +317,7 @@ fn render_message_content(
                 {spans
                     .clone()
                     .into_iter()
-                    .map(|v| v.render(store.clone(), room_id.clone()))
+                    .map(|v| v.render(store.clone(), &room_id.get_value()))
                     .collect_view()}["Gallery message not supported yet"]
             </div>
         }
@@ -421,7 +418,7 @@ fn render_message_content(
                     {spans
                         .clone()
                         .into_iter()
-                        .map(|v| v.render(store.clone(), room_id.clone()))
+                        .map(|v| v.render(store.clone(), &room_id.get_value()))
                         .collect_view()}
                     {if content.is_edited {
                         view! { <span class="text-xs text-muted ml-2 italic">"(edited)"</span> }
@@ -438,7 +435,7 @@ fn render_message_content(
                 {spans
                     .clone()
                     .into_iter()
-                    .map(|v| v.render(store.clone(), room_id.clone()))
+                    .map(|v| v.render(store.clone(), &room_id.get_value()))
                     .collect_view()}["Location message not supported yet"]
             </div>
         }
@@ -449,7 +446,7 @@ fn render_message_content(
                 {spans
                     .clone()
                     .into_iter()
-                    .map(|v| v.render(store.clone(), room_id.clone()))
+                    .map(|v| v.render(store.clone(), &room_id.get_value()))
                     .collect_view()}["Live location sharing not supported yet"]
             </div>
         }
@@ -460,7 +457,7 @@ fn render_message_content(
                 {spans
                     .clone()
                     .into_iter()
-                    .map(|v| v.render(store.clone(), room_id.clone()))
+                    .map(|v| v.render(store.clone(), &room_id.get_value()))
                     .collect_view()}["Notice messages are not supported yet"]
             </div>
         }
@@ -471,7 +468,7 @@ fn render_message_content(
                 {spans
                     .clone()
                     .into_iter()
-                    .map(|v| v.render(store.clone(), room_id.clone()))
+                    .map(|v| v.render(store.clone(), &room_id.get_value()))
                     .collect_view()}["Polls are not supported yet"]
             </div>
         }
@@ -489,7 +486,7 @@ fn render_message_content(
                 {spans
                     .clone()
                     .into_iter()
-                    .map(|v| v.render(store.clone(), room_id.clone()))
+                    .map(|v| v.render(store.clone(), &room_id.get_value()))
                     .collect_view()}["Server notice messages are not supported yet"]
             </div>
         }
@@ -508,7 +505,7 @@ fn render_message_content(
                 {spans
                     .clone()
                     .into_iter()
-                    .map(|v| v.render(store.clone(), room_id.clone()))
+                    .map(|v| v.render(store.clone(), &room_id.get_value()))
                     .collect_view()}
                 {if content.is_edited {
                     view! { <span class="text-xs text-muted ml-2 italic">"(edited)"</span> }
@@ -585,9 +582,9 @@ fn render_message_content(
 fn render_reactions(
     reactions: Option<HashMap<String, Vec<ReactionInfo>>>,
     store: ProfileStore,
-    room_id: String,
-    user_id: String,
-    event_id: Option<String>,
+    room_id: StoredValue<OwnedRoomId>,
+    user_id: OwnedUserId,
+    event_id: StoredValue<Option<OwnedEventId>>,
 ) -> impl IntoView {
     let Some(reactions) = reactions else {
         return ().into_any();
@@ -603,11 +600,6 @@ fn render_reactions(
             let emoji = emoji.clone();
             let store = store.clone();
 
-            let btn_room_id = room_id.clone();
-            let btn_event_id = event_id.clone();
-
-            let prof_room_id = room_id.clone();
-
             let contains_user = reactors.iter().any(|v| *v.sender_id == user_id);
 
             let reactor_pics = move || {
@@ -617,7 +609,7 @@ fn render_reactions(
                     .iter()
                     .map(|info| {
                         let profile = store
-                            .get_member_profile(&prof_room_id, &info.sender_id)
+                            .get_member_profile(&room_id.get_value(), &info.sender_id)
                             .get();
                         let icon = profile.clone().render_icon("20px");
 
@@ -659,12 +651,11 @@ fn render_reactions(
                     class=("bg-(--accent-bg-color)", contains_user)
                     class=("border-(--accent-color)", contains_user)
                     on:click=move |_| {
-                        let Some(e_id) = btn_event_id.clone() else {
+                        let Some(event_id) = event_id.get_value() else {
                             return;
                         };
-                        let r_id = btn_room_id.clone();
                         let async_emoji = emoji.clone();
-                        toggle_reaction(&r_id, &e_id, &async_emoji);
+                        toggle_reaction(&room_id.get_value(), &event_id, &async_emoji);
                     }
                 >
                     <span class="text-sm leading-none pl-1">{emoji.clone()}</span>
@@ -688,7 +679,11 @@ fn render_reactions(
     view! { <div class="flex flex-wrap gap-1 mt-1 mb-2">{content}</div> }.into_any()
 }
 
-fn render_read_receipts(receipts: Vec<String>, store: ProfileStore, room_id: String) -> AnyView {
+fn render_read_receipts(
+    receipts: Vec<OwnedUserId>,
+    store: ProfileStore,
+    room_id: StoredValue<OwnedRoomId>,
+) -> AnyView {
     if receipts.is_empty() {
         return ().into_any();
     }
@@ -699,7 +694,9 @@ fn render_read_receipts(receipts: Vec<String>, store: ProfileStore, room_id: Str
         .iter()
         .take(MAX_SHOWN)
         .map(|user_id| {
-            let profile = store.get_member_profile(&room_id, user_id).get();
+            let profile = store
+                .get_member_profile(&room_id.get_value(), user_id)
+                .get();
             let name = profile.get_name();
             let icon = profile.render_icon("16px");
 
@@ -740,16 +737,16 @@ fn get_date_from_ts(ts: i64) -> DateTime<Local> {
 }
 
 fn render_system_message(
-    sender_id: String,
+    sender_id: OwnedUserId,
     content: SystemMessage,
     store: ProfileStore,
-    room_id: String,
-    jump_target: RwSignal<Option<String>>,
+    room_id: StoredValue<OwnedRoomId>,
+    jump_target: RwSignal<Option<OwnedEventId>>,
 ) -> impl IntoView {
     let sender_id_str = sender_id.clone();
 
-    let user_div = |user_id: &str| {
-        let profile_sig = store.get_member_profile(&room_id, user_id);
+    let user_div = |user_id: &UserId| {
+        let profile_sig = store.get_member_profile(&room_id.get_value(), user_id);
         let name_sig = profile_sig.clone();
 
         view! {
@@ -891,7 +888,7 @@ fn render_system_message(
         SystemMessage::RoomJoinRules { join_rule } => view! {
             <div>
                 {user_div(&sender_id_str)}
-                <span>{format!("changed join rules to: {join_rule}")}</span>
+                <span>{format!("changed join rules to: {}", join_rule.to_string())}</span>
             </div>
         }
         .into_any(),
@@ -969,16 +966,15 @@ fn render_system_message(
         } => {
             let intent_string = if let Some(intent) = call_intent {
                 match intent {
-                    UiCallIntent::Audio => "started an audio call",
-                    UiCallIntent::Video => "started a video call",
-                    UiCallIntent::Unknown => "started a call",
+                    CallIntent::Video => "started a video call",
+                    CallIntent::Audio | _ => "started an audio call",
                 }
             } else {
                 "started a call"
             };
 
             let declined_views = declined_by.iter().map(|user_id| {
-                let profile_sig = store.get_member_profile(&room_id, user_id);
+                let profile_sig = store.get_member_profile(&room_id.get_value(), user_id);
                 let name_sig = profile_sig.clone();
 
                 view! {
@@ -1085,9 +1081,9 @@ fn render_system_message(
 #[component]
 fn MesssageButtons(
     flags: Memo<EventFlags>,
-    room_id: StoredValue<String>,
-    event_id: StoredValue<Option<String>>,
-    sender_id: String,
+    room_id: StoredValue<OwnedRoomId>,
+    event_id: StoredValue<Option<OwnedEventId>>,
+    sender_id: OwnedUserId,
     item_sig: RwSignal<UiTimelineItem>,
     picker_open: RwSignal<bool>,
     is_pinned: Memo<bool>,
@@ -1102,7 +1098,7 @@ fn MesssageButtons(
         !f.is_reactable && !f.can_be_replied_to && !f.is_editable && event_id.get_value().is_none()
     };
 
-    let important_event_id: RwSignal<Option<String>> = expect_context();
+    let important_event_id: RwSignal<Option<OwnedEventId>> = expect_context();
 
     let Some(node) = state.get_room_untracked(&room_id.get_value()) else {
         return ().into_any();
@@ -1171,7 +1167,7 @@ fn MesssageButtons(
             el.set_inner_html(&richt_text_spans_to_html(
                 &spans,
                 store.clone(),
-                room_id.get_value(),
+                &room_id.get_value(),
             ));
             is_empty.set(false);
             move_caret_to_end(&el);
@@ -1430,13 +1426,13 @@ fn ConfirmDialog(
 #[allow(clippy::too_many_arguments)]
 fn render_timeline_event(
     store: ProfileStore,
-    room_id: StoredValue<String>,
-    own_user_id: StoredValue<String>,
+    room_id: StoredValue<OwnedRoomId>,
+    own_user_id: StoredValue<OwnedUserId>,
     item_sig: RwSignal<UiTimelineItem>,
     show_header: bool,
     preview: bool,
-    scroll_to_event: Callback<String>,
-    jump_target: RwSignal<Option<String>>,
+    scroll_to_event: Callback<OwnedEventId>,
+    jump_target: RwSignal<Option<OwnedEventId>>,
 ) -> impl IntoView {
     let hovered = RwSignal::new(false);
     let picker_open = RwSignal::new(false);
@@ -1523,7 +1519,7 @@ fn render_timeline_event(
             EventContent::MsgLike(ev) => render_message_content(
                 *ev,
                 store_for_content.clone(),
-                room_id.get_value(),
+                room_id,
                 sender_id,
                 timestamp,
             ).into_any(),
@@ -1538,7 +1534,7 @@ fn render_timeline_event(
                     sender_id,
                     ev,
                     store_for_content.clone(),
-                    room_id.get_value(),
+                    room_id,
                     jump_target
                 ).into_any()
             },
@@ -1559,9 +1555,9 @@ fn render_timeline_event(
                 }
             }),
             store_clone.clone(),
-            room_id.get_value(),
+            room_id,
             own_user_id.get_value(),
-            event_id.get_value(),
+            event_id,
         )
     };
 
@@ -1583,10 +1579,10 @@ fn render_timeline_event(
             }
         });
 
-        render_read_receipts(receipts, store_for_receipts.clone(), room_id.get_value())
+        render_read_receipts(receipts, store_for_receipts.clone(), room_id)
     };
 
-    let important_event_id: RwSignal<Option<String>> = expect_context();
+    let important_event_id: RwSignal<Option<OwnedEventId>> = expect_context();
 
     let current_highlight = Memo::new(move |_| {
         if let Some(important_id) = important_event_id.get()
@@ -1704,7 +1700,7 @@ fn render_timeline_event(
 
             <MessageHeader
                 reply_info=reply_info
-                room_id=room_id.get_value()
+                room_id=room_id
                 scroll_to_item=scroll_to_event
                 show_header=show_header
                 preview=preview
@@ -1761,8 +1757,8 @@ pub fn render_timeline_item(
     item_sig: RwSignal<UiTimelineItem>,
     show_header: bool,
     preview: bool,
-    scroll_to_event: Callback<String>,
-    jump_target: RwSignal<Option<String>>,
+    scroll_to_event: Callback<OwnedEventId>,
+    jump_target: RwSignal<Option<OwnedEventId>>,
 ) -> AnyView {
     let state: AppState = expect_context();
     let store: ProfileStore = expect_context();
@@ -1771,7 +1767,9 @@ pub fn render_timeline_item(
         return ().into_any();
     };
 
-    let user_id = state.user_id.get_untracked();
+    let Some(user_id) = state.user_id.get_untracked() else {
+        return ().into_any();
+    };
 
     let kind = item_sig.with_untracked(|i| i.kind.clone());
 

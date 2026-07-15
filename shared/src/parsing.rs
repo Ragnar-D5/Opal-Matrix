@@ -1,6 +1,7 @@
 use crate::timeline::{RichTextSpan, RoomIdFormat};
 use ego_tree::NodeRef;
 use linkify::LinkFinder;
+use ruma::{OwnedRoomId, OwnedUserId};
 use scraper::{Html, Node};
 
 fn walk_node(node: NodeRef<'_, Node>, spans: &mut Vec<RichTextSpan>) {
@@ -26,39 +27,41 @@ fn walk_node(node: NodeRef<'_, Node>, spans: &mut Vec<RichTextSpan>) {
                 if let Some(id_str) = href.strip_prefix("https://matrix.to/#/") {
                     let display_string = extract_inner_text(node);
 
-                    let span = if let Some(starting_char) = id_str.chars().next() {
-                        match starting_char {
-                            '#' => RichTextSpan::RoomMention {
-                                room_id: RoomIdFormat::Alias(id_str.to_string()),
-                                display_name: display_string,
-                            },
-                            '!' => RichTextSpan::RoomMention {
-                                room_id: RoomIdFormat::Id(id_str.to_string()),
-                                display_name: display_string,
-                            },
-                            '@' => {
-                                let user_id = extract_mxid(id_str);
-                                RichTextSpan::UserMention {
-                                    user_id,
-                                    display_name: display_string,
-                                }
-                            }
-                            _ => {
-                                spans.push(RichTextSpan::Link {
-                                    url: href.to_string(),
-                                    text: Some(display_string),
-                                });
-                                return;
-                            }
-                        }
-                    } else {
-                        RichTextSpan::Link {
-                            url: href.to_string(),
-                            text: None,
-                        }
-                    };
+                    let room_id = OwnedRoomId::try_from(id_str).ok();
+                    let user_id = OwnedUserId::try_from(id_str).ok();
 
-                    spans.push(span);
+                    if let Some(room_id) = room_id {
+                        let span = RichTextSpan::RoomMention {
+                            room_id: RoomIdFormat::Id(room_id),
+                            display_name: display_string,
+                        };
+                        spans.push(span);
+                        return;
+                    }
+
+                    if let Some(user_id) = user_id {
+                        let span = RichTextSpan::UserMention {
+                            user_id,
+                            display_name: display_string,
+                        };
+                        spans.push(span);
+                        return;
+                    }
+
+                    if id_str.starts_with('#') {
+                        let span = RichTextSpan::RoomMention {
+                            room_id: RoomIdFormat::Alias(id_str.to_string()),
+                            display_name: display_string,
+                        };
+                        spans.push(span);
+                        return;
+                    }
+
+                    spans.push(RichTextSpan::Link {
+                        url: href.to_string(),
+                        text: Some(display_string),
+                    });
+
                     return;
                 } else {
                     spans.push(RichTextSpan::Link {
@@ -92,14 +95,6 @@ fn extract_inner_text(node: NodeRef<'_, Node>) -> String {
         }
     }
     text
-}
-
-fn extract_mxid(href: &str) -> String {
-    if let Some(idx) = href.find('@') {
-        href[idx..].to_string()
-    } else {
-        href.to_string()
-    }
 }
 
 pub fn parse_html_to_spans(html: &str, fallback_body: &str) -> Vec<RichTextSpan> {

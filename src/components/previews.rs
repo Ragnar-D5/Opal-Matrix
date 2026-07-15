@@ -1,5 +1,6 @@
 use leptos::{prelude::*, task::spawn_local};
 use phosphor_leptos::{DOWNLOAD_SIMPLE, Icon, IconWeight, X};
+use ruma::OwnedUserId;
 use shared::timeline::RichTextSpan;
 use shared::timeline::UiMediaSource;
 use wasm_bindgen::JsCast;
@@ -312,13 +313,13 @@ pub fn ImageLightbox() -> impl IntoView {
 
 #[component]
 fn LightboxHeader(
-    sender_id: String,
+    sender_id: OwnedUserId,
     timestamp: u64,
     filename: String,
     size: Option<u64>,
     src: UiMediaSource,
     on_close: Callback<()>,
-) -> impl IntoView {
+) -> AnyView {
     let date = js_sys::Date::new(&js_sys::Number::from(timestamp as f64 * 1000.0));
     let timestamp_str = format!(
         "{}, {:02}:{:02}",
@@ -329,7 +330,11 @@ fn LightboxHeader(
 
     let store: ProfileStore = expect_context();
     let state: AppState = expect_context();
-    let room_id = state.active_room_id_untracked().unwrap_or_default();
+
+    let Some(room_id) = state.active_room_id_untracked() else {
+        return ().into_any();
+    };
+
     let profile_sig = store.get_member_profile(&room_id, &sender_id);
     let name_sig = profile_sig.clone();
 
@@ -390,5 +395,5 @@ fn LightboxHeader(
             <div class="h-6 w-[2px] mr-2 ml-1 bg-(--tile-border-color) rounded" />
             <SystemButtons active=false />
         </FloatingTile>
-    }
+    }.into_any()
 }

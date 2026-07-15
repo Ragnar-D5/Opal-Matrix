@@ -281,7 +281,7 @@ pub fn handle_keydown(
                     }
                     Some(ChatInputInfo::Editing { event_id, .. }) if !content_empty => {
                         spawn_local(async move {
-                            if let Err(e) = edit_message(message, &room_id, event_id).await {
+                            if let Err(e) = edit_message(message, &room_id, &event_id).await {
                                 warn!("Failed to commit message: {e}");
                             };
                         });
