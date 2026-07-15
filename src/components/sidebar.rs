@@ -1,5 +1,5 @@
 use phosphor_leptos::{
-    Icon, IconData, IconWeight, BUG, CARET_DOWN, CARET_RIGHT, QUESTION_MARK, SPEAKER_HIGH,
+    BUG, CARET_DOWN, CARET_RIGHT, Icon, IconData, IconWeight, QUESTION_MARK, SPEAKER_HIGH,
 };
 use shared::{
     profile::MemberProfile,
@@ -8,11 +8,11 @@ use shared::{
 
 use crate::{
     components::{
+        AudioMenu, DeafenMenu, FloatingTile, MuteMenu,
         logo::Logo,
         presence::PresenceBadge,
         settings::SettingsIcon,
-        user_profile::{render_url_icon, MemberProfileExt, RoomNodeExt},
-        AudioMenu, DeafenMenu, FloatingTile, MuteMenu,
+        user_profile::{MemberProfileExt, RoomNodeExt, render_url_icon},
     },
     state::{AppState, CurrentSection, MainView, ProfileStore},
     tauri_functions::open_log_window,

@@ -1,8 +1,8 @@
 use leptos::prelude::*;
 
 use crate::components::settings::{
-    sections::{Dropdown, Spacer, SubSection, Toggle},
     Settings,
+    sections::{Dropdown, Spacer, SubSection, Toggle},
 };
 
 pub fn render_general_section() -> AnyView {

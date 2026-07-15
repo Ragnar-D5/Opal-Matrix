@@ -1,7 +1,7 @@
 use crate::{
-    app::{call_tauri, call_tauri_no_args, CurrentWindow},
+    app::{CurrentWindow, call_tauri, call_tauri_no_args},
     components::{
-        input::move_caret_to_end, settings::Settings, SingleFloatingTile, SystemButtonsInTile,
+        SingleFloatingTile, SystemButtonsInTile, input::move_caret_to_end, settings::Settings,
     },
     state::{AppState, MainView},
     tauri_functions::get_server_order,

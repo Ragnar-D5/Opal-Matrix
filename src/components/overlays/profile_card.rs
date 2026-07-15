@@ -1,5 +1,5 @@
 use leptos::{portal::Portal, prelude::*};
-use shared::synth::{signature_audio_src, SignatureEvent};
+use shared::synth::{SignatureEvent, signature_audio_src};
 use web_sys::{Element, KeyboardEvent};
 
 use crate::{components::presence::PresenceBadge, state::ProfileStore};

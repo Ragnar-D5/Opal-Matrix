@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use macros::EnumVariants;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 pub const AUTO_UPDATE_SETTINGS_KEY: &str = "auto_update_settings";
 

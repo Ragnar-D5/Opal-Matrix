@@ -6,20 +6,27 @@ use std::{
 use crate::{
     app::{convertFileSrc, format_bytes},
     components::{
-        FloatingTile, TypingIndicator, chat::{
+        FloatingTile, TypingIndicator,
+        chat::{
             calls::CallView, header::ChatHeader, info::ChatSideBar, messages::render_timeline_item,
-        }, input::{
+        },
+        input::{
             get_active_filter, get_caret_position, handle_input, handle_keydown,
             insert_text_at_caret,
             menu::{MenuCompletionMatches, MenuType, SelectionMenu},
-        }, overlays::{
+        },
+        overlays::{
             emoji_picker::{EmojiPickerState, pick_emoji},
             gif_picker::{GifPickerState, pick_gif},
-        }, settings::Settings, user_profile::{MemberProfileExt, render_url_icon}
+        },
+        settings::Settings,
+        user_profile::{MemberProfileExt, render_url_icon},
     },
     hooks::{setup_update_effect, use_tauri_event},
     state::{AppState, CurrentSection, MainView, ProfileStore},
-    tauri_functions::{get_extra_room_info, get_timeline, indicate_typing, pick_files, scroll_timeline},
+    tauri_functions::{
+        get_extra_room_info, get_timeline, indicate_typing, pick_files, scroll_timeline,
+    },
 };
 
 use phosphor_leptos::{GIF, GLOBE, Icon, IconWeight, LOCK, SMILEY, TRASH, UPLOAD_SIMPLE, X_CIRCLE};
@@ -33,7 +40,10 @@ use shared::{
     api::{
         FileMetadata, ScrollDirection, SearchParameters, UiAttachmentSource,
         events::SearchResultUpdate,
-    }, settings::EnumHashMap, sidebar::{RoomExtraInfo, RoomNode}, timeline::{EventContent, UiJoinRule, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind}
+    },
+    settings::EnumHashMap,
+    sidebar::{RoomExtraInfo, RoomNode},
+    timeline::{EventContent, UiJoinRule, UiTimelineDiff, UiTimelineItem, UiTimelineItemKind},
 };
 use uuid::Uuid;
 use wasm_bindgen::JsCast;
@@ -142,11 +152,15 @@ fn TimeLine() -> impl IntoView {
             };
 
             if let Some(ev) = item.as_system_message()
-            && !ev.is_valid(&valid_map) {
+                && !ev.is_valid(&valid_map)
+            {
                 continue;
             }
 
-            let is_divider = matches!(item.kind, UiTimelineItemKind::DateDivider(_) | UiTimelineItemKind::ReadMarker);
+            let is_divider = matches!(
+                item.kind,
+                UiTimelineItemKind::DateDivider(_) | UiTimelineItemKind::ReadMarker
+            );
             let was_prev_divider = prev_was_divider;
             prev_was_divider = is_divider;
 
@@ -155,7 +169,6 @@ fn TimeLine() -> impl IntoView {
                 processed_items.pop();
                 continue;
             }
-
 
             let is_event = if let UiTimelineItemKind::Event(ev) = &item.kind {
                 matches!(ev.content, EventContent::MsgLike(_))
@@ -206,7 +219,10 @@ fn TimeLine() -> impl IntoView {
 
         if let Some((last_sig, _)) = processed_items.last()
             && let Some(last_item) = last_sig.try_get_untracked()
-            && matches!(last_item.kind, UiTimelineItemKind::DateDivider(_) | UiTimelineItemKind::ReadMarker)
+            && matches!(
+                last_item.kind,
+                UiTimelineItemKind::DateDivider(_) | UiTimelineItemKind::ReadMarker
+            )
         {
             processed_items.pop();
         }
@@ -1181,7 +1197,13 @@ fn room_info_screen(node: RoomNode) -> AnyView {
         RoomNode::VoiceChannel(_) => "voice channel",
         _ => "room",
     };
-    let avatar = render_url_icon(node.avatar_url(), node.name(), "64px", node.color(), "[25%]");
+    let avatar = render_url_icon(
+        node.avatar_url(),
+        node.name(),
+        "64px",
+        node.color(),
+        "[25%]",
+    );
 
     view! {
         <div class="flex flex-col justify-center">

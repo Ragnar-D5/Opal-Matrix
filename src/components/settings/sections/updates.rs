@@ -2,12 +2,12 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_md::{Markdown, MarkdownOptions};
 use phosphor_leptos::{
-    Icon, IconWeight, CHECK_CIRCLE, DOWNLOAD, INFO, SPINNER, WARNING, WARNING_DIAMOND,
+    CHECK_CIRCLE, DOWNLOAD, INFO, Icon, IconWeight, SPINNER, WARNING, WARNING_DIAMOND,
 };
 use shared::api::{UpdateDownloadProgress, UpdateStatus};
 
-use crate::components::settings::sections::{Spacer, SubSection, Toggle};
 use crate::components::settings::Settings;
+use crate::components::settings::sections::{Spacer, SubSection, Toggle};
 use crate::tauri_functions::{
     check_for_update, download_update, get_version, get_versions, install_update, recheck_update,
 };

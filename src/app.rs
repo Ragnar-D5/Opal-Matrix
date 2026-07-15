@@ -1,4 +1,4 @@
-use crate::components::authentication::{get_stuff_after_login, Authentication};
+use crate::components::authentication::{Authentication, get_stuff_after_login};
 use crate::components::loading::Loading;
 use crate::components::previews::ImageLightbox;
 use crate::components::settings::Settings;
@@ -24,12 +24,12 @@ use wasm_bindgen::prelude::*;
 use web_sys::HtmlImageElement;
 
 use crate::components::{
+    SystemButtons,
     chat::Chat,
     overlays::emoji_picker::{EmojiPickerPortal, EmojiPickerState},
     overlays::gif_picker::{GifPickerPortal, GifPickerState},
     overlays::profile_card::{ProfileCardPortal, ProfileCardState},
     sidebar::Sidebar,
-    SystemButtons,
 };
 use crate::hooks::{setup_update_effect, use_tauri_event};
 use crate::redact_mode::{self, REDACTION_ROOT_SELECTOR};

@@ -1,13 +1,13 @@
 use leptos::{prelude::*, task::spawn_local};
-use phosphor_leptos::{Icon, IconWeight, DOWNLOAD_SIMPLE, X};
+use phosphor_leptos::{DOWNLOAD_SIMPLE, Icon, IconWeight, X};
 use shared::timeline::RichTextSpan;
 use shared::timeline::UiMediaSource;
 use wasm_bindgen::JsCast;
 
 use crate::app::format_bytes;
-use crate::components::user_profile::MemberProfileExt;
 use crate::components::FloatingTile;
 use crate::components::SystemButtons;
+use crate::components::user_profile::MemberProfileExt;
 use crate::{
     state::{AppState, ProfileStore},
     tauri_functions::{fetch_preview_data, save_file_to_picked_dest},

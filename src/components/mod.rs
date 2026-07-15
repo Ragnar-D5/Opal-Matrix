@@ -1,6 +1,6 @@
 use csscolorparser::Color;
 use leptos::prelude::*;
-use phosphor_leptos::{Icon, IconWeight, CARET_DOWN, CARET_UP, HEADPHONES, MICROPHONE, X};
+use phosphor_leptos::{CARET_DOWN, CARET_UP, HEADPHONES, Icon, IconWeight, MICROPHONE, X};
 use shared::ColorExt;
 use web_sys::MouseEvent;
 

@@ -3,8 +3,8 @@ use leptos::task::spawn_local;
 use send_wrapper::SendWrapper;
 use serde::de::DeserializeOwned;
 use shared::api::events::TauriEvent;
-use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
+use wasm_bindgen::prelude::*;
 
 use log::error;
 

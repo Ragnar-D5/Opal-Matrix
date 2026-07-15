@@ -1,9 +1,9 @@
 use leptos::prelude::*;
 
 use crate::components::settings::{
+    Settings,
     definition::system_message_modes,
     sections::{EnumToggle, Spacer, SubSection, Toggle},
-    Settings,
 };
 
 pub fn render_chats_section() -> AnyView {

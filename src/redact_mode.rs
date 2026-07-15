@@ -1,10 +1,10 @@
 use std::cell::{Cell, RefCell};
 use std::time::Duration;
 
-use leptos::prelude::{set_interval_with_handle, IntervalHandle};
+use leptos::prelude::{IntervalHandle, set_interval_with_handle};
 use leptos::tachys::dom::document;
-use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
+use wasm_bindgen::prelude::*;
 use web_sys::{Element, Node, NodeFilter, Text};
 
 const REDACTED_CLASS: &str = "redacted";

@@ -236,9 +236,7 @@ fn extend_run(lower: &str, end: usize, word: &str) -> Option<usize> {
     }
 
     let after = end + whitespace;
-    lower[after..]
-        .starts_with(word)
-        .then(|| after + word.len())
+    lower[after..].starts_with(word).then(|| after + word.len())
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -614,7 +612,7 @@ impl EventContent {
                 sender_id: sender,
                 event_id: Some(id),
                 content: self,
-                receipts: Vec::new()
+                receipts: Vec::new(),
             })),
         }
     }

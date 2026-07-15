@@ -1,6 +1,6 @@
 use leptos::prelude::*;
 use leptos_use::use_resize_observer;
-use shared::{sidebar::RoomNode, ColorExt};
+use shared::{ColorExt, sidebar::RoomNode};
 use web_sys::ResizeObserverEntry;
 
 use crate::{

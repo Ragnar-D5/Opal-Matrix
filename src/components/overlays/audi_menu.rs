@@ -1,6 +1,6 @@
 use leptos::{ev, html::Button, prelude::*};
 use leptos_use::use_event_listener;
-use phosphor_leptos::{Icon, IconWeight, CARET_RIGHT, GEAR, HEADPHONES, MICROPHONE};
+use phosphor_leptos::{CARET_RIGHT, GEAR, HEADPHONES, Icon, IconWeight, MICROPHONE};
 use wasm_bindgen::JsCast;
 
 use crate::{

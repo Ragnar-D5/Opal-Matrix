@@ -2,8 +2,8 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use nucleo_matcher::{Config, Matcher, Utf32Str};
 use shared::api::events::{LogEntry, TauriEvent};
-use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
+use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 
 use crate::app::CurrentWindow;
@@ -73,10 +73,12 @@ static LEVELS: [Level; 5] = [
 ];
 
 fn insert_entry(entries: &RwSignal<Vec<LogEntry>>, entry: LogEntry) {
-    entries.update(|list| match list.binary_search_by_key(&entry.seq, |e| e.seq) {
-        Ok(_) => {}
-        Err(pos) => list.insert(pos, entry),
-    });
+    entries.update(
+        |list| match list.binary_search_by_key(&entry.seq, |e| e.seq) {
+            Ok(_) => {}
+            Err(pos) => list.insert(pos, entry),
+        },
+    );
 }
 
 fn level_index(level: &str) -> usize {

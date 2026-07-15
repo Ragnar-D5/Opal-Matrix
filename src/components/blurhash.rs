@@ -9,12 +9,16 @@ pub fn Blurhash(hash: String) -> impl IntoView {
     let canvas_ref: NodeRef<Canvas> = NodeRef::new();
 
     Effect::new(move |_| {
-        let Some(canvas) = canvas_ref.get() else { return };
+        let Some(canvas) = canvas_ref.get() else {
+            return;
+        };
 
         canvas.set_width(32);
         canvas.set_height(32);
 
-        let Ok(pixels) = decode(&hash, 32, 32, 1.0) else { return };
+        let Ok(pixels) = decode(&hash, 32, 32, 1.0) else {
+            return;
+        };
 
         let ctx = canvas
             .get_context("2d")

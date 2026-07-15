@@ -3,11 +3,11 @@ use std::collections::HashMap;
 use icondata as i;
 use leptos::{html::Button, portal::Portal, prelude::*};
 use leptos_icons::Icon as LIcon;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use shared::settings::EnumVariants;
 use web_sys::{KeyboardEvent, ScrollBehavior, ScrollIntoViewOptions, ScrollLogicalPosition};
 
-use phosphor_leptos::{Icon, CARET_DOWN, CHECK, QUESTION};
+use phosphor_leptos::{CARET_DOWN, CHECK, Icon, QUESTION};
 
 use crate::components::settings::MatrixSettingField;
 

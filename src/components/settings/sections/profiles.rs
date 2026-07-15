@@ -1,5 +1,5 @@
 use leptos::prelude::*;
-use phosphor_leptos::{Icon, IconWeight, CAMERA, CARET_DOWN, PAINT_BRUSH};
+use phosphor_leptos::{CAMERA, CARET_DOWN, Icon, IconWeight, PAINT_BRUSH};
 use web_sys::HtmlButtonElement;
 
 use shared::get_color;

@@ -5,7 +5,10 @@ use log::error;
 use serde_json::json;
 use shared::{
     account_data::{Breadcrumbs, ServerOrder},
-    api::{AudioDeviceInfos, SearchParameters, UpdateDownloadProgress, UpdateStatus, events::RecentEmojies},
+    api::{
+        AudioDeviceInfos, SearchParameters, UpdateDownloadProgress, UpdateStatus,
+        events::RecentEmojies,
+    },
     profile::{CustomProperties, MemberProfile, PresenceInfo, RoomProfile, UserProfile},
     sidebar::{
         DmList, NotificationCounts, RoomNode, ServerList, ServerRoomNode, SingleList,
@@ -633,7 +636,11 @@ impl AppState {
         let Some(server) = self.get_room(server_id).and_then(|s| s.as_server()) else {
             return vec![];
         };
-        server.children.iter().filter_map(|room_id| self.get_room(room_id)).collect()
+        server
+            .children
+            .iter()
+            .filter_map(|room_id| self.get_room(room_id))
+            .collect()
     }
 }
 

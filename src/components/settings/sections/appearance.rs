@@ -1,8 +1,8 @@
 use leptos::prelude::*;
 
 use crate::components::settings::{
-    sections::{Slider, Spacer},
     Settings,
+    sections::{Slider, Spacer},
 };
 
 pub fn render_appearance_section() -> AnyView {

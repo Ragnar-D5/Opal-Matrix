@@ -20,7 +20,7 @@ use toml_edit::DocumentMut;
 
 use bytes::Bytes;
 use log::info;
-use tauri::{command, AppHandle, Emitter, Url};
+use tauri::{AppHandle, Emitter, Url, command};
 use tauri::{Manager, State, WebviewUrl, WebviewWindowBuilder};
 
 pub mod builder;
@@ -39,7 +39,7 @@ pub const APP_NAME: &str = "opal-matrix";
 use tauri_plugin_notification::{NotificationExt, PermissionState};
 
 use crate::builder::{add_invoke_handler, register_mxc_uri, setup_builder};
-use crate::matrix_api::keyring::{self, get_or_create_store_key, init_keyring, StoredSession};
+use crate::matrix_api::keyring::{self, StoredSession, get_or_create_store_key, init_keyring};
 use crate::state::{AppState, TimelineManager};
 use crate::sync::attach_callbacks;
 

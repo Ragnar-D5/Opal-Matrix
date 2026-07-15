@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use macros::TauriEvent;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use uuid::Uuid;
 
 use crate::{

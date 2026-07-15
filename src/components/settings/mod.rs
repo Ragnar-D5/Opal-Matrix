@@ -4,20 +4,20 @@ use icondata as i;
 use leptos::{portal::Portal, prelude::*};
 use leptos_icons::Icon as LIcon;
 use phosphor_leptos::{
-    Icon, IconWeight, IconWeightData, CARET_DOUBLE_RIGHT, MAGNIFYING_GLASS, PENCIL_SIMPLE, QUESTION,
+    CARET_DOUBLE_RIGHT, Icon, IconWeight, IconWeightData, MAGNIFYING_GLASS, PENCIL_SIMPLE, QUESTION,
 };
 use shared::{api::UpdateStatus, settings::SettingsSection};
 use web_sys::{KeyboardEvent, ScrollBehavior, ScrollIntoViewOptions, ScrollLogicalPosition};
 
 use crate::{
     components::{
+        CloseButton, FloatingTile,
         settings::sections::{
             appearance::render_appearance_section, chats::render_chats_section,
             general::render_general_section, profiles::render_profile_section,
             updates::render_update_section,
         },
         user_profile::MemberProfileExt,
-        CloseButton, FloatingTile,
     },
     state::{AppState, ProfileStore},
 };

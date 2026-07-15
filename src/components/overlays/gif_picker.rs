@@ -7,7 +7,7 @@ use leptos::{
     prelude::*,
     task::spawn_local,
 };
-use leptos_use::{use_intersection_observer, UseIntersectionObserverReturn};
+use leptos_use::{UseIntersectionObserverReturn, use_intersection_observer};
 use phosphor_leptos::{Icon, IconWeight, MAGNIFYING_GLASS, SMILEY_SAD};
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;

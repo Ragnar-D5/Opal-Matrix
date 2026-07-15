@@ -13,9 +13,9 @@ use shared::{
 use crate::components::FloatingTile;
 use crate::{
     components::{
-        chat::{messages::render_timeline_item, JumpTarget},
+        chat::{JumpTarget, messages::render_timeline_item},
         presence::PresenceBadge,
-        user_profile::{render_user_profile_card, MemberProfileExt},
+        user_profile::{MemberProfileExt, render_user_profile_card},
     },
     state::{AppState, MainView, ProfileStore},
 };

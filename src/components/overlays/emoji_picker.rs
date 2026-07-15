@@ -5,8 +5,8 @@ use std::rc::Rc;
 use leptos::{html::Input, prelude::*};
 use nucleo_matcher::{Config, Matcher, Utf32Str};
 use phosphor_leptos::{
-    Icon, IconWeight, IconWeightData, AIRPLANE, CARET_DOWN, CUBE, FLAG, GAME_CONTROLLER, HAMBURGER,
-    HEART, MAGNIFYING_GLASS, PERSON, PLANT, SMILEY, SMILEY_SAD,
+    AIRPLANE, CARET_DOWN, CUBE, FLAG, GAME_CONTROLLER, HAMBURGER, HEART, Icon, IconWeight,
+    IconWeightData, MAGNIFYING_GLASS, PERSON, PLANT, SMILEY, SMILEY_SAD,
 };
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;

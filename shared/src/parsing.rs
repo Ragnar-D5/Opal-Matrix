@@ -27,29 +27,30 @@ fn walk_node(node: NodeRef<'_, Node>, spans: &mut Vec<RichTextSpan>) {
                     let display_string = extract_inner_text(node);
 
                     let span = if let Some(starting_char) = id_str.chars().next() {
-                            match starting_char {
-                                '#' => RichTextSpan::RoomMention {
-                                    room_id: RoomIdFormat::Alias(id_str.to_string()),
+                        match starting_char {
+                            '#' => RichTextSpan::RoomMention {
+                                room_id: RoomIdFormat::Alias(id_str.to_string()),
+                                display_name: display_string,
+                            },
+                            '!' => RichTextSpan::RoomMention {
+                                room_id: RoomIdFormat::Id(id_str.to_string()),
+                                display_name: display_string,
+                            },
+                            '@' => {
+                                let user_id = extract_mxid(id_str);
+                                RichTextSpan::UserMention {
+                                    user_id,
                                     display_name: display_string,
-                                },
-                                '!' => RichTextSpan::RoomMention {
-                                    room_id: RoomIdFormat::Id(id_str.to_string()),
-                                    display_name: display_string,
-                                },
-                                '@' => {                            let user_id = extract_mxid(id_str);
-                                    RichTextSpan::UserMention {
-                                        user_id,
-                                        display_name: display_string,
-                                    }
-                                }
-                                _ => {
-                                    spans.push(RichTextSpan::Link {
-                                        url: href.to_string(),
-                                        text: Some(display_string),
-                                    });
-                                    return;
                                 }
                             }
+                            _ => {
+                                spans.push(RichTextSpan::Link {
+                                    url: href.to_string(),
+                                    text: Some(display_string),
+                                });
+                                return;
+                            }
+                        }
                     } else {
                         RichTextSpan::Link {
                             url: href.to_string(),

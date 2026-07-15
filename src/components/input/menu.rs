@@ -1,10 +1,10 @@
 use crate::{
     components::{
+        CloseButton,
         input::{get_caret_position, get_node_and_offset},
         presence::PresenceBadge,
         text::RichTextExt,
         user_profile::{MemberProfileExt, RoomProfileExt},
-        CloseButton,
     },
     state::{AppState, ProfileStore},
     tauri_functions::get_commands,
