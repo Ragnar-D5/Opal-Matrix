@@ -665,12 +665,24 @@ pub async fn check_for_update_backend(
     *state.update_status.write().await = UpdateStatus::CheckingForUpdates;
     send_event(&handle, &UpdateStatus::CheckingForUpdates);
 
-    let update = handle.updater()?.check().await?;
+    let update = match async { handle.updater()?.check().await }.await {
+        Ok(update) => update,
+        Err(e) => {
+            log::error!("Failed to check for update: {e}");
+            let new_state = UpdateStatus::Error {
+                short: "Failed to check for update".to_string(),
+                long: format!("Failed to check for update: {e}"),
+            };
+            *state.update_status.write().await = new_state.clone();
+            send_event(&handle, &new_state);
+            return Ok(());
+        }
+    };
 
     state.update.write().await.clone_from(&update);
 
     let new_status = if let Some(update) = &update {
-        send_notification(
+        let notification_result = send_notification(
             &handle,
             format!(
                 "Update Available ({} ⟶ {})",
@@ -682,7 +694,10 @@ pub async fn check_for_update_backend(
                 .unwrap_or("Click to open the app".to_string()),
             None,
         )
-        .await?;
+        .await;
+        if let Err(e) = notification_result {
+            log::error!("Failed to send update notification: {e:?}");
+        }
         UpdateStatus::UpdateAvailable(info_from_update(update))
     } else {
         UpdateStatus::UpToDate
