@@ -5,3 +5,4 @@ pub(crate) mod matrixrtc;
 pub(crate) mod media;
 pub(crate) mod previews;
 pub(crate) mod profile;
+pub(crate) mod rooms;

@@ -114,7 +114,7 @@ fn reply_preview_spans(content: &TimelineItemContent) -> Vec<RichTextSpan> {
                 MessageType::Text(content) => {
                     let formatted = content.formatted.clone();
 
-                    if let Some(formatted) = formatted {
+                    let result = if let Some(formatted) = formatted {
                         match formatted.format {
                             MessageFormat::Html => {
                                 parse_html_to_spans(&formatted.body, &content.body)
@@ -123,7 +123,9 @@ fn reply_preview_spans(content: &TimelineItemContent) -> Vec<RichTextSpan> {
                         }
                     } else {
                         parse_plain_text_to_spans(&content.body)
-                    }
+                    };
+
+                    check_empty(result)
                 }
                 MessageType::Video(content) => {
                     vec![RichTextSpan::Plain(content.filename().to_string())]
@@ -323,6 +325,18 @@ fn event_send_state_to_ui(state: &EventSendState) -> EventState {
     }
 }
 
+pub fn check_empty(spans: Vec<RichTextSpan>) -> Vec<RichTextSpan> {
+    if spans.is_empty()
+        || spans == vec![RichTextSpan::Plain("".to_string())]
+        || spans == vec![RichTextSpan::Plain("\n".to_string())]
+        || spans == vec![RichTextSpan::Plain(" ".to_string())]
+        || spans == vec![RichTextSpan::Newline]
+    {
+        return vec![RichTextSpan::Empty];
+    }
+    spans
+}
+
 pub fn timeline_item_content_to_ui(
     value: &TimelineItemContent,
     media_store: &mut HashMap<Uuid, MediaSource>,
@@ -438,7 +452,7 @@ pub fn timeline_item_content_to_ui(
                                 parse_plain_text_to_spans(&content.body)
                             };
 
-                            (spans, UiMessageType::Text)
+                            (check_empty(spans), UiMessageType::Text)
                         }
                         MessageType::Video(content) => {
                             let info = content.info.clone().unwrap_or_default();

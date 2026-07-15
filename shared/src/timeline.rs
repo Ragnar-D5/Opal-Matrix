@@ -141,6 +141,7 @@ pub enum RichTextSpan {
     },
     Newline,
     Highlight(String),
+    Empty,
 }
 
 /// Splits the `Plain` spans so that every case-insensitive occurrence of one

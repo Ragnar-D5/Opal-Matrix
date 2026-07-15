@@ -64,6 +64,11 @@ pub async fn commit_message(
 
     let (body, formatted_body) = process_string_to_message(&html, &mut mentions);
 
+    if body.is_empty() || &body == "\n" {
+        log::warn!("Body is empty, not committing message");
+        return Ok(());
+    }
+
     if let Some(reply_to_id) = replies_to {
         let content = if let Some(formatted_body) = formatted_body {
             RoomMessageEventContentWithoutRelation::text_html(body, formatted_body)

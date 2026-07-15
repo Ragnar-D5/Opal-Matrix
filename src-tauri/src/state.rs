@@ -7,8 +7,12 @@ use livekit::webrtc::{
     prelude::{AudioFrame, AudioSourceOptions},
 };
 use matrix_sdk::{
-    Room,
-    ruma::{EventId, OwnedEventId, OwnedRoomId, events::room::MediaSource},
+    Client, Room,
+    ruma::{
+        EventId, OwnedEventId, OwnedRoomId,
+        directory::{PublicRoomsChunk, RoomTypeFilter},
+        events::room::MediaSource,
+    },
 };
 use matrix_sdk_ui::{
     Timeline,
@@ -34,6 +38,7 @@ use shared::api::{UpdateStatus, events::LogEntry};
 use tauri::{
     AppHandle,
     async_runtime::{Mutex, RwLock},
+    ipc::Channel,
 };
 use tokio::{
     sync::mpsc::{self, UnboundedReceiver, UnboundedSender},
@@ -42,7 +47,9 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
-use crate::{TauriError, frontend::audio::emit_devices_update};
+use crate::{
+    TauriError, frontend::audio::emit_devices_update, matrix_api::rooms::RoomDirectorySearch,
+};
 
 #[derive(Default)]
 pub struct AppState {
@@ -725,5 +732,34 @@ impl AudioManager {
                 }
             }
         });
+    }
+}
+
+#[derive(Default)]
+pub struct RoomSearchManager {
+    searches: RwLock<HashMap<Uuid, Arc<RwLock<RoomDirectorySearch>>>>,
+}
+
+impl RoomSearchManager {
+    pub async fn get(&self, id: Uuid) -> Option<Arc<RwLock<RoomDirectorySearch>>> {
+        self.searches.read().await.get(&id).cloned()
+    }
+
+    pub async fn create(
+        &self,
+        id: Uuid,
+        client: Client,
+        room_types: Vec<RoomTypeFilter>,
+        channel: Channel<Vec<PublicRoomsChunk>>,
+    ) -> Arc<RwLock<RoomDirectorySearch>> {
+        let search = Arc::new(RwLock::new(RoomDirectorySearch::new(
+            client, room_types, channel,
+        )));
+        self.searches.write().await.insert(id, search.clone());
+        search
+    }
+
+    pub async fn remove(&self, id: Uuid) {
+        self.searches.write().await.remove(&id);
     }
 }

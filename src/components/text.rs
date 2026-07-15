@@ -41,6 +41,10 @@ pub trait RichTextExt {
 impl RichTextExt for RichTextSpan {
     fn render(self, store: ProfileStore, room_id: &RoomId) -> AnyView {
         match self {
+            RichTextSpan::Empty => {
+                view! { <span class="text-token cursor-text italic text-muted text-sm select-none">"Empty"</span> }.into_any()
+            }
+
             RichTextSpan::Plain(text) => {
                 view! { <span class="text-token cursor-text">{text}</span> }.into_any()
             }
@@ -147,6 +151,9 @@ pub fn richt_text_spans_to_html(
             .iter()
             .map(|span| {
                 match span.clone() {
+                    RichTextSpan::Empty => {
+                        "".to_string()
+                    }
                     RichTextSpan::Plain(text) | RichTextSpan::Highlight(text) => {
                         text
                     }

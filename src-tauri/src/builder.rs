@@ -31,8 +31,8 @@ use crate::matrix_api::media::{
     get_member_avatar, get_room_avatar, get_user_avatar,
 };
 use crate::state::{
-    AppState, AudioManager, LiveKitRoomManager, LogBuffer, MediaManager, TaskManager,
-    TimelineManager,
+    AppState, AudioManager, LiveKitRoomManager, LogBuffer, MediaManager, RoomSearchManager,
+    TaskManager, TimelineManager,
 };
 use crate::{
     BrandColorsMap, TauriError, detect_content_type, diff_settings, send_event, send_event_logless,
@@ -101,6 +101,10 @@ pub fn add_invoke_handler(builder: Builder<Wry>) -> Builder<Wry> {
         matrix_api::profile::save_sonic_signature,
         matrix_api::matrixrtc::join_matrixrtc_call,
         matrix_api::matrixrtc::leave_matrixrtc_call,
+        matrix_api::rooms::open_room_search,
+        matrix_api::rooms::search_room_directory,
+        matrix_api::rooms::load_more_room_search_results,
+        matrix_api::rooms::close_room_search,
         // settings
         settings::get_setting,
         settings::set_setting,
@@ -614,6 +618,7 @@ pub fn setup_builder(builder: Builder<Wry>) -> Builder<Wry> {
         app.manage(MediaManager::default());
         app.manage(LiveKitRoomManager::default());
         app.manage(AudioManager::new(app.handle().clone()));
+        app.manage(RoomSearchManager::default());
 
         #[cfg(not(target_os = "android"))]
         let main_window = app
