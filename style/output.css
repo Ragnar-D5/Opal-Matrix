@@ -2845,6 +2845,11 @@
       border-color: var(--accent-color);
     }
   }
+  .focus\:border-\(--focus-color\) {
+    &:focus {
+      border-color: var(--focus-color);
+    }
+  }
   .focus\:bg-\(--ui-floating-hover-bg\) {
     &:focus {
       background-color: var(--ui-floating-hover-bg);

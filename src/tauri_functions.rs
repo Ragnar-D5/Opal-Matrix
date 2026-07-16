@@ -1,6 +1,6 @@
 use klipy::{MediaItem, Page};
 use leptos::task::spawn_local;
-use ruma::{EventId, OwnedEventId, OwnedRoomId, RoomId, UserId};
+use ruma::{EventId, OwnedEventId, OwnedRoomId, RoomId, UserId, directory::RoomTypeFilter};
 use serde_json::json;
 use shared::{
     account_data::ServerOrder,
@@ -598,4 +598,62 @@ pub async fn get_version(version: &str) -> Result<String, String> {
         .into();
 
     serde_json::from_str(&json_string).map_err(|e| format!("Failed to parse result: {:?}", e))
+}
+
+pub async fn open_room_search(
+    id: Uuid,
+    room_types: Vec<RoomTypeFilter>,
+    channel: &Channel,
+) -> Result<(), String> {
+    let args = serde_wasm_bindgen::to_value(&json!({ "id": id, "room_types": room_types }))
+        .map_err(|e| format!("Failed to serialize request: {:?}", e))?;
+
+    call_tauri_with_channel("open_room_search", args, channel)
+        .await
+        .map_err(|e| format!("Tauri call failed: {:?}", e))?;
+
+    Ok(())
+}
+
+/// Returns `true` once the search has reached the last page of results.
+pub async fn search_room_directory(id: Uuid, term: Option<String>) -> Result<bool, String> {
+    let args = serde_wasm_bindgen::to_value(&json!({ "id": id, "term": term }))
+        .map_err(|e| format!("Failed to serialize request: {:?}", e))?;
+
+    let result = call_tauri("search_room_directory", args)
+        .await
+        .map_err(|e| format!("Tauri call failed: {:?}", e))?;
+
+    let json_string: String = js_sys::JSON::stringify(&result)
+        .map_err(|e| format!("Failed to stringify result: {:?}", e))?
+        .into();
+
+    serde_json::from_str(&json_string).map_err(|e| format!("Failed to parse result: {:?}", e))
+}
+
+/// Returns `true` once the search has reached the last page of results.
+pub async fn load_more_room_search(id: Uuid) -> Result<bool, String> {
+    let args = serde_wasm_bindgen::to_value(&json!({ "id": id }))
+        .map_err(|e| format!("Failed to serialize request: {:?}", e))?;
+
+    let result = call_tauri("load_more_room_search_results", args)
+        .await
+        .map_err(|e| format!("Tauri call failed: {:?}", e))?;
+
+    let json_string: String = js_sys::JSON::stringify(&result)
+        .map_err(|e| format!("Failed to stringify result: {:?}", e))?
+        .into();
+
+    serde_json::from_str(&json_string).map_err(|e| format!("Failed to parse result: {:?}", e))
+}
+
+pub async fn close_room_search(id: Uuid) -> Result<(), String> {
+    let args = serde_wasm_bindgen::to_value(&json!({ "id": id }))
+        .map_err(|e| format!("Failed to serialize request: {:?}", e))?;
+
+    call_tauri("close_room_search", args)
+        .await
+        .map_err(|e| format!("Tauri call failed: {:?}", e))?;
+
+    Ok(())
 }

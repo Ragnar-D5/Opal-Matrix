@@ -19,6 +19,7 @@ use crate::frontend::sidebar::{
 };
 use crate::matrix_api::account_data::on_recent_emoji_update;
 use crate::matrix_api::matrixrtc::handle_call_member_change;
+use crate::matrix_api::profile::send_presences;
 use crate::send_event;
 use crate::settings::handle_account_data_event;
 use crate::state::AppState;
@@ -128,6 +129,7 @@ pub async fn attach_callbacks(
     let state_sync_clone = state.clone();
     let sync_task = tokio::spawn(async move {
         let sync_settings = SyncSettings::default()
+            .ignore_timeout_on_first_sync(true)
             .set_presence(PresenceState::Online)
             .timeout(std::time::Duration::from_secs(30));
 
@@ -148,9 +150,11 @@ pub async fn attach_callbacks(
 
         let mut prev_dm_ids = compute_dm_order(&client_sync_clone, &dm_map);
 
+        let rooms = client_sync_clone.rooms();
+
+        send_presences(&client_sync_clone, &rooms, &handle_clone).await;
         let mut known_room_map: HashMap<OwnedRoomId, RoomNode> = futures_util::stream::iter(
-            client_sync_clone
-                .rooms()
+            rooms
                 .into_iter()
                 .filter(|room| !matches!(room.state(), RoomState::Banned | RoomState::Left)),
         )

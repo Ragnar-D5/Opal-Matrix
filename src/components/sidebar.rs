@@ -1,16 +1,19 @@
 use phosphor_leptos::{
-    BUG, CARET_DOWN, CARET_RIGHT, Icon, IconData, IconWeight, QUESTION_MARK, SPEAKER_HIGH,
+    BUG, CARET_DOWN, CARET_RIGHT, Icon, IconData, IconWeight, PLUS, QUESTION_MARK, SPEAKER_HIGH,
 };
 use ruma::{OwnedRoomId, OwnedUserId};
 use shared::{
     profile::MemberProfile,
     sidebar::{ServerRoomNode, UserDevice},
 };
+use wasm_bindgen::JsCast;
+use web_sys::Element;
 
 use crate::{
     components::{
         AudioMenu, DeafenMenu, FloatingTile, MuteMenu,
         logo::Logo,
+        overlays::space_search::{SpaceSearchState, open_space_search},
         presence::PresenceBadge,
         settings::SettingsIcon,
         user_profile::{MemberProfileExt, RoomNodeExt, render_url_icon},
@@ -705,6 +708,7 @@ fn render_room(room: RoomNode) -> AnyView {
 #[component]
 pub fn Sidebar() -> impl IntoView {
     let state: AppState = expect_context();
+    let space_search_state: SpaceSearchState = expect_context();
 
     let dragged_server_id: RwSignal<Option<OwnedRoomId>> = RwSignal::new(None);
 
@@ -899,6 +903,16 @@ pub fn Sidebar() -> impl IntoView {
                                 .into_any()
                         }
                     />
+
+                    <button
+                        class="server-btn flex items-center justify-center w-10 h-10 rounded-[25%] cursor-pointer transition-colors ui-solid-bg hover:bg-(--ui-solid-hover-bg) border border-(--tile-border-color) text-dim hover:text-(--accent-color) mt-1 flex-shrink-0"
+                        on:click=move |ev| {
+                            let anchor: Element = ev.target().unwrap().unchecked_into();
+                            open_space_search(&anchor, space_search_state);
+                        }
+                    >
+                        <Icon icon=PLUS size="55%" weight=IconWeight::Bold />
+                    </button>
                 </div>
                 <div class="relative flex items-center justify-center group w-full border-t border-(--tile-border-color) pt-3 pb-3 flex-shrink-0">
                     <div

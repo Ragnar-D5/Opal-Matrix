@@ -1,38 +1,19 @@
-use std::collections::HashMap;
-
-use matrix_sdk::ruma::{events::presence::PresenceEvent, presence::PresenceState, serde::Raw};
-use shared::profile::{PresenceInfo, PresenceStatus};
+use matrix_sdk::ruma::{events::presence::PresenceEvent, serde::Raw};
+use shared::api::events::PresenceUpdate;
 use tauri::AppHandle;
 
 use crate::send_event;
 
-fn presence_to_ui(state: PresenceState) -> PresenceStatus {
-    match state {
-        PresenceState::Online => PresenceStatus::Online,
-        PresenceState::Offline => PresenceStatus::Offline,
-        PresenceState::Unavailable => PresenceStatus::Unavailable,
-        _ => PresenceStatus::Offline,
-    }
-}
-
-pub fn handle_presences(presence_events: &Vec<Raw<PresenceEvent>>, app_handle: &AppHandle) {
-    let mut presence_batch = HashMap::new();
-
-    for raw_event in presence_events {
-        if let Ok(event) = raw_event.deserialize() {
-            let user_id = event.sender.to_string();
-
-            let info = PresenceInfo {
-                status_msg: event.content.status_msg.clone(),
-                status: presence_to_ui(event.content.presence),
-                last_active_ago: event.content.last_active_ago.map(|v| v.into()),
-            };
-
-            presence_batch.insert(user_id, info);
-        } else {
-            log::warn!("Failed to deserialize a presence event");
-        }
-    }
+pub fn handle_presences(presence_events: &[Raw<PresenceEvent>], app_handle: &AppHandle) {
+    let presence_batch: PresenceUpdate = presence_events
+        .iter()
+        .filter_map(|raw| {
+            raw.deserialize()
+                .map_err(|e| log::error!("Failed to deserialize a presence event: {e}"))
+                .map(|event| (event.sender, event.content.into()))
+                .ok()
+        })
+        .collect();
 
     if !presence_batch.is_empty() {
         send_event(app_handle, &presence_batch);

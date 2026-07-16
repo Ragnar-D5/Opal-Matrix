@@ -30,6 +30,7 @@ use crate::components::{
     overlays::emoji_picker::{EmojiPickerPortal, EmojiPickerState},
     overlays::gif_picker::{GifPickerPortal, GifPickerState},
     overlays::profile_card::{ProfileCardPortal, ProfileCardState},
+    overlays::space_search::{SpaceSearchPortal, SpaceSearchState},
     sidebar::Sidebar,
 };
 use crate::hooks::{call_tauri_no_args, setup_update_effect, use_tauri_event};
@@ -460,6 +461,9 @@ fn HomePage() -> impl IntoView {
     let profile_card_state = ProfileCardState::default();
     provide_context(profile_card_state);
 
+    let space_search_state = SpaceSearchState::default();
+    provide_context(space_search_state);
+
     view! {
         <div
             class="bg-transparent flex h-screen overflow-hidden p-[var(--gap)] gap-[var(--gap)] relative"
@@ -473,6 +477,7 @@ fn HomePage() -> impl IntoView {
             <EmojiPickerPortal />
             <GifPickerPortal />
             <ProfileCardPortal />
+            <SpaceSearchPortal />
         </div>
     }
 }

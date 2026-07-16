@@ -1,6 +1,9 @@
 use csscolorparser::Color;
 use macros::TauriEvent;
-use ruma::{OwnedRoomId, OwnedUserId, RoomId, UserId};
+use ruma::{
+    OwnedRoomId, OwnedUserId, RoomId, UserId, events::presence::PresenceEventContent,
+    presence::PresenceState,
+};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -13,6 +16,16 @@ pub enum PresenceStatus {
     Offline,
     Unavailable,
     Busy,
+}
+
+impl From<PresenceState> for PresenceStatus {
+    fn from(state: PresenceState) -> Self {
+        match state {
+            PresenceState::Online => PresenceStatus::Online,
+            PresenceState::Unavailable => PresenceStatus::Unavailable,
+            PresenceState::Offline | _ => PresenceStatus::Offline,
+        }
+    }
 }
 
 impl std::fmt::Display for PresenceStatus {
@@ -35,6 +48,16 @@ pub struct PresenceInfo {
     pub status: PresenceStatus,
     pub status_msg: Option<String>,
     pub last_active_ago: Option<u64>,
+}
+
+impl From<PresenceEventContent> for PresenceInfo {
+    fn from(content: PresenceEventContent) -> Self {
+        Self {
+            status: content.presence.into(),
+            status_msg: content.status_msg,
+            last_active_ago: None,
+        }
+    }
 }
 
 impl PresenceInfo {

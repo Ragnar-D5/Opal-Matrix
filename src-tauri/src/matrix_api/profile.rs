@@ -1,7 +1,10 @@
-use std::sync::{Arc, Mutex};
+use std::{
+    collections::HashSet,
+    sync::{Arc, Mutex},
+};
 
 use matrix_sdk::{
-    Client,
+    Client, Room, RoomMemberships,
     event_handler::Ctx,
     ruma::{
         OwnedUserId,
@@ -9,7 +12,10 @@ use matrix_sdk::{
         profile::{ProfileFieldName, ProfileFieldValue},
     },
 };
-use shared::profile::{CustomProperties, UserProfile};
+use shared::{
+    api::events::PresenceUpdate,
+    profile::{CustomProperties, UserProfile},
+};
 use tauri::{AppHandle, State, command};
 use tokio::sync::RwLock;
 
@@ -256,4 +262,43 @@ pub async fn save_sonic_signature(
     send_user_to_frontend(&handle, &client).await?;
 
     Ok(())
+}
+
+pub async fn send_presences(client: &Client, rooms: &[Room], handle: &AppHandle) {
+    let mut user_ids: HashSet<OwnedUserId> = HashSet::new();
+
+    for room in rooms {
+        let members = match room.members(RoomMemberships::all()).await {
+            Ok(members) => members,
+            Err(e) => {
+                log::warn!("Failed to get members for room: {}", e);
+                continue;
+            }
+        };
+        let ids: HashSet<OwnedUserId> = members.iter().map(|m| m.user_id().to_owned()).collect();
+        user_ids.extend(ids);
+    }
+
+    let user_ids: Vec<OwnedUserId> = user_ids.into_iter().collect();
+    let presences = match client.state_store().get_presence_events(&user_ids).await {
+        Ok(presences) => presences,
+        Err(e) => {
+            log::warn!("Failed to get presence events: {}", e);
+            return;
+        }
+    };
+
+    let presence_batch: PresenceUpdate = presences
+        .iter()
+        .filter_map(|raw| {
+            raw.deserialize()
+                .map_err(|e| log::error!("Failed to deserialize a presence event: {e}"))
+                .map(|event| (event.sender, event.content.into()))
+                .ok()
+        })
+        .collect();
+
+    if !presence_batch.is_empty() {
+        send_event(handle, &presence_batch);
+    }
 }
