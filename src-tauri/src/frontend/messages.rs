@@ -1,9 +1,4 @@
-use std::{
-    collections::{HashMap, HashSet},
-    io::Cursor,
-    path::PathBuf,
-    str::FromStr,
-};
+use std::{collections::HashSet, io::Cursor, path::PathBuf, str::FromStr};
 
 use futures::StreamExt;
 use image::ImageReader;
@@ -11,7 +6,7 @@ use matrix_sdk::{
     Client as MatrixClient,
     attachment::{AttachmentInfo, BaseFileInfo, BaseImageInfo, BaseVideoInfo},
     room::edit::EditedContent,
-    ruma::{OwnedRoomId, events::room::MediaSource},
+    ruma::OwnedRoomId,
 };
 use matrix_sdk_ui::timeline::{
     AttachmentConfig, AttachmentSource, TimelineEventItemId, TimelineItemContent,
@@ -43,11 +38,11 @@ use crate::{
     frontend::timeline::{
         load_reply_info, timeline_diff_to_ui, timeline_item_content_to_ui, timeline_item_to_ui,
     },
-    state::{MediaManager, TaskManager, TimelineManager},
+    state::{TaskManager, TimelineManager},
 };
 
 #[command(rename_all = "snake_case")]
-pub async fn commit_message(
+pub async fn send_message(
     html: String,
     matrix_client: State<'_, RwLock<MatrixClient>>,
     timeline_manager: State<'_, TimelineManager>,
@@ -344,7 +339,6 @@ pub async fn get_timeline(
     matrix_client: State<'_, RwLock<MatrixClient>>,
     timeline_manager: State<'_, TimelineManager>,
     task_manager: State<'_, TaskManager>,
-    media_manager: State<'_, MediaManager>,
     room_id: OwnedRoomId,
     event_id: Option<OwnedEventId>,
     channel: Channel<Vec<UiTimelineDiff>>,
@@ -362,8 +356,6 @@ pub async fn get_timeline(
     task_manager
         .replace_task("get_timeline", token.clone())
         .await;
-
-    let mut media_store: HashMap<Uuid, MediaSource> = media_manager.sources.read().await.clone();
 
     let room = matrix_client
         .read()
@@ -384,20 +376,15 @@ pub async fn get_timeline(
 
             let (messages, stream) = timeline.subscribe().await;
 
-            let media_for_stream = (*media_manager).clone();
             let timeline_for_stream = timeline.clone();
             timeline_manager
                 .set_stream_handle(tokio::spawn(async move {
                     tokio::pin!(stream);
 
                     while let Some(update) = stream.next().await {
-                        let mut new_sources = HashMap::new();
                         let mut unknown_reply_event_ids = HashSet::new();
 
-                        let diffs = coalesce_diffs(update.iter().map(|v| timeline_diff_to_ui(v, &mut new_sources, &mut unknown_reply_event_ids)).collect());
-                        if !new_sources.is_empty() {
-                            media_for_stream.sources.write().await.extend(new_sources);
-                        }
+                        let diffs = coalesce_diffs(update.iter().map(|v| timeline_diff_to_ui(v, &mut unknown_reply_event_ids)).collect());
 
                         log::trace!("Sending timeline update");
                         if let Err(e) = channel.send(diffs.clone()) {
@@ -417,7 +404,7 @@ pub async fn get_timeline(
             log::debug!("Fetched {} messages for room {}", messages.len(), room_id);
 
             let mut unknown_reply_event_ids = HashSet::new();
-            let ui_messages: Vec<_> = messages.iter().map(|v| timeline_item_to_ui(v, &mut media_store, &mut unknown_reply_event_ids)).collect();
+            let ui_messages: Vec<_> = messages.iter().map(|v| timeline_item_to_ui(v, &mut unknown_reply_event_ids)).collect();
 
             if !unknown_reply_event_ids.is_empty() {
                 let timeline_bg = timeline.clone();
@@ -430,8 +417,6 @@ pub async fn get_timeline(
                     }
                 });
             }
-
-            media_manager.sources.write().await.extend(media_store);
 
             Ok(GetTimelineResult { timeline_id: timeline_id.to_string(), messages: ui_messages })
         } => {
@@ -528,7 +513,6 @@ pub async fn indicate_typing(
 #[command(rename_all = "snake_case")]
 pub async fn get_pinned_events(
     client: State<'_, RwLock<MatrixClient>>,
-    media_manager: State<'_, MediaManager>,
     room_id: OwnedRoomId,
 ) -> Result<Vec<UiTimelineItem>, TauriError> {
     let client = client.read().await;
@@ -537,8 +521,6 @@ pub async fn get_pinned_events(
     let Some(pinned_event_ids) = room.pinned_event_ids() else {
         return Ok(Vec::new());
     };
-
-    let mut media_store = HashMap::new();
 
     let mut messages = Vec::new();
     for event_id in pinned_event_ids {
@@ -564,8 +546,7 @@ pub async fn get_pinned_events(
             continue;
         };
 
-        let mut ui_content =
-            timeline_item_content_to_ui(&content, &mut media_store, None, &mut HashSet::new());
+        let mut ui_content = timeline_item_content_to_ui(&content, None, &mut HashSet::new());
 
         if let EventContent::MsgLike(msg) = &mut ui_content
             && reply_info.is_some()
@@ -575,8 +556,6 @@ pub async fn get_pinned_events(
 
         messages.push((ts, ui_content.to_timeline_item(event_id, sender, ts)));
     }
-
-    media_manager.sources.write().await.extend(media_store);
 
     messages.sort_by_key(|(ts, _)| *ts);
     let messages = messages.into_iter().map(|(_, msg)| msg).collect();

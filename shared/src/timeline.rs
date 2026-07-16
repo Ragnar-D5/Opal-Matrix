@@ -2,16 +2,17 @@ use std::collections::HashMap;
 
 use macros::{EnumHashMap, TauriEvent};
 use ruma::{
-    EventEncryptionAlgorithm, OwnedEventId, OwnedRoomId, OwnedUserId,
+    EventEncryptionAlgorithm, OwnedEventId, OwnedMxcUri, OwnedRoomId, OwnedRoomOrAliasId,
+    OwnedServerName, OwnedSpaceChildOrder, OwnedUserId,
     events::{
         poll::start::PollKind,
-        room::{guest_access::GuestAccess, history_visibility::HistoryVisibility},
+        room::{MediaSource, guest_access::GuestAccess, history_visibility::HistoryVisibility},
         rtc::notification::CallIntent,
+        sticker::StickerMediaSource,
     },
     room::{JoinRule, JoinRuleSummary, RoomType},
 };
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct AbstractProgress {
@@ -109,21 +110,6 @@ impl UiMembershipChange {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
-pub enum RoomIdFormat {
-    Id(OwnedRoomId),
-    Alias(String),
-}
-
-impl RoomIdFormat {
-    pub fn source(&self) -> String {
-        match self {
-            RoomIdFormat::Id(id) => id.to_string(),
-            RoomIdFormat::Alias(alias) => alias.clone(),
-        }
-    }
-}
-
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum RichTextSpan {
     Plain(String),
@@ -132,7 +118,7 @@ pub enum RichTextSpan {
         display_name: String,
     },
     RoomMention {
-        room_id: RoomIdFormat,
+        room_id: OwnedRoomOrAliasId,
         display_name: String,
     },
     Link {
@@ -248,36 +234,6 @@ fn extend_run(lower: &str, end: usize, word: &str) -> Option<usize> {
     lower[after..].starts_with(word).then(|| after + word.len())
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub enum UiMediaSource {
-    Uuid(Uuid),
-    Plain(String),
-    Encrypted { url: String, k: String, iv: String },
-}
-
-impl UiMediaSource {
-    pub fn url(&self) -> String {
-        match self {
-            UiMediaSource::Plain(url) => url.to_string(),
-            UiMediaSource::Encrypted { url, k, iv } => format!(
-                "{url}?key={}&iv={}",
-                urlencoding::encode(k),
-                urlencoding::encode(iv)
-            ),
-            UiMediaSource::Uuid(uuid) => format!("mxc://media/{}", uuid),
-        }
-    }
-
-    pub fn thumbnail_url(&self, width: u64, height: u64) -> String {
-        match self {
-            UiMediaSource::Uuid(uuid) => {
-                format!("mxc://thumbnail/{}?width={}&height={}", uuid, width, height)
-            }
-            other => other.url(),
-        }
-    }
-}
-
 pub fn fit_dimensions(w: u64, h: u64, max_w: u64, max_h: u64) -> (u64, u64) {
     if w == 0 || h == 0 {
         return (max_w, max_h);
@@ -304,6 +260,33 @@ pub struct UiBeaconInfo {
     pub geo_uri: String,
     pub description: Option<String>,
     pub timestamp: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct UiMediaSource(pub MediaSource);
+
+impl From<MediaSource> for UiMediaSource {
+    fn from(source: MediaSource) -> Self {
+        UiMediaSource(source)
+    }
+}
+
+impl From<StickerMediaSource> for UiMediaSource {
+    fn from(source: StickerMediaSource) -> Self {
+        UiMediaSource(source.into())
+    }
+}
+
+impl UiMediaSource {
+    pub fn inner(&self) -> &MediaSource {
+        &self.0
+    }
+}
+
+impl PartialEq for UiMediaSource {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -479,7 +462,7 @@ pub enum SystemMessage {
     PolicyRuleServer,
     PolicyRuleUser,
     RoomAvatar {
-        url: Option<String>,
+        url: Option<OwnedMxcUri>,
     },
     RoomCanonicalAlias {
         alias: Option<String>,
@@ -513,14 +496,14 @@ pub enum SystemMessage {
     },
     RoomTombstone {
         body: String,
-        replacement_room: String,
+        replacement_room: OwnedRoomId,
     },
     RoomTopic {
         topic: String,
     },
     SpaceChild {
-        via: Vec<String>,
-        order: Option<String>,
+        via: Vec<OwnedServerName>,
+        order: Option<OwnedSpaceChildOrder>,
         suggested: bool,
     },
     SpaceParent {

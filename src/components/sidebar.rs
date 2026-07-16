@@ -16,7 +16,7 @@ use crate::{
         overlays::space_search::{SpaceSearchState, open_space_search},
         presence::PresenceBadge,
         settings::SettingsIcon,
-        user_profile::{MemberProfileExt, RoomNodeExt, render_url_icon},
+        user_profile::{MemberProfileExt, RoomNodeExt},
     },
     state::{AppState, CurrentSection, MainView, ProfileStore},
     tauri_functions::open_log_window,
@@ -25,23 +25,6 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use shared::sidebar::RoomNode;
 use web_sys::HtmlButtonElement;
-
-fn render_server_avatar<T: AsRef<str> + 'static>(
-    node: RoomNode,
-    size_str: T,
-) -> impl IntoView + 'static {
-    let url = node.avatar_url();
-    let name = node.name();
-    let color = node.color();
-
-    let rounding = if let RoomNode::Dm { .. } = node {
-        "full"
-    } else {
-        "[25%]"
-    };
-
-    render_url_icon(url, name, size_str, color, rounding)
-}
 
 fn render_full_room(node: RoomNode, other_user_id: StoredValue<Option<OwnedUserId>>) -> AnyView {
     let state: AppState = expect_context();
@@ -387,7 +370,7 @@ pub fn ServerIcon(server: ServerRoomNode) -> impl IntoView {
         count
     });
 
-    let avatar_content = render_server_avatar(RoomNode::Server(server.clone()), "40px");
+    let avatar_content = RoomNode::Server(server.clone()).render_url_icon("40px");
 
     let tr_corner = move || {
         let user_ids_in_calls =

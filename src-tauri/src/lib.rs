@@ -38,7 +38,7 @@ pub const APP_NAME: &str = "opal-matrix";
 
 use tauri_plugin_notification::{NotificationExt, PermissionState};
 
-use crate::builder::{add_invoke_handler, register_mxc_uri, setup_builder};
+use crate::builder::{add_invoke_handler, setup_builder};
 use crate::matrix_api::keyring::{self, StoredSession, get_or_create_store_key, init_keyring};
 use crate::state::{AppState, TimelineManager};
 use crate::sync::attach_callbacks;
@@ -595,26 +595,6 @@ async fn backend_log(
     );
 }
 
-fn detect_content_type(bytes: &[u8]) -> &'static str {
-    if bytes.starts_with(b"\xFF\xD8\xFF") {
-        "image/jpeg"
-    } else if bytes.starts_with(b"\x89PNG") {
-        "image/png"
-    } else if bytes.starts_with(b"GIF8") {
-        "image/gif"
-    } else if bytes.starts_with(b"RIFF") && bytes.len() >= 12 && &bytes[8..12] == b"WEBP" {
-        "image/webp"
-    } else if bytes.starts_with(b"\x1A\x45\xDF\xA3") {
-        "video/webm"
-    } else if bytes.len() >= 8 && &bytes[4..8] == b"ftyp" {
-        "video/mp4"
-    } else if bytes.starts_with(b"OggS") {
-        "video/ogg"
-    } else {
-        "application/octet-stream"
-    }
-}
-
 pub struct BrandColorsMap(pub HashMap<String, String>);
 
 fn diff_settings(old: &DocumentMut, new: &DocumentMut) -> Vec<String> {
@@ -892,7 +872,6 @@ pub fn run() {
 
     builder = setup_builder(builder);
     builder = add_invoke_handler(builder);
-    builder = register_mxc_uri(builder);
 
     builder = builder.on_window_event(|w, e| {
         if let tauri::WindowEvent::CloseRequested { api, .. } = e {

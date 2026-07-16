@@ -1,4 +1,5 @@
 use klipy::{MediaItem, Page};
+use leptos::prelude::*;
 use leptos::task::spawn_local;
 use ruma::{EventId, OwnedEventId, OwnedRoomId, RoomId, UserId, directory::RoomTypeFilter};
 use serde_json::json;
@@ -13,10 +14,11 @@ use shared::{
     timeline::{UiMediaSource, UiTimelineItem},
 };
 use uuid::Uuid;
+use wasm_bindgen::JsCast;
 
 use crate::hooks::{Channel, call_tauri, call_tauri_no_args, call_tauri_with_channel};
 
-pub async fn commit_message(
+pub async fn send_message(
     message: String,
     room_id: &RoomId,
     replies_to: Option<OwnedEventId>,
@@ -26,7 +28,7 @@ pub async fn commit_message(
     )
     .map_err(|e| format!("Failed to construct args: {e}"))?;
 
-    call_tauri("commit_message", args)
+    call_tauri("send_message", args)
         .await
         .map_err(|e| format!("Failed to commit message: {:?}", e))?;
 
@@ -656,4 +658,296 @@ pub async fn close_room_search(id: Uuid) -> Result<(), String> {
         .map_err(|e| format!("Tauri call failed: {:?}", e))?;
 
     Ok(())
+}
+/// Sniffs the MIME type from the leading magic bytes. Blob URLs serve exactly the
+/// type set on the blob: raster images render in `<img>` even with a generic type,
+/// but SVG (and `<video>` sources) only work when the type is correct.
+fn detect_content_type(bytes: &[u8]) -> &'static str {
+    if bytes.starts_with(b"\xFF\xD8\xFF") {
+        "image/jpeg"
+    } else if bytes.starts_with(b"\x89PNG") {
+        "image/png"
+    } else if bytes.starts_with(b"GIF8") {
+        "image/gif"
+    } else if bytes.starts_with(b"RIFF") && bytes.len() >= 12 && &bytes[8..12] == b"WEBP" {
+        "image/webp"
+    } else if bytes.len() >= 12 && &bytes[4..8] == b"ftyp" {
+        match &bytes[8..12] {
+            b"avif" | b"avis" => "image/avif",
+            b"heic" | b"heix" | b"mif1" => "image/heic",
+            _ => "video/mp4",
+        }
+    } else if bytes.starts_with(b"BM") {
+        "image/bmp"
+    } else if bytes.starts_with(b"\x00\x00\x01\x00") {
+        "image/x-icon"
+    } else if bytes.starts_with(b"\x1A\x45\xDF\xA3") {
+        "video/webm"
+    } else if bytes.starts_with(b"OggS") {
+        "video/ogg"
+    } else if String::from_utf8_lossy(&bytes[..bytes.len().min(512)])
+        .trim_start_matches('\u{feff}')
+        .trim_start()
+        .starts_with("<?xml")
+        || String::from_utf8_lossy(&bytes[..bytes.len().min(512)]).contains("<svg")
+    {
+        "image/svg+xml"
+    } else {
+        "application/octet-stream"
+    }
+}
+
+fn bytes_to_blob_url(buffer: js_sys::ArrayBuffer) -> Result<String, String> {
+    use js_sys::{Array, Uint8Array};
+    use web_sys::{Blob, BlobPropertyBag, Url};
+
+    let bytes = Uint8Array::new(&buffer);
+    let head = bytes.slice(0, bytes.length().min(512)).to_vec();
+
+    let opts = BlobPropertyBag::new();
+    opts.set_type(detect_content_type(&head));
+
+    let parts = Array::of1(&buffer);
+    let blob = Blob::new_with_u8_array_sequence_and_options(&parts, &opts)
+        .map_err(|e| format!("Failed to create blob: {:?}", e))?;
+
+    Url::create_object_url_with_blob(&blob)
+        .map_err(|e| format!("Failed to create object URL: {:?}", e))
+}
+
+/// Fetches the full media file for `source` and returns a blob object URL usable
+/// directly in `src`/`href` attributes. Callers that replace or drop the URL should
+/// release it with `web_sys::Url::revoke_object_url`, or the bytes stay in memory
+/// for the lifetime of the page.
+pub fn get_media_blob_url(source: &UiMediaSource) -> RwSignal<Option<String>> {
+    let signal = RwSignal::new(None);
+
+    let args = match serde_wasm_bindgen::to_value(&json!({ "source": source.inner() })) {
+        Ok(args) => args,
+        Err(e) => {
+            log::error!("Failed to serialize request: {:?}", e);
+            return signal;
+        }
+    };
+
+    spawn_local(async move {
+        let res = match call_tauri("get_file", args)
+            .await
+            .map_err(|e| format!("Tauri call failed: {:?}", e))
+        {
+            Ok(res) => res,
+            Err(e) => {
+                log::error!("Failed to fetch file: {:?}", e);
+                return;
+            }
+        };
+
+        let buffer: js_sys::ArrayBuffer = match res.dyn_into() {
+            Ok(buffer) => buffer,
+            Err(e) => {
+                log::error!("Expected ArrayBuffer response, got: {:?}", e);
+                return;
+            }
+        };
+
+        let blob_url = match bytes_to_blob_url(buffer)
+            .map_err(|e| format!("Failed to create blob URL: {:?}", e))
+        {
+            Ok(blob_url) => blob_url,
+            Err(e) => {
+                log::error!("{:?}", e);
+                return;
+            }
+        };
+
+        signal.set(Some(blob_url));
+    });
+
+    signal
+}
+
+/// Like [`get_media_blob_url`], but requests a server-generated thumbnail of the
+/// given size instead of the full file.
+pub fn get_thumbnail_blob_url(
+    source: &UiMediaSource,
+    width: u64,
+    height: u64,
+    animated: bool,
+) -> RwSignal<Option<String>> {
+    let signal = RwSignal::new(None);
+
+    let args = match serde_wasm_bindgen::to_value(&json!({
+        "source": source.inner(),
+        "settings": {
+            "method": "scale",
+            "width": width,
+            "height": height,
+            "animated": animated,
+        },
+    })) {
+        Ok(args) => args,
+        Err(e) => {
+            log::error!("Failed to serialize request: {:?}", e);
+            return signal;
+        }
+    };
+
+    spawn_local(async move {
+        let res = match call_tauri("get_thumbnail", args).await {
+            Ok(res) => res,
+            Err(e) => {
+                log::error!("Tauri call failed: {:?}", e);
+                return;
+            }
+        };
+
+        let buffer: js_sys::ArrayBuffer = match res.dyn_into() {
+            Ok(buffer) => buffer,
+            Err(e) => {
+                log::error!("Expected ArrayBuffer response, got: {:?}", e);
+                return;
+            }
+        };
+
+        let blob_url = match bytes_to_blob_url(buffer) {
+            Ok(blob_url) => blob_url,
+            Err(e) => {
+                log::error!("Failed to convert buffer to blob URL: {:?}", e);
+                return;
+            }
+        };
+        signal.set(Some(blob_url));
+    });
+
+    signal
+}
+
+pub fn get_room_avatar(room_id: &RoomId) -> RwSignal<Option<String>> {
+    let signal = RwSignal::new(None);
+
+    let args = match serde_wasm_bindgen::to_value(&json!({
+        "room_id": room_id
+    })) {
+        Ok(args) => args,
+        Err(e) => {
+            log::error!("Failed to serialize request: {:?}", e);
+            return signal;
+        }
+    };
+
+    spawn_local(async move {
+        let res = match call_tauri("get_room_avatar", args).await {
+            Ok(res) => res,
+            Err(e) => {
+                log::error!("Tauri call failed: {:?}", e);
+                return;
+            }
+        };
+
+        let buffer: js_sys::ArrayBuffer = match res.dyn_into() {
+            Ok(buffer) => buffer,
+            Err(e) => {
+                log::error!("Expected ArrayBuffer response, got: {:?}", e);
+                return;
+            }
+        };
+
+        let blob_url = match bytes_to_blob_url(buffer) {
+            Ok(blob_url) => blob_url,
+            Err(e) => {
+                log::error!("Failed to convert buffer to blob URL: {:?}", e);
+                return;
+            }
+        };
+        signal.set(Some(blob_url));
+    });
+
+    signal
+}
+
+pub fn get_member_avatar(room_id: &RoomId, user_id: &UserId) -> RwSignal<Option<String>> {
+    let signal = RwSignal::new(None);
+
+    let args = match serde_wasm_bindgen::to_value(&json!({
+        "room_id": room_id,
+        "user_id": user_id
+    })) {
+        Ok(args) => args,
+        Err(e) => {
+            log::error!("Failed to serialize request: {:?}", e);
+            return signal;
+        }
+    };
+
+    spawn_local(async move {
+        let res = match call_tauri("get_member_avatar", args).await {
+            Ok(res) => res,
+            Err(e) => {
+                log::error!("Tauri call failed: {:?}", e);
+                return;
+            }
+        };
+
+        let buffer: js_sys::ArrayBuffer = match res.dyn_into() {
+            Ok(buffer) => buffer,
+            Err(e) => {
+                log::error!("Expected ArrayBuffer response, got: {:?}", e);
+                return;
+            }
+        };
+
+        let blob_url = match bytes_to_blob_url(buffer) {
+            Ok(blob_url) => blob_url,
+            Err(e) => {
+                log::error!("Failed to convert buffer to blob URL: {:?}", e);
+                return;
+            }
+        };
+        signal.set(Some(blob_url));
+    });
+
+    signal
+}
+
+pub fn get_user_avatar(user_id: &UserId) -> RwSignal<Option<String>> {
+    let signal = RwSignal::new(None);
+
+    let args = match serde_wasm_bindgen::to_value(&json!({
+        "user_id": user_id
+    })) {
+        Ok(args) => args,
+        Err(e) => {
+            log::error!("Failed to serialize request: {:?}", e);
+            return signal;
+        }
+    };
+
+    spawn_local(async move {
+        let res = match call_tauri("get_user_avatar", args).await {
+            Ok(res) => res,
+            Err(e) => {
+                log::error!("Tauri call failed: {:?}", e);
+                return;
+            }
+        };
+
+        let buffer: js_sys::ArrayBuffer = match res.dyn_into() {
+            Ok(buffer) => buffer,
+            Err(e) => {
+                log::error!("Expected ArrayBuffer response, got: {:?}", e);
+                return;
+            }
+        };
+
+        let blob_url = match bytes_to_blob_url(buffer) {
+            Ok(blob_url) => blob_url,
+            Err(e) => {
+                log::error!("Failed to convert buffer to blob URL: {:?}", e);
+                return;
+            }
+        };
+        signal.set(Some(blob_url));
+    });
+
+    signal
 }

@@ -20,7 +20,7 @@ use crate::{
             gif_picker::{GifPickerState, pick_gif},
         },
         settings::Settings,
-        user_profile::{MemberProfileExt, render_url_icon},
+        user_profile::{MemberProfileExt, RoomNodeExt},
     },
     hooks::{convertFileSrc, setup_update_effect, use_tauri_channel, use_tauri_event},
     state::{AppState, CurrentSection, MainView, ProfileStore},
@@ -1216,18 +1216,11 @@ fn room_info_screen(node: RoomNode) -> AnyView {
         RoomNode::VoiceChannel(_) => "voice channel",
         _ => "room",
     };
-    let avatar = render_url_icon(
-        node.avatar_url(),
-        node.name(),
-        "64px",
-        node.color(),
-        "[25%]",
-    );
 
     view! {
         <div class="flex flex-col justify-center">
             <div class="flex flex-row items-center gap-3 ui-solid-bg border border-(--tile-border-color) p-(--gap) rounded-ui">
-                {avatar} <div class="flex flex-col">
+                {node.render_url_icon("64px")} <div class="flex flex-col">
                     <span class="text-3xl font-bold text-normal">{name.clone()}</span>
                     <span class="text-muted text-sm">{room_id.get_value().to_string()}</span>
                 </div>

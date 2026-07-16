@@ -35,7 +35,10 @@ use crate::{
         user_profile::MemberProfileExt,
     },
     state::{AppState, LighboxImage, ProfileStore},
-    tauri_functions::{delete_message, pin_event, toggle_reaction, unpin_event},
+    tauri_functions::{
+        delete_message, get_media_blob_url, get_thumbnail_blob_url, pin_event, toggle_reaction,
+        unpin_event,
+    },
 };
 
 #[component]
@@ -215,30 +218,6 @@ fn MessageHeader(
     }
 }
 
-async fn mxc_to_blob_url(mxc_url: String) -> Option<String> {
-    use js_sys::{Array, Uint8Array};
-    use wasm_bindgen::JsCast;
-    use wasm_bindgen_futures::JsFuture;
-    use web_sys::{Blob, BlobPropertyBag, Response, Url};
-
-    let window = web_sys::window()?;
-    let response: Response = JsFuture::from(window.fetch_with_str(&mxc_url))
-        .await
-        .ok()?
-        .dyn_into()
-        .ok()?;
-    let buffer = JsFuture::from(response.array_buffer().ok()?).await.ok()?;
-
-    let uint8 = Uint8Array::new(&buffer);
-    let arr = Array::new();
-    arr.push(&uint8.buffer());
-
-    let opts = BlobPropertyBag::new();
-    opts.set_type("video/mp4");
-    let blob = Blob::new_with_u8_array_sequence_and_options(&arr, &opts).ok()?;
-    Url::create_object_url_with_blob(&blob).ok()
-}
-
 fn render_message_content(
     content: MessageContent,
     store: ProfileStore,
@@ -254,11 +233,12 @@ fn render_message_content(
 
     match content.msg_type {
         UiMessageType::Audio { source, filename, duration } => {
+            let source_url = get_media_blob_url(&source);
             view! {
                 <div class="flex items-center gap-2 mt-1 p-2 rounded-md bg-white/5 border border-[var(--tile-border-color)] inline-flex">
                     <span class="text-xl">"🎵"</span>
                     <a
-                        href=source.url()
+                        href=source_url
                         target="_blank"
                         class="text-blue-400 hover:underline truncate max-w-xs"
                     >
@@ -295,22 +275,25 @@ fn render_message_content(
             </div>
         }
             .into_any(),
-        UiMessageType::File { filename, size, source, .. } =>  view! {
-            <div class="flex items-center gap-2 mt-1 p-2 rounded-md bg-white/5 border border-[var(--tile-border-color)] inline-flex">
-                <span class="text-xl">"📄"</span>
-                <a
-                    href=source.url()
-                    target="_blank"
-                    class="text-blue-400 hover:underline truncate max-w-xs"
-                >
-                    {filename.clone()}
-                </a>
-                <span class="text-xs text-muted">
-                    {format!("{:.1} KB", size.unwrap_or_default() as f64 / 1024.0)}
-                </span>
-            </div>
+        UiMessageType::File { filename, size, source, .. } =>  {
+            let source_url = get_media_blob_url(&source);
+            view! {
+                <div class="flex items-center gap-2 mt-1 p-2 rounded-md bg-white/5 border border-[var(--tile-border-color)] inline-flex">
+                    <span class="text-xl">"📄"</span>
+                    <a
+                        href=source_url
+                        target="_blank"
+                        class="text-blue-400 hover:underline truncate max-w-xs"
+                    >
+                        {filename.clone()}
+                    </a>
+                    <span class="text-xs text-muted">
+                        {format!("{:.1} KB", size.unwrap_or_default() as f64 / 1024.0)}
+                    </span>
+                </div>
+            }
+            .into_any()
         }
-            .into_any(),
         // TODO: Not implemented yet
         UiMessageType::Gallery => view! {
             <div class="text-normal leading-relaxed break-words italic">
@@ -341,12 +324,9 @@ fn render_message_content(
                 mime_type.as_deref(),
                 Some("image/gif") | Some("image/webp")
             );
-            let thumb_src = if is_animated {
-                source.url()
-            } else {
-                source.thumbnail_url(thumb_w, thumb_h)
-            };
             let state: AppState = expect_context();
+
+            let thumb_src = get_thumbnail_blob_url(&source, thumb_w, thumb_h, is_animated);
 
             let lightbox = state.lightbox_image;
             let lightbox_source = source.clone();
@@ -359,7 +339,7 @@ fn render_message_content(
                 <div class="mt-1">
                     <div class="relative inline-block group/image">
                         <img
-                            src=thumb_src.clone()
+                            src=thumb_src
                             alt=filename.clone()
                             width=thumb_w
                             height=thumb_h
@@ -389,7 +369,7 @@ fn render_message_content(
                             }
                             on:error=move |e| {
                                 log::error!(
-                                    "Image failed to load: {}, {}", source.url(), e.as_string().unwrap_or("Unknown error".to_string())
+                                    "Image failed to load: {}", e.as_string().unwrap_or("Unknown error".to_string())
                                 )
                             }
                         />
@@ -491,17 +471,20 @@ fn render_message_content(
             </div>
         }
             .into_any(),
-        UiMessageType::Sticker { source, .. } => view! {
-            <div class="mt-1">
-                <img
-                    src=source.url()
-                    class="max-w-sm rounded-md border border-[var(--tile-border-color)]"
-                />
-            </div>
+        UiMessageType::Sticker { source, .. } => {
+            let source_url = get_media_blob_url(&source);
+            view! {
+                <div class="mt-1">
+                    <img
+                        src=source_url
+                        class="max-w-sm rounded-md border border-[var(--tile-border-color)]"
+                    />
+                </div>
+            }
         }
             .into_any(),
         UiMessageType::Text => view! {
-            <div class="text-normal leading-relaxed break-words pb-1">
+            <div class="text-normal leading-relaxed break-words">
                 {spans
                     .clone()
                     .into_iter()
@@ -532,11 +515,7 @@ fn render_message_content(
                 MAX_W,
                 MAX_H,
             );
-            let mxc_url = source.url();
-            let blob_url = LocalResource::new(move || {
-                let url = mxc_url.clone();
-                async move { mxc_to_blob_url(url).await }
-            });
+            let source_url = get_media_blob_url(&source);
             view! {
                 <Suspense fallback=move || {
                     view! {
@@ -549,9 +528,8 @@ fn render_message_content(
                     }
                 }>
                     {move || {
-                        blob_url
+                        source_url
                             .get()
-                            .flatten()
                             .map(|url| {
                                 view! {
                                     <div class="mt-1">
@@ -1644,7 +1622,7 @@ fn render_timeline_event(
             class="group/msg mx-1 relative flex flex-col gap-[var(--gap)] rounded-md transform-gpu border border-transparent"
             class=("hover:bg-black/20", !preview)
             class=("hover:border-[var(--tile-border-color)]", !preview)
-            class=("mt-2", show_header && !preview)
+            class=("mt-1", show_header && !preview)
             class=("[&_*]:pointer-events-none", preview)
             class=("bg-black/20", move || picker_open.get() || show_delete_confirm.get())
             id=move || { if preview { String::new() } else { item_sig.get().render_key() } }

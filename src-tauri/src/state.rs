@@ -11,7 +11,6 @@ use matrix_sdk::{
     ruma::{
         EventId, OwnedEventId, OwnedRoomId,
         directory::{PublicRoomsChunk, RoomTypeFilter},
-        events::room::MediaSource,
     },
 };
 use matrix_sdk_ui::{
@@ -266,19 +265,6 @@ impl TaskManager {
 
         if let Some(old_token) = tasks.insert(command_name.to_string(), new_token) {
             old_token.cancel();
-        }
-    }
-}
-
-#[derive(Clone)]
-pub struct MediaManager {
-    pub sources: Arc<RwLock<HashMap<Uuid, MediaSource>>>,
-}
-
-impl Default for MediaManager {
-    fn default() -> Self {
-        MediaManager {
-            sources: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 }

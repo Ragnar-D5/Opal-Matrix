@@ -8,7 +8,7 @@ use shared::get_color;
 use crate::tauri_functions::{save_banner_color, save_displayname, save_name_color};
 
 use crate::components::presence::PresenceBadge;
-use crate::components::user_profile::render_url_icon;
+use crate::components::user_profile::{RoomNodeExt, render_url_icon};
 use crate::state::{AppState, ProfileSignal, ProfileStore};
 
 pub fn render_profile_section() -> AnyView {
@@ -148,13 +148,7 @@ pub fn render_profile_section() -> AnyView {
                                             .find(|room| { Some(room.room_id()) == selected_id })
                                             .map(|room| {
                                                 view! {
-                                                    {render_url_icon(
-                                                        room.avatar_url(),
-                                                        room.name(),
-                                                        "16px",
-                                                        room.color(),
-                                                        "[25%]",
-                                                    )}
+                                                    {room.render_url_icon("16px")}
                                                     <span class="truncate text-sm text-normal">
                                                         {room.name()}
                                                     </span>
@@ -204,7 +198,7 @@ pub fn render_profile_section() -> AnyView {
                                                 }
                                             >
                                                 {render_url_icon(
-                                                    room.avatar_url(),
+                                                    None,
                                                     room.name(),
                                                     "16px",
                                                     room.color(),

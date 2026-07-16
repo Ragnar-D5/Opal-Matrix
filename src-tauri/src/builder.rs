@@ -1,6 +1,5 @@
 use matrix_sdk::Client;
 use notify::Watcher;
-use percent_encoding::percent_decode_str;
 use shared::api::UpdateStatus;
 use shared::api::events::{
     LogEntry, NotificationEvent, NotificationLevel, SettingsUpdate, TauriEvent,
@@ -26,17 +25,11 @@ use tauri_plugin_log::{Target, TargetKind};
 
 #[cfg(all(desktop, debug_assertions))]
 use crate::ipc_log::IpcTrafficLog;
-use crate::matrix_api::media::{
-    get_direct_media, get_media_from_uuid_str, get_media_from_uuid_thmubnail_str,
-    get_member_avatar, get_room_avatar, get_user_avatar,
-};
 use crate::state::{
-    AppState, AudioManager, LiveKitRoomManager, LogBuffer, MediaManager, RoomSearchManager,
-    TaskManager, TimelineManager,
+    AppState, AudioManager, LiveKitRoomManager, LogBuffer, RoomSearchManager, TaskManager,
+    TimelineManager,
 };
-use crate::{
-    BrandColorsMap, TauriError, detect_content_type, diff_settings, send_event, send_event_logless,
-};
+use crate::{BrandColorsMap, TauriError, diff_settings, send_event, send_event_logless};
 use crate::{check_for_update_backend, info_from_update, ipc_log};
 
 use super::frontend;
@@ -68,7 +61,7 @@ pub fn add_invoke_handler(builder: Builder<Wry>) -> Builder<Wry> {
         super::versions::get_version,
         super::versions::get_versions,
         // frontend commands
-        frontend::messages::commit_message,
+        frontend::messages::send_message,
         frontend::messages::send_attachment,
         frontend::messages::edit_message,
         frontend::messages::get_timeline,
@@ -89,6 +82,11 @@ pub fn add_invoke_handler(builder: Builder<Wry>) -> Builder<Wry> {
         frontend::rooms::get_extra_room_info,
         // matrix API commands
         matrix_api::discovery::choose_home_server,
+        matrix_api::media::get_file,
+        matrix_api::media::get_thumbnail,
+        matrix_api::media::get_user_avatar,
+        matrix_api::media::get_room_avatar,
+        matrix_api::media::get_member_avatar,
         // matrix_api::messages::fetch_messages,
         matrix_api::account_data::get_breadcrumbs,
         matrix_api::account_data::set_breadcrumbs,
@@ -214,161 +212,6 @@ fn add_logging_plugin(
     )?;
 
     Ok(())
-}
-
-pub fn register_mxc_uri(builder: Builder<Wry>) -> Builder<Wry> {
-    builder.register_asynchronous_uri_scheme_protocol(
-        "mxc",
-        move |ctx, request: tauri::http::Request<Vec<u8>>, responder| {
-            let app_handle = ctx.app_handle().clone();
-            let uri = request.uri().to_string();
-            let uri = percent_decode_str(&uri).decode_utf8_lossy().into_owned();
-
-            let range_header = request
-                .headers()
-                .get("range")
-                .and_then(|v| v.to_str().ok())
-                .and_then(|v| v.strip_prefix("bytes="))
-                .and_then(|v| {
-                    let mut parts = v.splitn(2, '-');
-                    let start: usize = parts.next()?.parse().ok()?;
-                    let end: usize = parts
-                        .next()
-                        .and_then(|e| e.parse().ok())
-                        .unwrap_or(usize::MAX);
-                    Some((start, end))
-                });
-
-            tauri::async_runtime::spawn(async move {
-                let client = app_handle
-                    .state::<tokio::sync::RwLock<matrix_sdk::Client>>()
-                    .read()
-                    .await
-                    .clone();
-
-                let media_manager = app_handle.state::<MediaManager>();
-
-                if let Some(id_str) = uri.strip_prefix("mxc://media/") {
-                    match get_media_from_uuid_str(&client, id_str, &media_manager).await {
-                        Ok(bytes) => {
-                            let content_type = detect_content_type(&bytes);
-                            if content_type == "application/octet-stream" {
-                                log::debug!(
-                                    "Unknown format for UUID {}, first 16 bytes: {:02x?}",
-                                    id_str,
-                                    &bytes[..bytes.len().min(16)]
-                                );
-                            }
-                            let is_video = content_type.starts_with("video/");
-                            if is_video {
-                                if let Some((start, end)) = range_header
-                                    && start > 0
-                                {
-                                    let end = end.min(bytes.len().saturating_sub(1));
-                                    let total = bytes.len();
-                                    let chunk = bytes[start..=end].to_vec();
-                                    responder.respond(
-                                        tauri::http::Response::builder()
-                                            .status(206)
-                                            .header("Content-Type", content_type)
-                                            .header(
-                                                "Content-Range",
-                                                format!("bytes {}-{}/{}", start, end, total),
-                                            )
-                                            .header("Content-Length", chunk.len().to_string())
-                                            .header("Accept-Ranges", "bytes")
-                                            .header("Access-Control-Allow-Origin", "*")
-                                            .body(chunk)
-                                            .unwrap(),
-                                    );
-                                } else {
-                                    let len = bytes.len();
-                                    responder.respond(
-                                        tauri::http::Response::builder()
-                                            .status(200)
-                                            .header("Content-Type", content_type)
-                                            .header("Content-Length", len.to_string())
-                                            .header("Accept-Ranges", "bytes")
-                                            .header("Access-Control-Allow-Origin", "*")
-                                            .body(bytes)
-                                            .unwrap(),
-                                    );
-                                }
-                            } else {
-                                let len = bytes.len();
-                                responder.respond(
-                                    tauri::http::Response::builder()
-                                        .status(200)
-                                        .header("Content-Type", content_type)
-                                        .header("Content-Length", len.to_string())
-                                        .header("Access-Control-Allow-Origin", "*")
-                                        .body(bytes)
-                                        .unwrap(),
-                                );
-                            }
-                        }
-                        Err(e) => {
-                            log::error!("Failed to fetch media for UUID {}: {:?}", id_str, e);
-                            responder.respond(
-                                tauri::http::Response::builder()
-                                    .status(500)
-                                    .body(Vec::<u8>::new())
-                                    .unwrap(),
-                            );
-                        }
-                    };
-                } else {
-                    let res = if let Some(param_str) = uri.strip_prefix("mxc://thumbnail/") {
-                        get_media_from_uuid_thmubnail_str(&client, param_str, &media_manager)
-                            .await
-                            .map(Some)
-                    } else if let Some(string) = uri.strip_prefix("mxc://user/") {
-                        if let Some((user_id, room_id)) = string.split_once("/room/") {
-                            get_member_avatar(&client, room_id, user_id).await
-                        } else {
-                            get_user_avatar(&client, string).await
-                        }
-                    } else if let Some(room_id) = uri.strip_prefix("mxc://room/") {
-                        get_room_avatar(&client, room_id).await
-                    } else {
-                        get_direct_media(&client, &uri).await
-                    };
-
-                    match res {
-                        Ok(Some(bytes)) => {
-                            let content_type = detect_content_type(&bytes);
-                            responder.respond(
-                                tauri::http::Response::builder()
-                                    .status(200)
-                                    .header("Content-Type", content_type)
-                                    .header("Content-Length", bytes.len().to_string())
-                                    .header("Access-Control-Allow-Origin", "*")
-                                    .body(bytes)
-                                    .unwrap(),
-                            );
-                        }
-                        Ok(None) => {
-                            responder.respond(
-                                tauri::http::Response::builder()
-                                    .status(404)
-                                    .body(Vec::<u8>::new())
-                                    .unwrap(),
-                            );
-                        }
-                        Err(e) => {
-                            log::error!("Failed to fetch media for URI {}: {:?}", uri, e);
-                            responder.respond(
-                                tauri::http::Response::builder()
-                                    .status(500)
-                                    .body(Vec::<u8>::new())
-                                    .unwrap(),
-                            );
-                        }
-                    }
-                }
-            });
-        },
-    )
 }
 
 fn toggle_main_window(app: &AppHandle) {
@@ -615,7 +458,6 @@ pub fn setup_builder(builder: Builder<Wry>) -> Builder<Wry> {
         app.manage(RwLock::new(client));
         app.manage(TimelineManager::default());
         app.manage(TaskManager::default());
-        app.manage(MediaManager::default());
         app.manage(LiveKitRoomManager::default());
         app.manage(AudioManager::new(app.handle().clone()));
         app.manage(RoomSearchManager::default());

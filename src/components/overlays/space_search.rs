@@ -1,4 +1,3 @@
-use csscolorparser::Color;
 use leptos::{
     html::{Div, Input},
     prelude::*,
@@ -11,7 +10,6 @@ use uuid::Uuid;
 use web_sys::IntersectionObserverEntry;
 
 use crate::{
-    components::user_profile::render_url_icon,
     hooks::use_tauri_channel,
     tauri_functions::{
         close_room_search, load_more_room_search, open_room_search, search_room_directory,
@@ -230,18 +228,11 @@ pub fn SpaceSearchPortal() -> impl IntoView {
                                 .or_else(|| room.canonical_alias.as_ref().map(|a| a.to_string()))
                                 .unwrap_or_else(|| room.room_id.to_string());
                             let topic = room.topic.clone();
-                            let avatar_url = room.avatar_url.as_ref().map(|u| u.to_string());
                             let members = room.num_joined_members;
 
                             view! {
                                 <div class="flex items-center gap-2 p-1.5 rounded-ui hover:bg-(--ui-solid-hover-bg)">
-                                    {render_url_icon(
-                                        avatar_url,
-                                        name.clone(),
-                                        "32px",
-                                        Color::from_hsla(0.0, 0.0, 0.6, 1.0),
-                                        "[25%]",
-                                    )} <div class="flex flex-col min-w-0 flex-1">
+                                    <div class="flex flex-col min-w-0 flex-1">
                                         <span class="text-sm text-normal truncate">{name}</span>
                                         {topic
                                             .map(|t| {

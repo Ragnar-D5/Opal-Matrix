@@ -118,7 +118,7 @@ impl RichTextExt for RichTextSpan {
                         color=color
                         bg_color=bg_color
                         data_type="room_mention".to_string()
-                        data_id=room_id.source()
+                        data_id=room_id.to_string()
                     />
                 }
                 .into_any()

@@ -146,13 +146,6 @@ pub struct RoomNodeInfo {
     pub aliases: Vec<String>,
 }
 
-impl RoomNodeInfo {
-    pub fn avatar_url(&self) -> Option<String> {
-        self.has_avatar
-            .then_some(format!("mxc://room/{}", self.room_id))
-    }
-}
-
 impl RoomNode {
     pub fn info(&self) -> RoomNodeInfo {
         match self {
@@ -167,89 +160,27 @@ impl RoomNode {
     }
 
     pub fn name(&self) -> String {
-        match self {
-            RoomNode::Space(node) => node.info.name.clone(),
-            RoomNode::TextChannel(node) => node.info.name.clone(),
-            RoomNode::VoiceChannel(node) => node.info.name.clone(),
-            RoomNode::Dm(node) => node.info.name.clone(),
-            RoomNode::Server(node) => node.info.name.clone(),
-            RoomNode::Single(node) => node.info.name.clone(),
-            RoomNode::Unjoined(node) => node.info.name.clone(),
-        }
+        self.info().name.clone()
     }
 
     pub fn room_id(&self) -> OwnedRoomId {
-        match self {
-            RoomNode::Space(node) => node.info.room_id.clone(),
-            RoomNode::TextChannel(node) => node.info.room_id.clone(),
-            RoomNode::VoiceChannel(node) => node.info.room_id.clone(),
-            RoomNode::Dm(node) => node.info.room_id.clone(),
-            RoomNode::Server(node) => node.info.room_id.clone(),
-            RoomNode::Single(node) => node.info.room_id.clone(),
-            RoomNode::Unjoined(node) => node.info.room_id.clone(),
-        }
+        self.info().room_id.clone()
     }
 
     fn canonical_alias(&self) -> Option<String> {
-        match self {
-            RoomNode::Space(node) => node.info.canonical_alias.clone(),
-            RoomNode::TextChannel(node) => node.info.canonical_alias.clone(),
-            RoomNode::VoiceChannel(node) => node.info.canonical_alias.clone(),
-            RoomNode::Dm(node) => node.info.canonical_alias.clone(),
-            RoomNode::Server(node) => node.info.canonical_alias.clone(),
-            RoomNode::Single(node) => node.info.canonical_alias.clone(),
-            RoomNode::Unjoined(node) => node.info.canonical_alias.clone(),
-        }
+        self.info().canonical_alias.clone()
     }
 
     fn aliases(&self) -> Vec<String> {
-        match self {
-            RoomNode::Space(node) => node.info.aliases.clone(),
-            RoomNode::TextChannel(node) => node.info.aliases.clone(),
-            RoomNode::VoiceChannel(node) => node.info.aliases.clone(),
-            RoomNode::Dm(node) => node.info.aliases.clone(),
-            RoomNode::Server(node) => node.info.aliases.clone(),
-            RoomNode::Single(node) => node.info.aliases.clone(),
-            RoomNode::Unjoined(node) => node.info.aliases.clone(),
-        }
+        self.info().aliases.clone()
     }
 
-    fn has_avatar(&self) -> bool {
-        match self {
-            RoomNode::Space(node) => node.info.has_avatar,
-            RoomNode::TextChannel(node) => node.info.has_avatar,
-            RoomNode::VoiceChannel(node) => node.info.has_avatar,
-            RoomNode::Dm(node) => node.info.has_avatar,
-            RoomNode::Server(node) => node.info.has_avatar,
-            RoomNode::Single(node) => node.info.has_avatar,
-            RoomNode::Unjoined(node) => node.info.has_avatar,
-        }
-    }
-
-    pub fn avatar_url(&self) -> Option<String> {
-        if let RoomNode::Unjoined(node) = self {
-            return node.avatar_url.clone();
-        }
-
-        self.has_avatar().then_some(
-            if let RoomNode::Dm(DmRoomNode { other_user_id, .. }) = self {
-                format!("mxc://user/{}/room/{}", self.room_id(), other_user_id)
-            } else {
-                format!("mxc://room/{}", self.room_id())
-            },
-        )
+    pub fn has_avatar(&self) -> bool {
+        self.info().has_avatar
     }
 
     pub fn color(&self) -> Color {
-        match self {
-            RoomNode::Space(node) => node.info.color.clone(),
-            RoomNode::TextChannel(node) => node.info.color.clone(),
-            RoomNode::VoiceChannel(node) => node.info.color.clone(),
-            RoomNode::Dm(node) => node.info.color.clone(),
-            RoomNode::Server(node) => node.info.color.clone(),
-            RoomNode::Single(node) => node.info.color.clone(),
-            RoomNode::Unjoined(node) => node.info.color.clone(),
-        }
+        self.info().color.clone()
     }
 
     pub fn as_dm(&self) -> Option<DmRoomNode> {

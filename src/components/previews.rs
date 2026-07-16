@@ -9,6 +9,7 @@ use crate::app::format_bytes;
 use crate::components::FloatingTile;
 use crate::components::SystemButtons;
 use crate::components::user_profile::MemberProfileExt;
+use crate::tauri_functions::get_media_blob_url;
 use crate::{
     state::{AppState, ProfileStore},
     tauri_functions::{fetch_preview_data, save_file_to_picked_dest},
@@ -282,11 +283,11 @@ pub fn ImageLightbox() -> impl IntoView {
                         lightbox
                             .get()
                             .map(|img| {
-                                let url = img.source.url();
+                                let source_url = get_media_blob_url(&img.source);
                                 view! {
                                     <img
                                         node_ref=img_ref
-                                        src=url
+                                        src=source_url
                                         width=img.width
                                         height=img.height
                                         class="w-auto h-auto max-w-[90vw] max-h-[calc(90vh-3rem)] rounded-ui object-contain shadow-[0_0_15px_3px_rgba(255,255,255,0.3)]"

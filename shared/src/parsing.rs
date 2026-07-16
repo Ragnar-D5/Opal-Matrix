@@ -1,7 +1,7 @@
-use crate::timeline::{RichTextSpan, RoomIdFormat};
+use crate::timeline::RichTextSpan;
 use ego_tree::NodeRef;
 use linkify::LinkFinder;
-use ruma::{OwnedRoomId, OwnedUserId};
+use ruma::{OwnedRoomId, OwnedRoomOrAliasId, OwnedUserId};
 use scraper::{Html, Node};
 
 fn walk_node(node: NodeRef<'_, Node>, spans: &mut Vec<RichTextSpan>) {
@@ -32,7 +32,7 @@ fn walk_node(node: NodeRef<'_, Node>, spans: &mut Vec<RichTextSpan>) {
 
                     if let Some(room_id) = room_id {
                         let span = RichTextSpan::RoomMention {
-                            room_id: RoomIdFormat::Id(room_id),
+                            room_id: OwnedRoomOrAliasId::from(room_id),
                             display_name: display_string,
                         };
                         spans.push(span);
@@ -49,8 +49,14 @@ fn walk_node(node: NodeRef<'_, Node>, spans: &mut Vec<RichTextSpan>) {
                     }
 
                     if id_str.starts_with('#') {
+                        let room_id = if let Ok(room_id) = OwnedRoomOrAliasId::try_from(id_str) {
+                            room_id
+                        } else {
+                            return;
+                        };
+
                         let span = RichTextSpan::RoomMention {
-                            room_id: RoomIdFormat::Alias(id_str.to_string()),
+                            room_id,
                             display_name: display_string,
                         };
                         spans.push(span);

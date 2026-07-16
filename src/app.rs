@@ -186,9 +186,20 @@ pub fn App() -> impl IntoView {
     setup_update_effect(profile_updates, move |updates| {
         for (room_id, profiles) in updates {
             for profile in profiles {
+                // `maybe_update` (returning `false` when nothing changed)
+                // avoids notifying subscribers when the backend re-sends a
+                // profile that hasn't actually changed, which would
+                // otherwise tear down and re-fetch avatars downstream.
                 store_for_profiles
                     .get_member_profile(&room_id, &profile.profile.user_id)
-                    .set(profile.clone());
+                    .maybe_update(|current| {
+                        if *current != profile {
+                            *current = profile.clone();
+                            true
+                        } else {
+                            false
+                        }
+                    });
             }
         }
     });
@@ -201,7 +212,14 @@ pub fn App() -> impl IntoView {
     setup_update_effect(own_profile_update, move |profile| {
         store_for_own_profile
             .get_user_profile(&profile.user_id)
-            .set(profile);
+            .maybe_update(|current| {
+                if *current != profile {
+                    *current = profile;
+                    true
+                } else {
+                    false
+                }
+            });
     });
 
     Effect::new(move |_| {

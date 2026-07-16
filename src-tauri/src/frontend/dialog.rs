@@ -1,6 +1,6 @@
 use std::fs;
 
-use matrix_sdk::Client;
+use matrix_sdk::{Client, media::MediaRequestParameters};
 use shared::{
     api::{FileMetadata, UiAttachmentSource},
     timeline::UiMediaSource,
@@ -9,7 +9,7 @@ use tauri::{AppHandle, State, command};
 use tauri_plugin_dialog::DialogExt;
 use tokio::sync::RwLock;
 
-use crate::{TauriError, matrix_api::media::get_media_bytes, state::MediaManager};
+use crate::TauriError;
 
 #[command(rename_all = "snake_case")]
 pub async fn open_file_dialog(app: AppHandle) -> Result<Vec<FileMetadata>, TauriError> {
@@ -56,7 +56,6 @@ pub async fn save_file_to_picked_dest(
     app: AppHandle,
     source: UiMediaSource,
     file_name: String,
-    media_manager: State<'_, MediaManager>,
     client: State<'_, RwLock<Client>>,
 ) -> Result<(), TauriError> {
     let Some(path) = app
@@ -75,7 +74,12 @@ pub async fn save_file_to_picked_dest(
         return Ok(());
     };
 
-    let bytes = get_media_bytes(&client.read().await.clone(), source, &media_manager).await?;
+    let client = client.read().await;
+    let format = MediaRequestParameters {
+        source: source.inner().clone(),
+        format: matrix_sdk::media::MediaFormat::File,
+    };
+    let bytes = client.media().get_media_content(&format, true).await?;
 
     log::debug!("Destination selected: {}", path.to_string_lossy());
 

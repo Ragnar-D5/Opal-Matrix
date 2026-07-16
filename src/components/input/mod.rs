@@ -10,7 +10,7 @@ use crate::components::chat::{Attachment, ChatInputInfo};
 use crate::components::input::menu::commit_selection;
 use crate::components::input::menu::{MenuCompletionMatches, MenuType};
 use crate::state::{AppState, ProfileStore};
-use crate::tauri_functions::{commit_message, edit_message, send_attachment};
+use crate::tauri_functions::{edit_message, send_attachment, send_message};
 
 pub(crate) mod menu;
 
@@ -273,8 +273,7 @@ pub fn handle_keydown(
                 match input_info.get_untracked() {
                     Some(ChatInputInfo::ReplyingTo { event_id, .. }) if !content_empty => {
                         spawn_local(async move {
-                            if let Err(e) = commit_message(message, &room_id, Some(event_id)).await
-                            {
+                            if let Err(e) = send_message(message, &room_id, Some(event_id)).await {
                                 warn!("Failed to commit message: {e}");
                             };
                         });
@@ -289,7 +288,7 @@ pub fn handle_keydown(
                     _ => {
                         spawn_local(async move {
                             if !content_empty
-                                && let Err(e) = commit_message(message, &room_id, None).await
+                                && let Err(e) = send_message(message, &room_id, None).await
                             {
                                 warn!("Failed to commit message: {e}");
                             };

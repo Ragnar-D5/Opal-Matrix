@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 use matrix_sdk::Client;
 use matrix_sdk_ui::timeline::TimelineItemContent;
@@ -98,7 +98,6 @@ pub async fn search_rooms(
 
                             let mut ui_content = timeline_item_content_to_ui(
                                 &content,
-                                &mut HashMap::new(),
                                 None,
                                 &mut HashSet::new(),
                             );
