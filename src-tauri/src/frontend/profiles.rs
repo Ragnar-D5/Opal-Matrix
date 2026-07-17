@@ -46,6 +46,10 @@ pub async fn on_member_update(
         }
     };
 
+    if avatar_url.is_none() {
+        log::warn!("No avatar URL for {user_id}, using default avatar");
+    }
+
     let profile = MemberProfile {
         room_id: room.room_id().to_owned(),
         profile: UserProfile {
@@ -85,29 +89,43 @@ pub async fn send_all_members(
             };
 
             let mut memberships = Vec::with_capacity(members.len());
-            let profiles: Vec<MemberProfile> = members
-                .into_iter()
-                .map(|member| {
-                    let user_id = member.user_id().to_owned();
-                    let display_name = member.display_name().map(|s| s.to_string());
 
-                    memberships.push((
-                        user_id.clone(),
-                        member.avatar_url().map(|u| u.to_owned()),
-                        display_name.clone(),
-                    ));
+            let mut profiles = Vec::new();
 
-                    MemberProfile {
-                        room_id: room_id.clone(),
-                        profile: UserProfile {
-                            custom_properties: CustomProperties::from_user_id(&user_id),
-                            user_id,
-                            display_name,
-                            avatar_url: member.avatar_url().map(|u| u.to_owned()),
-                        },
-                    }
-                })
-                .collect();
+            for member in members {
+                let user_id = member.user_id().to_owned();
+                let display_name = member.display_name().map(|s| s.to_string());
+
+                let avatar_url = if let Some(url) = member.avatar_url() {
+                    Some(url.to_owned())
+                } else {
+                    client
+                        .account()
+                        .fetch_profile_field_of_static::<AvatarUrl>(user_id.clone())
+                        .await
+                        .map_err(|e| {
+                            log::error!("Failed to fetch avatar for user {}: {:?}", user_id, e)
+                        })
+                        .ok()
+                        .flatten()
+                };
+
+                if avatar_url.is_none() {
+                    log::warn!("No avatar URL for user {}", user_id);
+                }
+
+                memberships.push((user_id.clone(), avatar_url.clone(), display_name.clone()));
+
+                profiles.push(MemberProfile {
+                    room_id: room_id.clone(),
+                    profile: UserProfile {
+                        custom_properties: CustomProperties::from_user_id(&user_id),
+                        user_id,
+                        display_name,
+                        avatar_url,
+                    },
+                });
+            }
 
             Some((room_id, profiles, memberships))
         })

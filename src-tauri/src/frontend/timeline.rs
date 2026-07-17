@@ -535,6 +535,7 @@ pub fn timeline_item_content_to_ui(
 
                 is_redacted,
                 body,
+                url_previes: Vec::new(),
 
                 msg_type,
             }))

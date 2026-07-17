@@ -395,6 +395,7 @@ pub struct MessageContent {
     pub is_redacted: bool,
 
     pub body: Vec<RichTextSpan>,
+    pub url_previes: Vec<String>,
 
     pub msg_type: UiMessageType,
 }

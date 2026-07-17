@@ -191,6 +191,10 @@ pub fn App() -> impl IntoView {
                 store
                     .get_member_profile(&room_id, &profile.profile.user_id)
                     .maybe_update(|current| {
+                        if current.profile.avatar_url.is_none() {
+                            log::warn!("No avatar URL for user {}", profile.profile.user_id);
+                        }
+
                         if *current != profile {
                             *current = profile.clone();
                             true
