@@ -14,6 +14,7 @@ use shared::api::events::TauriEvent;
 use shared::api::{RestoreResponse, UpdateDownloadProgress, UpdateInfo, UpdateStatus};
 use std::collections::HashMap;
 use std::sync::Arc;
+use tauri::async_runtime::spawn;
 use tauri_plugin_updater::{Update, UpdaterExt};
 use tokio::sync::RwLock;
 use toml_edit::DocumentMut;
@@ -740,27 +741,34 @@ async fn download_update(
     send_event(&update_handle, &UpdateDownloadProgress::Started);
 
     let download_info = info.clone();
-    let download_state = state.clone();
+    let download_state = state.inner().clone();
 
     let finished_info = info.clone();
-    let finished_state = state.clone();
+    let finished_state = state.inner().clone();
 
     let handle_clone = handle.clone();
     let handle_clone2 = handle.clone();
     let bytes = match update
         .download(
             move |progress, total| {
-                *download_state.update_status.blocking_write() =
-                    UpdateStatus::Downloading(download_info.clone());
-                send_event(
-                    &update_handle,
-                    &UpdateDownloadProgress::InProgress { progress, total },
-                );
+                let download_state = download_state.clone();
+                let update_handle = update_handle.clone();
+                let download_info = download_info.clone();
+                spawn(async move {
+                    *download_state.update_status.write().await =
+                        UpdateStatus::Downloading(download_info);
+                    send_event(
+                        &update_handle,
+                        &UpdateDownloadProgress::InProgress { progress, total },
+                    );
+                });
             },
             move || {
-                *finished_state.update_status.blocking_write() =
-                    UpdateStatus::ReadyToInstall(finished_info);
-                send_event(&handle_clone, &UpdateDownloadProgress::Finished);
+                spawn(async move {
+                    *finished_state.update_status.write().await =
+                        UpdateStatus::ReadyToInstall(finished_info);
+                    send_event(&handle_clone, &UpdateDownloadProgress::Finished);
+                });
             },
         )
         .await

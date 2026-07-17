@@ -38,7 +38,6 @@ pub async fn get_thumbnail(
     source: MediaSource,
     settings: MediaThumbnailSettings,
 ) -> Result<tauri::ipc::Response, TauriError> {
-    log::debug!("get_thumbnail: source={:?} settings={:?}", source, settings);
     let client = client.read().await;
     fetch_media(&client, source, MediaFormat::Thumbnail(settings)).await
 }
