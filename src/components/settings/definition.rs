@@ -43,7 +43,7 @@ pub struct Settings {
         description = "The scaling factor for the application",
         section = SettingsSection::Appearance,
         uses_cloud = false,
-        default = 100.0
+        default = 1.0
     )]
     pub scaling: f64,
     #[setting(

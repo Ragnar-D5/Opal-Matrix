@@ -1272,7 +1272,7 @@ fn MesssageButtons(
                     <Icon icon=PENCIL_SIMPLE size="20px"></Icon>
                 </button>
             </Show>
-            <Show when=move || is_pinned.get() && info.rights.pin_messages>
+            <Show when=move || info.rights.pin_messages>
                 <button
                     class="hover:bg-(--pin-color) hover:text(--ui-solid-bg) cursor-pointer p-0.5 rounded-(--gap) transition-colors duration-100"
                     on:click=on_pin_click

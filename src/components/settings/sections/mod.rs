@@ -573,6 +573,7 @@ pub fn Slider(field: MatrixSettingField<f64>, min: f64, max: f64) -> AnyView {
                     <input
                         id="scaling-slider"
                         type="range"
+                        step="0.01"
                         min=min
                         max=max
                         prop:value=move || signal.get()
@@ -583,6 +584,74 @@ pub fn Slider(field: MatrixSettingField<f64>, min: f64, max: f64) -> AnyView {
                         }
                         class="w-full h-2 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
                     />
+                </div>
+                <div title=cloud_tooltip>
+                    <LIcon icon=cloud_icon style=cloud_color height="18px" />
+                </div>
+            </span>
+        </label>
+    }.into_any()
+}
+
+#[component]
+pub fn DiscreteSlider(field: MatrixSettingField<f64>, values: Vec<f64>) -> AnyView {
+    let uses_cloud = field.uses_cloud;
+    let (cloud_icon, cloud_color, cloud_tooltip) = get_cloud_stuff(uses_cloud);
+
+    let signal = field.signal();
+    let slider_ref: NodeRef<leptos::html::Input> = NodeRef::new();
+
+    // Store the vector in a StoredValue so we can access it within closures without cloning it every time
+    let values = StoredValue::new(values);
+    let max_idx = values.with_value(|v| v.len().saturating_sub(1));
+
+    // Calculate the current index based on the signal's active value
+    let current_index = move || {
+        values.with_value(|v| {
+            let current_val = signal.get();
+            v.iter().position(|x| *x == current_val).unwrap_or(0)
+        })
+    };
+
+    view! {
+        <label
+            data-field=field.type_name
+            class="flex justify-between gap-2 cursor-pointer border-transparent hover:border-(--tile-border-color) border transition-colors duration-100 rounded-lg p-(--gap) items-center hover:bg-(--tile-hover-color) text-dim hover:text-normal"
+        >
+            <span class="inline-flex items-center gap-2">
+                <span class="select-none">{field.human_readable}</span>
+                <div title=field.description class="flex items-center">
+                    <Icon icon=QUESTION size="14px" color="var(--dim-text-color)" />
+                </div>
+            </span>
+            <span class="inline-flex items-center gap-3">
+                <span class="select-none tabular-nums text-right">{move || signal.get()}</span>
+                <div class="relative w-full max-w-xs md:max-w-md pb-2">
+                    <input
+                        node_ref=slider_ref
+                        type="range"
+                        min="0"
+                        max=max_idx
+                        step="1"
+                        prop:value=current_index
+                        on:input=move |ev| {
+                            let idx = event_target_value(&ev).parse::<usize>().unwrap_or(0);
+                            values
+                                .with_value(|v| {
+                                    if let Some(val) = v.get(idx) {
+                                        field.set(*val);
+                                    }
+                                });
+                        }
+                        class="w-full h-2 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-indigo-5"
+                    />
+                    <div class="absolute inset-x-0 top-full flex justify-between px-0.5 pointer-events-none">
+                        {(0..=max_idx)
+                            .map(|_| {
+                                view! { <span class="w-1 h-1 rounded-full bg-neutral-500"></span> }
+                            })
+                            .collect_view()}
+                    </div>
                 </div>
                 <div title=cloud_tooltip>
                     <LIcon icon=cloud_icon style=cloud_color height="18px" />

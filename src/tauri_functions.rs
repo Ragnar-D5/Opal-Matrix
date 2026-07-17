@@ -545,8 +545,7 @@ pub fn install_update() {
 }
 
 pub fn change_screen_scaling(scale_factor: f64) {
-    let args = match serde_wasm_bindgen::to_value(&json!({ "scale_factor": scale_factor / 100.0 }))
-    {
+    let args = match serde_wasm_bindgen::to_value(&json!({ "scale_factor": scale_factor })) {
         Ok(value) => value,
         Err(e) => {
             log::error!("Failed to serialize request: {:?}", e);
