@@ -36,6 +36,7 @@ use shared::{
 };
 use tauri::{State, command, ipc::Channel};
 use tokio::sync::RwLock;
+use url::Url;
 use uuid::Uuid;
 
 use crate::{
@@ -43,6 +44,7 @@ use crate::{
     frontend::timeline::{
         load_reply_info, timeline_diff_to_ui, timeline_item_content_to_ui, timeline_item_to_ui,
     },
+    matrix_api::previews::get_link_previews,
     state::{TaskManager, TimelineManager},
 };
 
@@ -62,7 +64,7 @@ pub async fn send_message(
 
     let mut mentions = Mentions::default();
 
-    let (body, formatted_body) = process_string_to_message(&html, &mut mentions);
+    let (body, formatted_body, urls) = process_string_to_message(&html, &mut mentions);
 
     if body.is_empty() || &body == "\n" {
         log::warn!("Body is empty, not committing message");
@@ -77,7 +79,7 @@ pub async fn send_message(
                 MessageEventContent::plain(body).into()
             };
 
-        content.url_previews = None;
+        content.url_previews = get_link_previews(&client, &urls).await;
 
         let content =
             content.with_relation(Some(Relation::Reply(Reply::with_event_id(reply_to_id))));
@@ -212,7 +214,7 @@ pub async fn edit_message(
 
     let mut mentions = Mentions::default();
 
-    let (body, formatted_body) = process_string_to_message(&html, &mut mentions);
+    let (body, formatted_body, _) = process_string_to_message(&html, &mut mentions);
 
     let mut messge_content = if let Some(formatted_body) = formatted_body {
         RoomMessageEventContentWithoutRelation::text_html(body, formatted_body)
@@ -231,19 +233,23 @@ pub async fn edit_message(
     Ok(())
 }
 
-fn process_string_to_message(html: &str, mentions: &mut Mentions) -> (String, Option<String>) {
+fn process_string_to_message(
+    html: &str,
+    mentions: &mut Mentions,
+) -> (String, Option<String>, Vec<Url>) {
     let fragment = Html::parse_fragment(html);
 
     let mut body = String::new();
     let mut formatted_body = String::new();
+    let mut urls = Vec::new();
 
     for node in fragment.tree.root().children() {
-        walk_node(node, mentions, &mut body, &mut formatted_body);
+        walk_node(node, mentions, &mut body, &mut formatted_body, &mut urls);
     }
 
     let formatted_body = (formatted_body != body).then_some(formatted_body);
 
-    (body, formatted_body)
+    (body, formatted_body, urls)
 }
 
 fn walk_node(
@@ -251,6 +257,7 @@ fn walk_node(
     mentions: &mut Mentions,
     body: &mut String,
     formatted: &mut String,
+    urls: &mut Vec<Url>,
 ) {
     match node.value() {
         Node::Text(text) => {
@@ -263,6 +270,9 @@ fn walk_node(
                 let display_text = extract_text(node);
                 body.push_str(&display_text);
                 formatted.push_str(&format!("<a href=\"{}\">{}</a>", url, display_text));
+                if let Ok(parsed) = Url::parse(url) {
+                    urls.push(parsed);
+                }
                 return;
             }
             if let Some(data_type) = elem.attr("data-type")
@@ -296,7 +306,7 @@ fn walk_node(
             match elem.name() {
                 "html" | "body" => {
                     for child in node.children() {
-                        walk_node(child, mentions, body, formatted);
+                        walk_node(child, mentions, body, formatted, urls);
                     }
                 }
                 "br" => {

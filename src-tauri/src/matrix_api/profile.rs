@@ -43,7 +43,7 @@ pub async fn send_user_to_frontend(handle: &AppHandle, client: &Client) -> Resul
     let (display_name_result, avatar_result, custom_properties) = tokio::join!(
         account.get_display_name(),
         account.get_avatar_url(),
-        get_custom_fields(client, user_id.to_owned()),
+        get_custom_fields(client, user_id.to_owned(), None),
     );
 
     let display_name = display_name_result.ok().flatten();
@@ -126,9 +126,24 @@ pub struct ProfileDebounce {
     timer_running: bool,
 }
 
-pub async fn get_custom_fields(client: &Client, user_id: OwnedUserId) -> CustomProperties {
+/// Fetches custom profile fields (banner/name color, sonic signature), falling
+/// back to `fallback` per-field when a field is unset or its fetch fails.
+///
+/// Some homeservers respond to the single-field profile endpoint with a
+/// literal JSON `null` for a field that was never set, instead of omitting
+/// the key as the spec expects; ruma fails to deserialize that, so this
+/// treats "unset" and "the request errored" identically. Passing the
+/// previously-resolved `CustomProperties` as `fallback` (instead of `None`)
+/// means a flaky/unsupported request can't reset an already-known custom
+/// color back to the user-id-derived default; only the first-ever resolution
+/// for a user (no fallback available) does that.
+pub async fn get_custom_fields(
+    client: &Client,
+    user_id: OwnedUserId,
+    fallback: Option<CustomProperties>,
+) -> CustomProperties {
     let account = client.account();
-    let derived = CustomProperties::from_user_id(&user_id);
+    let fallback = fallback.unwrap_or_else(|| CustomProperties::from_user_id(&user_id));
 
     let (banner_result, name_result, sonic_result) = tokio::join!(
         account.fetch_profile_field_of(user_id.clone(), banner_color_field()),
@@ -141,21 +156,21 @@ pub async fn get_custom_fields(client: &Client, user_id: OwnedUserId) -> CustomP
         .flatten()
         .map(|v| v.value().to_string())
         .and_then(|v| serde_json::from_str(&v).ok())
-        .unwrap_or(derived.banner_color);
+        .unwrap_or(fallback.banner_color);
 
     let name_color = name_result
         .ok()
         .flatten()
         .map(|v| v.value().to_string())
         .and_then(|v| serde_json::from_str(&v).ok())
-        .unwrap_or(derived.name_color);
+        .unwrap_or(fallback.name_color);
 
     let sonic_signature = sonic_result
         .ok()
         .flatten()
         .map(|v| v.value().to_string())
         .and_then(|v| serde_json::from_str(&v).ok())
-        .unwrap_or(derived.sonic_signature);
+        .unwrap_or(fallback.sonic_signature);
 
     CustomProperties {
         banner_color,

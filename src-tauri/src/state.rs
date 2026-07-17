@@ -9,7 +9,7 @@ use livekit::webrtc::{
 use matrix_sdk::{
     Client, Room,
     ruma::{
-        EventId, OwnedEventId, OwnedRoomId,
+        EventId, OwnedEventId, OwnedMxcUri, OwnedRoomId, OwnedUserId,
         directory::{PublicRoomsChunk, RoomTypeFilter},
     },
 };
@@ -33,7 +33,10 @@ use std::{
 };
 use tauri_plugin_updater::Update;
 
-use shared::api::{UpdateStatus, events::LogEntry};
+use shared::{
+    api::{UpdateStatus, events::LogEntry},
+    profile::CustomProperties,
+};
 use tauri::{
     AppHandle,
     async_runtime::{Mutex, RwLock},
@@ -50,6 +53,18 @@ use crate::{
     TauriError, frontend::audio::emit_devices_update, matrix_api::rooms::RoomDirectorySearch,
 };
 
+/// Last known-good avatar/custom-color data for a room member, kept so that a
+/// transient or malformed profile-field response (some homeservers return a
+/// literal JSON `null` for an unset extended profile field instead of omitting
+/// the key, which fails deserialization) falls back to what we last
+/// successfully resolved instead of resetting to "no avatar"/the derived
+/// default color.
+#[derive(Clone)]
+pub struct CachedMemberProfile {
+    pub avatar_url: Option<OwnedMxcUri>,
+    pub custom_properties: CustomProperties,
+}
+
 #[derive(Default)]
 pub struct AppState {
     pub frontend_current_room_id: RwLock<Option<String>>,
@@ -62,6 +77,7 @@ pub struct AppState {
     pub update_status: RwLock<UpdateStatus>,
     pub session_refresh_task: Mutex<Option<JoinHandle<()>>>,
     pub sync_task: Mutex<Option<JoinHandle<()>>>,
+    pub member_profile_cache: SyncMutex<HashMap<(OwnedRoomId, OwnedUserId), CachedMemberProfile>>,
 }
 
 impl AppState {

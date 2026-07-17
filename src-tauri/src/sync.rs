@@ -85,8 +85,16 @@ pub async fn attach_callbacks(
     let members_client = client.clone();
     let members_handle = handle.clone();
     let members_rooms = rooms.clone();
+    let members_state = state.clone();
     spawn(async move {
-        if let Err(e) = send_all_members(&members_client, &members_handle, &members_rooms).await {
+        if let Err(e) = send_all_members(
+            &members_client,
+            &members_handle,
+            &members_rooms,
+            &members_state,
+        )
+        .await
+        {
             log::error!("Failed to send all members: {:?}", e);
         }
     });

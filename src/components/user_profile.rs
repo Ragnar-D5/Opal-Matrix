@@ -31,7 +31,14 @@ pub fn render_url_icon<S: AsRef<str>, T: AsRef<str>, U: AsRef<str>>(
         size_str.as_ref()
     );
 
-    let is_failed = RwSignal::new(true);
+    // Every reactive change to the profile (not just the avatar) rebuilds this
+    // view from scratch via the `{move || profile.get().render_icon(...)}`
+    // call sites, creating a fresh `<img>` and this signal each time. Starting
+    // at `true` unconditionally would hide an already-loaded avatar behind the
+    // fallback until a new `on:load` fires, causing an unrelated update (e.g. a
+    // name/color refresh) to flash the avatar away. Start hidden only when we
+    // genuinely don't have a resolved URL yet.
+    let is_failed = RwSignal::new(url.as_ref().is_none_or(|sig| sig.get_untracked().is_none()));
 
     let name = name.as_ref().to_string();
 
