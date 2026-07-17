@@ -12,6 +12,11 @@ use matrix_sdk_ui::timeline::{
     AttachmentConfig, AttachmentSource, TimelineEventItemId, TimelineItemContent,
 };
 use mime::Mime;
+use ruma::events::{
+    message::{MessageEventContent, MessageEventContentWithoutRelation},
+    relation::Reply,
+    room::message::Relation,
+};
 use tauri_plugin_http::reqwest;
 use tokio_util::sync::CancellationToken;
 
@@ -65,12 +70,18 @@ pub async fn send_message(
     }
 
     if let Some(reply_to_id) = replies_to {
-        let content = if let Some(formatted_body) = formatted_body {
-            RoomMessageEventContentWithoutRelation::text_html(body, formatted_body)
-        } else {
-            RoomMessageEventContentWithoutRelation::text_plain(body)
-        };
-        timeline.send_reply(content, reply_to_id).await?;
+        let mut content: MessageEventContentWithoutRelation =
+            if let Some(formatted_body) = formatted_body {
+                MessageEventContent::html(body, formatted_body).into()
+            } else {
+                MessageEventContent::plain(body).into()
+            };
+
+        content.url_previews = None;
+
+        let content =
+            content.with_relation(Some(Relation::Reply(Reply::with_event_id(reply_to_id))));
+        timeline.send(content.into()).await?;
     } else {
         let mut message_content = if let Some(formatted_body) = formatted_body {
             RoomMessageEventContent::text_html(body, formatted_body)
