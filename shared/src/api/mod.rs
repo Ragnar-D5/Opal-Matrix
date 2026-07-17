@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use chrono::{DateTime, SecondsFormat, Utc};
 use macros::TauriEvent;
-use ruma::{OwnedRoomId, OwnedUserId};
+use ruma::{OwnedMxcUri, OwnedRoomId, OwnedUserId};
 use serde::{Deserialize, Deserializer, Serialize};
 use uuid::Uuid;
 
@@ -40,7 +40,7 @@ pub struct LinkPreviewResponse {
     #[serde(rename = "og:description")]
     pub description: Option<String>,
     #[serde(rename = "og:image")]
-    pub image_url: Option<String>,
+    pub image_url: Option<OwnedMxcUri>,
     #[serde(
         rename = "og:image:width",
         deserialize_with = "deserialize_u32_or_string",

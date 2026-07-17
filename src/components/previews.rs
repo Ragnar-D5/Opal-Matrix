@@ -1,6 +1,7 @@
 use leptos::{prelude::*, task::spawn_local};
 use phosphor_leptos::{DOWNLOAD_SIMPLE, Icon, IconWeight, X};
 use ruma::OwnedUserId;
+use ruma::events::room::MediaSource;
 use shared::timeline::RichTextSpan;
 use shared::timeline::UiMediaSource;
 use wasm_bindgen::JsCast;
@@ -20,6 +21,8 @@ pub fn render_link(span: RichTextSpan) -> impl IntoView {
     let RichTextSpan::Link { url, .. } = span else {
         return ().into_any();
     };
+
+    let cache: MediaCache = expect_context();
 
     let fetch_url = url.clone();
     let preview = LocalResource::new(move || {
@@ -100,6 +103,7 @@ pub fn render_link(span: RichTextSpan) -> impl IntoView {
                                                         .map(|img| {
                                                             let w = data.image_width.unwrap_or(400);
                                                             let h = data.image_height.unwrap_or(300);
+                                                            let source_url = cache.get_file(&MediaSource::Plain(img));
                                                             view! {
                                                                 <div class="relative rounded-lg overflow-hidden w-full">
                                                                     <a
@@ -108,7 +112,7 @@ pub fn render_link(span: RichTextSpan) -> impl IntoView {
                                                                         rel="noopener noreferrer"
                                                                     >
                                                                         <img
-                                                                            src=img
+                                                                            src=source_url
                                                                             width=data.image_width.unwrap_or(400)
                                                                             height=data.image_height.unwrap_or(300)
                                                                             alt="Preview thumbnail"
@@ -131,6 +135,7 @@ pub fn render_link(span: RichTextSpan) -> impl IntoView {
                                                 data.image_url
                                                     .clone()
                                                     .map(|img| {
+                                                        let source_url = cache.get_file(&MediaSource::Plain(img));
                                                         view! {
                                                             <div class="shrink-0 relative rounded-md overflow-hidden w-20 h-20 ml-2">
                                                                 <a
@@ -139,7 +144,7 @@ pub fn render_link(span: RichTextSpan) -> impl IntoView {
                                                                     rel="noopener noreferrer"
                                                                 >
                                                                     <img
-                                                                        src=img
+                                                                        src=source_url
                                                                         alt="Preview thumbnail"
                                                                         class="w-full h-full object-cover hover:opacity-80"
                                                                     />

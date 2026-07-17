@@ -328,7 +328,7 @@ pub async fn scroll_timeline(
         ScrollDirection::Down => timeline.paginate_forwards(30).await?,
     };
 
-    log::debug!("Pagination result: hit_end={hit_end}");
+    log::trace!("Pagination result: hit_end={hit_end}");
 
     Ok(!hit_end)
 }
