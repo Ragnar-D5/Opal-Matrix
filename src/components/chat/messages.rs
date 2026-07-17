@@ -351,6 +351,7 @@ fn render_message_content(
                             alt=filename.clone()
                             width=thumb_w
                             height=thumb_h
+                            style=format!("aspect-ratio: {} / {};", thumb_w, thumb_h)
                             class="rounded-md border border-[var(--tile-border-color)] relative group/image cursor-pointer"
                             on:load=move |_| loaded.set(true)
                             on:click=move |e: web_sys::MouseEvent| {

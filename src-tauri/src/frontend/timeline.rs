@@ -770,10 +770,15 @@ pub fn timeline_item_content_to_ui(
                 // StateEventType::RoomImagePack => {
                 //     EventContent::SystemMessage(SystemMessage::RoomImagePack)
                 // }
-                other => {
-                    log::warn!("Unhandled state event content change: {:?}", other);
-                    EventContent::SystemMessage(SystemMessage::Unknown)
-                }
+                other => match other.to_string().as_ref() {
+                    "org.matrix.preview_urls" => {
+                        EventContent::SystemMessage(SystemMessage::Unknown)
+                    }
+                    _ => {
+                        log::warn!("Unhandled state event content change: {:?}", other);
+                        EventContent::SystemMessage(SystemMessage::Unknown)
+                    }
+                },
             },
         },
     }

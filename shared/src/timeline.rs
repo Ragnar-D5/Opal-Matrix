@@ -244,6 +244,24 @@ pub fn fit_dimensions(w: u64, h: u64, max_w: u64, max_h: u64) -> (u64, u64) {
     ((w as f64 * scale) as u64, (h as f64 * scale) as u64)
 }
 
+/// Standard scale-method thumbnail sizes. Many homeservers (Synapse with the
+/// default `dynamic_thumbnails: false`, notably) only generate thumbnails at a
+/// fixed, admin-configured set of sizes and reject arbitrary dimensions with a
+/// 400 `M_UNKNOWN`. Snapping requests up to the smallest preset that covers the
+/// desired size keeps thumbnail requests working on servers that restrict this,
+/// at the cost of occasionally fetching a larger-than-needed thumbnail (the
+/// server's "scale" method preserves the source aspect ratio regardless, so the
+/// extra bytes don't change the display proportions, just the resolution).
+const THUMBNAIL_PRESETS: &[(u64, u64)] = &[(320, 240), (640, 480), (800, 600)];
+
+pub fn snap_thumbnail_size(w: u64, h: u64) -> (u64, u64) {
+    THUMBNAIL_PRESETS
+        .iter()
+        .find(|&&(pw, ph)| pw >= w && ph >= h)
+        .copied()
+        .unwrap_or(*THUMBNAIL_PRESETS.last().unwrap())
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct UiPollResult {
     pub question: String,

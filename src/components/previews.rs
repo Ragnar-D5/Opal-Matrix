@@ -1,19 +1,14 @@
 use leptos::{prelude::*, task::spawn_local};
 use phosphor_leptos::{DOWNLOAD_SIMPLE, Icon, IconWeight, X};
-use ruma::OwnedUserId;
-use ruma::events::room::MediaSource;
+use ruma::{OwnedUserId, events::room::MediaSource};
 use shared::timeline::RichTextSpan;
 use shared::timeline::UiMediaSource;
 use wasm_bindgen::JsCast;
 
-use crate::app::format_bytes;
-use crate::components::FloatingTile;
-use crate::components::SystemButtons;
-use crate::components::user_profile::MemberProfileExt;
-use crate::state::MediaCache;
-use crate::tauri_functions::get_media_blob_url;
 use crate::{
-    state::{AppState, ProfileStore},
+    app::format_bytes,
+    components::{FloatingTile, SystemButtons, user_profile::MemberProfileExt},
+    state::{AppState, MediaCache, ProfileStore},
     tauri_functions::{fetch_preview_data, save_file_to_picked_dest},
 };
 
@@ -168,6 +163,8 @@ pub fn render_link(span: RichTextSpan) -> impl IntoView {
 #[component]
 pub fn ImageLightbox() -> impl IntoView {
     let state: AppState = expect_context();
+    let cache: MediaCache = expect_context();
+
     let lightbox = state.lightbox_image;
     let zoomed = RwSignal::new(false);
     let img_ref = NodeRef::<leptos::html::Img>::new();
@@ -289,7 +286,7 @@ pub fn ImageLightbox() -> impl IntoView {
                         lightbox
                             .get()
                             .map(|img| {
-                                let source_url = get_media_blob_url(img.source.inner());
+                                let source_url = cache.get_file(img.source.inner());
                                 view! {
                                     <img
                                         node_ref=img_ref

@@ -845,6 +845,10 @@ impl MediaCache {
         source: &MediaSource,
         settings: &UiThumbnailSettings,
     ) -> ArcRwSignal<Option<String>> {
+        let (width, height) =
+            shared::timeline::snap_thumbnail_size(settings.width, settings.height);
+        let settings = UiThumbnailSettings { width, height, ..settings.clone() };
+
         let key = (media_source_key(source), settings.clone());
         let existing_signal = self.thumbnails.get_untracked().get(&key).cloned();
 
@@ -852,7 +856,7 @@ impl MediaCache {
             return signal;
         }
 
-        let signal = get_thumbnail_blob_url(source, settings);
+        let signal = get_thumbnail_blob_url(source, &settings);
 
         self.thumbnails.update_untracked(|map| {
             map.insert(key, signal.clone());

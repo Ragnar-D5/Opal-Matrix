@@ -224,6 +224,17 @@ impl RoomNode {
             _ => None,
         }
     }
+
+    pub fn icon_character(&self) -> char {
+        match self {
+            RoomNode::Dm(_) => '@',
+            _ => '#',
+        }
+    }
+
+    pub fn text_signature(&self) -> String {
+        format!("{}{}", self.icon_character(), self.name())
+    }
 }
 
 impl From<RoomNode> for RoomProfile {

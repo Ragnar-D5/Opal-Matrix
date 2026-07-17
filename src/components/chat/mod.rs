@@ -1113,7 +1113,13 @@ fn ChatInput() -> impl IntoView {
                 <div class="relative flex-1 min-w-0 flex items-center">
                     <Show when=move || is_empty.get()>
                         <div class="text-muted absolute left-0 top-0 pointer-events-none select-none py-3">
-                            "Type a message..."
+                            {move || {
+                                state
+                                    .active_room
+                                    .get()
+                                    .map(|r| format!("Message {}", r.text_signature()))
+                                    .unwrap_or("Type a message...".to_string())
+                            }}
                         </div>
                     </Show>
                     <div

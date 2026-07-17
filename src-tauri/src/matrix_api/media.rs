@@ -6,7 +6,7 @@ use matrix_sdk::{
 use tauri::{State, command};
 use tokio::sync::RwLock;
 
-use crate::TauriError;
+use crate::{LogResultExt, TauriError};
 
 async fn fetch_media(
     client: &Client,
@@ -14,7 +14,11 @@ async fn fetch_media(
     format: MediaFormat,
 ) -> Result<tauri::ipc::Response, TauriError> {
     let parameters = MediaRequestParameters { source, format };
-    let media = client.media().get_media_content(&parameters, true).await?;
+    let media = client
+        .media()
+        .get_media_content(&parameters, true)
+        .await
+        .log_as_debug()?;
 
     Ok(tauri::ipc::Response::new(media))
 }

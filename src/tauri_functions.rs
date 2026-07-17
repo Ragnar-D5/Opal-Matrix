@@ -18,7 +18,7 @@ use shared::{
     timeline::{UiMediaSource, UiTimelineItem},
 };
 use uuid::Uuid;
-use wasm_bindgen::JsCast;
+use wasm_bindgen::{JsCast, JsValue};
 
 use crate::hooks::{Channel, call_tauri, call_tauri_no_args, call_tauri_with_channel};
 
@@ -719,6 +719,20 @@ fn bytes_to_blob_url(buffer: js_sys::ArrayBuffer) -> Result<String, String> {
         .map_err(|e| format!("Failed to create object URL: {:?}", e))
 }
 
+/// Invokes a media-fetching command and converts its raw `ArrayBuffer` response
+/// into a blob object URL.
+async fn fetch_blob_url(cmd: &str, args: JsValue) -> Result<String, String> {
+    let res = call_tauri(cmd, args)
+        .await
+        .map_err(|e| format!("Tauri call failed: {:?}", e))?;
+
+    let buffer: js_sys::ArrayBuffer = res
+        .dyn_into()
+        .map_err(|e| format!("Expected ArrayBuffer response, got: {:?}", e))?;
+
+    bytes_to_blob_url(buffer)
+}
+
 /// Fetches the full media file for `source` and returns a blob object URL usable
 /// directly in `src`/`href` attributes. Callers that replace or drop the URL should
 /// release it with `web_sys::Url::revoke_object_url`, or the bytes stay in memory
@@ -737,43 +751,20 @@ pub fn get_media_blob_url(source: &MediaSource) -> ArcRwSignal<Option<String>> {
     let signal_clone = signal.clone();
 
     spawn_local(async move {
-        let res = match call_tauri("get_file", args)
-            .await
-            .map_err(|e| format!("Tauri call failed: {:?}", e))
-        {
-            Ok(res) => res,
-            Err(e) => {
-                log::error!("Failed to fetch file: {:?}", e);
-                return;
-            }
-        };
-
-        let buffer: js_sys::ArrayBuffer = match res.dyn_into() {
-            Ok(buffer) => buffer,
-            Err(e) => {
-                log::error!("Expected ArrayBuffer response, got: {:?}", e);
-                return;
-            }
-        };
-
-        let blob_url = match bytes_to_blob_url(buffer)
-            .map_err(|e| format!("Failed to create blob URL: {:?}", e))
-        {
-            Ok(blob_url) => blob_url,
-            Err(e) => {
-                log::error!("{:?}", e);
-                return;
-            }
-        };
-
-        signal_clone.set(Some(blob_url));
+        match fetch_blob_url("get_file", args).await {
+            Ok(blob_url) => signal_clone.set(Some(blob_url)),
+            Err(e) => log::error!("Failed to fetch file: {e}"),
+        }
     });
 
     signal
 }
 
 /// Like [`get_media_blob_url`], but requests a server-generated thumbnail of the
-/// given size instead of the full file.
+/// given size instead of the full file. Falls back to the full file if the server
+/// refuses to generate a thumbnail — some homeservers only support a fixed set of
+/// preset sizes and reject arbitrary dimensions, and this keeps the image visible
+/// rather than leaving the caller's signal stuck at `None` forever.
 pub fn get_thumbnail_blob_url(
     source: &MediaSource,
     settings: &UiThumbnailSettings,
@@ -792,32 +783,26 @@ pub fn get_thumbnail_blob_url(
     };
 
     let signal_clone = signal.clone();
+    let source = source.clone();
 
     spawn_local(async move {
-        let res = match call_tauri("get_thumbnail", args).await {
-            Ok(res) => res,
-            Err(e) => {
-                log::error!("Tauri call failed: {:?}", e);
+        match fetch_blob_url("get_thumbnail", args).await {
+            Ok(blob_url) => {
+                signal_clone.set(Some(blob_url));
                 return;
             }
+            Err(e) => log::debug!("Thumbnail request failed, falling back to full file: {e}"),
+        }
+
+        let Ok(fallback_args) = serde_wasm_bindgen::to_value(&json!({ "source": &source })) else {
+            log::error!("Failed to serialize fallback file request");
+            return;
         };
 
-        let buffer: js_sys::ArrayBuffer = match res.dyn_into() {
-            Ok(buffer) => buffer,
-            Err(e) => {
-                log::error!("Expected ArrayBuffer response, got: {:?}", e);
-                return;
-            }
-        };
-
-        let blob_url = match bytes_to_blob_url(buffer) {
-            Ok(blob_url) => blob_url,
-            Err(e) => {
-                log::error!("Failed to convert buffer to blob URL: {:?}", e);
-                return;
-            }
-        };
-        signal_clone.set(Some(blob_url));
+        match fetch_blob_url("get_file", fallback_args).await {
+            Ok(blob_url) => signal_clone.set(Some(blob_url)),
+            Err(e) => log::error!("Fallback file fetch also failed: {e}"),
+        }
     });
 
     signal
