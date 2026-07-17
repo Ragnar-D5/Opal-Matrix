@@ -25,16 +25,33 @@ pub async fn on_member_update(
     room: Room,
     app_handle: Ctx<AppHandle>,
 ) {
+    let user_id = event.state_key;
     let content = event.content;
 
-    let custom_properties = get_custom_fields(&room.client(), event.state_key.clone()).await;
+    let custom_properties = get_custom_fields(&room.client(), user_id.clone()).await;
+
+    let (display_name, avatar_url) = match room
+        .client()
+        .account()
+        .fetch_user_profile_of(&user_id)
+        .await
+    {
+        Ok(profile) => (
+            profile.get_static::<DisplayName>().ok().flatten(),
+            profile.get_static::<AvatarUrl>().ok().flatten(),
+        ),
+        Err(e) => {
+            log::debug!("Failed to fetch profile for {user_id}, using event content: {e:?}");
+            (content.displayname, content.avatar_url)
+        }
+    };
 
     let profile = MemberProfile {
         room_id: room.room_id().to_owned(),
         profile: UserProfile {
-            user_id: event.state_key,
-            display_name: content.displayname,
-            avatar_url: content.avatar_url,
+            user_id,
+            display_name,
+            avatar_url,
 
             custom_properties,
         },
@@ -105,10 +122,10 @@ pub async fn send_all_members(
 
     let mut user_memberships: MapType = HashMap::new();
     for (room_id, memberships) in room_memberships {
-        for (user_id, has_avatar, display_name) in memberships {
+        for (user_id, avatar_url, display_name) in memberships {
             user_memberships.entry(user_id).or_default().push((
                 room_id.clone(),
-                has_avatar,
+                avatar_url,
                 display_name,
             ));
         }

@@ -40,9 +40,6 @@ pub async fn send_user_to_frontend(handle: &AppHandle, client: &Client) -> Resul
     let user_id = client.user_id().ok_or("Not logged in")?;
     let account = client.account();
 
-    // Same as `get_user_profile`: a fetch error here usually just means the field
-    // isn't set (e.g. no avatar), not that the request failed, so don't let `?`
-    // turn that into a fatal error for the whole restore/login flow.
     let (display_name_result, avatar_result, custom_properties) = tokio::join!(
         account.get_display_name(),
         account.get_avatar_url(),

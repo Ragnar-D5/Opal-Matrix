@@ -8,7 +8,7 @@ use ruma::{
 };
 use serde_json::json;
 use shared::{
-    UiThumbnailSettings,
+    UiThumbnailMethod, UiThumbnailSettings,
     account_data::{Breadcrumbs, ServerOrder},
     api::{
         AudioDeviceInfos, SearchParameters, UpdateDownloadProgress, UpdateStatus,
@@ -806,6 +806,13 @@ pub struct MediaCache {
     thumbnails: RwSignal<HashMap<ThumbnailKey, ArcRwSignal<Option<String>>>>,
 }
 
+const AVATAR_THUMBNAIL_SETTINGS: UiThumbnailSettings = UiThumbnailSettings {
+    method: UiThumbnailMethod::Crop,
+    width: 96,
+    height: 96,
+    animated: true,
+};
+
 impl MediaCache {
     pub fn get_avatar(&self, mxc: &MxcUri) -> ArcRwSignal<Option<String>> {
         let existing_signal = self.avatars.get_untracked().get(mxc).cloned();
@@ -814,7 +821,10 @@ impl MediaCache {
             return signal;
         }
 
-        let signal = get_media_blob_url(&MediaSource::Plain(mxc.to_owned()));
+        let signal = get_thumbnail_blob_url(
+            &MediaSource::Plain(mxc.to_owned()),
+            &AVATAR_THUMBNAIL_SETTINGS,
+        );
 
         self.avatars.update_untracked(|map| {
             map.insert(mxc.to_owned(), signal.clone());
@@ -847,7 +857,11 @@ impl MediaCache {
     ) -> ArcRwSignal<Option<String>> {
         let (width, height) =
             shared::timeline::snap_thumbnail_size(settings.width, settings.height);
-        let settings = UiThumbnailSettings { width, height, ..settings.clone() };
+        let settings = UiThumbnailSettings {
+            width,
+            height,
+            ..settings.clone()
+        };
 
         let key = (media_source_key(source), settings.clone());
         let existing_signal = self.thumbnails.get_untracked().get(&key).cloned();
