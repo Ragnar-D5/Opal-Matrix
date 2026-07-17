@@ -47,7 +47,7 @@ matrix-sdk = {
     "experimental-element-recent-emojis",
     "experimental-search",
     "experimental-send-custom-to-device",
-    "sqlite"
+    "sqlite",
   ]
 }
 matrix-sdk-ui = "0.18"
@@ -58,6 +58,7 @@ percent-encoding = "2.3.2"
 regex = "1.12.3"
 ringbuf = "0.5.0"
 roxygen = "1.0.4"
+ruma = { version = "0.16.0", features = ["unstable-msc4095"] }
 rusqlite = { version = "0.37.0", features = ["bundled"] }
 rustls = { version = "0.23.40", features = ["ring"] }
 scraper = "0.26.0"
