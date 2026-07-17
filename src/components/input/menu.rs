@@ -6,7 +6,7 @@ use crate::{
         text::RichTextExt,
         user_profile::{MemberProfileExt, RoomProfileExt},
     },
-    state::{AppState, ProfileStore},
+    state::{AppState, MediaCache, ProfileStore},
     tauri_functions::get_commands,
 };
 use leptos::html::{Button, Div};
@@ -349,6 +349,8 @@ impl RenderMenuRow for MemberProfile {
 
     fn render_row(self, room_id: &RoomId, idx: usize, selected_index: RwSignal<usize>) -> AnyView {
         let store: ProfileStore = expect_context();
+        let cache: MediaCache = expect_context();
+
         let user_id = self.user_id();
 
         let presence = store.get_presence(&user_id);
@@ -361,7 +363,7 @@ impl RenderMenuRow for MemberProfile {
 
             view! {
                 <PresenceBadge presence=presence size=15.0>
-                    {profile.render_icon("30px")}
+                    {profile.render_icon("30px", cache)}
                 </PresenceBadge>
             }
             .into_any()

@@ -1,7 +1,7 @@
 use csscolorparser::Color;
 use macros::TauriEvent;
 use ruma::{
-    OwnedRoomId, OwnedUserId, RoomId, UserId, events::presence::PresenceEventContent,
+    OwnedMxcUri, OwnedRoomId, OwnedUserId, UserId, events::presence::PresenceEventContent,
     presence::PresenceState,
 };
 use serde::{Deserialize, Serialize};
@@ -93,7 +93,7 @@ pub struct UserProfile {
     pub user_id: OwnedUserId,
     pub display_name: Option<String>,
 
-    pub has_avatar: bool,
+    pub avatar_url: Option<OwnedMxcUri>,
 
     pub custom_properties: CustomProperties,
 }
@@ -103,10 +103,6 @@ impl UserProfile {
         self.display_name
             .clone()
             .unwrap_or_else(|| self.user_id.to_string())
-    }
-
-    pub fn get_avatar_url(&self, room_id: &RoomId) -> String {
-        format!("mxc://user/{}/room/{room_id}", self.user_id)
     }
 
     pub fn get_signature(&self) -> SonicSignature {
@@ -133,8 +129,8 @@ impl MemberProfile {
         self.profile.get_name()
     }
 
-    pub fn get_avatar_url(&self) -> String {
-        self.profile.get_avatar_url(&self.room_id)
+    pub fn get_avatar_url(&self) -> Option<OwnedMxcUri> {
+        self.profile.avatar_url.clone()
     }
 
     pub fn user_id(&self) -> OwnedUserId {

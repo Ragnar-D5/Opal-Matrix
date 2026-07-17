@@ -100,7 +100,7 @@ pub async fn convert_room_to_node(room: &Room, handle: &AppHandle) -> Option<Roo
     let info = room.clone_info();
 
     let name = room.display_name().await.ok()?.to_string();
-    let has_avatar = info.avatar_url().is_some();
+    let avatar_url = info.avatar_url().map(|a| a.to_owned());
     let canonical_alias = info.canonical_alias().map(|a| a.to_string());
     let aliases = info.alt_aliases().iter().map(|a| a.to_string()).collect();
     let room_id = room.room_id().to_owned();
@@ -123,7 +123,7 @@ pub async fn convert_room_to_node(room: &Room, handle: &AppHandle) -> Option<Roo
 
     let info = RoomNodeInfo {
         name,
-        has_avatar,
+        avatar_url,
         canonical_alias,
         aliases,
         room_id: room_id.clone(),
@@ -613,7 +613,7 @@ pub async fn get_unknown_children(
 
         let info = RoomNodeInfo {
             name: calculate_preview_name(&summary),
-            has_avatar: summary.avatar_url.is_some(),
+            avatar_url: summary.avatar_url.clone(),
             canonical_alias: summary.canonical_alias.map(|a| a.to_string()),
             aliases: Vec::new(),
             room_id: room_id.clone(),

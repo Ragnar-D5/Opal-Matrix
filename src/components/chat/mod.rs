@@ -23,7 +23,7 @@ use crate::{
         user_profile::{MemberProfileExt, RoomNodeExt},
     },
     hooks::{convertFileSrc, setup_update_effect, use_tauri_channel, use_tauri_event},
-    state::{AppState, CurrentSection, MainView, ProfileStore},
+    state::{AppState, CurrentSection, MainView, MediaCache, ProfileStore},
     tauri_functions::{
         get_extra_room_info, get_timeline, indicate_typing, pick_files, scroll_timeline,
     },
@@ -1191,6 +1191,8 @@ fn InfoRow(label: &'static str, value: String) -> impl IntoView {
 }
 
 fn room_info_screen(node: RoomNode) -> AnyView {
+    let cache: MediaCache = expect_context();
+
     let room_id = StoredValue::new(node.room_id());
     let extra_info: RwSignal<Option<RoomExtraInfo>> = RwSignal::new(None);
 
@@ -1220,7 +1222,7 @@ fn room_info_screen(node: RoomNode) -> AnyView {
     view! {
         <div class="flex flex-col justify-center">
             <div class="flex flex-row items-center gap-3 ui-solid-bg border border-(--tile-border-color) p-(--gap) rounded-ui">
-                {node.render_url_icon("64px")} <div class="flex flex-col">
+                {node.render_url_icon("64px", cache)} <div class="flex flex-col">
                     <span class="text-3xl font-bold text-normal">{name.clone()}</span>
                     <span class="text-muted text-sm">{room_id.get_value().to_string()}</span>
                 </div>

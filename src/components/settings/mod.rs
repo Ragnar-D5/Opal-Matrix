@@ -19,7 +19,7 @@ use crate::{
         },
         user_profile::MemberProfileExt,
     },
-    state::{AppState, ProfileStore},
+    state::{AppState, MediaCache, ProfileStore},
 };
 
 pub mod definition;
@@ -138,6 +138,7 @@ fn scroll_to_setting(type_name: &'static str) {
 pub fn SettingsIcon(#[prop(into, optional)] class: String) -> impl IntoView {
     let state: AppState = expect_context();
     let store: ProfileStore = expect_context();
+    let cache: MediaCache = expect_context();
 
     let sections_dict: HashMap<SettingsSection, UiSettingsSection> = SETTINGS_SECTIONS
         .iter()
@@ -296,7 +297,7 @@ pub fn SettingsIcon(#[prop(into, optional)] class: String) -> impl IntoView {
                                         move || selected_section.get() == PROFILE_SECTION.id,
                                     )
                                 >
-                                    {move || user_sig.get().get().render_icon("40px")}
+                                    {move || user_sig.get().get().render_icon("40px", cache)}
                                     <div class="flex flex-col p-2 rounded-[10px]">
                                         {move || user_sig.get().get().render_name_no_popup("16px")}
                                         <span

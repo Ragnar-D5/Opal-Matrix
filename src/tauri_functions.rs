@@ -1,7 +1,10 @@
 use klipy::{MediaItem, Page};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use ruma::{EventId, OwnedEventId, OwnedRoomId, RoomId, UserId, directory::RoomTypeFilter};
+use ruma::{
+    EventId, OwnedEventId, OwnedRoomId, RoomId, UserId, directory::RoomTypeFilter,
+    events::room::MediaSource,
+};
 use serde_json::json;
 use shared::{
     account_data::ServerOrder,
@@ -719,10 +722,10 @@ fn bytes_to_blob_url(buffer: js_sys::ArrayBuffer) -> Result<String, String> {
 /// directly in `src`/`href` attributes. Callers that replace or drop the URL should
 /// release it with `web_sys::Url::revoke_object_url`, or the bytes stay in memory
 /// for the lifetime of the page.
-pub fn get_media_blob_url(source: &UiMediaSource) -> RwSignal<Option<String>> {
+pub fn get_media_blob_url(source: &MediaSource) -> RwSignal<Option<String>> {
     let signal = RwSignal::new(None);
 
-    let args = match serde_wasm_bindgen::to_value(&json!({ "source": source.inner() })) {
+    let args = match serde_wasm_bindgen::to_value(&json!({ "source": source })) {
         Ok(args) => args,
         Err(e) => {
             log::error!("Failed to serialize request: {:?}", e);
@@ -794,136 +797,6 @@ pub fn get_thumbnail_blob_url(
 
     spawn_local(async move {
         let res = match call_tauri("get_thumbnail", args).await {
-            Ok(res) => res,
-            Err(e) => {
-                log::error!("Tauri call failed: {:?}", e);
-                return;
-            }
-        };
-
-        let buffer: js_sys::ArrayBuffer = match res.dyn_into() {
-            Ok(buffer) => buffer,
-            Err(e) => {
-                log::error!("Expected ArrayBuffer response, got: {:?}", e);
-                return;
-            }
-        };
-
-        let blob_url = match bytes_to_blob_url(buffer) {
-            Ok(blob_url) => blob_url,
-            Err(e) => {
-                log::error!("Failed to convert buffer to blob URL: {:?}", e);
-                return;
-            }
-        };
-        signal.set(Some(blob_url));
-    });
-
-    signal
-}
-
-pub fn get_room_avatar(room_id: &RoomId) -> RwSignal<Option<String>> {
-    let signal = RwSignal::new(None);
-
-    let args = match serde_wasm_bindgen::to_value(&json!({
-        "room_id": room_id
-    })) {
-        Ok(args) => args,
-        Err(e) => {
-            log::error!("Failed to serialize request: {:?}", e);
-            return signal;
-        }
-    };
-
-    spawn_local(async move {
-        let res = match call_tauri("get_room_avatar", args).await {
-            Ok(res) => res,
-            Err(e) => {
-                log::error!("Tauri call failed: {:?}", e);
-                return;
-            }
-        };
-
-        let buffer: js_sys::ArrayBuffer = match res.dyn_into() {
-            Ok(buffer) => buffer,
-            Err(e) => {
-                log::error!("Expected ArrayBuffer response, got: {:?}", e);
-                return;
-            }
-        };
-
-        let blob_url = match bytes_to_blob_url(buffer) {
-            Ok(blob_url) => blob_url,
-            Err(e) => {
-                log::error!("Failed to convert buffer to blob URL: {:?}", e);
-                return;
-            }
-        };
-        signal.set(Some(blob_url));
-    });
-
-    signal
-}
-
-pub fn get_member_avatar(room_id: &RoomId, user_id: &UserId) -> RwSignal<Option<String>> {
-    let signal = RwSignal::new(None);
-
-    let args = match serde_wasm_bindgen::to_value(&json!({
-        "room_id": room_id,
-        "user_id": user_id
-    })) {
-        Ok(args) => args,
-        Err(e) => {
-            log::error!("Failed to serialize request: {:?}", e);
-            return signal;
-        }
-    };
-
-    spawn_local(async move {
-        let res = match call_tauri("get_member_avatar", args).await {
-            Ok(res) => res,
-            Err(e) => {
-                log::error!("Tauri call failed: {:?}", e);
-                return;
-            }
-        };
-
-        let buffer: js_sys::ArrayBuffer = match res.dyn_into() {
-            Ok(buffer) => buffer,
-            Err(e) => {
-                log::error!("Expected ArrayBuffer response, got: {:?}", e);
-                return;
-            }
-        };
-
-        let blob_url = match bytes_to_blob_url(buffer) {
-            Ok(blob_url) => blob_url,
-            Err(e) => {
-                log::error!("Failed to convert buffer to blob URL: {:?}", e);
-                return;
-            }
-        };
-        signal.set(Some(blob_url));
-    });
-
-    signal
-}
-
-pub fn get_user_avatar(user_id: &UserId) -> RwSignal<Option<String>> {
-    let signal = RwSignal::new(None);
-
-    let args = match serde_wasm_bindgen::to_value(&json!({
-        "user_id": user_id
-    })) {
-        Ok(args) => args,
-        Err(e) => {
-            log::error!("Failed to serialize request: {:?}", e);
-            return signal;
-        }
-    };
-
-    spawn_local(async move {
-        let res = match call_tauri("get_user_avatar", args).await {
             Ok(res) => res,
             Err(e) => {
                 log::error!("Tauri call failed: {:?}", e);

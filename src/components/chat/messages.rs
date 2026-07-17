@@ -34,7 +34,7 @@ use crate::{
         text::{RichTextExt, richt_text_spans_to_html},
         user_profile::MemberProfileExt,
     },
-    state::{AppState, LighboxImage, ProfileStore},
+    state::{AppState, LighboxImage, MediaCache, ProfileStore},
     tauri_functions::{
         delete_message, get_media_blob_url, get_thumbnail_blob_url, pin_event, toggle_reaction,
         unpin_event,
@@ -52,6 +52,8 @@ fn ReplyPreview(
     };
 
     let store: ProfileStore = expect_context();
+    let cache: MediaCache = expect_context();
+
     let target_event_id = reply_info.event_id.clone();
 
     let preview = Memo::new(move |_| match &reply_info.event {
@@ -86,7 +88,7 @@ fn ReplyPreview(
             class="flex items-center gap-1 mb-1 cursor-pointer [&_*]:pointer-events-none text-xs"
             on:click=move |_| scroll_to_item.run(target_event_id.clone())
         >
-            {move || profile.get().render_icon("20px")}
+            {move || profile.get().render_icon("20px", cache)}
             {move || profile.get().render_name_popup("12px")}
             <span class="truncate text-normal line-clamp-1">
                 {move || {
@@ -115,6 +117,8 @@ fn MessageHeader(
     is_pinned: Memo<bool>,
     children: Children,
 ) -> impl IntoView {
+    let cache: MediaCache = expect_context();
+
     let has_reply = move || reply_info.with(|r| r.is_some());
     let name_profile_sig = sender_profile_sig.clone();
 
@@ -179,7 +183,8 @@ fn MessageHeader(
                     class=("mt-[5px]", move || !has_reply())
                 >
                     {if show_header {
-                        view! { {move || sender_profile_sig.get().render_icon("40px")} }.into_any()
+                        view! { {move || sender_profile_sig.get().render_icon("40px", cache)} }
+                            .into_any()
                     } else {
                         ().into_any()
                     }}
@@ -233,7 +238,7 @@ fn render_message_content(
 
     match content.msg_type {
         UiMessageType::Audio { source, filename, duration } => {
-            let source_url = get_media_blob_url(&source);
+            let source_url = get_media_blob_url(source.inner());
             view! {
                 <div class="flex items-center gap-2 mt-1 p-2 rounded-md bg-white/5 border border-[var(--tile-border-color)] inline-flex">
                     <span class="text-xl">"🎵"</span>
@@ -276,7 +281,7 @@ fn render_message_content(
         }
             .into_any(),
         UiMessageType::File { filename, size, source, .. } =>  {
-            let source_url = get_media_blob_url(&source);
+            let source_url = get_media_blob_url(source.inner());
             view! {
                 <div class="flex items-center gap-2 mt-1 p-2 rounded-md bg-white/5 border border-[var(--tile-border-color)] inline-flex">
                     <span class="text-xl">"📄"</span>
@@ -472,7 +477,7 @@ fn render_message_content(
         }
             .into_any(),
         UiMessageType::Sticker { source, .. } => {
-            let source_url = get_media_blob_url(&source);
+            let source_url = get_media_blob_url(source.inner());
             view! {
                 <div class="mt-1">
                     <img
@@ -515,7 +520,7 @@ fn render_message_content(
                 MAX_W,
                 MAX_H,
             );
-            let source_url = get_media_blob_url(&source);
+            let source_url = get_media_blob_url(source.inner());
             view! {
                 <Suspense fallback=move || {
                     view! {
@@ -572,6 +577,8 @@ fn render_reactions(
         return ().into_any();
     }
 
+    let cache: MediaCache = expect_context();
+
     let content = reactions
         .iter()
         .map(|(emoji, reactors)| {
@@ -589,7 +596,7 @@ fn render_reactions(
                         let profile = store
                             .get_member_profile(&room_id.get_value(), &info.sender_id)
                             .get();
-                        let icon = profile.clone().render_icon("20px");
+                        let icon = profile.clone().render_icon("20px", cache);
 
                         let wrapped = view! {
                             <div
@@ -666,6 +673,8 @@ fn render_read_receipts(
         return ().into_any();
     }
 
+    let cache: MediaCache = expect_context();
+
     const MAX_SHOWN: usize = 5;
 
     let pics = receipts
@@ -676,7 +685,7 @@ fn render_read_receipts(
                 .get_member_profile(&room_id.get_value(), user_id)
                 .get();
             let name = profile.get_name();
-            let icon = profile.render_icon("16px");
+            let icon = profile.render_icon("16px", cache);
 
             view! {
                 <div
@@ -721,6 +730,8 @@ fn render_system_message(
     room_id: StoredValue<OwnedRoomId>,
     jump_target: RwSignal<Option<OwnedEventId>>,
 ) -> impl IntoView {
+    let cache: MediaCache = expect_context();
+
     let sender_id_str = sender_id.clone();
 
     let user_div = |user_id: &UserId| {
@@ -729,7 +740,7 @@ fn render_system_message(
 
         view! {
             <span class="inline-flex items-center mr-[6px] align-middle">
-                {move || profile_sig.get().render_icon("20px")}
+                {move || profile_sig.get().render_icon("20px", cache)}
             </span>
             <span class="mr-1">{move || name_sig.get().render_name_popup("16px")}</span>
         }
@@ -957,7 +968,7 @@ fn render_system_message(
 
                 view! {
                     <div class="inline-flex items-center gap-1 pr-1 align-middle">
-                        {move || profile_sig.get().render_icon("20px")}
+                        {move || profile_sig.get().render_icon("20px", cache)}
                         {move || name_sig.get().render_name_popup("16px")}
                     </div>
                 }

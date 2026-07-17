@@ -3,7 +3,10 @@ use ruma::{OwnedRoomId, OwnedUserId};
 use shared::synth::{SignatureEvent, signature_audio_src};
 use web_sys::{Element, KeyboardEvent};
 
-use crate::{components::presence::PresenceBadge, state::ProfileStore};
+use crate::{
+    components::presence::PresenceBadge,
+    state::{MediaCache, ProfileStore},
+};
 
 #[derive(Clone, Copy)]
 pub struct ProfileCardState {
@@ -42,6 +45,7 @@ impl ProfileCardState {
 pub fn ProfileCardPortal() -> impl IntoView {
     let state: ProfileCardState = expect_context();
     let store = StoredValue::new(expect_context::<ProfileStore>());
+    let cache: MediaCache = expect_context();
 
     window_event_listener(leptos::ev::keydown, move |ev: KeyboardEvent| {
         if state.user_id.try_get_untracked().flatten().is_some() && ev.key() == "Escape" {
@@ -116,7 +120,7 @@ pub fn ProfileCardPortal() -> impl IntoView {
         let audio_src = move || signature_audio_src(&sonic_sig.signature(), SignatureEvent::Joined);
 
         let icon_sig = signal.clone();
-        let profile_icon = move || icon_sig.clone().icon(format!("{icon_size}px"));
+        let profile_icon = move || icon_sig.clone().icon(format!("{icon_size}px"), cache);
 
         let name_sig = signal.clone();
         let profile_name = move || name_sig.clone().name_no_popup("14px".to_string());

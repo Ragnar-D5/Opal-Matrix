@@ -3,7 +3,7 @@ use std::{collections::HashMap, ops::AddAssign};
 use csscolorparser::Color;
 use macros::TauriEvent;
 use ruma::{
-    OwnedDeviceId, OwnedRoomId, OwnedUserId, RoomId,
+    OwnedDeviceId, OwnedMxcUri, OwnedRoomId, OwnedUserId, RoomId,
     events::room::history_visibility::HistoryVisibility, room::JoinRuleSummary,
 };
 use serde::{Deserialize, Serialize};
@@ -71,11 +71,8 @@ impl DmRoomNode {
         self.info.room_id.clone()
     }
 
-    pub fn avatar_url(&self) -> Option<String> {
-        self.info.has_avatar.then_some(format!(
-            "mxc://user/{}/room/{}",
-            self.other_user_id, self.info.room_id
-        ))
+    pub fn avatar_url(&self) -> Option<OwnedMxcUri> {
+        self.info.avatar_url.clone()
     }
 }
 
@@ -136,7 +133,8 @@ pub struct RoomNodeInfo {
     pub room_id: OwnedRoomId,
     pub name: String,
     pub topic: Option<String>,
-    pub has_avatar: bool,
+
+    pub avatar_url: Option<OwnedMxcUri>,
 
     pub rights: RoomRights,
 
@@ -175,8 +173,8 @@ impl RoomNode {
         self.info().aliases.clone()
     }
 
-    pub fn has_avatar(&self) -> bool {
-        self.info().has_avatar
+    pub fn avatar_url(&self) -> Option<OwnedMxcUri> {
+        self.info().avatar_url.clone()
     }
 
     pub fn color(&self) -> Color {

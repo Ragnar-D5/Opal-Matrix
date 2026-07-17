@@ -9,6 +9,7 @@ use crate::app::format_bytes;
 use crate::components::FloatingTile;
 use crate::components::SystemButtons;
 use crate::components::user_profile::MemberProfileExt;
+use crate::state::MediaCache;
 use crate::tauri_functions::get_media_blob_url;
 use crate::{
     state::{AppState, ProfileStore},
@@ -283,7 +284,7 @@ pub fn ImageLightbox() -> impl IntoView {
                         lightbox
                             .get()
                             .map(|img| {
-                                let source_url = get_media_blob_url(&img.source);
+                                let source_url = get_media_blob_url(img.source.inner());
                                 view! {
                                     <img
                                         node_ref=img_ref
@@ -331,6 +332,7 @@ fn LightboxHeader(
 
     let store: ProfileStore = expect_context();
     let state: AppState = expect_context();
+    let cache: MediaCache = expect_context();
 
     let Some(room_id) = state.active_room_id_untracked() else {
         return ().into_any();
@@ -359,7 +361,7 @@ fn LightboxHeader(
                 on:click=move |e| e.stop_propagation()
             >
                 <div class="flex items-center gap-2 p-3">
-                    {move || profile_sig.get().render_icon("35px")}
+                    {move || profile_sig.get().render_icon("35px", cache)}
                     <div class="flex flex-col min-w-0">
                         {move || name_sig.get().render_name_popup("16px")}
                         <span class="text-dim text-xs">{timestamp_str.clone()}</span>

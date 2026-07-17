@@ -2,7 +2,10 @@ use std::collections::{HashMap, HashSet};
 
 use leptos::task::spawn_local;
 use log::error;
-use ruma::{OwnedEventId, OwnedRoomId, OwnedUserId, RoomId, UserId};
+use ruma::{
+    MxcUri, OwnedEventId, OwnedMxcUri, OwnedRoomId, OwnedUserId, RoomId, UserId,
+    events::room::MediaSource,
+};
 use serde_json::json;
 use shared::{
     account_data::{Breadcrumbs, ServerOrder},
@@ -23,7 +26,7 @@ use crate::{
     app::CurrentWindow,
     components::{chat::Attachment, user_profile::MemberProfileExt},
     hooks::call_tauri,
-    tauri_functions::get_user_profile,
+    tauri_functions::{get_media_blob_url, get_user_profile},
 };
 use leptos::prelude::*;
 
@@ -648,7 +651,7 @@ impl ProfileStore {
             profile: UserProfile {
                 user_id: user_id.to_owned(),
                 display_name: None,
-                has_avatar: false,
+                avatar_url: None,
                 custom_properties: CustomProperties::from_user_id(user_id),
             },
         });
@@ -691,7 +694,7 @@ impl ProfileStore {
         let sig = ArcRwSignal::new(UserProfile {
             user_id: user_id.to_owned(),
             display_name: None,
-            has_avatar: false,
+            avatar_url: None,
             custom_properties: CustomProperties::from_user_id(user_id),
         });
 
@@ -764,10 +767,10 @@ impl ProfileSignal {
         }
     }
 
-    pub fn icon(self, size_str: String) -> impl IntoView {
+    pub fn icon(self, size_str: String, cache: MediaCache) -> impl IntoView {
         match self {
-            ProfileSignal::User(sig) => sig.get().render_icon(size_str).into_any(),
-            ProfileSignal::Member(sig) => sig.get().render_icon(size_str).into_any(),
+            ProfileSignal::User(sig) => sig.get().render_icon(size_str, cache).into_any(),
+            ProfileSignal::Member(sig) => sig.get().render_icon(size_str, cache).into_any(),
         }
     }
 
@@ -783,5 +786,36 @@ impl ProfileSignal {
             ProfileSignal::User(sig) => sig.get().render_name_no_popup(font_size_str).into_any(),
             ProfileSignal::Member(sig) => sig.get().render_name_no_popup(font_size_str).into_any(),
         }
+    }
+}
+
+thread_local! {
+    static MEDIA_OWNER: Owner = Owner::new();
+}
+
+fn media_owner() -> Owner {
+    MEDIA_OWNER.with(|owner| owner.clone())
+}
+
+#[derive(Default, Clone, Copy)]
+pub struct MediaCache {
+    pub avatars: RwSignal<HashMap<OwnedMxcUri, RwSignal<Option<String>>>>,
+}
+
+impl MediaCache {
+    pub fn get_avatar(&self, mxc: &MxcUri) -> RwSignal<Option<String>> {
+        let existing_signal = self.avatars.get_untracked().get(mxc).cloned();
+
+        if let Some(signal) = existing_signal {
+            return signal;
+        }
+
+        let signal = media_owner().with(|| get_media_blob_url(&MediaSource::Plain(mxc.to_owned())));
+
+        self.avatars.update_untracked(|map| {
+            map.insert(mxc.to_owned(), signal);
+        });
+
+        signal
     }
 }

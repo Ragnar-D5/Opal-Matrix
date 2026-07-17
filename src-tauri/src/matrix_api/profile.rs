@@ -50,13 +50,12 @@ pub async fn send_user_to_frontend(handle: &AppHandle, client: &Client) -> Resul
     );
 
     let display_name = display_name_result.ok().flatten();
-    let has_avatar = avatar_result.ok().flatten().is_some();
 
     let update = UserProfile {
         display_name,
         user_id: user_id.to_owned(),
 
-        has_avatar,
+        avatar_url: avatar_result.ok().flatten(),
 
         custom_properties,
     };

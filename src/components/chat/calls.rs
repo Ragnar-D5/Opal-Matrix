@@ -5,13 +5,14 @@ use web_sys::ResizeObserverEntry;
 
 use crate::{
     components::user_profile::MemberProfileExt,
-    state::{AppState, ProfileStore},
+    state::{AppState, MediaCache, ProfileStore},
 };
 
 #[component]
 pub fn CallView(node: RoomNode) -> impl IntoView {
     let state: AppState = expect_context();
     let store: ProfileStore = expect_context();
+    let cache: MediaCache = expect_context();
 
     let container_ref = NodeRef::<leptos::html::Div>::new();
     let (is_large, set_is_large) = signal(false);
@@ -92,7 +93,7 @@ pub fn CallView(node: RoomNode) -> impl IntoView {
                                         if is_large.get() { colors() } else { String::new() }
                                     }
                                 >
-                                    {move || profile.get().render_icon("64px")}
+                                    {move || profile.get().render_icon("64px", cache)}
                                     {move || {
                                         is_large
                                             .get()

@@ -16,7 +16,7 @@ use crate::{
         FloatingTile, SystemButtons,
         user_profile::{MemberProfileExt, RoomNodeExt},
     },
-    state::{AppState, CurrentSection, ProfileStore},
+    state::{AppState, CurrentSection, MediaCache, ProfileStore},
     tauri_functions::{get_pinned_events, join_call, leave_call, search_rooms},
 };
 
@@ -24,6 +24,7 @@ use crate::{
 pub fn ChatHeader(chat_sidebar_open: RwSignal<bool>) -> impl IntoView {
     let state: AppState = expect_context();
     let store: ProfileStore = expect_context();
+    let cache: MediaCache = expect_context();
 
     let toggle_icon = move || {
         if let Some(node) = state.active_room.get() {
@@ -219,7 +220,7 @@ pub fn ChatHeader(chat_sidebar_open: RwSignal<bool>) -> impl IntoView {
                         }
                             .into_any();
                     };
-                    view! { {node.render_icon("70%")} }
+                    view! { {node.render_icon("70%", cache)} }
                 }}
             </div>
             <div class="flex-1 flex flex-col self-center text-normal text-m font-semibold">

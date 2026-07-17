@@ -9,11 +9,12 @@ use crate::tauri_functions::{save_banner_color, save_displayname, save_name_colo
 
 use crate::components::presence::PresenceBadge;
 use crate::components::user_profile::{RoomNodeExt, render_url_icon};
-use crate::state::{AppState, ProfileSignal, ProfileStore};
+use crate::state::{AppState, MediaCache, ProfileSignal, ProfileStore};
 
 pub fn render_profile_section() -> AnyView {
     let state: AppState = expect_context();
     let store: ProfileStore = expect_context();
+    let cache: MediaCache = expect_context();
 
     let Some(user_id) = state.user_id.get_untracked() else {
         return ().into_any();
@@ -148,7 +149,7 @@ pub fn render_profile_section() -> AnyView {
                                             .find(|room| { Some(room.room_id()) == selected_id })
                                             .map(|room| {
                                                 view! {
-                                                    {room.render_url_icon("16px")}
+                                                    {room.render_url_icon("16px", cache)}
                                                     <span class="truncate text-sm text-normal">
                                                         {room.name()}
                                                     </span>
@@ -352,7 +353,7 @@ pub fn render_profile_section() -> AnyView {
                                 {move || {
                                     store_icon
                                         .get_profile_signal(selected_room.get(), &uid_icon)
-                                        .icon(icon_size_str.clone())
+                                        .icon(icon_size_str.clone(), cache)
                                 }}
                             </PresenceBadge>
                             <div

@@ -82,7 +82,7 @@ pub async fn get_member_avatar(
 
     let room = client.get_room(&room_id).ok_or("No room available")?;
     let member = room
-        .get_member(&user_id)
+        .get_member_no_sync(&user_id)
         .await?
         .ok_or(format!("Member {user_id} not found in room {room_id}"))?;
     let bytes = member

@@ -6,9 +6,9 @@ use matrix_sdk::{
     Client, Room, RoomMemberships,
     event_handler::Ctx,
     ruma::{
-        OwnedRoomId, OwnedUserId,
+        OwnedMxcUri, OwnedRoomId, OwnedUserId,
+        api::client::profile::{AvatarUrl, DisplayName},
         events::{room::member::OriginalSyncRoomMemberEvent, typing::SyncTypingEvent},
-        profile::ProfileFieldName,
     },
 };
 use shared::{
@@ -34,7 +34,7 @@ pub async fn on_member_update(
         profile: UserProfile {
             user_id: event.state_key,
             display_name: content.displayname,
-            has_avatar: content.avatar_url.is_some(),
+            avatar_url: content.avatar_url,
 
             custom_properties,
         },
@@ -44,7 +44,12 @@ pub async fn on_member_update(
     send_event(&app_handle, &payload);
 }
 
-type RoomMembershipsType = Vec<(OwnedRoomId, Vec<(OwnedUserId, bool, Option<String>)>)>;
+type RoomMembershipsType = Vec<(
+    OwnedRoomId,
+    Vec<(OwnedUserId, Option<OwnedMxcUri>, Option<String>)>,
+)>;
+
+type MapType = HashMap<OwnedUserId, Vec<(OwnedRoomId, Option<OwnedMxcUri>, Option<String>)>>;
 
 pub async fn send_all_members(
     client: &Client,
@@ -67,10 +72,13 @@ pub async fn send_all_members(
                 .into_iter()
                 .map(|member| {
                     let user_id = member.user_id().to_owned();
-                    let has_avatar = member.avatar_url().is_some();
                     let display_name = member.display_name().map(|s| s.to_string());
 
-                    memberships.push((user_id.clone(), has_avatar, display_name.clone()));
+                    memberships.push((
+                        user_id.clone(),
+                        member.avatar_url().map(|u| u.to_owned()),
+                        display_name.clone(),
+                    ));
 
                     MemberProfile {
                         room_id: room_id.clone(),
@@ -78,7 +86,7 @@ pub async fn send_all_members(
                             custom_properties: CustomProperties::from_user_id(&user_id),
                             user_id,
                             display_name,
-                            has_avatar,
+                            avatar_url: member.avatar_url().map(|u| u.to_owned()),
                         },
                     }
                 })
@@ -95,8 +103,7 @@ pub async fn send_all_members(
         .collect()
         .await;
 
-    let mut user_memberships: HashMap<OwnedUserId, Vec<(OwnedRoomId, bool, Option<String>)>> =
-        HashMap::new();
+    let mut user_memberships: MapType = HashMap::new();
     for (room_id, memberships) in room_memberships {
         for (user_id, has_avatar, display_name) in memberships {
             user_memberships.entry(user_id).or_default().push((
@@ -123,7 +130,7 @@ pub async fn send_all_members(
 
     let mut update_payload: HashMap<OwnedRoomId, Vec<MemberProfile>> = HashMap::new();
     for (user_id, custom_properties) in results {
-        for (room_id, has_avatar, display_name) in &user_memberships[&user_id] {
+        for (room_id, avatar_url, display_name) in &user_memberships[&user_id] {
             update_payload
                 .entry(room_id.clone())
                 .or_default()
@@ -132,7 +139,7 @@ pub async fn send_all_members(
                     profile: UserProfile {
                         user_id: user_id.clone(),
                         display_name: display_name.clone(),
-                        has_avatar: *has_avatar,
+                        avatar_url: avatar_url.clone(),
                         custom_properties: custom_properties.clone(),
                     },
                 });
@@ -153,22 +160,16 @@ pub async fn get_user_profile(
 
     let account = client.account();
 
-    let (display_name_result, avatar_result, custom_properties) = tokio::join!(
-        account.fetch_profile_field_of(user_id.clone(), ProfileFieldName::DisplayName),
-        account.fetch_profile_field_of(user_id.clone(), ProfileFieldName::AvatarUrl),
-        get_custom_fields(&client, user_id.clone()),
-    );
+    let profile = account.fetch_user_profile_of(&user_id).await?;
+    let display_name = profile.get_static::<DisplayName>()?;
+    let avatar_url = profile.get_static::<AvatarUrl>()?;
 
-    let display_name = display_name_result
-        .ok()
-        .flatten()
-        .and_then(|v| v.value().as_str().map(|t| t.to_string()));
-    let has_avatar = avatar_result.ok().flatten().is_some();
+    let custom_properties = get_custom_fields(&client, user_id.clone()).await;
 
     let profile = UserProfile {
         user_id,
         display_name,
-        has_avatar,
+        avatar_url,
         custom_properties,
     };
 

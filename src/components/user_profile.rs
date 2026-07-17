@@ -12,9 +12,8 @@ use wasm_bindgen::JsCast;
 use web_sys::MouseEvent;
 
 use crate::{
-    components::overlays::profile_card::ProfileCardState,
-    state::ProfileStore,
-    tauri_functions::{get_member_avatar, get_room_avatar, get_user_avatar},
+    components::{overlays::profile_card::ProfileCardState, presence::PresenceBadge},
+    state::{MediaCache, ProfileStore},
 };
 
 use super::TextCircle;
@@ -129,14 +128,14 @@ pub fn render_unknown_name<T: AsRef<str>>(font_size_str: T) -> impl IntoView {
 }
 
 pub trait RoomNodeExt {
-    fn render_url_icon<T: AsRef<str>>(&self, size_str: T) -> AnyView;
+    fn render_url_icon<T: AsRef<str>>(&self, size_str: T, cache: MediaCache) -> AnyView;
     fn render_simple_icon<T: AsRef<str>>(&self, size_str: T) -> AnyView;
     /// Renders the url icon if it is a `Dm` or `Single`, simple icon otherwise
-    fn render_icon<T: AsRef<str>>(&self, size_str: T) -> AnyView;
+    fn render_icon<T: AsRef<str>>(&self, size_str: T, cache: MediaCache) -> AnyView;
 }
 
 impl RoomNodeExt for RoomNode {
-    fn render_url_icon<T: AsRef<str>>(&self, size_str: T) -> AnyView {
+    fn render_url_icon<T: AsRef<str>>(&self, size_str: T, cache: MediaCache) -> AnyView {
         let rounding_str = if self.is_dm() { "full" } else { "[25%]" };
 
         if let Some(dm) = self.as_dm() {
@@ -144,22 +143,13 @@ impl RoomNodeExt for RoomNode {
             let sig = store.get_member_profile(&self.room_id(), &dm.other_user_id);
 
             let size = size_str.as_ref().to_string();
-            return view! { {move || sig.get().render_icon(&size)} }.into_any();
+
+            return view! { {move || sig.get().render_icon(&size, cache)} }.into_any();
         }
 
-        if !self.has_avatar() {
-            return render_url_icon(None, self.name(), size_str, self.color(), rounding_str);
-        }
+        let signal = self.avatar_url().map(|url| cache.get_avatar(&url));
 
-        let signal = get_room_avatar(&self.room_id());
-
-        render_url_icon(
-            Some(signal),
-            self.name(),
-            size_str,
-            self.color(),
-            rounding_str,
-        )
+        render_url_icon(signal, self.name(), size_str, self.color(), rounding_str)
     }
 
     fn render_simple_icon<T: AsRef<str>>(&self, size_str: T) -> AnyView {
@@ -175,9 +165,9 @@ impl RoomNodeExt for RoomNode {
         view! { <Icon icon=icon weight=weight size=size_str.as_ref().to_string() /> }.into_any()
     }
 
-    fn render_icon<T: AsRef<str>>(&self, size_str: T) -> AnyView {
+    fn render_icon<T: AsRef<str>>(&self, size_str: T, cache: MediaCache) -> AnyView {
         if matches!(self, RoomNode::Dm(_) | RoomNode::Single(_)) {
-            self.render_url_icon(size_str)
+            self.render_url_icon(size_str, cache)
         } else {
             self.render_simple_icon(size_str)
         }
@@ -185,8 +175,7 @@ impl RoomNodeExt for RoomNode {
 }
 
 pub trait MemberProfileExt {
-    fn render_icon<T: AsRef<str>>(self, size_str: T) -> AnyView;
-    fn render_icon_room<T: AsRef<str>>(self, size_str: T, room_id: Option<OwnedRoomId>) -> AnyView;
+    fn render_icon<T: AsRef<str>>(self, size_str: T, cache: MediaCache) -> AnyView;
     fn render_name<T: AsRef<str>>(self, font_size_str: T, popup: bool) -> AnyView;
     fn render_name_popup<T: AsRef<str>>(self, font_size_str: T) -> AnyView;
     fn render_name_no_popup<T: AsRef<str>>(self, font_size_str: T) -> AnyView;
@@ -201,12 +190,8 @@ impl MemberProfileExt for MemberProfile {
         }
     }
 
-    fn render_icon<T: AsRef<str>>(self, size_str: T) -> AnyView {
-        self.profile.render_icon_room(size_str, Some(self.room_id))
-    }
-
-    fn render_icon_room<T: AsRef<str>>(self, size_str: T, room_id: Option<OwnedRoomId>) -> AnyView {
-        self.profile.render_icon_room(size_str, room_id)
+    fn render_icon<T: AsRef<str>>(self, size_str: T, cache: MediaCache) -> AnyView {
+        self.profile.render_icon(size_str, cache)
     }
 
     fn render_name<T: AsRef<str>>(self, font_size_str: T, popup: bool) -> AnyView {
@@ -237,22 +222,16 @@ impl MemberProfileExt for UserProfile {
         }
     }
 
-    fn render_icon_room<T: AsRef<str>>(self, size_str: T, room_id: Option<OwnedRoomId>) -> AnyView {
-        let url = if self.has_avatar {
-            if let Some(rid) = room_id {
-                Some(get_member_avatar(&rid, &self.user_id))
-            } else {
-                Some(get_user_avatar(&self.user_id))
-            }
-        } else {
-            None
-        };
+    fn render_icon<T: AsRef<str>>(self, size_str: T, cache: MediaCache) -> AnyView {
+        let url_signal = self.avatar_url.clone().map(|u| cache.get_avatar(&u));
 
-        render_url_icon(url, self.get_name(), size_str, self.name_color(), "full")
-    }
-
-    fn render_icon<T: AsRef<str>>(self, size_str: T) -> AnyView {
-        self.render_icon_room(size_str, None)
+        render_url_icon(
+            url_signal,
+            self.get_name(),
+            size_str,
+            self.name_color(),
+            "full",
+        )
     }
 
     fn render_name<T: AsRef<str>>(self, font_size_str: T, popup: bool) -> AnyView {
@@ -276,17 +255,9 @@ impl MemberProfileExt for UserProfile {
 }
 
 impl MemberProfileExt for Option<MemberProfile> {
-    fn render_icon<T: AsRef<str>>(self, size_str: T) -> AnyView {
+    fn render_icon<T: AsRef<str>>(self, size_str: T, cache: MediaCache) -> AnyView {
         if let Some(profile) = self {
-            profile.render_icon(size_str).into_any()
-        } else {
-            render_unknown_icon(size_str).into_any()
-        }
-    }
-
-    fn render_icon_room<T: AsRef<str>>(self, size_str: T, room_id: Option<OwnedRoomId>) -> AnyView {
-        if let Some(profile) = self {
-            profile.render_icon_room(size_str, room_id).into_any()
+            profile.render_icon(size_str, cache).into_any()
         } else {
             render_unknown_icon(size_str).into_any()
         }
@@ -317,17 +288,9 @@ impl MemberProfileExt for Option<MemberProfile> {
 }
 
 impl MemberProfileExt for Option<UserProfile> {
-    fn render_icon<T: AsRef<str>>(self, size_str: T) -> AnyView {
+    fn render_icon<T: AsRef<str>>(self, size_str: T, cache: MediaCache) -> AnyView {
         if let Some(profile) = self {
-            profile.render_icon(size_str).into_any()
-        } else {
-            render_unknown_icon(size_str).into_any()
-        }
-    }
-
-    fn render_icon_room<T: AsRef<str>>(self, size_str: T, room_id: Option<OwnedRoomId>) -> AnyView {
-        if let Some(profile) = self {
-            profile.render_icon_room(size_str, room_id).into_any()
+            profile.render_icon(size_str, cache).into_any()
         } else {
             render_unknown_icon(size_str).into_any()
         }
@@ -376,9 +339,9 @@ pub fn render_user_profile_card(
     user_id: &UserId,
     room_id: Option<OwnedRoomId>,
 ) -> impl IntoView {
-    use crate::{components::presence::PresenceBadge, state::ProfileStore};
-
     let store: ProfileStore = expect_context();
+    let cache: MediaCache = expect_context();
+
     let profile_sig = store.get_profile_signal(room_id, user_id);
     let presence = store.get_presence(user_id);
 
@@ -415,7 +378,7 @@ pub fn render_user_profile_card(
 
             <div class="absolute left-4" style=format!("top: {icon_top}px;")>
                 <PresenceBadge presence=presence.clone() size=badge_size>
-                    {move || icon_sig.clone().icon(icon_size_str.clone())}
+                    {move || icon_sig.clone().icon(icon_size_str.clone(), cache)}
                 </PresenceBadge>
             </div>
 

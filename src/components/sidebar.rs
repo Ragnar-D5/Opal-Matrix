@@ -18,7 +18,7 @@ use crate::{
         settings::SettingsIcon,
         user_profile::{MemberProfileExt, RoomNodeExt},
     },
-    state::{AppState, CurrentSection, MainView, ProfileStore},
+    state::{AppState, CurrentSection, MainView, MediaCache, ProfileStore},
     tauri_functions::open_log_window,
 };
 use leptos::prelude::*;
@@ -29,6 +29,7 @@ use web_sys::HtmlButtonElement;
 fn render_full_room(node: RoomNode, other_user_id: StoredValue<Option<OwnedUserId>>) -> AnyView {
     let state: AppState = expect_context();
     let store: ProfileStore = expect_context();
+    let cache: MediaCache = expect_context();
 
     let room_id = StoredValue::new(node.room_id());
 
@@ -93,12 +94,12 @@ fn render_full_room(node: RoomNode, other_user_id: StoredValue<Option<OwnedUserI
 
                     view! {
                         <PresenceBadge presence=presence>
-                            {move || profile.get().render_icon("32px")}
+                            {move || profile.get().render_icon("32px", cache)}
                         </PresenceBadge>
                     }
                         .into_any()
                 } else {
-                    node.render_url_icon("32px")
+                    node.render_url_icon("32px", cache)
                 }
             }}
             <span class="inline-block align-center pl-2">
@@ -255,6 +256,7 @@ pub fn CutoutBadge(
 fn render_room_preview(room: RoomNode, members: Option<Vec<UserDevice>>) -> impl IntoView {
     let state: AppState = expect_context();
     let store: ProfileStore = expect_context();
+    let cache: MediaCache = expect_context();
 
     let click_id = room.room_id();
     let clone = click_id.clone();
@@ -336,9 +338,9 @@ fn render_room_preview(room: RoomNode, members: Option<Vec<UserDevice>>) -> impl
                         if let RoomNode::Dm(dm) = &room {
                             let profile = store
                                 .get_member_profile(&room.room_id(), &dm.other_user_id);
-                            profile.get().render_icon("40px")
+                            profile.get().render_icon("40px", cache)
                         } else {
-                            room.render_url_icon("40px")
+                            room.render_url_icon("40px", cache)
                         }
                     }}
                 </div>
@@ -349,7 +351,8 @@ fn render_room_preview(room: RoomNode, members: Option<Vec<UserDevice>>) -> impl
 
 #[component]
 pub fn ServerIcon(server: ServerRoomNode) -> impl IntoView {
-    let state = expect_context::<AppState>();
+    let state: AppState = expect_context();
+    let cache: MediaCache = expect_context();
 
     let server_id = StoredValue::new(server.room_id());
 
@@ -370,7 +373,7 @@ pub fn ServerIcon(server: ServerRoomNode) -> impl IntoView {
         count
     });
 
-    let avatar_content = RoomNode::Server(server.clone()).render_url_icon("40px");
+    let avatar_content = RoomNode::Server(server.clone()).render_url_icon("40px", cache);
 
     let tr_corner = move || {
         let user_ids_in_calls =
@@ -471,6 +474,7 @@ fn room_should_stay_visible(
 fn render_server_channel(child: RoomNode) -> AnyView {
     let state: AppState = expect_context();
     let store: ProfileStore = expect_context();
+    let cache: MediaCache = expect_context();
 
     if let RoomNode::Space(space) = &child {
         let child_ids = StoredValue::new(space.children.clone());
@@ -595,7 +599,7 @@ fn render_server_channel(child: RoomNode) -> AnyView {
 
                     view! {
                         <div class="hover:border-(--tile-border-color) border border-transparent rounded-[10px] p-1 flex items-center gap-2 flex flex-grow cursor-pointer">
-                            {move || profile.get().render_icon("22px")}
+                            {move || profile.get().render_icon("22px", cache)}
                             {move || clone.get().render_name_popup("14px")}
                         </div>
                     }
@@ -997,6 +1001,7 @@ pub fn Sidebar() -> impl IntoView {
 pub fn ProfileCard() -> impl IntoView {
     let state: AppState = expect_context();
     let store: ProfileStore = expect_context();
+    let cache: MediaCache = expect_context();
 
     let current_profile: RwSignal<Option<MemberProfile>> = RwSignal::new(None);
     let open_audio_menu: RwSignal<Option<AudioMenu>> = RwSignal::new(None);
@@ -1030,7 +1035,9 @@ pub fn ProfileCard() -> impl IntoView {
 
         view! {
             <PresenceBadge presence=store
-                .get_presence(&profile.user_id())>{profile.render_icon("30px")}</PresenceBadge>
+                .get_presence(
+                    &profile.user_id(),
+                )>{profile.render_icon("30px", cache)}</PresenceBadge>
             {name_profile.render_name_popup("14px")}
         }
         .into_any()

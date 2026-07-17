@@ -35,7 +35,7 @@ use crate::components::{
 };
 use crate::hooks::{call_tauri_no_args, setup_update_effect, use_tauri_event};
 use crate::redact_mode::{self, REDACTION_ROOT_SELECTOR};
-use crate::state::{AppState, ProfileStore};
+use crate::state::{AppState, MediaCache, ProfileStore};
 use crate::tauri_functions::{
     change_screen_scaling, get_app_version, get_update_status, set_backend_room_id,
     set_focused_in_backend,
@@ -129,6 +129,8 @@ pub fn format_bytes(bytes: u64) -> Memo<String> {
 pub fn App() -> impl IntoView {
     let state = AppState::default();
     provide_context(state);
+
+    provide_context(MediaCache::default());
 
     let settings = Settings::default();
     settings.setup_backend_hook();

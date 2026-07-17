@@ -12,6 +12,7 @@ use shared::{
 };
 
 use crate::components::FloatingTile;
+use crate::state::MediaCache;
 use crate::{
     components::{
         chat::{JumpTarget, messages::render_timeline_item},
@@ -124,6 +125,7 @@ fn chat_info() -> AnyView {
 fn member_list() -> AnyView {
     let state: AppState = expect_context();
     let store: ProfileStore = expect_context();
+    let cache: MediaCache = expect_context();
 
     let Some(room_id) = state.active_room_id_untracked() else {
         return ().into_any();
@@ -165,7 +167,7 @@ fn member_list() -> AnyView {
                 view! {
                     <div class="flex items-center gap-2">
                         <PresenceBadge presence=presence size=15.5>
-                            {profile.render_icon("32px")}
+                            {profile.render_icon("32px", cache)}
                         </PresenceBadge>
                         <span class="text-bright">{name_profile.render_name_popup("15px")}</span>
                     </div>
@@ -224,7 +226,7 @@ fn member_list() -> AnyView {
                 view! {
                     <div class="flex items-center gap-2">
                         <PresenceBadge presence=presence size=15.5>
-                            {profile.render_icon("32px")}
+                            {profile.render_icon("32px", cache)}
                         </PresenceBadge>
                         <span class="text-bright">{name_profile.render_name_popup("15px")}</span>
                     </div>
