@@ -177,7 +177,7 @@ where
     payload_signal
 }
 
-pub fn use_tauri_event<T>() -> ReadSignal<Option<T>>
+pub fn use_tauri_event_option<T>() -> ReadSignal<Option<T>>
 where
     T: TauriEvent + DeserializeOwned + Clone + Send + Sync + 'static,
 {

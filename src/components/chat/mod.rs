@@ -22,7 +22,7 @@ use crate::{
         settings::Settings,
         user_profile::{MemberProfileExt, RoomNodeExt},
     },
-    hooks::{convertFileSrc, setup_update_effect, use_tauri_channel, use_tauri_event},
+    hooks::{convertFileSrc, setup_update_effect, use_tauri_channel, use_tauri_event_option},
     state::{AppState, CurrentSection, MainView, MediaCache, ProfileStore},
     tauri_functions::{
         get_extra_room_info, get_timeline, indicate_typing, pick_files, scroll_timeline,
@@ -1364,7 +1364,7 @@ pub fn Chat() -> impl IntoView {
         search_results.set(draft.search_results);
     });
 
-    let search_update_sig: ReadSignal<Option<SearchResultUpdate>> = use_tauri_event();
+    let search_update_sig: ReadSignal<Option<SearchResultUpdate>> = use_tauri_event_option();
     let seen_search_rooms: StoredValue<(Uuid, HashSet<OwnedRoomId>)> =
         StoredValue::new((Uuid::nil(), HashSet::new()));
     setup_update_effect(

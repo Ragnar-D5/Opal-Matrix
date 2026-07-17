@@ -478,9 +478,6 @@ fn convert_settings(mut item: ItemStruct) -> TokenStream {
                 Ok(())
             }
 
-            /// Case-insensitive substring search over each setting's name and
-            /// description, returning the section it lives in alongside its
-            /// static metadata.
             pub fn search(&self, query: &str) -> Vec<(::shared::settings::SettingsSection, Setting)> {
                 let query = query.to_lowercase();
                 let mut results = Vec::new();
@@ -489,7 +486,7 @@ fn convert_settings(mut item: ItemStruct) -> TokenStream {
             }
 
             pub fn setup_backend_hook(&self) {
-                let update_sig: ReadSignal<Option<::shared::api::events::SettingsUpdate>> = use_tauri_event();
+                let update_sig: ReadSignal<Option<::shared::api::events::SettingsUpdate>> = use_tauri_event_option();
                 #(#signal_bindings)*
 
                 setup_update_effect(update_sig, move |new| {

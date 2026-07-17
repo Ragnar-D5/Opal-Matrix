@@ -45,7 +45,7 @@ pub async fn search_rooms(
         let room = match client.get_room(&room_id) {
             Some(room) => room,
             None => {
-                log::error!("Room with id {} not found", &room_id);
+                log::error!("Room with id {} not found", room_id);
                 continue;
             }
         };

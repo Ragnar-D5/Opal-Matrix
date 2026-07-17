@@ -254,17 +254,17 @@ async fn try_restore(
 
     let path = data_dir
         .join("sessions")
-        .join(format!("{}-{}.db", safe_user_id, &device_id));
+        .join(format!("{}-{}.db", safe_user_id, device_id));
 
     let cache_path = app_handle
         .path()
         .app_cache_dir()?
         .join("sessions_cache")
-        .join(format!("{}-{}", safe_user_id, &device_id));
+        .join(format!("{}-{}", safe_user_id, device_id));
 
     let index_path = data_dir
         .join("sessions_index")
-        .join(format!("{}-{}", safe_user_id, &device_id));
+        .join(format!("{}-{}", safe_user_id, device_id));
 
     std::fs::create_dir_all(&cache_path).unwrap_or_default();
 
@@ -631,9 +631,7 @@ fn info_from_update(update: &Update) -> UpdateInfo {
 
 #[command]
 async fn get_update_status(state: State<'_, Arc<AppState>>) -> Result<UpdateStatus, ()> {
-    let status = state.update_status.read().await.clone();
-
-    Ok(status)
+    Ok(state.update_status.read().await.clone())
 }
 
 pub async fn check_for_update_backend(
@@ -736,8 +734,19 @@ async fn download_update(
     };
 
     let info = info_from_update(&update);
+    let downloading_state = UpdateStatus::Downloading(info.clone());
 
-    *state.update_status.write().await = UpdateStatus::Downloading(info.clone());
+    {
+        let mut status = state.update_status.write().await;
+        if status.is_downloading() {
+            log::warn!("Update already downloading or available");
+            return Ok(());
+        }
+        *status = downloading_state.clone();
+    }
+
+    log::info!("Downloading update: {}", info.version);
+    send_event(&update_handle, &downloading_state);
     send_event(&update_handle, &UpdateDownloadProgress::Started);
 
     let download_info = info.clone();
@@ -746,11 +755,17 @@ async fn download_update(
     let finished_info = info.clone();
     let finished_state = state.inner().clone();
 
+    let downloaded_bytes = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+
     let handle_clone = handle.clone();
     let handle_clone2 = handle.clone();
     let bytes = match update
         .download(
-            move |progress, total| {
+            move |chunk_len, total| {
+                let downloaded = downloaded_bytes
+                    .fetch_add(chunk_len, std::sync::atomic::Ordering::Relaxed)
+                    + chunk_len;
+
                 let download_state = download_state.clone();
                 let update_handle = update_handle.clone();
                 let download_info = download_info.clone();
@@ -759,7 +774,10 @@ async fn download_update(
                         UpdateStatus::Downloading(download_info);
                     send_event(
                         &update_handle,
-                        &UpdateDownloadProgress::InProgress { progress, total },
+                        &UpdateDownloadProgress::InProgress {
+                            progress: downloaded,
+                            total,
+                        },
                     );
                 });
             },
@@ -796,13 +814,21 @@ async fn download_update(
 }
 
 #[command]
-async fn install_update(state: State<'_, Arc<AppState>>) -> Result<(), TauriError> {
+async fn install_update(
+    state: State<'_, Arc<AppState>>,
+    handle: AppHandle,
+) -> Result<(), TauriError> {
     let update = state
         .update
         .read()
         .await
         .clone()
         .ok_or("No update available")?;
+
+    let info = info_from_update(&update);
+    *state.update_status.write().await = UpdateStatus::Installing(info.clone());
+
+    send_event(&handle, &UpdateStatus::Installing(info.clone()));
 
     let bytes = state
         .update_bytes
@@ -812,6 +838,11 @@ async fn install_update(state: State<'_, Arc<AppState>>) -> Result<(), TauriErro
         .ok_or("Update not downloaded")?;
 
     update.install(bytes)?;
+
+    let new_state = UpdateStatus::RestartRequired;
+    *state.update_status.write().await = new_state.clone();
+    send_event(&handle, &new_state);
+
     Ok(())
 }
 
@@ -850,6 +881,11 @@ async fn recheck_update(
     Ok(())
 }
 
+#[command]
+async fn restart(handle: AppHandle) -> Result<(), ()> {
+    handle.restart()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     rustls::crypto::ring::default_provider()
@@ -859,6 +895,7 @@ pub fn run() {
     init_keyring();
 
     let mut builder = tauri::Builder::default()
+        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_cli::init())
         .plugin(tauri_plugin_dialog::init())

@@ -33,7 +33,7 @@ use crate::components::{
     overlays::space_search::{SpaceSearchPortal, SpaceSearchState},
     sidebar::Sidebar,
 };
-use crate::hooks::{call_tauri_no_args, setup_update_effect, use_tauri_event};
+use crate::hooks::{call_tauri_no_args, setup_update_effect, use_tauri_event_option};
 use crate::redact_mode::{self, REDACTION_ROOT_SELECTOR};
 use crate::state::{AppState, MediaCache, ProfileStore};
 use crate::tauri_functions::{
@@ -179,7 +179,7 @@ pub fn App() -> impl IntoView {
         }
     });
 
-    let profile_updates: ReadSignal<Option<ProfileUpdates>> = use_tauri_event();
+    let profile_updates: ReadSignal<Option<ProfileUpdates>> = use_tauri_event_option();
 
     setup_update_effect(profile_updates, move |updates| {
         for (room_id, profiles) in updates {
@@ -205,7 +205,7 @@ pub fn App() -> impl IntoView {
     // The backend pushes the logged-in user's own global profile eagerly during
     // login/restore, rather than waiting for something to lazily call
     // `get_user_profile`.
-    let own_profile_update: ReadSignal<Option<UserProfile>> = use_tauri_event();
+    let own_profile_update: ReadSignal<Option<UserProfile>> = use_tauri_event_option();
 
     setup_update_effect(own_profile_update, move |profile| {
         store
@@ -250,7 +250,7 @@ pub fn App() -> impl IntoView {
         });
     });
 
-    let presence_update: ReadSignal<Option<PresenceUpdate>> = use_tauri_event();
+    let presence_update: ReadSignal<Option<PresenceUpdate>> = use_tauri_event_option();
 
     setup_update_effect(presence_update, move |updates| {
         for (user_id, presence) in updates.iter() {
@@ -258,7 +258,8 @@ pub fn App() -> impl IntoView {
         }
     });
 
-    let notification_counts_update: ReadSignal<Option<NotificationUpdate>> = use_tauri_event();
+    let notification_counts_update: ReadSignal<Option<NotificationUpdate>> =
+        use_tauri_event_option();
 
     setup_update_effect(notification_counts_update, move |new| {
         state
@@ -266,43 +267,48 @@ pub fn App() -> impl IntoView {
             .update(|counts| counts.extend(new));
     });
 
-    let call_member_update: ReadSignal<Option<CallMemberUpdate>> = use_tauri_event();
+    let call_member_update: ReadSignal<Option<CallMemberUpdate>> = use_tauri_event_option();
 
     setup_update_effect(call_member_update, move |new| {
         state.update_call_members(new);
     });
 
-    let typing_update: ReadSignal<Option<TypingUpdate>> = use_tauri_event();
+    let typing_update: ReadSignal<Option<TypingUpdate>> = use_tauri_event_option();
 
     setup_update_effect(typing_update, move |update| {
         state.update_typing_users(&update.room_id, update.user_ids);
     });
 
-    let audio_device_update: ReadSignal<Option<AudioDeviceInfos>> = use_tauri_event();
+    let audio_device_update: ReadSignal<Option<AudioDeviceInfos>> = use_tauri_event_option();
 
     setup_update_effect(audio_device_update, move |update| {
         state.audio_devices.set(update);
     });
 
-    let recent_emoji_update: ReadSignal<Option<RecentEmojies>> = use_tauri_event();
+    let recent_emoji_update: ReadSignal<Option<RecentEmojies>> = use_tauri_event_option();
 
     setup_update_effect(recent_emoji_update, move |update| {
         state.recent_emojies.set(update);
     });
 
-    let download_update: ReadSignal<Option<UpdateDownloadProgress>> = use_tauri_event();
+    let download_update: ReadSignal<Option<UpdateDownloadProgress>> = use_tauri_event_option();
 
     setup_update_effect(download_update, move |update| {
         state.update_progress.set(update);
     });
 
-    let update_status: ReadSignal<Option<UpdateStatus>> = use_tauri_event();
+    let update_status: ReadSignal<Option<UpdateStatus>> = use_tauri_event_option();
 
     setup_update_effect(update_status, move |update| {
         state.update_status.set(update);
     });
 
-    get_update_status();
+    spawn_local(async move {
+        match get_update_status().await {
+            Ok(status) => state.update_status.set(status),
+            Err(e) => log::error!("Failed to get update status: {e}"),
+        }
+    });
 
     spawn_local(async move {
         match get_app_version().await {
@@ -311,10 +317,10 @@ pub fn App() -> impl IntoView {
         }
     });
 
-    let room_map_event: ReadSignal<Option<Vec<RoomMapUpdate>>> = use_tauri_event();
-    let dm_list_event: ReadSignal<Option<DmList>> = use_tauri_event();
-    let single_room_list_event: ReadSignal<Option<SingleList>> = use_tauri_event();
-    let server_list_event: ReadSignal<Option<ServerList>> = use_tauri_event();
+    let room_map_event: ReadSignal<Option<Vec<RoomMapUpdate>>> = use_tauri_event_option();
+    let dm_list_event: ReadSignal<Option<DmList>> = use_tauri_event_option();
+    let single_room_list_event: ReadSignal<Option<SingleList>> = use_tauri_event_option();
+    let server_list_event: ReadSignal<Option<ServerList>> = use_tauri_event_option();
 
     setup_update_effect(room_map_event, move |new| {
         let mut room_map = state.room_map.get_untracked();
@@ -351,7 +357,7 @@ pub fn App() -> impl IntoView {
         state.single_room_list.set(new);
     });
 
-    let pin_update: ReadSignal<Option<RoomPinnedUpdate>> = use_tauri_event();
+    let pin_update: ReadSignal<Option<RoomPinnedUpdate>> = use_tauri_event_option();
 
     setup_update_effect(
         pin_update,
@@ -508,16 +514,11 @@ pub fn Notifications() -> impl IntoView {
 
     let active_notifications: RwSignal<Vec<ActiveNotification>> = RwSignal::new(Vec::new());
 
-    let notification_update: ReadSignal<Option<NotificationEvent>> = use_tauri_event();
-
-    setup_update_effect(notification_update, move |notification| {
+    let push_notification = move |event: NotificationEvent| {
         let id = NOTIFICATION_COUNTER.fetch_add(1, Ordering::Relaxed);
 
         active_notifications.update(|buf| {
-            buf.push(ActiveNotification {
-                id,
-                event: notification,
-            });
+            buf.push(ActiveNotification { id, event });
         });
 
         set_timeout(
@@ -528,6 +529,25 @@ pub fn Notifications() -> impl IntoView {
             },
             std::time::Duration::from_millis(7000),
         );
+    };
+
+    let notification_update: ReadSignal<Option<NotificationEvent>> = use_tauri_event_option();
+
+    setup_update_effect(notification_update, move |notification| {
+        push_notification(notification);
+    });
+
+    let state: AppState = expect_context();
+    let already_notified = StoredValue::new(false);
+
+    Effect::new(move |_| {
+        let is_available = matches!(state.update_status.get(), UpdateStatus::UpdateAvailable(_));
+        if is_available && !already_notified.get_value() {
+            already_notified.set_value(true);
+            push_notification(NotificationEvent::UpdateAvailable);
+        } else if !is_available {
+            already_notified.set_value(false);
+        }
     });
 
     view! {

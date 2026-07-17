@@ -240,11 +240,13 @@ pub enum UpdateStatus {
     UpdateAvailable(UpdateInfo),
     Downloading(UpdateInfo),
     ReadyToInstall(UpdateInfo),
+    Installing(UpdateInfo),
     Error {
         short: String,
         long: String,
     },
     CheckingForUpdates,
+    RestartRequired,
 }
 
 impl UpdateStatus {
@@ -254,6 +256,33 @@ impl UpdateStatus {
             UpdateStatus::UpdateAvailable(_)
                 | UpdateStatus::Downloading(_)
                 | UpdateStatus::CheckingForUpdates
+        )
+    }
+
+    pub fn is_downloading(&self) -> bool {
+        matches!(self, UpdateStatus::Downloading(_))
+    }
+
+    pub fn update_available(&self) -> bool {
+        matches!(self, UpdateStatus::UpdateAvailable(_))
+    }
+
+    pub fn has_action(&self) -> bool {
+        matches!(
+            self,
+            UpdateStatus::RestartRequired
+                | UpdateStatus::ReadyToInstall(_)
+                | UpdateStatus::UpdateAvailable(_)
+                | UpdateStatus::UpToDate
+        )
+    }
+
+    pub fn has_spinner(&self) -> bool {
+        matches!(
+            self,
+            UpdateStatus::CheckingForUpdates
+                | UpdateStatus::Downloading(_)
+                | UpdateStatus::Installing(_)
         )
     }
 }

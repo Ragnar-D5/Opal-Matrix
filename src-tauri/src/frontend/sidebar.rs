@@ -116,7 +116,7 @@ pub async fn convert_room_to_node(room: &Room, handle: &AppHandle) -> Option<Roo
     let power_level = match room.power_levels().await {
         Ok(levels) => levels,
         Err(e) => {
-            log::error!("Failed to get power levels for room {}: {e}", &room_id);
+            log::error!("Failed to get power levels for room {}: {e}", room_id);
             return None;
         }
     };
@@ -135,7 +135,7 @@ pub async fn convert_room_to_node(room: &Room, handle: &AppHandle) -> Option<Roo
 
     if room
         .compute_is_dm()
-        .map_err(|e| log::error!("Failed to compite if room is dm for room {}: {e}", &room_id))
+        .map_err(|e| log::error!("Failed to compite if room is dm for room {}: {e}", room_id))
         .await
         .unwrap_or(false)
     {
@@ -149,9 +149,7 @@ pub async fn convert_room_to_node(room: &Room, handle: &AppHandle) -> Option<Roo
             None => room
                 .joined_user_ids()
                 .await
-                .map_err(|e| {
-                    log::error!("Failed to get joined user ids for room {}: {e}", &room_id)
-                })
+                .map_err(|e| log::error!("Failed to get joined user ids for room {}: {e}", room_id))
                 .ok()
                 .and_then(|ids| ids.into_iter().find(|id| id != room.own_user_id())),
         };
@@ -165,7 +163,7 @@ pub async fn convert_room_to_node(room: &Room, handle: &AppHandle) -> Option<Roo
 
         log::warn!(
             "Room {} looked like a DM but no DM node could be built; falling back to a normal room",
-            &room_id
+            room_id
         );
     }
 

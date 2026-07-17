@@ -39,6 +39,15 @@ impl TauriEvent for Uuid {
     }
 }
 
+impl<T> TauriEvent for Option<T>
+where
+    T: TauriEvent,
+{
+    fn name() -> String {
+        format!("Option_{}", T::name())
+    }
+}
+
 impl<T> TauriEvent for Vec<T>
 where
     T: TauriEvent,

@@ -43,6 +43,7 @@ pub fn add_invoke_handler(builder: Builder<Wry>) -> Builder<Wry> {
         super::try_restore,
         super::close_window,
         super::minimize_window,
+        super::restart,
         super::toggle_fullscreen,
         super::backend_log,
         super::open_log_window,
@@ -271,10 +272,10 @@ pub fn setup_builder(builder: Builder<Wry>) -> Builder<Wry> {
             if let Some(update) = maybe_update {
                 log::info!("Update available: {:?}, {:?}, {:?}, {:?}", update.body, update.current_version, update.current_version, update.download_url);
 
-                send_event(&clone, &NotificationEvent::UpdateAvailable);
-
                 *update_state.update.write().await = Some(update.clone());
-                *update_state.update_status.write().await = UpdateStatus::UpdateAvailable(info_from_update(&update));
+
+                let status = UpdateStatus::UpdateAvailable(info_from_update(&update));
+                *update_state.update_status.write().await = status;
             } else {
                 log::info!("No update available");
                 *update_state.update_status.write().await = UpdateStatus::UpToDate;

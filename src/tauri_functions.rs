@@ -11,6 +11,7 @@ use shared::{
     account_data::ServerOrder,
     api::{
         FileMetadata, GetTimelineResult, LinkPreviewResponse, ScrollDirection, SearchParameters,
+        UpdateStatus,
     },
     commands::Command,
     profile::UserProfile,
@@ -488,12 +489,12 @@ pub fn unpin_event(room_id: &RoomId, event_id: &EventId) {
     });
 }
 
-pub fn get_update_status() {
-    spawn_local(async move {
-        if let Err(e) = call_tauri_no_args("get_update_status").await {
-            log::error!("Failed to get update status: {:?}", e)
-        }
-    });
+pub async fn get_update_status() -> Result<UpdateStatus, String> {
+    let res = call_tauri_no_args("get_update_status")
+        .await
+        .map_err(|e| format!("Tauri call failed: {:?}", e))?;
+
+    serde_wasm_bindgen::from_value(res).map_err(|e| format!("Failed to parse response: {:?}", e))
 }
 
 pub fn check_for_update() {
@@ -806,4 +807,12 @@ pub fn get_thumbnail_blob_url(
     });
 
     signal
+}
+
+pub fn restart() {
+    spawn_local(async move {
+        if let Err(e) = call_tauri_no_args("restart").await {
+            log::error!("Failed to restart: {e:?}");
+        }
+    });
 }

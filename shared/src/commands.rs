@@ -68,7 +68,7 @@ impl Command {
         Command {
             name: name.to_string(),
             source: "Built-in".to_string(),
-            description: format!("Inserts '{}'", &replacement),
+            description: format!("Inserts '{}'", replacement),
             usage: format!("/{}", name.to_string()),
             arguments: vec![],
             execution: CommandExecution::Macro {
