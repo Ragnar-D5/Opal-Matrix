@@ -19,7 +19,7 @@ use crate::{
 use super::TextCircle;
 
 pub fn render_url_icon<S: AsRef<str>, T: AsRef<str>, U: AsRef<str>>(
-    url: Option<RwSignal<Option<String>>>,
+    url: Option<ArcRwSignal<Option<String>>>,
     name: S,
     size_str: T,
     color: Color,

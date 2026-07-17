@@ -207,7 +207,6 @@ pub fn ChatHeader(chat_sidebar_open: RwSignal<bool>) -> impl IntoView {
         }
     };
 
-    let store_clone = store.clone();
     view! {
         <FloatingTile class="h-(--header-height) items-start flex-row gap-1 pl-[5px]">
             <div class="w-8 self-center flex items-center justify-center text-normal">
@@ -229,7 +228,7 @@ pub fn ChatHeader(chat_sidebar_open: RwSignal<bool>) -> impl IntoView {
                         return view! { <span>"No Room"</span> }.into_any();
                     };
                     if let RoomNode::Dm(dm_node) = &current_room {
-                        let profile_sig = store_clone
+                        let profile_sig = store
                             .get_member_profile(&current_room.room_id(), &dm_node.other_user_id);
 
                         view! {

@@ -8,6 +8,7 @@ use ruma::{
 };
 use serde_json::json;
 use shared::{
+    UiThumbnailSettings,
     account_data::{Breadcrumbs, ServerOrder},
     api::{
         AudioDeviceInfos, SearchParameters, UpdateDownloadProgress, UpdateStatus,
@@ -26,7 +27,7 @@ use crate::{
     app::CurrentWindow,
     components::{chat::Attachment, user_profile::MemberProfileExt},
     hooks::call_tauri,
-    tauri_functions::{get_media_blob_url, get_user_profile},
+    tauri_functions::{get_media_blob_url, get_thumbnail_blob_url, get_user_profile},
 };
 use leptos::prelude::*;
 
@@ -621,12 +622,12 @@ impl AppState {
 
 type MemberStoreRoomEntry = HashMap<OwnedUserId, ArcRwSignal<MemberProfile>>;
 
-#[derive(Default, Clone)]
+#[derive(Default, Clone, Copy)]
 pub struct ProfileStore {
-    pub members: ArcRwSignal<HashMap<OwnedRoomId, MemberStoreRoomEntry>>,
+    pub members: RwSignal<HashMap<OwnedRoomId, MemberStoreRoomEntry>>,
     pub presences: RwSignal<HashMap<OwnedUserId, ArcRwSignal<PresenceInfo>>>,
 
-    pub user_profiles: ArcRwSignal<HashMap<OwnedUserId, ArcRwSignal<UserProfile>>>,
+    pub user_profiles: RwSignal<HashMap<OwnedUserId, ArcRwSignal<UserProfile>>>,
 }
 
 impl ProfileStore {
@@ -789,31 +790,72 @@ impl ProfileSignal {
     }
 }
 
-thread_local! {
-    static MEDIA_OWNER: Owner = Owner::new();
+fn media_source_key(source: &MediaSource) -> String {
+    match source {
+        MediaSource::Plain(uri) => uri.to_string(),
+        MediaSource::Encrypted(file) => file.url.to_string(),
+    }
 }
 
-fn media_owner() -> Owner {
-    MEDIA_OWNER.with(|owner| owner.clone())
-}
+type ThumbnailKey = (String, UiThumbnailSettings);
 
 #[derive(Default, Clone, Copy)]
 pub struct MediaCache {
-    pub avatars: RwSignal<HashMap<OwnedMxcUri, RwSignal<Option<String>>>>,
+    avatars: RwSignal<HashMap<OwnedMxcUri, ArcRwSignal<Option<String>>>>,
+    files: RwSignal<HashMap<String, ArcRwSignal<Option<String>>>>,
+    thumbnails: RwSignal<HashMap<ThumbnailKey, ArcRwSignal<Option<String>>>>,
 }
 
 impl MediaCache {
-    pub fn get_avatar(&self, mxc: &MxcUri) -> RwSignal<Option<String>> {
+    pub fn get_avatar(&self, mxc: &MxcUri) -> ArcRwSignal<Option<String>> {
         let existing_signal = self.avatars.get_untracked().get(mxc).cloned();
 
         if let Some(signal) = existing_signal {
             return signal;
         }
 
-        let signal = media_owner().with(|| get_media_blob_url(&MediaSource::Plain(mxc.to_owned())));
+        let signal = get_media_blob_url(&MediaSource::Plain(mxc.to_owned()));
 
         self.avatars.update_untracked(|map| {
-            map.insert(mxc.to_owned(), signal);
+            map.insert(mxc.to_owned(), signal.clone());
+        });
+
+        signal
+    }
+
+    pub fn get_file(&self, source: &MediaSource) -> ArcRwSignal<Option<String>> {
+        let key = media_source_key(source);
+        let existing_signal = self.files.get_untracked().get(&key).cloned();
+
+        if let Some(signal) = existing_signal {
+            return signal;
+        }
+
+        let signal = get_media_blob_url(source);
+
+        self.files.update_untracked(|map| {
+            map.insert(key, signal.clone());
+        });
+
+        signal
+    }
+
+    pub fn get_thumbnail(
+        &self,
+        source: &MediaSource,
+        settings: &UiThumbnailSettings,
+    ) -> ArcRwSignal<Option<String>> {
+        let key = (media_source_key(source), settings.clone());
+        let existing_signal = self.thumbnails.get_untracked().get(&key).cloned();
+
+        if let Some(signal) = existing_signal {
+            return signal;
+        }
+
+        let signal = get_thumbnail_blob_url(source, settings);
+
+        self.thumbnails.update_untracked(|map| {
+            map.insert(key, signal.clone());
         });
 
         signal

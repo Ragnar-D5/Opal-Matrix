@@ -9,6 +9,7 @@ use phosphor_leptos::{
     PUSH_PIN_SLASH, SMILEY, SPEAKER_HIGH, TRASH, WARNING_CIRCLE,
 };
 use shared::{
+    UiThumbnailMethod, UiThumbnailSettings,
     api::events::RecentEmoji,
     profile::MemberProfile,
     sidebar::RoomNode,
@@ -35,10 +36,7 @@ use crate::{
         user_profile::MemberProfileExt,
     },
     state::{AppState, LighboxImage, MediaCache, ProfileStore},
-    tauri_functions::{
-        delete_message, get_media_blob_url, get_thumbnail_blob_url, pin_event, toggle_reaction,
-        unpin_event,
-    },
+    tauri_functions::{delete_message, pin_event, toggle_reaction, unpin_event},
 };
 
 #[component]
@@ -66,10 +64,9 @@ fn ReplyPreview(
         DetailState::Unavailable => None,
     });
 
-    let profile_store = store.clone();
     let profile = Memo::new(move |_| {
         preview.get().map(|p| {
-            profile_store
+            store
                 .get_member_profile(&active_room_id.get_value(), &p.sender_id)
                 .get()
         })
@@ -95,7 +92,7 @@ fn ReplyPreview(
                     let spans = spans.get();
                     spans
                         .into_iter()
-                        .map(|v| v.clone().render(store.clone(), &active_room_id.get_value()))
+                        .map(|v| v.clone().render(store, &active_room_id.get_value()))
                         .collect::<Vec<_>>()
                 }}
             </span>
@@ -231,6 +228,7 @@ fn render_message_content(
     timestamp: u64,
 ) -> impl IntoView {
     let settings: Settings = expect_context();
+    let cache: MediaCache = expect_context();
 
     let spans = content.body;
     const MAX_W: u64 = 400;
@@ -238,7 +236,7 @@ fn render_message_content(
 
     match content.msg_type {
         UiMessageType::Audio { source, filename, duration } => {
-            let source_url = get_media_blob_url(source.inner());
+            let source_url = cache.get_file(source.inner());
             view! {
                 <div class="flex items-center gap-2 mt-1 p-2 rounded-md bg-white/5 border border-[var(--tile-border-color)] inline-flex">
                     <span class="text-xl">"🎵"</span>
@@ -269,7 +267,7 @@ fn render_message_content(
                 {spans
                     .clone()
                     .into_iter()
-                    .map(|v| v.render(store.clone(), &room_id.get_value()))
+                    .map(|v| v.render(store, &room_id.get_value()))
                     .collect_view()}
             </div>
         }
@@ -281,7 +279,7 @@ fn render_message_content(
         }
             .into_any(),
         UiMessageType::File { filename, size, source, .. } =>  {
-            let source_url = get_media_blob_url(source.inner());
+            let source_url = cache.get_file(source.inner());
             view! {
                 <div class="flex items-center gap-2 mt-1 p-2 rounded-md bg-white/5 border border-[var(--tile-border-color)] inline-flex">
                     <span class="text-xl">"📄"</span>
@@ -305,7 +303,7 @@ fn render_message_content(
                 {spans
                     .clone()
                     .into_iter()
-                    .map(|v| v.render(store.clone(), &room_id.get_value()))
+                    .map(|v| v.render(store, &room_id.get_value()))
                     .collect_view()}["Gallery message not supported yet"]
             </div>
         }
@@ -325,13 +323,18 @@ fn render_message_content(
                 MAX_W,
                 MAX_H,
             );
-            let is_animated = matches!(
+            let animated = matches!(
                 mime_type.as_deref(),
                 Some("image/gif") | Some("image/webp")
             );
             let state: AppState = expect_context();
 
-            let thumb_src = get_thumbnail_blob_url(&source, thumb_w, thumb_h, is_animated);
+            let thumb_src = cache.get_thumbnail(source.inner(), &UiThumbnailSettings {
+                method: UiThumbnailMethod::Scale,
+                width: thumb_w,
+                height: thumb_h,
+                animated,
+            });
 
             let lightbox = state.lightbox_image;
             let lightbox_source = source.clone();
@@ -403,7 +406,7 @@ fn render_message_content(
                     {spans
                         .clone()
                         .into_iter()
-                        .map(|v| v.render(store.clone(), &room_id.get_value()))
+                        .map(|v| v.render(store, &room_id.get_value()))
                         .collect_view()}
                     {if content.is_edited {
                         view! { <span class="text-xs text-muted ml-2 italic">"(edited)"</span> }
@@ -420,7 +423,7 @@ fn render_message_content(
                 {spans
                     .clone()
                     .into_iter()
-                    .map(|v| v.render(store.clone(), &room_id.get_value()))
+                    .map(|v| v.render(store, &room_id.get_value()))
                     .collect_view()}["Location message not supported yet"]
             </div>
         }
@@ -431,7 +434,7 @@ fn render_message_content(
                 {spans
                     .clone()
                     .into_iter()
-                    .map(|v| v.render(store.clone(), &room_id.get_value()))
+                    .map(|v| v.render(store, &room_id.get_value()))
                     .collect_view()}["Live location sharing not supported yet"]
             </div>
         }
@@ -442,7 +445,7 @@ fn render_message_content(
                 {spans
                     .clone()
                     .into_iter()
-                    .map(|v| v.render(store.clone(), &room_id.get_value()))
+                    .map(|v| v.render(store, &room_id.get_value()))
                     .collect_view()}["Notice messages are not supported yet"]
             </div>
         }
@@ -453,7 +456,7 @@ fn render_message_content(
                 {spans
                     .clone()
                     .into_iter()
-                    .map(|v| v.render(store.clone(), &room_id.get_value()))
+                    .map(|v| v.render(store, &room_id.get_value()))
                     .collect_view()}["Polls are not supported yet"]
             </div>
         }
@@ -471,13 +474,13 @@ fn render_message_content(
                 {spans
                     .clone()
                     .into_iter()
-                    .map(|v| v.render(store.clone(), &room_id.get_value()))
+                    .map(|v| v.render(store, &room_id.get_value()))
                     .collect_view()}["Server notice messages are not supported yet"]
             </div>
         }
             .into_any(),
         UiMessageType::Sticker { source, .. } => {
-            let source_url = get_media_blob_url(source.inner());
+            let source_url = cache.get_file(source.inner());
             view! {
                 <div class="mt-1">
                     <img
@@ -493,7 +496,7 @@ fn render_message_content(
                 {spans
                     .clone()
                     .into_iter()
-                    .map(|v| v.render(store.clone(), &room_id.get_value()))
+                    .map(|v| v.render(store, &room_id.get_value()))
                     .collect_view()}
                 {if content.is_edited {
                     view! { <span class="text-xs text-muted ml-2 italic">"(edited)"</span> }
@@ -520,7 +523,7 @@ fn render_message_content(
                 MAX_W,
                 MAX_H,
             );
-            let source_url = get_media_blob_url(source.inner());
+            let source_url = cache.get_file(source.inner());
             view! {
                 <Suspense fallback=move || {
                     view! {
@@ -583,7 +586,6 @@ fn render_reactions(
         .iter()
         .map(|(emoji, reactors)| {
             let emoji = emoji.clone();
-            let store = store.clone();
 
             let contains_user = reactors.iter().any(|v| *v.sender_id == user_id);
 
@@ -1155,7 +1157,7 @@ fn MesssageButtons(
             let spans = item_sig.get_untracked().body();
             el.set_inner_html(&richt_text_spans_to_html(
                 &spans,
-                store.clone(),
+                store,
                 &room_id.get_value(),
             ));
             is_empty.set(false);
@@ -1484,8 +1486,6 @@ fn render_timeline_event(
         }
     });
 
-    let store_for_content = store.clone();
-
     let content_for_render = Memo::new(move |_| {
         item_sig.with(|item| {
             let UiTimelineItemKind::Event(event) = &item.kind else {
@@ -1507,7 +1507,7 @@ fn render_timeline_event(
         match content {
             EventContent::MsgLike(ev) => render_message_content(
                 *ev,
-                store_for_content.clone(),
+                store,
                 room_id,
                 sender_id,
                 timestamp,
@@ -1522,17 +1522,13 @@ fn render_timeline_event(
                 render_system_message(
                     sender_id,
                     ev,
-                    store_for_content.clone(),
+                    store,
                     room_id,
                     jump_target
                 ).into_any()
             },
         }
     };
-
-    let store_clone = store.clone();
-
-    let store_for_receipts = store.clone();
 
     let reactions_view = move || {
         render_reactions(
@@ -1543,7 +1539,7 @@ fn render_timeline_event(
                     None
                 }
             }),
-            store_clone.clone(),
+            store,
             room_id,
             own_user_id.get_value(),
             event_id,
@@ -1568,7 +1564,7 @@ fn render_timeline_event(
             }
         });
 
-        render_read_receipts(receipts, store_for_receipts.clone(), room_id)
+        render_read_receipts(receipts, store, room_id)
     };
 
     let important_event_id: RwSignal<Option<OwnedEventId>> = expect_context();

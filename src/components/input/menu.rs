@@ -595,7 +595,7 @@ pub fn SelectionMenu(menu: RwSignal<MenuType>, input_ref: NodeRef<Div>) -> impl 
             return vec![];
         };
 
-        store.clone().get_members(&room_id)
+        store.get_members(&room_id)
     });
 
     let commands_resource = LocalResource::new(move || async move {

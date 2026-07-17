@@ -131,10 +131,8 @@ fn member_list() -> AnyView {
         return ().into_any();
     };
 
-    let members_store = store.clone();
-    let members = Memo::new(move |_| members_store.clone().get_member_signals(&room_id));
+    let members = Memo::new(move |_| store.get_member_signals(&room_id));
 
-    let online_store = store.clone();
     let online_view = move || {
         let members = members.get();
 
@@ -145,7 +143,7 @@ fn member_list() -> AnyView {
         )> = members
             .into_iter()
             .filter_map(|(user_id, member_sig)| {
-                let presence = online_store.get_presence(&user_id);
+                let presence = store.get_presence(&user_id);
 
                 if !presence.get().is_offline() {
                     let name = member_sig.get().get_name();
@@ -193,7 +191,6 @@ fn member_list() -> AnyView {
         }
     };
 
-    let offline_store = store.clone();
     let offline_view = move || {
         let members = members.get();
 
@@ -204,7 +201,7 @@ fn member_list() -> AnyView {
         )> = members
             .into_iter()
             .filter_map(|(user_id, member_sig)| {
-                let presence = offline_store.get_presence(&user_id);
+                let presence = store.get_presence(&user_id);
 
                 if presence.get().is_offline() {
                     let name = member_sig.get().get_name();

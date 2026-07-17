@@ -7,6 +7,7 @@ use ruma::{
 };
 use serde_json::json;
 use shared::{
+    UiThumbnailSettings,
     account_data::ServerOrder,
     api::{
         FileMetadata, GetTimelineResult, LinkPreviewResponse, ScrollDirection, SearchParameters,
@@ -722,8 +723,8 @@ fn bytes_to_blob_url(buffer: js_sys::ArrayBuffer) -> Result<String, String> {
 /// directly in `src`/`href` attributes. Callers that replace or drop the URL should
 /// release it with `web_sys::Url::revoke_object_url`, or the bytes stay in memory
 /// for the lifetime of the page.
-pub fn get_media_blob_url(source: &MediaSource) -> RwSignal<Option<String>> {
-    let signal = RwSignal::new(None);
+pub fn get_media_blob_url(source: &MediaSource) -> ArcRwSignal<Option<String>> {
+    let signal = ArcRwSignal::new(None);
 
     let args = match serde_wasm_bindgen::to_value(&json!({ "source": source })) {
         Ok(args) => args,
@@ -732,6 +733,8 @@ pub fn get_media_blob_url(source: &MediaSource) -> RwSignal<Option<String>> {
             return signal;
         }
     };
+
+    let signal_clone = signal.clone();
 
     spawn_local(async move {
         let res = match call_tauri("get_file", args)
@@ -763,7 +766,7 @@ pub fn get_media_blob_url(source: &MediaSource) -> RwSignal<Option<String>> {
             }
         };
 
-        signal.set(Some(blob_url));
+        signal_clone.set(Some(blob_url));
     });
 
     signal
@@ -772,21 +775,14 @@ pub fn get_media_blob_url(source: &MediaSource) -> RwSignal<Option<String>> {
 /// Like [`get_media_blob_url`], but requests a server-generated thumbnail of the
 /// given size instead of the full file.
 pub fn get_thumbnail_blob_url(
-    source: &UiMediaSource,
-    width: u64,
-    height: u64,
-    animated: bool,
-) -> RwSignal<Option<String>> {
-    let signal = RwSignal::new(None);
+    source: &MediaSource,
+    settings: &UiThumbnailSettings,
+) -> ArcRwSignal<Option<String>> {
+    let signal = ArcRwSignal::new(None);
 
     let args = match serde_wasm_bindgen::to_value(&json!({
-        "source": source.inner(),
-        "settings": {
-            "method": "scale",
-            "width": width,
-            "height": height,
-            "animated": animated,
-        },
+        "source": source,
+        "settings": settings,
     })) {
         Ok(args) => args,
         Err(e) => {
@@ -794,6 +790,8 @@ pub fn get_thumbnail_blob_url(
             return signal;
         }
     };
+
+    let signal_clone = signal.clone();
 
     spawn_local(async move {
         let res = match call_tauri("get_thumbnail", args).await {
@@ -819,7 +817,7 @@ pub fn get_thumbnail_blob_url(
                 return;
             }
         };
-        signal.set(Some(blob_url));
+        signal_clone.set(Some(blob_url));
     });
 
     signal

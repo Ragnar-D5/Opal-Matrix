@@ -73,7 +73,6 @@ fn render_full_room(node: RoomNode, other_user_id: StoredValue<Option<OwnedUserI
         }
     };
 
-    let store_clone = store.clone();
     let node_clone = node.clone();
     view! {
         <div
@@ -89,8 +88,8 @@ fn render_full_room(node: RoomNode, other_user_id: StoredValue<Option<OwnedUserI
         >
             {move || {
                 if let Some(user_id) = &other_user_id.get_value() {
-                    let profile = store_clone.get_member_profile(&room_id.get_value(), user_id);
-                    let presence = store_clone.get_presence(user_id);
+                    let profile = store.get_member_profile(&room_id.get_value(), user_id);
+                    let presence = store.get_presence(user_id);
 
                     view! {
                         <PresenceBadge presence=presence>
@@ -1006,7 +1005,6 @@ pub fn ProfileCard() -> impl IntoView {
     let current_profile: RwSignal<Option<MemberProfile>> = RwSignal::new(None);
     let open_audio_menu: RwSignal<Option<AudioMenu>> = RwSignal::new(None);
 
-    let profile_store = store.clone();
     Effect::new(move |_| {
         let room_id = state.active_room_id();
         let Some(user_id) = state.user_id.get() else {
@@ -1014,13 +1012,13 @@ pub fn ProfileCard() -> impl IntoView {
         };
 
         if let Some(rid) = room_id {
-            let profile = profile_store.get_member_profile(&rid, &user_id).get();
+            let profile = store.get_member_profile(&rid, &user_id).get();
             current_profile.set(Some(profile));
         } else {
             let CurrentSection::Server(rid) = state.active_section.get() else {
                 return;
             };
-            let profile = profile_store.get_member_profile(&rid, &user_id).get();
+            let profile = store.get_member_profile(&rid, &user_id).get();
             current_profile.set(Some(profile));
         }
     });

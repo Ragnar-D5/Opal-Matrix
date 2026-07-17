@@ -24,10 +24,8 @@ pub fn render_profile_section() -> AnyView {
 
     let presence = store.get_presence(&user_id);
 
-    let store_icon = store.clone();
-    let store_fields = store.clone();
-    let uid_icon = user_id.clone();
-    let uid_fields = user_id.clone();
+    let user_id_string = StoredValue::new(user_id.to_string());
+    let user_id = StoredValue::new(user_id.clone());
 
     // Banner geometry constants
     let banner_height = 108.0_f64;
@@ -48,8 +46,6 @@ pub fn render_profile_section() -> AnyView {
     let icon_top = banner_height - icon_radius;
     let icon_size_str = format!("{icon_size}px");
     let badge_size = (icon_size * 25.0 / 70.0) as f32;
-    let uid_display = user_id.clone().to_string();
-    let uid_reset = user_id.clone().to_string();
 
     let in_room_selection = RwSignal::new(false);
 
@@ -256,30 +252,31 @@ pub fn render_profile_section() -> AnyView {
     let strip_alpha = |hex: String| hex.chars().take(7).collect::<String>();
 
     Effect::new(move |_| {
-        let (dn, bc, nc) = match store_fields.get_profile_signal(selected_room.get(), &uid_fields) {
-            ProfileSignal::User(sig) => {
-                let p = sig.get();
-                (
-                    p.display_name.clone().unwrap_or_default(),
-                    strip_alpha(p.banner_color().to_css_hex()),
-                    p.name_color().to_hsla()[0] as u32,
-                )
-            }
-            ProfileSignal::Member(sig) => {
-                let p = sig.get();
-                (
-                    p.profile.display_name.clone().unwrap_or_default(),
-                    strip_alpha(p.banner_color().to_css_hex()),
-                    p.name_color().to_hsla()[0] as u32,
-                )
-            }
-        };
+        let (dn, bc, nc) =
+            match store.get_profile_signal(selected_room.get(), user_id.get_value().as_ref()) {
+                ProfileSignal::User(sig) => {
+                    let p = sig.get();
+                    (
+                        p.display_name.clone().unwrap_or_default(),
+                        strip_alpha(p.banner_color().to_css_hex()),
+                        p.name_color().to_hsla()[0] as u32,
+                    )
+                }
+                ProfileSignal::Member(sig) => {
+                    let p = sig.get();
+                    (
+                        p.profile.display_name.clone().unwrap_or_default(),
+                        strip_alpha(p.banner_color().to_css_hex()),
+                        p.name_color().to_hsla()[0] as u32,
+                    )
+                }
+            };
         displayname_val.set(dn);
         bannercolor_val.set(bc);
         namecolor_val.set(nc);
     });
 
-    let fallback_color = Memo::new(move |_| get_color(user_id.as_ref()));
+    let fallback_color = Memo::new(move |_| get_color(user_id.get_value().as_ref()));
 
     view! {
         <div class="flex flex-col h-full">
@@ -351,8 +348,11 @@ pub fn render_profile_section() -> AnyView {
                                 indicator_class="z-100"
                             >
                                 {move || {
-                                    store_icon
-                                        .get_profile_signal(selected_room.get(), &uid_icon)
+                                    store
+                                        .get_profile_signal(
+                                            selected_room.get(),
+                                            &user_id.get_value(),
+                                        )
                                         .icon(icon_size_str.clone(), cache)
                                 }}
                             </PresenceBadge>
@@ -400,7 +400,7 @@ pub fn render_profile_section() -> AnyView {
                                 <Icon icon=PAINT_BRUSH size="18px" weight=IconWeight::Thin />
                             </button>
                         </div>
-                        <div class="text-xs text-muted truncate">{uid_display}</div>
+                        <div class="text-xs text-muted truncate">{user_id_string.get_value()}</div>
                     </div>
                 </div>
 
@@ -431,12 +431,7 @@ pub fn render_profile_section() -> AnyView {
                             <button
                                 class="shrink-0 px-3 py-1 text-sm border border-(--tile-border-color) text-muted rounded-ui hover:text-normal cursor-pointer"
                                 on:click=move |_| {
-                                    let localpart = uid_reset
-                                        .split(':')
-                                        .next()
-                                        .and_then(|s| s.strip_prefix('@'))
-                                        .unwrap_or(&uid_reset)
-                                        .to_string();
+                                    let localpart = user_id.get_value().localpart().to_string();
                                     let name = localpart
                                         .chars()
                                         .next()

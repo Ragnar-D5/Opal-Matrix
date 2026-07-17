@@ -941,8 +941,6 @@ fn ChatInput() -> impl IntoView {
         let _ = el.focus();
     });
 
-    let store_clone = store.clone();
-
     let important_event_id: RwSignal<Option<OwnedEventId>> = expect_context();
     let input_info_content = move || {
         let Some(info) = input_info.get() else {
@@ -955,7 +953,7 @@ fn ChatInput() -> impl IntoView {
 
         let content = match info {
             ChatInputInfo::ReplyingTo { sender_id, .. } => {
-                let profile = store_clone.get_member_profile(&room_id, &sender_id);
+                let profile = store.get_member_profile(&room_id, &sender_id);
                 view! {
                     <span class="text-sm text-bright">
                         "Replying to " {move || profile.get().render_name_popup("14px")}
@@ -1131,7 +1129,7 @@ fn ChatInput() -> impl IntoView {
                             ev,
                             input_ref,
                             state,
-                            store.clone(),
+                            store,
                             (menu, selected_index, matches, is_empty, input_info, attachments),
                         )
                         on:focus=move |_| is_focused.set(true)

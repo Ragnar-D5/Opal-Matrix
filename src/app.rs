@@ -144,10 +144,6 @@ pub fn App() -> impl IntoView {
     provide_context(settings);
 
     let store = ProfileStore::default();
-    let store_for_profiles = store.clone();
-    let store_for_presences = store.clone();
-    let store_for_own_profile = store.clone();
-
     provide_context(store);
 
     let last_window = RwSignal::new(state.current_window.get_untracked());
@@ -192,7 +188,7 @@ pub fn App() -> impl IntoView {
                 // avoids notifying subscribers when the backend re-sends a
                 // profile that hasn't actually changed, which would
                 // otherwise tear down and re-fetch avatars downstream.
-                store_for_profiles
+                store
                     .get_member_profile(&room_id, &profile.profile.user_id)
                     .maybe_update(|current| {
                         if *current != profile {
@@ -212,7 +208,7 @@ pub fn App() -> impl IntoView {
     let own_profile_update: ReadSignal<Option<UserProfile>> = use_tauri_event();
 
     setup_update_effect(own_profile_update, move |profile| {
-        store_for_own_profile
+        store
             .get_user_profile(&profile.user_id)
             .maybe_update(|current| {
                 if *current != profile {
@@ -258,9 +254,7 @@ pub fn App() -> impl IntoView {
 
     setup_update_effect(presence_update, move |updates| {
         for (user_id, presence) in updates.iter() {
-            store_for_presences
-                .get_presence(user_id)
-                .set(presence.clone());
+            store.get_presence(user_id).set(presence.clone());
         }
     });
 

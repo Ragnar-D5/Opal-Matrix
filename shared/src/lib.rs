@@ -1,4 +1,7 @@
+use std::hash::Hash;
+
 use csscolorparser::Color;
+use serde::Serialize;
 use sha2::{Digest, Sha256};
 
 pub mod account_data;
@@ -38,4 +41,18 @@ pub fn get_color(string: &str) -> Color {
 
 pub fn unknown_color() -> Color {
     Color::from_hsla(0.0, 1.0, 0.7, 1.0)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
+pub enum UiThumbnailMethod {
+    Scale,
+    Crop,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
+pub struct UiThumbnailSettings {
+    pub method: UiThumbnailMethod,
+    pub width: u64,
+    pub height: u64,
+    pub animated: bool,
 }

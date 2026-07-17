@@ -158,7 +158,7 @@ pub fn richt_text_spans_to_html(
                         text
                     }
                     RichTextSpan::RoomMention { .. } | RichTextSpan::UserMention { .. } => {
-                        let view = span.clone().render(store.clone(), room_id);
+                        let view = span.clone().render(store, room_id);
                         let any_view: AnyView = view.into_any();
 
                         // Create a fresh temporary container for this span
