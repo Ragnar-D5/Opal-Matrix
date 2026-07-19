@@ -25,12 +25,9 @@ use wasm_bindgen::prelude::*;
 use web_sys::HtmlImageElement;
 
 use crate::components::{
-    SystemButtons,
-    chat::Chat,
-    overlays::emoji_picker::{EmojiPickerPortal, EmojiPickerState},
-    overlays::gif_picker::{GifPickerPortal, GifPickerState},
-    overlays::profile_card::{ProfileCardPortal, ProfileCardState},
-    overlays::space_search::{SpaceSearchPortal, SpaceSearchState},
+    SystemButtons, chat::Chat, overlays::emoji_picker::EmojiPickerState,
+    overlays::gif_picker::GifPickerState, overlays::host::OverlayHost,
+    overlays::profile_card::ProfileCardState, overlays::space_search::SpaceSearchState,
     sidebar::Sidebar,
 };
 use crate::hooks::{call_tauri_no_args, setup_update_effect, use_tauri_event_option};
@@ -494,10 +491,7 @@ fn HomePage() -> impl IntoView {
             <Sidebar />
             <Chat />
             <ImageLightbox />
-            <EmojiPickerPortal />
-            <GifPickerPortal />
-            <ProfileCardPortal />
-            <SpaceSearchPortal />
+            <OverlayHost />
         </div>
     }
 }

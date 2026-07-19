@@ -8,7 +8,10 @@ use crate::{
     components::{
         FloatingTile, TypingIndicator,
         chat::{
-            calls::CallView, header::ChatHeader, info::ChatSideBar, messages::render_timeline_item,
+            calls::CallView,
+            header::ChatHeader,
+            info::ChatSideBar,
+            messages::{ConfirmHost, ConfirmState, render_timeline_item},
         },
         input::{
             get_active_filter, get_caret_position, handle_input, handle_keydown,
@@ -1336,6 +1339,7 @@ pub fn Chat() -> impl IntoView {
     let pinned_result: RwSignal<Option<Vec<UiTimelineItem>>> = RwSignal::new(None);
 
     provide_context(pinned_result);
+    provide_context(ConfirmState::default());
 
     Effect::new(move |_| {
         let search_params = search_parameters.get();
@@ -1410,6 +1414,7 @@ pub fn Chat() -> impl IntoView {
 
     view! {
         <div class="flex-1 h-full flex gap-[var(--gap)] flex-col overflow-hidden">
+            <ConfirmHost />
             <ChatHeader chat_sidebar_open=chat_sidebar_open />
             <div class="flex flex-row h-full min-h-0">
                 <FloatingTile class="flex-1 flex flex-col h-full min-h-0 overflow-hidden justify-center">

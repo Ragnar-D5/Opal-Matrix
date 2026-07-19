@@ -20,7 +20,7 @@ use shared::{
     },
 };
 use wasm_bindgen::JsCast;
-use web_sys::Element;
+use web_sys::{Element, KeyboardEvent};
 
 use crate::{
     app::{format_date, format_time},
@@ -1079,11 +1079,9 @@ fn MesssageButtons(
     item_sig: RwSignal<UiTimelineItem>,
     picker_open: RwSignal<bool>,
     is_pinned: Memo<bool>,
-    show_delete_confirm: RwSignal<bool>,
-    show_pin_confirm: RwSignal<bool>,
-    show_unpin_confirm: RwSignal<bool>,
 ) -> AnyView {
     let state: AppState = expect_context();
+    let confirm_state: ConfirmState = expect_context();
 
     let no_buttons = move || {
         let f = flags.get();
@@ -1166,20 +1164,8 @@ fn MesssageButtons(
         }
     };
 
-    let interacting = move || picker_open.get() || show_delete_confirm.get();
-
-    let on_delete_confirm = Callback::new(move |_| {
-        let Some(event_id) = event_id.get_value() else {
-            return;
-        };
-        let room_id = room_id.get_value();
-
-        spawn_local(async move {
-            if let Err(e) = delete_message(&room_id, &event_id).await {
-                log::error!("Failed to delete message: {}", e);
-            }
-        });
-    });
+    let interacting =
+        move || picker_open.get() || confirm_state.is_pending_for(&event_id.get_value());
 
     let pin_icon = move || {
         let icon = if is_pinned.get() {
@@ -1192,11 +1178,24 @@ fn MesssageButtons(
     };
 
     let on_pin_click = move |_| {
-        if is_pinned.get() {
-            show_unpin_confirm.set(true);
+        let Some(event_id) = event_id.get_value() else {
+            return;
+        };
+        let room_id = room_id.get_value();
+        let action = if is_pinned.get() {
+            ConfirmAction::Unpin {
+                room_id,
+                event_id,
+                item_sig,
+            }
         } else {
-            show_pin_confirm.set(true);
-        }
+            ConfirmAction::Pin {
+                room_id,
+                event_id,
+                item_sig,
+            }
+        };
+        confirm_state.open(action);
     };
 
     let recent_emojies = move || {
@@ -1283,131 +1282,219 @@ fn MesssageButtons(
             <Show when=move || { flags.get().is_deletable }>
                 <button
                     class="hover:bg-(--error-color) hover:text-(--ui-solid-bg) cursor-pointer p-0.5 rounded-(--gap) transition-colors duration-100"
-                    on:click=move |_| show_delete_confirm.set(true)
+                    on:click=move |_| {
+                        let Some(event_id) = event_id.get_value() else {
+                            return;
+                        };
+                        confirm_state
+                            .open(ConfirmAction::Delete {
+                                room_id: room_id.get_value(),
+                                event_id,
+                                item_sig,
+                            });
+                    }
                 >
                     <Icon icon=TRASH size="20px"></Icon>
                 </button>
             </Show>
         </div>
-        <ConfirmDialog show=show_delete_confirm class="w-100">
-            <p class="text-normal text-xl font-bold">"Delete message"</p>
-            <p class="text-muted">"Are you sure you want to delete this message?"</p>
-            <div class="my-2 p-2 bg-(--ui-floating-bg) border border-(--tile-border-color) rounded-(--gap)">
-                {render_timeline_item(
-                    item_sig,
-                    true,
-                    true,
-                    Callback::new(|_| {}),
-                    RwSignal::new(None),
-                )}
-            </div>
-            <div class="flex gap-2 pt-2 justify-end w-full">
-                <button
-                    class="px-4 py-1.5 rounded-ui text-sm bg-(--ui-solid-hover-bg) hover:bg-(--ui-floating-hover-bg) text-normal cursor-pointer border border-(--tile-border-color) flex flex-grow items-center justify-center"
-                    on:click=move |_| show_delete_confirm.set(false)
-                >
-                    "Cancel"
-                </button>
-                <button
-                    class="px-4 py-1.5 rounded-ui text-(--ui-solid-bg) text-sm cursor-pointer font-semibold flex flex-grow items-center justify-center bg-(--error-color)"
-                    on:click=move |_| {
-                        show_delete_confirm.set(false);
-                        on_delete_confirm.run(());
-                    }
-                >
-                    "Delete"
-                </button>
-            </div>
-        </ConfirmDialog>
-        <ConfirmDialog show=show_pin_confirm class="w-100">
-            <p class="text-normal text-xl font-bold">"Pin message"</p>
-            <p class="text-muted">"Are you sure you want to pin this message?"</p>
-            <div class="my-2 p-2 bg-(--ui-floating-bg) border border-(--tile-border-color) rounded-(--gap)">
-                {render_timeline_item(
-                    item_sig,
-                    true,
-                    true,
-                    Callback::new(|_| {}),
-                    RwSignal::new(None),
-                )}
-            </div>
-            <div class="flex gap-2 pt-2 justify-end w-full">
-                <button
-                    class="px-4 py-1.5 rounded-ui text-sm bg-(--ui-solid-hover-bg) hover:bg-(--ui-floating-hover-bg) text-normal cursor-pointer border border-(--tile-border-color) flex flex-grow items-center justify-center"
-                    on:click=move |_| show_pin_confirm.set(false)
-                >
-                    "Cancel"
-                </button>
-                <button
-                    class="px-4 py-1.5 rounded-ui text-sm text-(--ui-solid-bg) bg-(--pin-color) cursor-pointer font-semibold flex flex-grow items-center justify-center"
-                    on:click=move |_| {
-                        show_pin_confirm.set(false);
-                        if let Some(event_id) = event_id.get_value() {
-                            pin_event(&room_id.get_value(), &event_id);
-                        }
-                    }
-                >
-                    "Pin"
-                </button>
-            </div>
-        </ConfirmDialog>
-        <ConfirmDialog show=show_unpin_confirm class="w-100">
-            <p class="text-normal text-xl font-bold">"Unpin message"</p>
-            <p class="text-muted">"Are you sure you want to unpin this message?"</p>
-            <div class="my-2 p-2 bg-(--ui-floating-bg) border border-(--tile-border-color) rounded-(--gap)">
-                {render_timeline_item(
-                    item_sig,
-                    true,
-                    true,
-                    Callback::new(|_| {}),
-                    RwSignal::new(None),
-                )}
-            </div>
-            <div class="flex gap-2 pt-2 justify-end w-full">
-                <button
-                    class="px-4 py-1.5 rounded-ui text-sm bg-(--ui-solid-hover-bg) hover:bg-(--ui-floating-hover-bg) text-normal cursor-pointer border border-(--tile-border-color) flex flex-grow items-center justify-center"
-                    on:click=move |_| show_unpin_confirm.set(false)
-                >
-                    "Cancel"
-                </button>
-                <button
-                    class="px-4 py-1.5 rounded-ui text-sm bg-(--pin-color) text-(--ui-solid-bg) hover:bg-(--accent-hover-bg) cursor-pointer font-semibold flex flex-grow items-center justify-center"
-                    on:click=move |_| {
-                        show_unpin_confirm.set(false);
-                        if let Some(event_id) = event_id.get_value() {
-                            unpin_event(&room_id.get_value(), &event_id);
-                        }
-                    }
-                >
-                    "Unpin"
-                </button>
-            </div>
-        </ConfirmDialog>
     }.into_any()
 }
 
+/// A pending destructive/state-changing action on a message, awaiting user confirmation.
+/// Held as a single global signal so only one confirmation can be on screen at a time,
+/// rendered by the single `ConfirmHost` portal mounted once in `Chat`.
+#[derive(Clone)]
+enum ConfirmAction {
+    Delete {
+        room_id: OwnedRoomId,
+        event_id: OwnedEventId,
+        item_sig: RwSignal<UiTimelineItem>,
+    },
+    Pin {
+        room_id: OwnedRoomId,
+        event_id: OwnedEventId,
+        item_sig: RwSignal<UiTimelineItem>,
+    },
+    Unpin {
+        room_id: OwnedRoomId,
+        event_id: OwnedEventId,
+        item_sig: RwSignal<UiTimelineItem>,
+    },
+}
+
+impl ConfirmAction {
+    fn event_id(&self) -> &OwnedEventId {
+        match self {
+            ConfirmAction::Delete { event_id, .. }
+            | ConfirmAction::Pin { event_id, .. }
+            | ConfirmAction::Unpin { event_id, .. } => event_id,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct ConfirmState {
+    current: RwSignal<Option<ConfirmAction>>,
+}
+
+impl Default for ConfirmState {
+    fn default() -> Self {
+        Self {
+            current: RwSignal::new(None),
+        }
+    }
+}
+
+impl ConfirmState {
+    fn open(&self, action: ConfirmAction) {
+        self.current.set(Some(action));
+    }
+
+    fn close(&self) {
+        self.current.set(None);
+    }
+
+    fn is_pending_for(&self, event_id: &Option<OwnedEventId>) -> bool {
+        self.current.with(|current| {
+            matches!(
+                (current, event_id),
+                (Some(action), Some(id)) if action.event_id() == id
+            )
+        })
+    }
+}
+
+/// Single portal rendering whichever `ConfirmAction` is pending, mounted once in `Chat`.
+/// Always sits above `OverlayHost`'s z-index band, so a confirmation dialog can never be
+/// hidden behind an emoji/gif picker, profile card, space search or settings.
 #[component]
-fn ConfirmDialog(
-    show: RwSignal<bool>,
-    children: ChildrenFn,
-    #[prop(into, optional)] class: String,
-) -> impl IntoView {
-    let children = StoredValue::new(children);
-    let dialog_class = StoredValue::new(format!(
-        "relative pointer-events-auto ui-solid-bg border border-(--tile-border-color) rounded-(--floating-border-radius) shadow-xl p-3 flex flex-col backdrop-blur-xl {class}",
-    ));
+pub fn ConfirmHost() -> impl IntoView {
+    let state: ConfirmState = expect_context();
+
+    window_event_listener(leptos::ev::keydown, move |ev: KeyboardEvent| {
+        if state.current.try_get_untracked().flatten().is_some() && ev.key() == "Escape" {
+            state.close();
+        }
+    });
+
+    let preview = move |item_sig: RwSignal<UiTimelineItem>| {
+        view! {
+            <div class="my-2 p-2 bg-(--ui-floating-bg) border border-(--tile-border-color) rounded-(--gap)">
+                {render_timeline_item(
+                    item_sig,
+                    true,
+                    true,
+                    Callback::new(|_| {}),
+                    RwSignal::new(None),
+                )}
+            </div>
+        }
+    };
+
+    let body = move |action: ConfirmAction| -> AnyView {
+        match action {
+            ConfirmAction::Delete {
+                room_id,
+                event_id,
+                item_sig,
+            } => view! {
+                <p class="text-normal text-xl font-bold">"Delete message"</p>
+                <p class="text-muted">"Are you sure you want to delete this message?"</p>
+                {preview(item_sig)}
+                <div class="flex gap-2 pt-2 justify-end w-full">
+                    <button
+                        class="px-4 py-1.5 rounded-ui text-sm bg-(--ui-solid-hover-bg) hover:bg-(--ui-floating-hover-bg) text-normal cursor-pointer border border-(--tile-border-color) flex flex-grow items-center justify-center"
+                        on:click=move |_| state.close()
+                    >
+                        "Cancel"
+                    </button>
+                    <button
+                        class="px-4 py-1.5 rounded-ui text-(--ui-solid-bg) text-sm cursor-pointer font-semibold flex flex-grow items-center justify-center bg-(--error-color)"
+                        on:click=move |_| {
+                            state.close();
+                            let room_id = room_id.clone();
+                            let event_id = event_id.clone();
+                            spawn_local(async move {
+                                if let Err(e) = delete_message(&room_id, &event_id).await {
+                                    log::error!("Failed to delete message: {}", e);
+                                }
+                            });
+                        }
+                    >
+                        "Delete"
+                    </button>
+                </div>
+            }
+                .into_any(),
+            ConfirmAction::Pin {
+                room_id,
+                event_id,
+                item_sig,
+            } => view! {
+                <p class="text-normal text-xl font-bold">"Pin message"</p>
+                <p class="text-muted">"Are you sure you want to pin this message?"</p>
+                {preview(item_sig)}
+                <div class="flex gap-2 pt-2 justify-end w-full">
+                    <button
+                        class="px-4 py-1.5 rounded-ui text-sm bg-(--ui-solid-hover-bg) hover:bg-(--ui-floating-hover-bg) text-normal cursor-pointer border border-(--tile-border-color) flex flex-grow items-center justify-center"
+                        on:click=move |_| state.close()
+                    >
+                        "Cancel"
+                    </button>
+                    <button
+                        class="px-4 py-1.5 rounded-ui text-sm text-(--ui-solid-bg) bg-(--pin-color) cursor-pointer font-semibold flex flex-grow items-center justify-center"
+                        on:click=move |_| {
+                            state.close();
+                            pin_event(&room_id, &event_id);
+                        }
+                    >
+                        "Pin"
+                    </button>
+                </div>
+            }
+                .into_any(),
+            ConfirmAction::Unpin {
+                room_id,
+                event_id,
+                item_sig,
+            } => view! {
+                <p class="text-normal text-xl font-bold">"Unpin message"</p>
+                <p class="text-muted">"Are you sure you want to unpin this message?"</p>
+                {preview(item_sig)}
+                <div class="flex gap-2 pt-2 justify-end w-full">
+                    <button
+                        class="px-4 py-1.5 rounded-ui text-sm bg-(--ui-solid-hover-bg) hover:bg-(--ui-floating-hover-bg) text-normal cursor-pointer border border-(--tile-border-color) flex flex-grow items-center justify-center"
+                        on:click=move |_| state.close()
+                    >
+                        "Cancel"
+                    </button>
+                    <button
+                        class="px-4 py-1.5 rounded-ui text-sm bg-(--pin-color) text-(--ui-solid-bg) hover:bg-(--accent-hover-bg) cursor-pointer font-semibold flex flex-grow items-center justify-center"
+                        on:click=move |_| {
+                            state.close();
+                            unpin_event(&room_id, &event_id);
+                        }
+                    >
+                        "Unpin"
+                    </button>
+                </div>
+            }
+                .into_any(),
+        }
+    };
 
     view! {
-        <Show when=move || show.get()>
+        <Show when=move || state.current.get().is_some()>
             <Portal>
                 <div
-                    class="fixed inset-0 z-[1000] bg-(--tile-bg-color)"
-                    on:click=move |_| show.set(false)
+                    class="fixed inset-0 z-[2000] bg-(--tile-bg-color)"
+                    on:click=move |_| state.close()
                 />
-                <div class="fixed inset-0 z-[1001] flex items-center justify-center pointer-events-none">
-                    <div class=move || dialog_class.get_value()>
-                        <CloseButton on_click=move |_| show.set(false) />
-                        {children.get_value()()}
+                <div class="fixed inset-0 z-[2001] flex items-center justify-center pointer-events-none">
+                    <div class="relative pointer-events-auto ui-solid-bg border border-(--tile-border-color) rounded-(--floating-border-radius) shadow-xl p-3 flex flex-col backdrop-blur-xl w-100">
+                        <CloseButton on_click=move |_| state.close() />
+                        {move || state.current.get().map(body)}
                     </div>
                 </div>
             </Portal>
@@ -1428,10 +1515,7 @@ fn render_timeline_event(
 ) -> impl IntoView {
     let hovered = RwSignal::new(false);
     let picker_open = RwSignal::new(false);
-
-    let show_delete_confirm = RwSignal::new(false);
-    let show_pin_confirm = RwSignal::new(false);
-    let show_unpin_confirm = RwSignal::new(false);
+    let confirm_state: ConfirmState = expect_context();
 
     let scroll_target = use_context::<super::ScrollTarget>().unwrap_or_default().0;
     let node_ref = NodeRef::<Div>::new();
@@ -1617,11 +1701,7 @@ fn render_timeline_event(
     let sender_profile_sig = store.get_member_profile(&room_id.get_value(), &sender_id.clone());
 
     let is_active = move || {
-        hovered.get()
-            || picker_open.get()
-            || show_delete_confirm.get()
-            || show_pin_confirm.get()
-            || show_unpin_confirm.get()
+        hovered.get() || picker_open.get() || confirm_state.is_pending_for(&event_id.get_value())
     };
 
     view! {
@@ -1632,7 +1712,10 @@ fn render_timeline_event(
             class=("hover:border-[var(--tile-border-color)]", !preview)
             class=("mt-1", show_header && !preview)
             class=("[&_*]:pointer-events-none", preview)
-            class=("bg-black/20", move || picker_open.get() || show_delete_confirm.get())
+            class=(
+                "bg-black/20",
+                move || picker_open.get() || confirm_state.is_pending_for(&event_id.get_value()),
+            )
             id=move || { if preview { String::new() } else { item_sig.get().render_key() } }
             style:background=move || {
                 current_highlight
@@ -1676,9 +1759,6 @@ fn render_timeline_event(
                     item_sig=item_sig
                     picker_open=picker_open
                     is_pinned=is_pinned
-                    show_delete_confirm=show_delete_confirm
-                    show_pin_confirm=show_pin_confirm
-                    show_unpin_confirm=show_unpin_confirm
                 />
             </Show>
 

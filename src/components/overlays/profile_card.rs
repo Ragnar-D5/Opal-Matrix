@@ -1,7 +1,7 @@
-use leptos::{portal::Portal, prelude::*};
+use leptos::prelude::*;
 use ruma::{OwnedRoomId, OwnedUserId};
 use shared::synth::{SignatureEvent, signature_audio_src};
-use web_sys::{Element, KeyboardEvent};
+use web_sys::Element;
 
 use crate::{
     components::presence::PresenceBadge,
@@ -34,6 +34,10 @@ impl ProfileCardState {
         self.room_id.set(room_id);
     }
 
+    pub fn is_open(&self) -> bool {
+        self.user_id.get().is_some()
+    }
+
     pub fn close(&self) {
         self.user_id.set(None);
         self.room_id.set(None);
@@ -42,16 +46,10 @@ impl ProfileCardState {
 }
 
 #[component]
-pub fn ProfileCardPortal() -> impl IntoView {
+pub fn ProfileCardPanel() -> impl IntoView {
     let state: ProfileCardState = expect_context();
     let store = StoredValue::new(expect_context::<ProfileStore>());
     let cache: MediaCache = expect_context();
-
-    window_event_listener(leptos::ev::keydown, move |ev: KeyboardEvent| {
-        if state.user_id.try_get_untracked().flatten().is_some() && ev.key() == "Escape" {
-            state.close();
-        }
-    });
 
     let style = move || {
         let Some((left, top, _right, bottom)) = state.anchor_rect.get() else {
@@ -156,17 +154,11 @@ pub fn ProfileCardPortal() -> impl IntoView {
     };
 
     view! {
-        <Show when=move || state.user_id.get().is_some()>
-            <Portal>
-                <div class="fixed inset-0 z-[999]" on:click=move |_| state.close() />
-
-                <div
-                    class="fixed z-[1000] ui-solid-bg border border-(--tile-border-color) rounded-(--floating-border-radius) overflow-hidden"
-                    style=style
-                >
-                    {content}
-                </div>
-            </Portal>
-        </Show>
+        <div
+            class="fixed z-[1000] ui-solid-bg border border-(--tile-border-color) rounded-(--floating-border-radius) overflow-hidden"
+            style=style
+        >
+            {content}
+        </div>
     }
 }

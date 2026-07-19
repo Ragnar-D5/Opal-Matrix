@@ -49,7 +49,11 @@ impl Default for SpaceSearchState {
 }
 
 impl SpaceSearchState {
-    fn close(&self) {
+    pub fn is_open(&self) -> bool {
+        self.open.get()
+    }
+
+    pub fn close(&self) {
         self.open.set(false);
     }
 }
@@ -63,7 +67,7 @@ pub fn open_space_search(anchor: &web_sys::Element, state: SpaceSearchState) {
 }
 
 #[component]
-pub fn SpaceSearchPortal() -> impl IntoView {
+pub fn SpaceSearchPanel() -> impl IntoView {
     let state: SpaceSearchState = expect_context();
 
     let session_id: RwSignal<Option<Uuid>> = RwSignal::new(None);
@@ -145,12 +149,6 @@ pub fn SpaceSearchPortal() -> impl IntoView {
         });
     };
 
-    window_event_listener(leptos::ev::keydown, move |ev: web_sys::KeyboardEvent| {
-        if state.open.try_get_untracked().unwrap_or(false) && ev.key() == "Escape" {
-            state.close();
-        }
-    });
-
     let style = move || {
         let Some((left, top, right, bottom)) = state.anchor_rect.get() else {
             return String::new();
@@ -186,70 +184,66 @@ pub fn SpaceSearchPortal() -> impl IntoView {
     };
 
     view! {
-        <Show when=move || state.open.get()>
-            <div class="fixed inset-0 z-[999]" on:click=move |_| state.close() />
-
-            <div
-                class="fixed z-[1000] flex flex-col bg-(--ui-floating-hover-bg) backdrop-blur-2xl border border-(--tile-border-color) rounded-(--floating-border-radius) shadow-xl overflow-hidden"
-                style=style
-            >
-                <div class="p-2 border-b border-(--tile-border-color) flex-shrink-0">
-                    <div class="relative flex items-center">
-                        <div class="absolute left-2 flex items-center pointer-events-none text-muted">
-                            <Icon icon=MAGNIFYING_GLASS weight=IconWeight::Bold size="14px" />
-                        </div>
-                        <input
-                            type="text"
-                            node_ref=search_ref
-                            placeholder="Find a space"
-                            class="w-full ui-solid-bg border border-(--tile-border-color) rounded-ui pl-7 pr-2 py-1 text-sm text-normal outline-none placeholder:text-muted focus:border-(--focus-color)"
-                            on:input=on_input
-                        />
+        <div
+            class="fixed z-[1000] flex flex-col bg-(--ui-floating-hover-bg) backdrop-blur-2xl border border-(--tile-border-color) rounded-(--floating-border-radius) shadow-xl overflow-hidden"
+            style=style
+        >
+            <div class="p-2 border-b border-(--tile-border-color) flex-shrink-0">
+                <div class="relative flex items-center">
+                    <div class="absolute left-2 flex items-center pointer-events-none text-muted">
+                        <Icon icon=MAGNIFYING_GLASS weight=IconWeight::Bold size="14px" />
                     </div>
-                </div>
-
-                <div
-                    class="overflow-y-auto flex-1 p-1.5 flex flex-col gap-1"
-                    style="scrollbar-width: thin;"
-                >
-                    <Show when=move || results.get().0.is_empty() && !loading.get()>
-                        <div class="w-full h-full flex flex-col items-center justify-center text-muted gap-2 pt-12">
-                            <span class="text-sm">"No spaces found"</span>
-                        </div>
-                    </Show>
-
-                    <For
-                        each=move || results.get().0
-                        key=|room| room.room_id.clone()
-                        children=move |room| {
-                            let name = room
-                                .name
-                                .clone()
-                                .or_else(|| room.canonical_alias.as_ref().map(|a| a.to_string()))
-                                .unwrap_or_else(|| room.room_id.to_string());
-                            let topic = room.topic.clone();
-                            let members = room.num_joined_members;
-
-                            view! {
-                                <div class="flex items-center gap-2 p-1.5 rounded-ui hover:bg-(--ui-solid-hover-bg)">
-                                    <div class="flex flex-col min-w-0 flex-1">
-                                        <span class="text-sm text-normal truncate">{name}</span>
-                                        {topic
-                                            .map(|t| {
-                                                view! { <span class="text-xs text-dim truncate">{t}</span> }
-                                            })}
-                                    </div>
-                                    <span class="text-xs text-muted flex-shrink-0">
-                                        {members.to_string()}
-                                    </span>
-                                </div>
-                            }
-                        }
+                    <input
+                        type="text"
+                        node_ref=search_ref
+                        placeholder="Find a space"
+                        class="w-full ui-solid-bg border border-(--tile-border-color) rounded-ui pl-7 pr-2 py-1 text-sm text-normal outline-none placeholder:text-muted focus:border-(--focus-color)"
+                        on:input=on_input
                     />
-
-                    <div node_ref=sentinel_ref class="h-1 w-full" />
                 </div>
             </div>
-        </Show>
+
+            <div
+                class="overflow-y-auto flex-1 p-1.5 flex flex-col gap-1"
+                style="scrollbar-width: thin;"
+            >
+                <Show when=move || results.get().0.is_empty() && !loading.get()>
+                    <div class="w-full h-full flex flex-col items-center justify-center text-muted gap-2 pt-12">
+                        <span class="text-sm">"No spaces found"</span>
+                    </div>
+                </Show>
+
+                <For
+                    each=move || results.get().0
+                    key=|room| room.room_id.clone()
+                    children=move |room| {
+                        let name = room
+                            .name
+                            .clone()
+                            .or_else(|| room.canonical_alias.as_ref().map(|a| a.to_string()))
+                            .unwrap_or_else(|| room.room_id.to_string());
+                        let topic = room.topic.clone();
+                        let members = room.num_joined_members;
+
+                        view! {
+                            <div class="flex items-center gap-2 p-1.5 rounded-ui hover:bg-(--ui-solid-hover-bg)">
+                                <div class="flex flex-col min-w-0 flex-1">
+                                    <span class="text-sm text-normal truncate">{name}</span>
+                                    {topic
+                                        .map(|t| {
+                                            view! { <span class="text-xs text-dim truncate">{t}</span> }
+                                        })}
+                                </div>
+                                <span class="text-xs text-muted flex-shrink-0">
+                                    {members.to_string()}
+                                </span>
+                            </div>
+                        }
+                    }
+                />
+
+                <div node_ref=sentinel_ref class="h-1 w-full" />
+            </div>
+        </div>
     }
 }

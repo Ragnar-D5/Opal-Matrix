@@ -30,7 +30,11 @@ impl Default for EmojiPickerState {
 }
 
 impl EmojiPickerState {
-    fn close(&self, emoji: Option<&str>) {
+    pub fn is_open(&self) -> bool {
+        self.resolve.get().is_some()
+    }
+
+    pub fn close(&self, emoji: Option<&str>) {
         if let Some(resolve) = self.resolve.get_untracked() {
             let val = match emoji {
                 Some(e) => JsValue::from_str(e),
@@ -138,7 +142,7 @@ fn fuzzy_match_emojis(query: &str, matcher: &mut Matcher) -> Vec<&'static emojis
 }
 
 #[component]
-pub fn EmojiPickerPortal() -> impl IntoView {
+pub fn EmojiPickerPanel() -> impl IntoView {
     let state: EmojiPickerState = expect_context();
     let search = RwSignal::new(String::new());
     let active_group: RwSignal<Group> = RwSignal::new(Group::SmileysAndEmotion);
@@ -157,12 +161,6 @@ pub fn EmojiPickerPortal() -> impl IntoView {
             if let Some(el) = search_ref.get() {
                 let _ = el.focus();
             }
-        }
-    });
-
-    window_event_listener(leptos::ev::keydown, move |ev: web_sys::KeyboardEvent| {
-        if state.resolve.try_get_untracked().flatten().is_some() && ev.key() == "Escape" {
-            state.close(None);
         }
     });
 
@@ -211,15 +209,10 @@ pub fn EmojiPickerPortal() -> impl IntoView {
     };
 
     view! {
-        <Show when=move || state.resolve.get().is_some()>
-            // backdrop
-            <div class="fixed inset-0 z-[999]" on:click=move |_| state.close(None) />
-
-            // picker panel
-            <div
-                class="fixed z-[1000] flex flex-col bg-(--ui-floating-hover-bg) backdrop-blur-2xl border border-(--tile-border-color) rounded-(--floating-border-radius) shadow-xl overflow-hidden"
-                style=style
-            >
+        <div
+            class="fixed z-[1000] flex flex-col bg-(--ui-floating-hover-bg) backdrop-blur-2xl border border-(--tile-border-color) rounded-(--floating-border-radius) shadow-xl overflow-hidden"
+            style=style
+        >
                 // search bar
                 <div class="p-2 border-b border-(--tile-border-color) flex-shrink-0">
                     <div class="relative flex items-center">
@@ -418,6 +411,5 @@ pub fn EmojiPickerPortal() -> impl IntoView {
                     </div>
                 </div>
             </div>
-        </Show>
     }
 }

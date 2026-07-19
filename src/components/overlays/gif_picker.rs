@@ -31,7 +31,11 @@ impl Default for GifPickerState {
 }
 
 impl GifPickerState {
-    fn close(&self, strings: Option<(&str, &str, u64)>) {
+    pub fn is_open(&self) -> bool {
+        self.resolve.get().is_some()
+    }
+
+    pub fn close(&self, strings: Option<(&str, &str, u64)>) {
         if let Some(resolve) = self.resolve.get_untracked() {
             let val = match strings {
                 // Return entire file object
@@ -116,7 +120,7 @@ const SKELETON_HEIGHTS_LEFT: &[u32] = &[100, 175, 130, 100];
 const SKELETON_HEIGHTS_RIGHT: &[u32] = &[130, 100, 175, 130];
 
 #[component]
-pub fn GifPickerPortal() -> impl IntoView {
+pub fn GifPickerPanel() -> impl IntoView {
     let state: GifPickerState = expect_context();
     let search = RwSignal::new(String::new());
     let current_page = RwSignal::new(0u32);
@@ -224,12 +228,6 @@ pub fn GifPickerPortal() -> impl IntoView {
         format!("{x_style}{y_style}width:{actual_w}px;height:{actual_h}px;")
     };
 
-    window_event_listener(leptos::ev::keydown, move |ev: web_sys::KeyboardEvent| {
-        if state.resolve.try_get_untracked().flatten().is_some() && ev.key() == "Escape" {
-            state.close(None);
-        }
-    });
-
     let on_keydown = move |_ev: web_sys::KeyboardEvent| {
         let term = search.get_untracked();
         current_page.set(0);
@@ -237,13 +235,10 @@ pub fn GifPickerPortal() -> impl IntoView {
     };
 
     view! {
-        <Show when=move || state.resolve.get().is_some()>
-            <div class="fixed inset-0 z-[999]" on:click=move |_| state.close(None) />
-
-            <div
-                class="fixed z-[1000] flex flex-col bg-(--ui-floating-hover-bg) backdrop-blur-2xl border border-(--tile-border-color) rounded-(--floating-border-radius) shadow-xl overflow-hidden"
-                style=style
-            >
+        <div
+            class="fixed z-[1000] flex flex-col bg-(--ui-floating-hover-bg) backdrop-blur-2xl border border-(--tile-border-color) rounded-(--floating-border-radius) shadow-xl overflow-hidden"
+            style=style
+        >
                 <div class="p-2 border-b border-(--tile-border-color) flex-shrink-0">
                     <div class="relative flex items-center">
                         <div class="absolute left-2 flex items-center pointer-events-none text-muted">
@@ -440,6 +435,5 @@ pub fn GifPickerPortal() -> impl IntoView {
                     <div node_ref=sentinel_ref class="h-1 w-full" />
                 </div>
             </div>
-        </Show>
     }
 }
