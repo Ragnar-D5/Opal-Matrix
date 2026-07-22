@@ -252,7 +252,7 @@ pub fn CutoutBadge(
     }
 }
 
-fn render_room_preview(room: RoomNode, members: Option<Vec<UserDevice>>) -> impl IntoView {
+fn render_room_preview(room: RoomNode) -> impl IntoView {
     let state: AppState = expect_context();
     let store: ProfileStore = expect_context();
     let cache: MediaCache = expect_context();
@@ -260,8 +260,10 @@ fn render_room_preview(room: RoomNode, members: Option<Vec<UserDevice>>) -> impl
     let click_id = room.room_id();
     let clone = click_id.clone();
 
-    let is_active = Memo::new(move |_| state.active_room_id() == Some(click_id.clone()));
     let room_id_for_count = room.room_id();
+    let room = StoredValue::new(room);
+
+    let is_active = Memo::new(move |_| state.active_room_id() == Some(click_id.clone()));
 
     let notifications = Memo::new(move |_| {
         state
@@ -285,7 +287,8 @@ fn render_room_preview(room: RoomNode, members: Option<Vec<UserDevice>>) -> impl
     };
 
     let tr_corner = move || {
-        if let Some(members) = &members {
+        let members = state.get_call_members(&room.get_value().room_id()).get();
+        if !members.is_empty() {
             let user_ids_in_calls = members
                 .iter()
                 .map(|d| d.user_id.clone())
@@ -311,13 +314,12 @@ fn render_room_preview(room: RoomNode, members: Option<Vec<UserDevice>>) -> impl
         }
     };
 
-    let room_clone = room.clone();
     view! {
         <div class="h-2"></div>
         <div
             class="relative flex items-center justify-center group w-full cursor-pointer"
             on:click=move |_| {
-                let section = if room_clone.is_dm() {
+                let section = if room.get_value().is_dm() {
                     CurrentSection::Dms
                 } else {
                     CurrentSection::Single
@@ -334,6 +336,7 @@ fn render_room_preview(room: RoomNode, members: Option<Vec<UserDevice>>) -> impl
             <CutoutBadge bottom_right=br_corner top_right=tr_corner class="justify-center flex">
                 <div class="avatar-circle w-10 h-10 rounded-full" style:justify-content="center">
                     {move || {
+                        let room = room.get_value();
                         if let RoomNode::Dm(dm) = &room {
                             let profile = store
                                 .get_member_profile(&room.room_id(), &dm.other_user_id);
@@ -760,14 +763,20 @@ pub fn Sidebar() -> impl IntoView {
                     .notification_count
                     > 0;
 
-                let call_members = state.get_call_members(&dm_id).get();
+                let current_user_id = state.user_id.get();
+
+                let call_members: Vec<UserDevice> = state
+                    .get_call_members(&dm_id)
+                    .get()
+                    .into_iter()
+                    .filter(|d| Some(d.user_id.clone()) == current_user_id)
+                    .collect();
 
                 if !has_notifications && call_members.is_empty() {
                     None
                 } else {
-                    let members = (!call_members.is_empty()).then_some(call_members);
                     let room = state.get_room(&dm_id)?;
-                    Some((room, members))
+                    Some(room)
                 }
             })
             .collect::<Vec<_>>()
@@ -830,8 +839,8 @@ pub fn Sidebar() -> impl IntoView {
 
                     <For
                         each=move || active_rooms.get()
-                        key=|(dm, _)| dm.room_id()
-                        children=move |(room, members)| { render_room_preview(room, members) }
+                        key=|dm| dm.room_id()
+                        children=move |room| { render_room_preview(room) }
                     />
 
                     <div class="w-8 h-[2px] bg-(--tile-border-color) rounded-full my-2 gap-[1px]"></div>
