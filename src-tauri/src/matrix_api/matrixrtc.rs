@@ -130,7 +130,62 @@ pub(crate) async fn join_matrixrtc_call(
         });
     }
 
-    // send matrix events to signal joining the call
+    // LiveKit connection
+    let cancellationtoken = CancellationToken::new();
+    let mut room_options = livekit::RoomOptions::default();
+    room_options.encryption = e2ee_options;
+
+    info!("Connecting to LiveKit room");
+    let call_id = Uuid::new_v4();
+    let (livekit_room, mut event_receiver) =
+        livekit::Room::connect(service_url, jwt, room_options).await?;
+    log::info!("Connected to LiveKit room: {:?}", livekit_room);
+
+    // Set up local encryption key
+    let mut local_call_key_opt = None;
+    if room.encryption_state().is_encrypted() {
+        debug!("Room is encrypted. Generating encryption key");
+        let mut raw_key = [0u8; 16];
+        getrandom::fill(&mut raw_key)
+            .map_err(|e| format!("Failed to generate cryptographic key: {}", e))?;
+
+        let local_call_key = general_purpose::STANDARD.encode(raw_key);
+
+        let key_provider = livekit_room
+            .e2ee_manager()
+            .key_provider()
+            .expect("Keyprovider already set");
+        key_provider.set_key(
+            &livekit_room.local_participant().identity(),
+            0,
+            raw_key.into(),
+        );
+        debug!("Set encryption key for local participant.");
+        local_call_key_opt = Some(local_call_key);
+    }
+
+    livekit_room.e2ee_manager().set_enabled(true);
+
+    // persist in room manager now so incoming to-device messages aren't rejected
+    let cancellationtoken_clone = cancellationtoken.clone();
+    let call_data = LiveKitRoomData {
+        livekit_room,
+        cancellation_token: cancellationtoken_clone,
+        key_index: 0,
+        call_id,
+    };
+    livekit_room_manager
+        .lock()
+        .await
+        .insert(room_id.clone(), call_data);
+
+    // Send encryption keys to existing participants
+    if let Some(local_call_key) = local_call_key_opt {
+        debug!("Trying to send encryption key to call participants");
+        send_encryption_keys(client.clone(), &room_id, &local_call_key, 0, call_id).await?;
+    }
+
+    // announce joining to matrix room now that we are ready to receive keys
     let call_content = CallMemberEventContent::new(
         Application::Call(CallApplicationContent::new(
             "".to_string(),
@@ -169,57 +224,7 @@ pub(crate) async fn join_matrixrtc_call(
 
     room.send(notification_event).await?;
 
-    // LiveKit connection
-    let cancellationtoken = CancellationToken::new();
-    let mut room_options = livekit::RoomOptions::default();
-    room_options.encryption = e2ee_options;
-
-    info!("Connecting to LiveKit room");
-    let call_id = Uuid::new_v4();
-    let (livekit_room, mut event_receiver) =
-        livekit::Room::connect(service_url, jwt, room_options).await?;
-    log::info!("Connected to LiveKit room: {:?}", livekit_room);
-
-    // set and send out encryption key after joining but before publishing a track
-    if room.encryption_state().is_encrypted() {
-        debug!("Room is encrypted. Generating encryption key");
-        let mut raw_key = [0u8; 16];
-        getrandom::fill(&mut raw_key)
-            .map_err(|e| format!("Failed to generate cryptographic key: {}", e))?;
-
-        let local_call_key = general_purpose::STANDARD.encode(raw_key);
-
-        let key_provider = livekit_room
-            .e2ee_manager()
-            .key_provider()
-            .expect("Keyprovider already set");
-        key_provider.set_key(
-            &livekit_room.local_participant().identity(),
-            0,
-            raw_key.into(),
-        );
-        debug!("Set encryption key for local participant.");
-
-        debug!("Trying to send encryption key to call participants");
-        send_encryption_keys(client.clone(), &room_id, &local_call_key, 0, call_id).await?;
-    }
-
-    livekit_room.e2ee_manager().set_enabled(true);
-
-    // persist the room in room_manager
-    let cancellationtoken_clone = cancellationtoken.clone();
-    let call_data = LiveKitRoomData {
-        livekit_room,
-        cancellation_token: cancellationtoken_clone,
-        key_index: 0,
-        call_id,
-    };
-    livekit_room_manager
-        .lock()
-        .await
-        .insert(room_id.clone(), call_data);
-
-    // audio setup
+    // Audio setup
     if let Some(device) = audio_manager.host.default_output_device() {
         if let Err(e) = audio_manager.try_setup_output_stream_for_device(&device) {
             warn!("Could not set up output stream: {:?}", e);
@@ -242,7 +247,7 @@ pub(crate) async fn join_matrixrtc_call(
 
     let microphone_track = setup_mic_track(&audio_manager);
 
-    // publish microphone track
+    // Publish microphone track
     if let Ok(track) = microphone_track {
         let mut manager = livekit_room_manager.lock().await;
         let call_data = manager.get_mut(&room_id.clone()).unwrap();
@@ -268,17 +273,18 @@ pub(crate) async fn join_matrixrtc_call(
 
     let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
 
-    // spawn main audio mixer mixing together the various audio tracks
+    // Spawn main audio mixer
     if let Some(producer) = audio_manager.output_producer.lock().unwrap().take() {
         log::debug!("Spawning audio mixer");
         spawn_audio_mixer(producer, receiver, cancellationtoken.clone());
     } else {
-        log::error!("output_producer is None — mixer not spawned, remote audio will be silent");
+        log::error!("output_producer is None - mixer not spawned, remote audio will be silent");
     }
 
-    // handle events
     let room_id_clone = room_id.clone();
     let cancellationtoken_clone = cancellationtoken.clone();
+    let livekit_room_manager_inner = livekit_room_manager.inner().clone();
+
     tokio::spawn(async move {
         loop {
             tokio::select! {
@@ -292,11 +298,28 @@ pub(crate) async fn join_matrixrtc_call(
                         Some(ev) => {
                             if let RoomEvent::E2eeStateChanged { participant, state } = ev {
                                 debug!("Encryption state changed for {participant:?}, new state: {state:?}");
-                            } else if let RoomEvent::TrackSubscribed { track, .. } = ev
+                            } else if let RoomEvent::TrackSubscribed { track, participant, .. } = ev
                                 && let RemoteTrack::Audio(ref audio_track) = track
                             {
                                 debug!("Subscribed to new audio track: {:?}", track);
-                                if let Err(e) = register_new_track(handle.clone(), audio_track, sender.clone(), cancellationtoken_clone.clone()).await {
+
+                                // Use the cloned inner manager here
+                                let manager = livekit_room_manager_inner.lock().await;
+                                if let Some(call_data) = manager.get(&room_id_clone) {
+                                    let e2ee_mgr = call_data.livekit_room.e2ee_manager();
+                                    for ((id, _), fc) in e2ee_mgr.frame_cryptors() {
+                                        if id == participant.identity() {
+                                            fc.set_key_index(call_data.key_index);
+                                        }
+                                    }
+                                }
+
+                                if let Err(e) = register_new_track(
+                                    handle.clone(),
+                                    audio_track,
+                                    sender.clone(),
+                                    cancellationtoken_clone.clone(),
+                                ).await {
                                     warn!("Could not register output of remote track: {e}")
                                 }
                             }
@@ -310,6 +333,7 @@ pub(crate) async fn join_matrixrtc_call(
             }
         }
     });
+
     Ok(response_json)
 }
 
@@ -738,12 +762,12 @@ pub fn spawn_audio_mixer(
         let mut active_tracks: Vec<ringbuf::HeapCons<f32>> = Vec::new();
 
         loop {
-            // 1. Drain incoming new track registrations
+            // Drain incoming new track registrations
             while let Ok(new_consumer) = new_track_receiver.try_recv() {
                 active_tracks.push(new_consumer);
             }
 
-            // 2. Perform the mixing mathematics
+            // Perform the mixing
             let spaces_available = master_producer.vacant_len();
             for _ in 0..spaces_available {
                 let mut mixed_sample = 0.0;
@@ -767,7 +791,7 @@ pub fn spawn_audio_mixer(
                 }
             }
 
-            // 3. Race the 2ms sleep against the cancellation token
+            // Race the 2ms sleep against the cancellation token
             tokio::select! {
                 _ = cancel_token.cancelled() => {
                     log::info!("Central Audio Mixer task received cancellation. Shutting down loop.");
