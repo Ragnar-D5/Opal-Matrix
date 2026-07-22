@@ -540,12 +540,15 @@ impl AudioManager {
 
         log::debug!("CPAL output: {} Hz, {} ch", sample_rate, channels);
 
-        let ring = HeapRb::<f32>::new(sample_rate as usize * channels as usize * 4);
+        let buffer_duration_ms = 50;
+        let capacity = (sample_rate as usize * channels as usize * buffer_duration_ms) / 1000;
+        let ring = HeapRb::<f32>::new(capacity);
         let (producer, mut consumer) = ring.split();
 
-        // ~50 ms prebuffer
-        let prebuffer_threshold = (sample_rate * channels / 50) as usize;
+        // Set prebuffer threshold to ~20 ms before starting playback
+        let prebuffer_threshold = (sample_rate as usize * channels as usize * 20) / 1000;
         let mut is_buffering = true;
+        let mut last_sample = 0.0f32;
 
         let output_stream = device.build_output_stream(
             &config.into(),
@@ -558,11 +561,17 @@ impl AudioManager {
                         return;
                     }
                 }
+
                 for sample in data.iter_mut() {
                     match consumer.try_pop() {
-                        Some(s) => *sample = s * 0.85,
+                        Some(s) => {
+                            let s = s * 0.85;
+                            *sample = s;
+                            last_sample = s;
+                        }
                         None => {
-                            *sample = 0.0;
+                            last_sample *= 0.6; // slow decay to avoid crakling
+                            *sample = last_sample;
                             is_buffering = true;
                         }
                     }
