@@ -408,8 +408,9 @@ pub fn App() -> impl IntoView {
                         RestoreResponse::NoSession => {
                             state.current_window.set(CurrentWindow::HomeserverDiscovery);
                         }
-                        RestoreResponse::Success { user_id } => {
-                            state.user_id.set(Some(user_id));
+                        RestoreResponse::Success(device) => {
+                            state.user_id.set(Some(device.user_id.clone()));
+                            state.device.set(Some(device));
                             state.current_window.set(CurrentWindow::Home);
                             get_stuff_after_login(state, settings);
                         }

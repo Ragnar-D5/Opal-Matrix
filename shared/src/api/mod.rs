@@ -6,6 +6,8 @@ use ruma::{OwnedMxcUri, OwnedRoomId, OwnedUserId};
 use serde::{Deserialize, Deserializer, Serialize};
 use uuid::Uuid;
 
+use crate::sidebar::UserDevice;
+
 fn deserialize_u32_or_string<'de, D: Deserializer<'de>>(d: D) -> Result<Option<u32>, D::Error> {
     #[derive(Deserialize)]
     #[serde(untagged)]
@@ -27,7 +29,7 @@ pub mod events;
 #[derive(Serialize, Deserialize)]
 pub enum RestoreResponse {
     NoSession,
-    Success { user_id: OwnedUserId },
+    Success(UserDevice),
     Failed { home_server: String },
 }
 

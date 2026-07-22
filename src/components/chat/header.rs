@@ -151,12 +151,12 @@ pub fn ChatHeader(chat_sidebar_open: RwSignal<bool>) -> impl IntoView {
             return false;
         };
 
-        let user_id = state.user_id.get_untracked();
+        let user_id = state.device.get();
         state
             .get_call_members(&room_id)
             .get()
             .iter()
-            .any(|dev| Some(dev.user_id.clone()) == user_id)
+            .any(|dev| Some(dev) == user_id.as_ref())
     };
 
     let on_call_click = move |_| {

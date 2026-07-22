@@ -33,6 +33,8 @@ pub(crate) mod state;
 pub(crate) mod sync;
 pub(crate) mod versions;
 
+use shared::sidebar::UserDevice;
+
 use tauri_plugin_http::reqwest::{self, Response};
 
 pub const APP_NAME: &str = "opal-matrix";
@@ -306,9 +308,14 @@ async fn try_restore(
         .expect("User id not present")
         .to_owned();
 
+    let device_id = new_client
+        .device_id()
+        .expect("Device id not present")
+        .to_owned();
+
     *matrix_client.write().await = new_client;
 
-    Ok(RestoreResponse::Success { user_id })
+    Ok(RestoreResponse::Success(UserDevice { user_id, device_id }))
 }
 
 #[tauri::command(rename_all = "snake_case")]
@@ -320,7 +327,7 @@ async fn login(
     matrix_client: State<'_, RwLock<MatrixClient>>,
     state: State<'_, Arc<AppState>>,
     handle: AppHandle,
-) -> Result<String, LoginError> {
+) -> Result<UserDevice, LoginError> {
     info!("Logging in new");
 
     let server_url = matrix_client.read().await.homeserver().to_string();
@@ -447,11 +454,18 @@ async fn login(
         })?;
     log::debug!("Sync loop started");
 
-    let user_id = new_client.user_id().unwrap().to_string();
+    let user_id = new_client
+        .user_id()
+        .expect("Failed to get user id")
+        .to_owned();
+    let device_id = new_client
+        .device_id()
+        .expect("Failed to get device id")
+        .to_owned();
     *matrix_client.write().await = new_client;
 
     let session = StoredSession {
-        user_id: user_id.clone(),
+        user_id: user_id.to_string(),
         device_id: device_id.to_string(),
         access_token: temp_client.session().unwrap().access_token().to_string(),
         refresh_token: temp_client
@@ -466,7 +480,7 @@ async fn login(
         keyring::save_session(&session).map_err(|_| LoginError::BackendError)
     });
 
-    Ok(user_id)
+    Ok(UserDevice { user_id, device_id })
 }
 
 #[command(rename_all = "snake_case")]

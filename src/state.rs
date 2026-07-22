@@ -66,7 +66,9 @@ pub struct AppState {
     pub current_window: RwSignal<CurrentWindow>,
     pub previous_window: RwSignal<CurrentWindow>,
     pub last_changed_time: RwSignal<f64>,
+
     pub user_id: RwSignal<Option<OwnedUserId>>,
+    pub device: RwSignal<Option<UserDevice>>,
 
     pub active_room: RwSignal<Option<RoomNode>>,
 
