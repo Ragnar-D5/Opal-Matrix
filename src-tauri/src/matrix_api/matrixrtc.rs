@@ -39,9 +39,10 @@ use tokio::sync::{Mutex, RwLock};
 use crate::TauriError;
 use crate::state::{AudioManager, LiveKitRoomData, LiveKitRoomManager};
 
-static PENDING_KEY_UPDATES: LazyLock<
-    Mutex<HashMap<String, Vec<(String, EncryptionKeysEventContent)>>>,
-> = LazyLock::new(|| Mutex::new(HashMap::new()));
+type PendingUpdates = HashMap<String, Vec<(String, EncryptionKeysEventContent)>>;
+
+static PENDING_KEY_UPDATES: LazyLock<Mutex<PendingUpdates>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 #[command(rename_all = "snake_case")]
 pub(crate) async fn join_matrixrtc_call(
@@ -240,49 +241,49 @@ pub(crate) async fn join_matrixrtc_call(
         .remove(&canonical_room_id)
         .or_else(|| pending_map.remove(&room_id));
 
-    if let Some(pending_updates) = pending_updates {
-        if let Some(call_data) = room_manager_guard.get(&canonical_room_id) {
-            let livekit_room = &call_data.livekit_room;
-            let e2ee_manager = livekit_room.e2ee_manager();
+    if let Some(pending_updates) = pending_updates
+        && let Some(call_data) = room_manager_guard.get(&canonical_room_id)
+    {
+        let livekit_room = &call_data.livekit_room;
+        let e2ee_manager = livekit_room.e2ee_manager();
 
-            if let Some(key_provider) = e2ee_manager.key_provider() {
-                for (sender, update_event) in pending_updates {
-                    let livekit_id =
-                        format!("{}:{}", sender, update_event.member.claimed_device_id);
+        if let Some(key_provider) = e2ee_manager.key_provider() {
+            for (sender, update_event) in pending_updates {
+                let livekit_id = format!("{}:{}", sender, update_event.member.claimed_device_id);
 
-                    match general_purpose::STANDARD.decode(&update_event.keys.key) {
-                        Ok(decoded_key) => {
-                            let key_index = update_event.keys.index; // Keep as i32
-                            key_provider.set_key(
-                                &From::from(livekit_id.clone()),
-                                key_index,
-                                decoded_key,
-                            );
-                            log::info!(
-                                "Set updated LiveKit decryption key for {} with index {} in KeyProvider.",
-                                livekit_id,
-                                key_index
-                            );
+                match general_purpose::STANDARD.decode(&update_event.keys.key) {
+                    Ok(decoded_key) => {
+                        let key_index = update_event.keys.index; // Keep as i32
+                        key_provider.set_key(
+                            &From::from(livekit_id.clone()),
+                            key_index,
+                            decoded_key,
+                        );
+                        log::info!(
+                            "Set updated LiveKit decryption key for {} with index {} in KeyProvider.",
+                            livekit_id,
+                            key_index
+                        );
 
-                            e2ee_manager
-                                .frame_cryptors()
-                                .iter()
-                                .filter(|((id, _), _)| id == &From::from(livekit_id.clone()))
-                                .for_each(|((id, _), frame_cryptor)| {
-                                    frame_cryptor.set_key_index(key_index);
-                                    debug!("Updated FrameCryptor key index for {id}");
-                                });
-                        }
-                        Err(e) => {
-                            warn!("Failed to decode base64 key for participant {livekit_id}: {e}");
-                        }
+                        e2ee_manager
+                            .frame_cryptors()
+                            .iter()
+                            .filter(|((id, _), _)| id == &From::from(livekit_id.clone()))
+                            .for_each(|((id, _), frame_cryptor)| {
+                                frame_cryptor.set_key_index(key_index);
+                                debug!("Updated FrameCryptor key index for {id}");
+                            });
+                    }
+                    Err(e) => {
+                        warn!("Failed to decode base64 key for participant {livekit_id}: {e}");
                     }
                 }
-            } else {
-                log::info!("No key provider found when draining pending key updates.");
             }
+        } else {
+            log::info!("No key provider found when draining pending key updates.");
         }
     }
+
     drop(pending_map);
     drop(room_manager_guard);
 

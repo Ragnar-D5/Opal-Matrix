@@ -1,76 +1,97 @@
 {
-  "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Opal",
-  "version": "0.2.3-1",
-  "identifier": "com.app.opal-matrix",
-  "build": {
-    "beforeDevCommand": "trunk serve",
-    "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "trunk build --release",
-    "frontendDist": "../dist"
-  },
-  "app": {
-    "withGlobalTauri": true,
-    "windows": [
-      {
-        "title": "Opal",
-        "width": 1600,
-        "height": 1000,
-        "decorations": false,
-        "transparent": false,
-        "resizable": true,
-        "devtools": true
-      }
-    ],
-    "security": {
-      "csp": "default-src 'self'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'; connect-src 'self' ipc: http://ipc.localhost; img-src 'self' https: data: asset: mxc: blob:; media-src mxc: blob:; style-src 'self' 'unsafe-inline';",
-      "assetProtocol": {
-        "enable": true,
-        "scope": ["**"]
-      }
-    }
-  },
-  "plugins": {
-    "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IENEMzRENzlCQkU1QkMzMTYKUldRV3cxdSttOWMwemJXdnM4UlQ0YjRVYkVtM2NWay9ENjNMUGdoZFR4aitLdTQxWks5RUZzNGIK",
-      "endpoints": [
-        "https://codeberg.org/aosiuejhf/opal-matrix/releases/download/latest/latest.json"
-      ]
+    "$schema": "https://schema.tauri.app/config/2",
+    "productName": "Opal",
+    "version": "0.2.3",
+    "identifier": "com.app.opal-matrix",
+    "build": {
+        "beforeDevCommand": "trunk serve",
+        "devUrl": "http://localhost:1420",
+        "beforeBuildCommand": "trunk build --release",
+        "frontendDist": "../dist"
     },
-    "cli": {
-      "description": "Opal Matrix client",
-      "args": [
-        {
-          "name": "log-level",
-          "description": "Overall log level",
-          "takesValue": true,
-          "possibleValues": ["trace", "debug", "info", "warn", "error", "off"]
-        },
-        {
-          "name": "livekit-log-level",
-          "description": "Log level for livekit/libwebrtc",
-          "takesValue": true,
-          "possibleValues": ["trace", "debug", "info", "warn", "error", "off"]
-        },
-        {
-          "name": "keyring-log-level",
-          "description": "Log level for keyring backends",
-          "takesValue": true,
-          "possibleValues": ["trace", "debug", "info", "warn", "error", "off"]
+    "app": {
+        "withGlobalTauri": true,
+        "windows": [
+            {
+                "title": "Opal",
+                "width": 1600,
+                "height": 1000,
+                "decorations": false,
+                "transparent": false,
+                "resizable": true,
+                "devtools": true
+            }
+        ],
+        "security": {
+            "csp": "default-src 'self'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'; connect-src 'self' ipc: http://ipc.localhost; img-src 'self' https: data: asset: mxc: blob:; media-src mxc: blob:; style-src 'self' 'unsafe-inline';",
+            "assetProtocol": {
+                "enable": true,
+                "scope": ["**"]
+            }
         }
-      ]
+    },
+    "plugins": {
+        "updater": {
+            "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IENEMzRENzlCQkU1QkMzMTYKUldRV3cxdSttOWMwemJXdnM4UlQ0YjRVYkVtM2NWay9ENjNMUGdoZFR4aitLdTQxWks5RUZzNGIK",
+            "endpoints": [
+                "https://codeberg.org/aosiuejhf/opal-matrix/releases/download/latest/latest.json"
+            ]
+        },
+        "cli": {
+            "description": "Opal Matrix client",
+            "args": [
+                {
+                    "name": "log-level",
+                    "description": "Overall log level",
+                    "takesValue": true,
+                    "possibleValues": [
+                        "trace",
+                        "debug",
+                        "info",
+                        "warn",
+                        "error",
+                        "off"
+                    ]
+                },
+                {
+                    "name": "livekit-log-level",
+                    "description": "Log level for livekit/libwebrtc",
+                    "takesValue": true,
+                    "possibleValues": [
+                        "trace",
+                        "debug",
+                        "info",
+                        "warn",
+                        "error",
+                        "off"
+                    ]
+                },
+                {
+                    "name": "keyring-log-level",
+                    "description": "Log level for keyring backends",
+                    "takesValue": true,
+                    "possibleValues": [
+                        "trace",
+                        "debug",
+                        "info",
+                        "warn",
+                        "error",
+                        "off"
+                    ]
+                }
+            ]
+        }
+    },
+    "bundle": {
+        "createUpdaterArtifacts": true,
+        "active": true,
+        "targets": "all",
+        "icon": [
+            "icons/32x32.png",
+            "icons/128x128.png",
+            "icons/128x128@2x.png",
+            "icons/icon.icns",
+            "icons/icon.ico"
+        ]
     }
-  },
-  "bundle": {
-    "createUpdaterArtifacts": true,
-    "active": true,
-    "targets": "all",
-    "icon": [
-      "icons/32x32.png",
-      "icons/128x128.png",
-      "icons/128x128@2x.png",
-      "icons/icon.icns",
-      "icons/icon.ico"
-    ]
-  }
 }

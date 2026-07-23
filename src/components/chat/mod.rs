@@ -1438,11 +1438,10 @@ pub fn Chat() -> impl IntoView {
                                     let Some(room_id) = state.active_room_id() else {
                                         return ().into_any();
                                     };
-                                    let call_members = state.get_call_members(&room_id).get();
                                     let node = node.clone();
 
                                     view! {
-                                        <Show when=move || !call_members.is_empty()>
+                                        <Show when=move || state.room_has_call_members(&room_id)>
                                             <div class="h-50 w-full border-(--tile-border-color) border-b">
                                                 <CallView node=node.clone() />
                                             </div>

@@ -546,6 +546,13 @@ impl AppState {
             .clone()
     }
 
+    pub fn room_has_call_members(&self, room_id: &RoomId) -> bool {
+        self.call_members
+            .get()
+            .get(room_id)
+            .is_some_and(|m| !m.get().is_empty())
+    }
+
     /// Get call members for a set of room ids.
     pub fn get_call_members_in_rooms(
         &self,
